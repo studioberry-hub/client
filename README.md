@@ -1,3 +1,6 @@
+> [!NOTE]
+> Исходный код проекта выйдет в скором времени. Нам нужно чуть больше времени на полировку. Просим прощения за доставленные неудобства и просим немного потерпеть. Пока вы можете скачать последний билд клиента [отсюда](https://github.com/studioberry-hub/client/releases/latest) и протестировать его.
+
 ![Undefined Client](https://github.com/studioberry-hub/client/blob/main/.github/uclientBannerGH2.png?raw=true)
 
 ![Undefined Client](https://github.com/studioberry-hub/client/blob/main/.github/uclientBannerWindow.png?raw=true)
