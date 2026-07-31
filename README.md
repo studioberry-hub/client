@@ -52,7 +52,7 @@
 
 ```bash
 # 1. Клонируй репозиторий
-git clone https://github.com/<твой-логин>/uclient.git
+git clone https://github.com/studioberry-hub/uclient.git
 cd uclient
 
 # 2. Ставь зависимости
