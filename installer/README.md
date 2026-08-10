@@ -100,7 +100,7 @@ build_installers.cmd
 - `dist\updater.exe`
 - `dist\unins000.exe`
 
-В бандл кладутся `installer\assets` и шрифты Nekst из `assets\fonts\nekst`.
+В бандл кладётся весь `installer\assets` (включая `fonts/nekst`).
 
 > [!IMPORTANT]
 > `updater.exe` и `unins000.exe` нужно класть **внутрь** релизного zip клиента (`latest-windows-amd64.zip`), чтобы обновление и удаление работали у пользователя.
