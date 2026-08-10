@@ -1,0 +1,8 @@
+# ===== Зависимости установщика Undefined Client =====
+# Python 3.11+ (рекомендуется 3.12/3.13), Windows.
+
+# UI и картинки в окне установщика
+Pillow>=10.0.0,<12
+
+# Сборка onefile-exe (UClientInstaller / updater / unins000)
+pyinstaller>=6.0.0,<8
