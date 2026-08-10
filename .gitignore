@@ -1,0 +1,73 @@
+# ===== Зависимости и сборка =====
+node_modules/
+dist/
+dist-windows/
+dist-windows-new/
+*.tsbuildinfo
+
+# ===== Артефакты установщиков / PyInstaller =====
+build/
+*.exe
+*.spec
+# Спеки исходников установщика оставляем только если нужны в репо —
+# сейчас .spec лежат рядом с exe и относятся к черновой сборке.
+
+# ===== Локальные черновики и референсы =====
+.spike/
+.spike2/
+.spike3/
+.spike4/
+.spike5/
+app-ref/
+installerRef/
+site-stubs/
+tmp-userdata/
+
+*-ref.css
+*-ref.svg
+*-ref.png
+*_ref.css
+*_ref.svg
+*_ref.png
+uclient-ref.*
+
+tmp-*
+patch_news_app.py
+ping-test.js
+
+# Корневые бинарники установщика/апдейтера (не исходники)
+/UClientInstaller.exe
+/unins000.exe
+/updater.exe
+/UClientInstaller.spec
+/unins000.spec
+/updater.spec
+/s_exe_unins.png
+/s_real_unins.png
+
+# ===== Секреты и окружение =====
+.env
+.env.*
+.deploy-pass
+*.pem
+*.key
+
+# ===== IDE / ОС =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== Логи и кэш =====
+*.log
+npm-debug.log*
+.cache/
+__pycache__/
+*.pyc
+
+# ===== Артефакты экспериментов skinviewengine =====
+skinviewengine/scripts/out/
+skinviewengine/node_modules/
+skinviewengine/dist/

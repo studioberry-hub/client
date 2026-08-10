@@ -1,0 +1,2309 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://uprojects.site https://mc-heads.net https://ely.by https://cdn.modrinth.com http: https:; font-src 'self'; script-src 'self' 'unsafe-inline'; media-src 'self' blob: https://live.lofiradio.ru https://air.radioart.com">
+  <title>Undefined Client</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- Splash Screen -->
+    <div id="splash">
+      <div id="splash-content">
+        <img src="../../assets/SplashTitleStartup.svg" alt="Undefined Client" style="width:420px;height:auto;">
+        <div id="splash-loader"></div>
+      </div>
+    </div>
+    <!-- TitleBar -->
+    <div id="titlebar">
+      <div id="titlebar-title">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect width="11" height="11" fill="#7BD4B7"/>
+          <rect x="11" y="11" width="5" height="5" fill="#7BD4B7"/>
+        </svg>
+        <span>Undefined Client</span>
+      </div>
+      <div id="titlebar-controls">
+        <div class="tb-btn" id="btn-menu" title="" data-i18n-title="titlebar.menu">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <rect x="0" y="5" width="12" height="2" rx="1" fill="white"/>
+            <rect y="0" width="12" height="2" rx="1" fill="white"/>
+            <rect y="10" width="12" height="2" rx="1" fill="white"/>
+          </svg>
+        </div>
+        <div class="tb-btn" id="btn-min" title="" data-i18n-title="titlebar.minimize">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <rect x="0" y="5" width="12" height="2" rx="1" fill="white"/>
+          </svg>
+        </div>
+        <div class="tb-btn" id="btn-max" title="" data-i18n-title="titlebar.maximize">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M9 10V12H3V10H9ZM10 9V3C10 2.44772 9.55228 2 9 2H3C2.44772 2 2 2.44772 2 3V9C2 9.55228 2.44772 10 3 10V12C1.34315 12 0 10.6569 0 9V3C0 1.34315 1.34315 0 3 0H9C10.6569 0 12 1.34315 12 3V9C12 10.6569 10.6569 12 9 12V10C9.55228 10 10 9.55228 10 9Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="tb-btn" id="btn-close" title="" data-i18n-title="titlebar.close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 1.06066C1 0.474874 1.47487 0 2.06066 0C2.34201 0 2.61168 0.111675 2.81066 0.31066L11.6893 9.18934C11.8883 9.38832 12 9.65799 12 9.93934C12 10.5251 11.5251 11 10.9393 11C10.658 11 10.3883 10.8883 10.1893 10.6893L1.31066 1.81066C1.11167 1.61168 1 1.34201 1 1.06066Z" fill="white"/>
+            <path d="M2.06066 11C1.47487 11 1 10.5251 1 9.93934C1 9.65799 1.11167 9.38832 1.31066 9.18934L10.1893 0.31066C10.3883 0.111675 10.658 0 10.9393 0C11.5251 0 12 0.474874 12 1.06066C12 1.34201 11.8883 1.61168 11.6893 1.81066L2.81066 10.6893C2.61168 10.8883 2.34201 11 2.06066 11Z" fill="white"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body row (tab panel + content) -->
+    <div id="body-row">
+      <!-- Tab Panel -->
+      <div id="tab-panel">
+        <div id="tab-panel-top">
+          <div class="tab-btn active" data-tab="home">
+            <span class="tab-btn-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M0 8.6198C0 8.22556 0.168588 7.85014 0.463245 7.58823L8.43167 0.505181C8.79777 0.179757 9.27057 0 9.7604 0H10.2396C10.7294 0 11.2022 0.179757 11.5683 0.505181L19.5368 7.58823C19.8314 7.85014 20 8.22556 20 8.6198C20 9.38206 19.3821 10 18.6198 10H18V18C18 19.1046 17.1046 20 16 20H13V15C13 14.4477 12.5523 14 12 14H8C7.44772 14 7 14.4477 7 15V20H4C2.89543 20 2 19.1046 2 18V10H1.3802C0.617936 10 0 9.38206 0 8.6198Z" fill="currentColor"/></svg></span>
+            <div class="tab-btn-title" data-i18n="tab.home">Р“Р»Р°РІРЅР°СЏ</div>
+          </div>
+          <div class="tab-btn" data-tab="news">
+            <span class="tab-btn-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M1 0C0.447715 0 0 0.447716 0 1V17C0 18.6569 1.34315 20 3 20H17C18.6569 20 20 18.6569 20 17V10C20 9.44772 19.5523 9 19 9H18V17C18 17.5523 17.5523 18 17 18C16.4477 18 16 17.5523 16 17V1C16 0.447715 15.5523 0 15 0H1ZM6 2H3C2.44772 2 2 2.44772 2 3V7C2 7.55228 2.44772 8 3 8H6C6.55228 8 7 7.55228 7 7V3C7 2.44772 6.55228 2 6 2ZM10 2H13C13.5523 2 14 2.44772 14 3C14 3.55228 13.5523 4 13 4H10C9.44772 4 9 3.55228 9 3C9 2.44772 9.44772 2 10 2ZM13 6H10C9.44772 6 9 6.44772 9 7C9 7.55228 9.44772 8 10 8H13C13.5523 8 14 7.55228 14 7C14 6.44772 13.5523 6 13 6ZM3 10H13C13.5523 10 14 10.4477 14 11C14 11.5523 13.5523 12 13 12H3C2.44772 12 2 11.5523 2 11C2 10.4477 2.44772 10 3 10ZM13 14H3C2.44772 14 2 14.4477 2 15C2 15.5523 2.44772 16 3 16H13C13.5523 16 14 15.5523 14 15C14 14.4477 13.5523 14 13 14Z" fill="currentColor"/></svg></span>
+            <div class="tab-btn-title" data-i18n="tab.news">Новости</div>
+          </div>
+          <div class="tab-btn" data-tab="builds">
+            <span class="tab-btn-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M9.11426 1.55273C9.67245 1.27708 10.3275 1.27708 10.8857 1.55273L16.8857 4.51562C17.568 4.85263 17.9999 5.54763 18 6.30859V13.6914C17.9999 14.4524 17.568 15.1474 16.8857 15.4844L10.8857 18.4473C10.3275 18.7229 9.67246 18.7229 9.11426 18.4473L3.11426 15.4844C2.43199 15.1474 2.00009 14.4524 2 13.6914V6.30859C2.00009 5.54764 2.43199 4.85263 3.11426 4.51562L9.11426 1.55273Z" stroke="currentColor" stroke-width="2"/><path d="M18 5L9.99924 8.88439V10.9996L18 7.11519V5Z" fill="currentColor"/><path d="M2 5L10 8.88481V11L2 7.11519V5Z" fill="currentColor"/><rect x="9" y="10" width="2" height="8" fill="currentColor"/></svg></span>
+            <div class="tab-btn-title" data-i18n="tab.builds">РњРѕРё СЃР±РѕСЂРєРё</div>
+          </div>
+          <div class="tab-btn" data-tab="mods">
+            <span class="tab-btn-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="1" y="13" width="6" height="6" rx="2" stroke="currentColor" stroke-width="2"/><rect x="11" y="13" width="6" height="6" rx="2" stroke="currentColor" stroke-width="2"/><rect x="1" y="3" width="6" height="6" rx="2" stroke="currentColor" stroke-width="2"/><rect x="11" width="9" height="9" rx="3" fill="currentColor"/></svg></span>
+            <div class="tab-btn-title" data-i18n="tab.mods">РљР°С‚Р°Р»РѕРі РјРѕРґРѕРІ</div>
+          </div>
+          <div class="tab-btn" data-tab="servers">
+            <span class="tab-btn-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="1" y="1" width="18" height="7" rx="2" stroke="currentColor" stroke-width="2"/><rect x="1" y="12" width="18" height="7" rx="2" stroke="currentColor" stroke-width="2"/><rect x="3" y="3" width="2" height="3" rx="1" fill="currentColor"/><rect x="6" y="3" width="2" height="3" rx="1" fill="currentColor"/><rect x="3" y="14" width="2" height="3" rx="1" fill="currentColor"/><rect x="6" y="14" width="2" height="3" rx="1" fill="currentColor"/></svg></span>
+            <div class="tab-btn-title" data-i18n="tab.servers">Серверы</div>
+          </div>
+          <div class="tab-btn" data-tab="skins">
+            <span class="tab-btn-icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5.91992 2V2.29199C5.91998 2.42164 5.94604 2.54992 5.99512 2.66992C6.21189 3.19978 6.52989 3.68207 6.93164 4.08887C7.33346 4.49565 7.81138 4.81917 8.33789 5.04004C8.86451 5.26085 9.42921 5.375 10 5.375C10.5708 5.375 11.1355 5.26085 11.6621 5.04004C12.1886 4.81917 12.6665 4.49567 13.0684 4.08887C13.4701 3.6821 13.7882 3.19992 14.0049 2.66992C14.054 2.54992 14.079 2.42164 14.0791 2.29199V2H16.5518L18.915 4.65918L18.2129 7.90625L17.7754 7.36816C17.5083 7.04033 17.0635 6.91598 16.665 7.05762C16.2664 7.19938 16 7.57689 16 8V16.75C16 17.001 15.8632 17.3042 15.54 17.5752C15.2158 17.8471 14.7994 18 14.4443 18H5.55566C5.20061 18 4.78426 17.8471 4.45996 17.5752C4.1368 17.3042 4 17.001 4 16.75V8C4 7.57689 3.73361 7.19939 3.33496 7.05762C2.93647 6.91598 2.49175 7.04033 2.22461 7.36816L1.78613 7.90625L1.08398 4.65918L3.44824 2H5.91992Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="tab-btn-title" data-i18n="tab.skins">РЎРєРёРЅС‹</div>
+          </div>
+        </div>
+
+        <!-- Separator -->
+        <div class="sidebar-separator"></div>
+
+        <div id="sidebar-cards">
+        <!-- Quick Launch -->
+        <div class="sidebar-card" id="quick-launch">
+          <div class="sidebar-card-label" data-i18n="sidebar.quickLaunch">Р‘С‹СЃС‚СЂС‹Р№ Р·Р°РїСѓСЃРє</div>
+          <div class="sidebar-card-content">
+            <div class="sidebar-card-icon" id="quick-launch-icon">
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <rect x="2" y="2" width="28" height="28" rx="4" fill="#7BD4B7"/>
+                <path d="M12 10L22 16L12 22V10Z" fill="#2A2A2A"/>
+              </svg>
+            </div>
+            <div class="sidebar-card-titles">
+              <div class="sidebar-card-title" id="quick-launch-name" data-i18n="sidebar.noBuilds">РќРµС‚ СЃР±РѕСЂРѕРє</div>
+              <div class="sidebar-card-version" id="quick-launch-version"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Now Playing -->
+        <div class="sidebar-card hidden" id="running-indicator">
+          <div class="sidebar-card-label" data-i18n="sidebar.inGame">Р’ РёРіСЂРµ</div>
+          <div class="sidebar-card-content">
+            <div class="sidebar-card-icon" id="running-indicator-icon">
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <rect width="28" height="28" rx="6" fill="var(--accent)"/>
+                <path d="M6 7.61803C6 6.72442 6.72442 6 7.61803 6C7.86923 6 8.11697 6.05848 8.34164 6.17082L21.1056 12.5528C21.6537 12.8269 22 13.3871 22 14C22 14.6129 21.6537 15.1731 21.1056 15.4472L8.34164 21.8292C8.11697 21.9415 7.86923 22 7.61803 22C6.72442 22 6 21.2756 6 20.382V7.61803Z" fill="white"/>
+              </svg>
+            </div>
+            <div class="sidebar-card-titles">
+              <div class="sidebar-card-title" id="running-indicator-name">вЂ”</div>
+              <div class="sidebar-card-version" id="running-indicator-time">00:00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LastServer -->
+        <div class="sidebar-card" id="last-server">
+          <div class="sidebar-card-label" data-i18n="sidebar.lastServer">РџРѕСЃР»РµРґРЅРёР№ СЃРµСЂРІРµСЂ</div>
+          <div class="sidebar-card-content">
+            <div class="sidebar-card-icon" id="last-server-icon">
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <rect x="2" y="2" width="28" height="28" rx="4" fill="#FF6B6B"/>
+                <rect x="10" y="8" width="12" height="16" rx="2" fill="#2A2A2A"/>
+                <rect x="13" y="12" width="6" height="2" rx="1" fill="#FF6B6B"/>
+                <rect x="13" y="16" width="6" height="2" rx="1" fill="#FF6B6B"/>
+              </svg>
+            </div>
+            <div class="sidebar-card-titles">
+              <div class="sidebar-card-title" id="last-server-name" data-i18n="sidebar.noServers">РќРµС‚ СЃРµСЂРІРµСЂРѕРІ</div>
+              <div class="sidebar-card-version" id="last-server-version"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LastWorld / placeholder for future use -->
+        </div>
+
+        <!-- Download Progress -->
+        <div id="download-progress" class="hidden">
+          <div id="download-progress-header">
+            <span id="download-progress-label" data-i18n="sidebar.downloading">РЎРєР°С‡РёРІР°РЅРёРµ</span>
+            <span id="download-progress-speed"></span>
+            <span id="download-progress-percent">0%</span>
+            <button id="download-progress-log-btn" class="log-btn" title="" data-i18n-title="sidebar.downloadLog">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+              </svg>
+            </button>
+          </div>
+          <div id="download-progress-track">
+            <div id="download-progress-fill" style="width:0%"></div>
+          </div>
+          <div id="download-progress-log"></div>
+        </div>
+
+        <!-- AccountSelector -->
+        <div class="account-selector" id="account-selector">
+          <div class="account-skin">
+            <img class="account-skin-img" src="" alt="" style="display:none;">
+            <svg class="account-skin-placeholder" width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <circle cx="14" cy="14" r="13" stroke="#9E9E9E" stroke-width="2"/>
+              <circle cx="14" cy="9" r="5" fill="#9E9E9E"/>
+              <path d="M6 21C6 18.2386 8.23858 16 11 16H17C19.7614 16 22 18.2386 22 21V24L14 27L6 24V21Z" fill="#9E9E9E"/>
+            </svg>
+          </div>
+          <div class="account-info">
+            <div class="account-nickname">Player</div>
+            <div class="account-type">Р›РёС†РµРЅР·РёСЏ</div>
+          </div>
+          <div class="account-arrow">
+            <svg width="12" height="7" viewBox="0 0 12 7" fill="none">
+              <path d="M0 5.95144C0 5.67287 0.112428 5.4058 0.312389 5.20935L4.52315 1.07264H6.02339V2.55448L1.81095 6.69284C1.61195 6.88834 1.342 6.99809 1.06133 6.99809C0.476099 6.99809 0 6.52949 0 5.95144Z" fill="white"/>
+              <path d="M7.48753 1.07264L11.6885 5.21126C11.8879 5.40774 12 5.67452 12 5.95275C12 6.53113 11.5245 7 10.9389 7C10.6579 7 10.388 6.88992 10.189 6.6939L5.98728 2.55448V1.07264L7.48753 1.07264Z" fill="white"/>
+              <path d="M5.29375 0.289347C5.68434 -0.0964488 6.31761 -0.0964493 6.7082 0.289347L7.50122 1.07264H4.50073L5.29375 0.289347Z" fill="white"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+        <!-- Main Content Area -->
+        <div id="opened-page" class="opened-page">
+          <div id="tab-views">
+
+        <!-- Home Tab -->
+        <div class="tab-view active" id="tab-home">
+
+          <!-- Header row -->
+          <div class="tab-header-row">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/home.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.home">Р“Р»Р°РІРЅР°СЏ</h1>
+                <p data-i18n="home.welcome">Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ Undefined Client</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+            </div>
+          </div>
+
+          <!-- Последняя новость — акцентный блок как servers-attribution -->
+          <div id="home-news-attribution" class="home-news-attribution hidden">
+            <div class="home-news-attribution-cover" id="home-news-cover"></div>
+            <div class="home-news-attribution-info">
+              <div class="home-news-attribution-title" id="home-news-title"></div>
+              <div class="news-home-row-summary hidden" id="home-news-summary"></div>
+            </div>
+            <button type="button" class="home-news-attribution-btn" id="home-news-open-btn" data-i18n="news.openPost">Открыть пост</button>
+          </div>
+
+          <!-- Quick-launch banner -->
+          <div id="quick-banner">
+            <video id="quick-banner-bg" muted autoplay loop playsinline></video>
+            <div id="quick-banner-gradient"></div>
+            <div id="quick-banner-content">
+              <div id="quick-banner-sub" data-i18n="home.continueGame">РџСЂРѕРґРѕР»Р¶РёС‚СЊ РёРіСЂСѓ</div>
+              <div id="quick-banner-title">Fabulously Optimized</div>
+              <div id="quick-banner-meta">1.20.1 В· Fabric В· 0.16.10</div>
+            </div>
+            <div id="quick-banner-actions">
+              <button class="play-btn" id="quick-banner-play">
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                  <path d="M0 1.61803C0 0.724419 0.724419 0 1.61803 0C1.86923 0 2.11697 0.058484 2.34164 0.17082L19.1056 8.55279C19.6537 8.82687 20 9.38713 20 10C20 10.6129 19.6537 11.1731 19.1056 11.4472L2.34164 19.8292C2.11697 19.9415 1.86923 20 1.61803 20C0.724418 20 0 19.2756 0 18.382V1.61803Z" fill="currentColor"/>
+                </svg>
+                <span data-i18n="btn.play">РРіСЂР°С‚СЊ</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Stat grid -->
+          <div id="stat-grid">
+            <div class="stat-card">
+              <svg class="stat-card-svg" width="18" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M17 6.17612C16.9999 5.78201 16.7835 5.42201 16.4424 5.2475L10.4424 2.17842C10.1635 2.03588 9.83654 2.03588 9.55762 2.17842L3.55762 5.2475C3.21647 5.42201 3.00009 5.78202 3 6.17612V13.8235C3.00009 14.2176 3.21647 14.5776 3.55762 14.7521L9.55762 17.8212C9.83654 17.9638 10.1635 17.9638 10.4424 17.8212L16.4424 14.7521C16.7835 14.5776 16.9999 14.2176 17 13.8235V6.17612ZM19 13.8235L18.9922 14.0441C18.9171 15.1389 18.2877 16.1185 17.3281 16.6094L11.3281 19.6785C10.5432 20.08 9.63095 20.1057 8.83008 19.7543L8.67188 19.6785L2.67188 16.6094C1.7123 16.1185 1.08286 15.1389 1.00781 14.0441L1 13.8235V6.17612C1.00008 5.06745 1.56966 4.04884 2.48438 3.49446L2.67188 3.39027L8.67188 0.321192C9.50914 -0.107064 10.4909 -0.107064 11.3281 0.321192L17.3281 3.39027C18.3517 3.91386 18.9999 4.99362 19 6.17612V13.8235Z" fill="currentColor"/>
+                <path d="M18 5L9.99924 8.88439V10.9996L18 7.11519V5Z" fill="currentColor"/>
+                <path d="M2 5L9.99924 8.88439V10.9996L2 7.11519V5Z" fill="currentColor"/>
+                <path d="M9 10H11V18H9V10Z" fill="currentColor"/>
+              </svg>
+              <div class="stat-card-label" data-i18n="home.stats.builds">РЎР±РѕСЂРєРё</div>
+              <div class="stat-card-value" id="stat-builds">0</div>
+            </div>
+            <div class="stat-card">
+              <svg class="stat-card-svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <rect x="1" y="1" width="18" height="7" rx="2" stroke="currentColor" stroke-width="2"/>
+                <rect x="1" y="12" width="18" height="7" rx="2" stroke="currentColor" stroke-width="2"/>
+                <rect x="3" y="3" width="2" height="3" rx="1" fill="currentColor"/>
+                <rect x="6" y="3" width="2" height="3" rx="1" fill="currentColor"/>
+                <rect x="3" y="14" width="2" height="3" rx="1" fill="currentColor"/>
+                <rect x="6" y="14" width="2" height="3" rx="1" fill="currentColor"/>
+              </svg>
+              <div class="stat-card-label" data-i18n="home.stats.servers">РЎРµСЂРІРµСЂС‹</div>
+              <div class="stat-card-value" id="stat-servers">0</div>
+            </div>
+            <div class="stat-card highlight">
+              <svg class="stat-card-svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <rect x="2" y="2" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M7 6L13 10L7 14V6Z" fill="currentColor"/>
+              </svg>
+              <div class="stat-card-label" data-i18n="home.stats.mods">РњРѕРґС‹</div>
+              <div class="stat-card-value" id="stat-mods">0</div>
+            </div>
+            <div class="stat-card">
+              <svg class="stat-card-svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M12 8V10H8V8H12ZM13 7V3C13 2.44772 12.5523 2 12 2H8C7.44772 2 7 2.44772 7 3V7C7 7.55228 7.44772 8 8 8V10C6.39489 10 5.08421 8.73945 5.00391 7.1543L5 7V3C5 1.34315 6.34315 6.44256e-08 8 0H12L12.1543 0.00390625C13.7394 0.0842145 15 1.39489 15 3V7L14.9961 7.1543C14.9184 8.68834 13.6883 9.91837 12.1543 9.99609L12 10V8C12.5523 8 13 7.55228 13 7Z" fill="currentColor"/>
+                <path d="M16 18V20H4V18H16ZM17 17V15C17 14.4477 16.5523 14 16 14H4C3.44772 14 3 14.4477 3 15V17C3 17.5523 3.44772 18 4 18V20C2.34315 20 1 18.6569 1 17V15C1 13.3431 2.34315 12 4 12H16L16.1543 12.0039C17.7394 12.0842 19 13.3949 19 15V17C19 18.6051 17.7394 19.9158 16.1543 19.9961L16 20V18C16.5523 18 17 17.5523 17 17Z" fill="currentColor"/>
+              </svg>
+              <div class="stat-card-label" data-i18n="home.stats.skins">РЎРєРёРЅС‹</div>
+              <div class="stat-card-value" id="stat-skins">0</div>
+            </div>
+            <div class="stat-card" id="stat-card-playtime">
+              <svg class="stat-card-svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8.5" stroke="currentColor" stroke-width="1.6"/>
+                <path d="M10 5.5V10L13.5 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <div class="stat-card-label" data-i18n="home.stats.playtime">Р’СЂРµРјСЏ РІ РёРіСЂРµ</div>
+              <div class="stat-card-value" id="stat-playtime">0</div>
+            </div>
+          </div>
+
+          <!-- Home content row: builds + recent -->
+          <div id="home-content-row">
+            <!-- Builds Section -->
+            <div class="home-section">
+              <div class="home-section-header">
+                <div class="home-section-title" data-i18n="tab.builds">РњРѕРё СЃР±РѕСЂРєРё</div>
+                <button class="home-section-btn" data-tab="builds" data-i18n="home.allBuilds">Р’СЃРµ СЃР±РѕСЂРєРё</button>
+              </div>
+              <div class="home-section-body" id="home-builds-list"></div>
+            </div>
+
+            <!-- Servers Section -->
+            <div class="home-section">
+              <div class="home-section-header">
+                <div class="home-section-title" data-i18n="tab.servers">РЎРµСЂРІРµСЂС‹</div>
+                <button class="home-section-btn" data-tab="servers" data-i18n="home.allServers">Р’СЃРµ СЃРµСЂРІРµСЂС‹</button>
+              </div>
+              <div class="home-section-body" id="home-servers-list"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Builds Tab -->
+        <div class="tab-view" id="tab-builds">
+
+          <div class="tab-header-row">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/builds.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.builds">РњРѕРё СЃР±РѕСЂРєРё</h1>
+                <p data-i18n="builds.subtitle">РЈРїСЂР°РІР»СЏР№С‚Рµ СЃРІРѕРёРјРё СЃР±РѕСЂРєР°РјРё Minecraft</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+              <button class="action-btn" id="add-build-btn">
+                <span data-i18n="builds.add">Р”РѕР±Р°РІРёС‚СЊ СЃР±РѕСЂРєСѓ</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="builds-list" class="builds-grid"></div>
+
+        </div>
+
+        <!-- Mods Tab -->
+        <div class="tab-view" id="tab-mods">
+
+          <div class="tab-header-row">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/modscatalog.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.mods">РљР°С‚Р°Р»РѕРі РјРѕРґРѕРІ</h1>
+                <p data-i18n="mods.subtitle">РњРѕРґС‹, РјРѕРґРїР°РєРё, С‚РµРєСЃС‚СѓСЂС‹ Рё РјРЅРѕРіРѕРµ РґСЂСѓРіРѕРµ</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+            </div>
+          </div>
+
+          <!-- Search bar -->
+          <div id="mods-search-bar">
+            <div class="search-input-wrapper">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input type="text" id="mods-search-input" class="search-input" placeholder="" data-i18n-ph="mods.searchPlaceholder">
+            </div>
+            <div id="mods-categories" class="categories-row">
+              <button class="category-btn active" data-category="all" data-i18n="mods.cat.all">Р’СЃРµ</button>
+              <button class="category-btn" data-category="mod" data-i18n="mods.cat.mod">РњРѕРґС‹</button>
+              <button class="category-btn" data-category="modpack" data-i18n="mods.cat.modpack">РњРѕРґРїР°РєРё</button>
+              <button class="category-btn" data-category="resourcepack" data-i18n="mods.cat.resourcepack">РўРµРєСЃС‚СѓСЂС‹</button>
+              <button class="category-btn" data-category="shader" data-i18n="mods.cat.shader">РЁРµР№РґРµСЂС‹</button>
+              <button class="category-btn" data-category="datapack" data-i18n="mods.cat.datapack">Р”Р°С‚Р°-РїР°РєРё</button>
+            </div>
+            <div id="mods-filters-bar">
+              <div class="mods-filters-row">
+                <div class="stngs-select-wrap mods-select-wrap">
+                  <select class="stngs-select-hidden" id="mods-sort-select" title="" data-i18n-title="mods.filter.sort">
+                    <option value="relevance" data-i18n="mods.filter.sortRelevance">РџРѕ СЂРµР»РµРІР°РЅС‚РЅРѕСЃС‚Рё</option>
+                    <option value="downloads" data-i18n="mods.filter.sortDownloads">РџРѕ СЃРєР°С‡РёРІР°РЅРёСЏРј</option>
+                    <option value="follows" data-i18n="mods.filter.sortFollows">РџРѕ РїРѕРґРїРёСЃРєР°Рј</option>
+                    <option value="newest" data-i18n="mods.filter.sortNewest">РџРѕ РЅРѕРІРёР·РЅРµ</option>
+                    <option value="updated" data-i18n="mods.filter.sortUpdated">РџРѕ РѕР±РЅРѕРІР»РµРЅРёСЏРј</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value">РџРѕ СЂРµР»РµРІР°РЅС‚РЅРѕСЃС‚Рё</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu">
+                    <div class="stngs-select-opt" data-value="relevance" data-i18n="mods.filter.sortRelevance">РџРѕ СЂРµР»РµРІР°РЅС‚РЅРѕСЃС‚Рё</div>
+                    <div class="stngs-select-opt" data-value="downloads" data-i18n="mods.filter.sortDownloads">РџРѕ СЃРєР°С‡РёРІР°РЅРёСЏРј</div>
+                    <div class="stngs-select-opt" data-value="follows" data-i18n="mods.filter.sortFollows">РџРѕ РїРѕРґРїРёСЃРєР°Рј</div>
+                    <div class="stngs-select-opt" data-value="newest" data-i18n="mods.filter.sortNewest">РџРѕ РЅРѕРІРёР·РЅРµ</div>
+                    <div class="stngs-select-opt" data-value="updated" data-i18n="mods.filter.sortUpdated">РџРѕ РѕР±РЅРѕРІР»РµРЅРёСЏРј</div>
+                  </div>
+                </div>
+                <div class="stngs-select-wrap mods-select-wrap">
+                  <select class="stngs-select-hidden" id="mods-version-select" title="" data-i18n-title="mods.filter.version">
+                    <option value="" data-i18n="mods.filter.allVersions">Р’СЃРµ РІРµСЂСЃРёРё</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value" data-i18n="mods.filter.allVersions">Р’СЃРµ РІРµСЂСЃРёРё</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu select-scroll-menu" id="mods-version-menu">
+                    <div class="stngs-select-opt" data-value="" data-i18n="mods.filter.allVersions">Р’СЃРµ РІРµСЂСЃРёРё</div>
+                  </div>
+                </div>
+                <div class="mods-filters-pop">
+                  <button class="mods-filter-btn" id="mods-filters-toggle" title="" data-i18n-title="mods.filter.toggle">
+                    <span data-i18n="mods.filter.btn">Р¤РёР»СЊС‚СЂС‹</span>
+                    <span class="mods-filter-count" id="mods-filters-count" style="display:none">0</span>
+                    <svg class="mods-filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="mods-filters-popup" id="mods-filters-popup">
+                    <div class="mods-filter-block">
+                      <span class="mods-filter-label" data-i18n="mods.filter.loaders">Р—Р°РіСЂСѓР·С‡РёРєРё</span>
+                      <div class="mods-chip-group" id="mods-loader-chips">
+                        <button class="mods-chip" data-loader="fabric">Fabric</button>
+                        <button class="mods-chip" data-loader="forge">Forge</button>
+                        <button class="mods-chip" data-loader="neoforge">NeoForge</button>
+                        <button class="mods-chip" data-loader="quilt">Quilt</button>
+                      </div>
+                    </div>
+                    <div class="mods-filter-block">
+                      <span class="mods-filter-label" data-i18n="mods.filter.tags">Р–Р°РЅСЂС‹</span>
+                      <div class="mods-chip-group" id="mods-tag-chips">
+                        <button class="mods-chip" data-tag="performance" data-i18n="mods.filter.tag.performance">РџСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚СЊ</button>
+                        <button class="mods-chip" data-tag="worldgen" data-i18n="mods.filter.tag.worldgen">Р“РµРЅРµСЂР°С†РёСЏ РјРёСЂР°</button>
+                        <button class="mods-chip" data-tag="technology" data-i18n="mods.filter.tag.technology">РўРµС…РЅРѕР»РѕРіРёРё</button>
+                        <button class="mods-chip" data-tag="magic" data-i18n="mods.filter.tag.magic">РњР°РіРёСЏ</button>
+                        <button class="mods-chip" data-tag="adventure" data-i18n="mods.filter.tag.adventure">РџСЂРёРєР»СЋС‡РµРЅРёСЏ</button>
+                        <button class="mods-chip" data-tag="decoration" data-i18n="mods.filter.tag.decoration">Р”РµРєРѕСЂ</button>
+                        <button class="mods-chip" data-tag="food" data-i18n="mods.filter.tag.food">Р•РґР°</button>
+                        <button class="mods-chip" data-tag="game-mechanics" data-i18n="mods.filter.tag.mechanics">РњРµС…Р°РЅРёРєРё</button>
+                        <button class="mods-chip" data-tag="library" data-i18n="mods.filter.tag.library">Р‘РёР±Р»РёРѕС‚РµРєРё</button>
+                        <button class="mods-chip" data-tag="utility" data-i18n="mods.filter.tag.utility">РЈС‚РёР»РёС‚С‹</button>
+                        <button class="mods-chip" data-tag="storage" data-i18n="mods.filter.tag.storage">РҐСЂР°РЅРёР»РёС‰Р°</button>
+                        <button class="mods-chip" data-tag="combat" data-i18n="mods.filter.tag.combat">Р‘РѕР№</button>
+                      </div>
+                    </div>
+                    <div class="mods-filter-actions">
+                      <button class="mods-clear-btn" id="mods-filters-clear">
+                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+                        <span data-i18n="mods.filter.clear">РЎР±СЂРѕСЃРёС‚СЊ</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mods grid -->
+          <div id="mods-grid" class="mods-grid">
+          </div>
+
+        </div>
+
+<!-- Servers Tab -->
+        <div class="tab-view" id="tab-servers">
+
+          <div class="tab-header-row">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/servers.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.servers">РЎРµСЂРІРµСЂС‹</h1>
+                <p data-i18n="servers.subtitle">РљР°С‚Р°Р»РѕРі СЃРµСЂРІРµСРѕРІ РґР»СЏ РёРіСЂС‹</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+              <button class="action-btn" id="add-server-btn">
+                <span data-i18n="servers.add">Р”РѕР±Р°РІРёС‚СЊ СЃРµСРІРµС</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Search bar -->
+          <div id="servers-search-bar">
+            <div class="search-input-wrapper">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input type="text" id="servers-search-input" class="search-input" placeholder="" data-i18n-ph="servers.searchPlaceholder">
+            </div>
+            <div id="servers-categories" class="categories-row">
+              <button class="category-btn active" data-category="all" data-i18n="servers.cat.all">Р’СЃРµ</button>
+              <button class="category-btn" data-category="survival" data-i18n="servers.cat.survival">Р’С‹Р¶РёРІРСРЅРёРµ</button>
+              <button class="category-btn" data-category="pvp" data-i18n="servers.cat.pvp">PvP</button>
+              <button class="category-btn" data-category="anarchy" data-i18n="servers.cat.anarchy">РРЅР°С…РёСЏ</button>
+              <button class="category-btn" data-category="skyblock" data-i18n="servers.cat.skyblock">SkyBlock</button>
+              <button class="category-btn" data-category="minigames" data-i18n="servers.cat.minigames">РРёРЅРё-РёРіСЂС‹</button>
+              <button class="category-btn" data-category="vanilla" data-i18n="servers.cat.vanilla">Р’РСРЅРёР»Р»Р°</button>
+              <button class="category-btn" data-category="mine" data-i18n="servers.cat.mine">РРѕРё СРСРІРµСВС‹</button>
+            </div>
+            <div id="servers-filters-bar">
+              <div class="mods-filters-row">
+                <div class="stngs-select-wrap mods-select-wrap">
+                  <select class="stngs-select-hidden" id="servers-sort-select" title="" data-i18n-title="servers.filter.sortTitle">
+                    <option value="players" data-i18n="servers.filter.sortPlayers">РџРѕ РёРіСРѕРєРСРј</option>
+                    <option value="name" data-i18n="servers.filter.sortName">РџРѕ РёРјРРЅРё</option>
+                    <option value="online" data-i18n="servers.filter.sortOnline">РћРЅР»РРРЅ РїРµСЂРІС‹РјРё</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value" data-i18n="servers.filter.sortPlayers">РџРѕ РёРіСРСРєРСРј</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu">
+                    <div class="stngs-select-opt" data-value="players" data-i18n="servers.filter.sortPlayers">РџРѕ РёРСРРєР°Рј</div>
+                    <div class="stngs-select-opt" data-value="name" data-i18n="servers.filter.sortName">РџРѕ РёРСРРё</div>
+                    <div class="stngs-select-opt" data-value="online" data-i18n="servers.filter.sortOnline">РћРЅР»РРРЅ РїРСРІС‹РјРё</div>
+                  </div>
+                </div>
+                <div class="mods-filters-pop">
+                  <button class="mods-filter-btn" id="servers-filters-toggle" title="" data-i18n-title="servers.filter.title">
+                    <span data-i18n="servers.filter.btn">Р¤РёР»СРСРё</span>
+                    <span class="mods-filter-count" id="servers-filters-count" style="display:none">0</span>
+                    <svg class="mods-filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="mods-filters-popup" id="servers-filters-popup">
+                    <div class="mods-filter-block">
+                      <span class="mods-filter-label" data-i18n="servers.filter.region">Р РµРіРёРѕРЅ</span>
+                      <div class="mods-chip-group" id="servers-region-chips">
+                        <button class="mods-chip active" data-region="all" data-i18n="servers.filter.regionAll">Р’СЃРµ РµРіРёРѕРЅС‹</button>
+                        <button class="mods-chip" data-region="europe" data-i18n="servers.filter.regionEurope">Р•РІРѕРїР°</button>
+                        <button class="mods-chip" data-region="cis" data-i18n="servers.filter.regionCis">РЎРР“</button>
+                        <button class="mods-chip" data-region="north" data-i18n="servers.filter.regionNorth">РўРСРРРЅРР РСРјРµСРРѕР°</button>
+                        <button class="mods-chip" data-region="south" data-i18n="servers.filter.regionSouth">Р®Р¶Р Р РСРµСРРСРЅР°РР</button>
+                        <button class="mods-chip" data-region="asia" data-i18n="servers.filter.regionAsia">РђР·РёСЏ</button>
+                      </div>
+                    </div>
+<div class="mods-filter-block">
+                      <span class="mods-filter-label" data-i18n="servers.filter.status">РЎС‚РСвС‡СЉС</span>
+                      <div class="mods-chip-group">
+                        <button class="mods-chip" id="servers-online-chip" data-i18n="servers.filter.online">РўРѕР»СРССР ё РѕРЅР»РССРЅ</button>
+                      </div>
+                    </div>
+                    <div class="mods-filter-block">
+                      <span class="mods-filter-label" data-i18n="servers.filter.version">Р’Р СЂСЃРёСЏ</span>
+                      <div class="stngs-select-wrap mods-select-wrap">
+                        <select class="stngs-select-hidden" id="servers-version-select" title="" data-i18n-title="servers.filter.version">
+                          <option value="" data-i18n="servers.filter.versionAll">Р’СЃРµ РІРµСРСРёРё</option>
+                        </select>
+                        <button type="button" class="stngs-select-btn">
+                          <span class="stngs-select-value" data-i18n="servers.filter.versionAll">Р’СЃРµ РІРµСРСРёРё</span>
+                          <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                          </svg>
+                        </button>
+                        <div class="stngs-select-menu">
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mods-filter-actions">
+                      <button class="mods-clear-btn" id="servers-filters-clear" data-i18n="servers.filter.clear">РЎР±СЂРССРёС‚С</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Servers grid -->
+          <div id="servers-attribution" class="servers-attribution hidden">
+          <svg width="88" height="10" viewBox="0 0 88 10" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="44" y="2" width="2" height="2" fill="white"/><rect x="78" width="2" height="4" fill="white"/><rect x="86" width="2" height="4" fill="white"/><rect x="80" y="4" width="2" height="4" fill="white"/><rect x="84" y="4" width="2" height="4" fill="white"/><rect x="72" y="2" width="2" height="2" fill="white"/><rect x="70" y="6" width="2" height="2" fill="white"/><rect x="72" y="8" width="2" height="2" fill="white"/><rect x="82" y="8" width="2" height="2" fill="white"/><rect x="46" y="4" width="4" height="2" fill="white"/><rect x="50" y="6" width="2" height="2" fill="white"/><rect x="44" y="8" width="6" height="2" fill="white"/><rect x="46" width="6" height="2" fill="white"/><rect x="58" width="4" height="2" fill="white"/><rect x="58" y="4" width="4" height="2" fill="white"/><rect x="58" y="8" width="4" height="2" fill="white"/><rect x="56" width="2" height="10" fill="white"/><rect x="68" width="4" height="2" fill="white"/><rect x="68" y="4" width="4" height="2" fill="white"/><rect x="66" width="2" height="10" fill="white"/><rect width="2" height="10" fill="white"/><rect x="8" width="2" height="10" fill="white"/><rect x="2" y="2" width="2" height="2" fill="white"/><rect x="4" y="4" width="2" height="2" fill="white"/><rect x="6" y="2" width="2" height="2" fill="white"/><rect x="22" y="2" width="2" height="2" fill="white"/><rect x="36" width="4" height="2" fill="white"/><rect x="36" y="4" width="4" height="2" fill="white"/><rect x="36" y="8" width="4" height="2" fill="white"/><rect x="24" y="4" width="2" height="2" fill="white"/><rect x="26" y="6" width="2" height="2" fill="white"/><rect x="14" width="2" height="10" fill="white"/><rect x="34" width="2" height="10" fill="white"/><rect x="20" width="2" height="10" fill="white"/><rect x="28" width="2" height="10" fill="white"/></svg>
+          <div class="servers-attribution-info">
+            <div class="servers-attribution-name" data-i18n="servers.attribTitle">Каталог серверов</div>
+            <div class="servers-attribution-meta" data-i18n="servers.byMineServ">Список серверов предоставлен ресурсом MineServ</div>
+          </div>
+          </div>
+          <div id="servers-grid" class="mods-grid">
+          </div>
+
+        </div>
+
+        <!-- News Tab -->
+        <div class="tab-view" id="tab-news">
+
+          <div class="tab-header-row">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/news.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.news">Новости</h1>
+                <p data-i18n="news.subtitle">Обновления лаунчера и важные объявления</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+              <button class="action-btn" id="news-refresh-btn">
+                <span data-i18n="news.refresh">Обновить</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="news-page" class="news-page"></div>
+
+        </div>
+
+        <!-- Skins Tab -->
+        <div class="tab-view" id="tab-skins">
+
+          <div class="tab-header-row">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/skins.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.skins">РЎРєРёРЅС‹</h1>
+                <p data-i18n="skins.subtitle">РЈРїСЂР°РІР»СЏР№С‚Рµ СЃРІРѕРёРјРё СЃРєРёРЅР°РјРё Рё РїР»Р°С‰Р°РјРё</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+              <button class="action-btn" id="upload-skin-btn">
+                <span data-i18n="btn.uploadSkin">Р—Р°РіСЂСѓР·РёС‚СЊ СЃРєРёРЅ</span>
+              </button>
+              <input type="file" id="skin-file-input" accept="image/png" style="display:none;">
+              <input type="file" id="cape-file-input" accept="image/png" style="display:none;">
+            </div>
+          </div>
+
+          <div class="skin-layout">
+            <!-- Полноэкранная сцена: персонаж по центру -->
+            <div class="skin-stage" id="skin-stage">
+              <canvas id="skin-canvas"></canvas>
+
+              <div class="skin-debug-hud hidden" id="skin-debug-hud" aria-hidden="true">
+                <div class="skin-debug-hud__head">
+                  <span class="skin-debug-hud__engine" id="skin-debug-engine">Mine3D Embedded</span>
+                  <span class="skin-debug-hud__ver" id="skin-debug-version">0.2.0</span>
+                </div>
+
+                <div class="skin-debug-hud__block" data-debug-hud-sec="perf">
+                  <div class="skin-debug-hud__sec">PERF</div>
+                  <div class="skin-debug-hud__row"><span>FPS</span><b id="skin-debug-fps">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Frame</span><b id="skin-debug-frame">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Load</span><b id="skin-debug-gpu-load">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Min / Avg / Max</span><b id="skin-debug-fps-range">—</b></div>
+                </div>
+
+                <div class="skin-debug-hud__block" data-debug-hud-sec="gpu">
+                  <div class="skin-debug-hud__sec">GPU</div>
+                  <div class="skin-debug-hud__row"><span>Device</span><b id="skin-debug-gpu">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Vendor</span><b id="skin-debug-gpu-vendor">—</b></div>
+                  <div class="skin-debug-hud__row"><span>API</span><b id="skin-debug-webgl">—</b></div>
+                </div>
+
+                <div class="skin-debug-hud__block" data-debug-hud-sec="render">
+                  <div class="skin-debug-hud__sec">RENDER</div>
+                  <div class="skin-debug-hud__row"><span>Viewport</span><b id="skin-debug-viewport">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Buffer</span><b id="skin-debug-buffer">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Draws</span><b id="skin-debug-draws">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Triangles</span><b id="skin-debug-tris">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Geometries</span><b id="skin-debug-geoms">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Textures</span><b id="skin-debug-textures">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Programs</span><b id="skin-debug-programs">—</b></div>
+                  <div class="skin-debug-hud__row"><span>PostFX</span><b id="skin-debug-postfx">—</b></div>
+                </div>
+
+                <div class="skin-debug-hud__block" data-debug-hud-sec="skin">
+                  <div class="skin-debug-hud__sec">SKIN</div>
+                  <div class="skin-debug-hud__row"><span>skinType</span><b id="skin-debug-skin-type">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Cape / Elytra</span><b id="skin-debug-cape">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Presentation</span><b id="skin-debug-presentation">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Animation</span><b id="skin-debug-animation">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Shot</span><b id="skin-debug-shot">—</b></div>
+                </div>
+
+                <div class="skin-debug-hud__block" data-debug-hud-sec="camera">
+                  <div class="skin-debug-hud__sec">CAMERA</div>
+                  <div class="skin-debug-hud__row"><span>FOV / Dist / Zoom</span><b id="skin-debug-camera">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Yaw</span><b id="skin-debug-yaw">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Follow / AutoRot</span><b id="skin-debug-cam-flags">—</b></div>
+                </div>
+
+                <div class="skin-debug-hud__block" data-debug-hud-sec="debug">
+                  <div class="skin-debug-hud__sec">DEBUG</div>
+                  <div class="skin-debug-hud__row"><span>Overlays</span><b id="skin-debug-overlays">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Scene</span><b id="skin-debug-scene-flags">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Parts</span><b id="skin-debug-parts">—</b></div>
+                  <div class="skin-debug-hud__row"><span>Behavior</span><b id="skin-debug-behavior">—</b></div>
+                </div>
+              </div>
+
+              <div class="skin-preview-top">
+                <div class="skin-preview-titles">
+                  <div class="skin-preview-title" data-i18n="skins.current">Текущий скин</div>
+                  <div class="skin-preview-name" id="skin-current-name" data-i18n="skins.default">Стандартный</div>
+                </div>
+                <div class="skin-preview-badges">
+                  <span class="skin-badge accent" id="skin-current-model"></span>
+                  <span class="skin-badge" id="skin-current-type"></span>
+                </div>
+              </div>
+
+              <button class="skin-stage-btn" id="skin-reset-view" title="" data-i18n-title="skins.resetView">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M12 7a5 5 0 1 1-1.6-3.67" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M11.5 1.5v2.2H9.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+
+              <div class="skin-stage-hint" data-i18n="skins.dragHint">Потяните мышью, чтобы повернуть</div>
+
+              <div class="skin-stage-controls">
+                <div class="skin-pose-presets" id="skin-pose-presets" role="group" aria-label="Pose presets">
+                  <button type="button" class="skin-pose-btn" data-pose="hero" data-i18n="skins.poseHero">Герой</button>
+                  <button type="button" class="skin-pose-btn" data-pose="bust" data-i18n="skins.poseBust">Бюст</button>
+                  <button type="button" class="skin-pose-btn" data-pose="back" data-i18n="skins.poseBack">Спина</button>
+                  <button type="button" class="skin-pose-btn" data-pose="discord" data-i18n="skins.poseDiscord">Discord</button>
+                </div>
+
+                <div class="skin-anim-dropdown" id="skin-anim-dropdown">
+                  <button type="button" class="skin-anim-trigger" id="skin-anim-trigger" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="skin-anim-trigger-label" id="skin-anim-trigger-label" data-i18n="skins.animIdle">Idle</span>
+                    <svg class="skin-anim-trigger-chevron" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                      <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="skin-anim-menu hidden" id="skin-anim-menu" role="listbox">
+                    <button type="button" class="skin-anim-option active" data-anim="idle" data-i18n="skins.animIdle">Idle</button>
+                    <button type="button" class="skin-anim-option" data-anim="run" data-i18n="skins.animRun">Бег</button>
+                    <button type="button" class="skin-anim-option" data-anim="wave" data-i18n="skins.animWave">Привет</button>
+                    <button type="button" class="skin-anim-option" data-anim="sneak" data-i18n="skins.animSneak">Красться</button>
+                    <button type="button" class="skin-anim-option" data-anim="look" data-i18n="skins.animLook">Обзор</button>
+                    <button type="button" class="skin-anim-option" data-anim="cool" data-i18n="skins.animCool">Крутой</button>
+                    <button type="button" class="skin-anim-option" data-anim="glide" data-i18n="skins.animGlide">Парение</button>
+                    <button type="button" class="skin-anim-option" data-anim="victory" data-i18n="skins.animVictory">Победа</button>
+                    <button type="button" class="skin-anim-option" data-anim="sad" data-i18n="skins.animSad">Грусть</button>
+                    <button type="button" class="skin-anim-option" data-anim="dance" data-i18n="skins.animDance">Танец</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Скины слева -->
+            <aside class="skin-rail skin-rail-left" id="skin-rail-left">
+              <div class="skin-panel skin-panel-grow">
+                <div class="skin-panel-title" data-i18n="skins.saved">Сохранённые скины</div>
+                <div id="skins-list" class="skins-grid"></div>
+              </div>
+              <div class="skin-rail-lock hidden" id="skins-offline-lock" aria-live="polite">
+                <p data-i18n="skins.offlineLocked">Вы не можете менять скины и плащи на оффлайн-аккаунте</p>
+              </div>
+            </aside>
+
+            <!-- Плащи справа (только Microsoft) -->
+            <aside class="skin-rail skin-rail-right" id="skin-rail-right">
+              <div class="skin-panel skin-panel-grow">
+                <div class="skin-panel-title" data-i18n="skins.capes">Плащи</div>
+                <div id="capes-list" class="capes-row"></div>
+              </div>
+            </aside>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <!-- Account Popup (overlay, positioned over everything) -->
+    <div id="account-popup" class="hidden">
+      <div class="acc-popup-header" data-i18n="acc.title">РђРєРєР°СѓРЅС‚С‹</div>
+      <div id="acc-popup-list"></div>
+      <div class="acc-popup-separator"></div>
+      <div class="acc-popup-add" id="acc-popup-add">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 3V13M3 8H13" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span data-i18n="acc.add">Р”РѕР±Р°РІРёС‚СЊ Р°РєРєР°СѓРЅС‚</span>
+      </div>
+    </div>
+
+  <!-- ===== MODAL: Account required ===== -->
+  <div id="modal-acc-req" class="modal-overlay hidden">
+    <div class="modal-window sm">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M26 18C26 13.5817 22.4183 10 18 10C13.5817 10 10 13.5817 10 18C10 22.4183 13.5817 26 18 26V28C12.4772 28 8 23.5228 8 18C8 12.4772 12.4772 8 18 8C23.5228 8 28 12.4772 28 18C28 23.5228 23.5228 28 18 28V26C22.4183 26 26 22.4183 26 18Z" fill="white"/>
+            <path d="M21 15C21 16.6569 19.6569 18 18 18C16.3431 18 15 16.6569 15 15C15 13.3431 16.3431 12 18 12C19.6569 12 21 13.3431 21 15Z" fill="white"/>
+            <path d="M13 22C13 20.3431 14.3431 19 16 19H20C21.6569 19 23 20.3431 23 22V26H18H13V22Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="accReq.title">РђРєРєР°СѓРЅС‚ РЅРµ РЅР°Р№РґРµРЅ</div>
+          <div class="modal-header-sub" data-i18n="accReq.sub">Р”Р»СЏ СЃРѕР·РґР°РЅРёСЏ СЃР±РѕСЂРѕРє Рё РёРіСЂС‹ РЅСѓР¶РµРЅ РёРіСЂРѕРІРѕР№ Р°РєРєР°СѓРЅС‚</div>
+        </div>
+        <button class="modal-close" id="modal-acc-req-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="acc-req-message" data-i18n="accReq.message">РЎРѕР·РґР°РІР°С‚СЊ СЃР±РѕСЂРєРё Рё РёРіСЂР°С‚СЊ Р±РµР· Р°РєРєР°СѓРЅС‚Р° РЅРµР»СЊР·СЏ: РІРѕР№РґРёС‚Рµ РІ Microsoft Р°РєРєР°СѓРЅС‚, РёР»Рё СЃРѕР·РґР°Р№С‚Рµ РѕС„С„Р»Р°Р№РЅ-Р°РєРєР°СѓРЅС‚.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="modal-acc-req-later" data-i18n="accReq.later">РџРѕР·Р¶Рµ</button>
+        <button class="stngs-btn primary" id="modal-acc-req-add" data-i18n="acc.add">Р”РѕР±Р°РІРёС‚СЊ Р°РєРєР°СѓРЅС‚</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Add account ===== -->
+  <div id="modal-account" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M26 18C26 13.5817 22.4183 10 18 10C13.5817 10 10 13.5817 10 18C10 22.4183 13.5817 26 18 26V28C12.4772 28 8 23.5228 8 18C8 12.4772 12.4772 8 18 8C23.5228 8 28 12.4772 28 18C28 23.5228 23.5228 28 18 28V26C22.4183 26 26 22.4183 26 18Z" fill="white"/>
+            <path d="M21 15C21 16.6569 19.6569 18 18 18C16.3431 18 15 16.6569 15 15C15 13.3431 16.3431 12 18 12C19.6569 12 21 13.3431 21 15Z" fill="white"/>
+            <path d="M13 22C13 20.3431 14.3431 19 16 19H20C21.6569 19 23 20.3431 23 22V26H18H13V22Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="acc.addTitle">Р”РѕР±Р°РІРёС‚СЊ Р°РєРєР°СѓРЅС‚</div>
+          <div class="modal-header-sub" data-i18n="acc.addSub">Р’С‹Р±РµСЂРёС‚Рµ, РєР°Рє РІС‹ С…РѕС‚РёС‚Рµ РёРіСЂР°С‚СЊ</div>
+        </div>
+        <button class="modal-close" id="modal-account-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <!-- Step 1: choose account type -->
+        <div class="acc-step" id="acc-step-pick">
+          <div class="acc-modal-grid">
+            <div class="acc-modal-card" data-type="microsoft">
+              <div class="acc-modal-card-head">
+                <div class="acc-modal-card-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <rect width="24" height="24" rx="4" fill="white"/>
+                    <rect x="4" y="4" width="7" height="7" fill="#F25022"/>
+                    <rect x="13" y="4" width="7" height="7" fill="#7FBA00"/>
+                    <rect x="4" y="13" width="7" height="7" fill="#00A4EF"/>
+                    <rect x="13" y="13" width="7" height="7" fill="#FFB900"/>
+                  </svg>
+                </div>
+                <div class="acc-modal-card-type" data-i18n="acc.licenseTypeName">Microsoft Account</div>
+                <div class="acc-modal-card-check">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 5L4.5 7L7.5 3.5" stroke="#0d1421" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </div>
+              <div class="acc-modal-card-title" data-i18n="acc.licenseTitle">РЈ РјРµРЅСЏ Р»РёС†РµРЅР·РёСЏ</div>
+              <div class="acc-modal-card-desc" data-i18n="acc.licenseDesc">Р”РѕСЃС‚СѓРїРЅРѕ РјРЅРѕРіРѕ СЃРµСЂРІРµСЂРѕРІ Рё РІРѕР·РјРѕР¶РЅРѕСЃС‚РµР№: РІР°С€ СЃРєРёРЅ СЃ РІР°РјРё</div>
+            </div>
+            <div class="acc-modal-card" data-type="ely">
+              <div class="acc-modal-card-head">
+                <div class="acc-modal-card-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <rect width="24" height="24" rx="4" fill="#007E59"/>
+                    <rect x="10" y="6" width="6" height="2" fill="white"/>
+                    <rect x="8" y="6" width="2" height="12" fill="white"/>
+                    <rect x="10" y="11" width="6" height="2" fill="white"/>
+                    <rect x="10" y="16" width="6" height="2" fill="white"/>
+                  </svg>
+                </div>
+                <div class="acc-modal-card-type" data-i18n="acc.elyTypeName">Ely.by Account</div>
+                <div class="acc-modal-card-check">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 5L4.5 7L7.5 3.5" stroke="#0d1421" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </div>
+              <div class="acc-modal-card-title" data-i18n="acc.elyTitle">РЈ РјРµРЅСЏ Ely.by</div>
+              <div class="acc-modal-card-desc" data-i18n="acc.elyDesc">Р’РѕР№РґРёС‚Рµ С‡РµСЂРµР· Ely.by вЂ” Р±РµСЃРїР»Р°С‚РЅС‹Р№ СЃРєРёРЅ-Р°РєРєР°СѓРЅС‚ РґР»СЏ Minecraft</div>
+            </div>
+            <div class="acc-modal-card" data-type="offline">
+              <div class="acc-modal-card-head">
+                <div class="acc-modal-card-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <rect width="24" height="24" rx="4" fill="#474747"/>
+                    <circle cx="12" cy="12" r="8" stroke="#AFAFAF" stroke-width="2"/>
+                    <rect x="8" y="13" width="8" height="6" fill="#AFAFAF"/>
+                    <circle cx="12" cy="10" r="2" fill="#AFAFAF"/>
+                  </svg>
+                </div>
+                <div class="acc-modal-card-type" data-i18n="acc.offlineTypeName">РћС„С„Р»Р°Р№РЅ-Р°РєРєР°СѓРЅС‚</div>
+                <div class="acc-modal-card-check">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 5L4.5 7L7.5 3.5" stroke="#0d1421" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </div>
+              <div class="acc-modal-card-title" data-i18n="acc.newbieTitle">РЇ РЅРѕРІРёС‡РѕРє</div>
+              <div class="acc-modal-card-desc" data-i18n="acc.newbieDesc">РўРѕР»СЊРєРѕ РЅР°С‡Р°Р» РёРіСЂР°С‚СЊ РІ Minecraft Рё РѕСЃРІР°РёРІР°СЋСЃСЊ РїРµСЂРµРґ РїРѕРєСѓРїРєРѕР№</div>
+            </div>
+          </div>
+        </div>
+        <!-- Step 2: Microsoft sign-in -->
+        <div class="acc-step hidden" id="acc-step-ms">
+          <div class="acc-modal-loader"></div>
+          <div class="acc-modal-step-title" data-i18n="acc.msSignInTitle">Р’С‹РїРѕР»РЅСЏРµС‚СЃСЏ РІС…РѕРґ РІ Microsoft Account</div>
+          <div class="acc-modal-step-desc" data-i18n="acc.msSignInDesc">Р’РѕР№РґРёС‚Рµ РІ СЃРІРѕР№ Microsoft Account вЂ” Рё РѕРЅ Р±СѓРґРµС‚ РґРѕР±Р°РІР»РµРЅ РІ Undefined Client</div>
+        </div>
+        <!-- Step: Ely.by sign-in -->
+        <div class="acc-step hidden" id="acc-step-ely">
+          <div class="acc-modal-loader"></div>
+          <div class="acc-modal-step-title" data-i18n="acc.elySignInTitle">Выполняется вход в Ely.by</div>
+          <div class="acc-modal-step-desc" data-i18n="acc.elySignInDesc">Войдите в свой Ely.by аккаунт — и он будет добавлен в Undefined Client</div>
+        </div>
+        <div class="acc-step hidden" id="acc-step-offline">
+          <div class="acc-modal-step-title" data-i18n="acc.offlineTitle">РћС„С„Р»Р°Р№РЅ-Р°РєРєР°СѓРЅС‚</div>
+          <div class="acc-modal-step-desc" data-i18n="acc.offlineStepDesc">Р’РІРµРґРёС‚Рµ РЅРёРєРЅРµР№Рј, РїРѕРґ РєРѕС‚РѕСЂС‹Рј Р±СѓРґРµС‚Рµ РёРіСЂР°С‚СЊ</div>
+          <div class="modal-field" style="margin-top:14px;">
+            <input type="text" id="acc-modal-offline-input" placeholder="" data-i18n-ph="acc.offlinePlaceholder">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost hidden" id="acc-modal-back" data-i18n="btn.back">РќР°Р·Р°Рґ</button>
+        <button class="stngs-btn primary hidden" id="acc-modal-offline-submit" data-i18n="btn.add">Р”РѕР±Р°РІРёС‚СЊ</button>
+        <button class="stngs-btn primary" id="acc-modal-next" data-i18n="btn.next" disabled>Р”Р°Р»РµРµ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTEXT MENU ===== -->
+  <div id="ctx-menu">
+      <div class="ctx-item" id="ctx-settings">
+        <img class="ctx-item-icon" src="../../assets/icons/SettingsTab.svg" alt="" />
+        <span data-i18n="ctx.settings">РќР°СЃС‚СЂРѕР№РєРё</span>
+      </div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" id="ctx-about">
+      <svg class="ctx-item-icon" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M8 7v5M8 5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span data-i18n="ctx.about">Рћ РїСЂРѕРіСЂР°РјРјРµ</span>
+    </div>
+  </div>
+
+  <!-- ===== ABOUT MODAL ===== -->
+  <div id="modal-about" class="hidden">
+    <div class="about-card">
+      <div class="about-hero">
+        <div class="about-hero-icon">
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+            <rect width="56" height="56" rx="12" fill="currentColor"/>
+            <path d="M44 37.5176L43.4287 37.7891L28.4287 44.8984L28 45.1016L27.5713 44.8984L12.5713 37.7891L12 37.5176V18.4775L12.5713 18.2061L27.5713 11.0967L28 10.8936L28.4287 11.0967L43.4287 18.2061L44 18.4775V37.5176Z" stroke="white" stroke-width="2"/>
+            <path d="M13 19.1101L28 12L43 19.1101L28 26.2201L13 19.1101Z" fill="black" fill-opacity="0.3"/>
+            <path d="M13 36.8904V19.1152L28 26.2253L28 44.0004L13 36.8904Z" fill="black" fill-opacity="0.7"/>
+            <path d="M42.9961 36.8904V19.1152L27.9961 26.2253L27.9961 44.0004L42.9961 36.8904Z" fill="black" fill-opacity="0.45"/>
+            <path d="M27.998 26.2023L37.373 21.6348L37.3804 33.3275L28.0054 37.895L27.998 26.2023Z" fill="white"/>
+            <path d="M37.3711 33.3205L42.9961 30.6543L42.9961 36.8756L37.3711 39.5418V33.3205Z" fill="white"/>
+          </svg>
+        </div>
+        <div>
+          <div class="about-hero-name">Undefined Client</div>
+          <div class="about-hero-ver" id="about-version">Р’РµСЂСЃРёСЏ вЂ”</div>
+        </div>
+        <button class="about-close" id="about-close" data-i18n-title="btn.close" title="Р—Р°РєСЂС‹С‚СЊ">
+          <svg viewBox="0 0 12 12" fill="none">
+            <path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="white"/>
+            <path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="white"/>
+          </svg>
+        </button>
+      </div>
+      <div class="about-body">
+        <div class="about-row"><span data-i18n="about.platform">РџР»Р°С‚С„РѕСЂРјР°</span><span id="about-platform">вЂ”</span></div>
+        <div class="about-row"><span>Node</span><span id="about-node">--</span></div>
+        <div class="about-row"><span data-i18n="about.engine">Р”РІРёР¶РѕРє</span><span>eml-lib</span></div>
+        <button class="about-copy-btn" id="about-copy-btn" data-i18n="btn.copy">РљРѕРїРёСЂРѕРІР°С‚СЊ</button>
+        <div class="about-divider"></div>
+        <div class="about-tg-block">
+          <div class="about-tg-text" data-i18n-html="about.tgText">РќРѕРІРѕСЃС‚Рё Рё РѕР±РЅРѕРІР»РµРЅРёСЏ<br>РІ РЅР°С€РµРј Telegram</div>
+          <button class="about-tg-btn" id="about-tg-btn" data-i18n="btn.open">РћС‚РєСЂС‹С‚СЊ</button>
+        </div>
+        <div class="about-authors">
+          <div class="about-author-chip">
+            <div class="name">Undefined Studio</div>
+            <div class="role" data-i18n="about.studioRole">РЎС‚СѓРґРёСЏ Рё СЂР°Р·СЂР°Р±РѕС‚С‡РёРє</div>
+          </div>
+          <div class="about-author-chip">
+            <div class="name">Kolibra Group</div>
+            <div class="role" data-i18n="about.kolibraRole">РћСЃРЅРѕРІРЅРѕР№ СЂР°Р·СЂР°Р±РѕС‚С‡РёРє РєР»РёРµРЅС‚Р°</div>
+          </div>
+        </div>
+        <div class="about-copy" data-i18n="about.copyright">В© 2026 Undefined Client вЂ” Minecraft Launcher</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div id="modal-settings" class="hidden">
+    <div class="stngs-settings-card">
+      <div class="stngs-header">
+        <div class="stngs-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <path d="M27 18C27 13.0294 22.9706 9 18 9C13.0294 9 9 13.0294 9 18C9 22.9706 13.0294 27 18 27V30C11.3726 30 6 24.6274 6 18C6 11.3726 11.3726 6 18 6C24.6274 6 30 11.3726 30 18C30 24.6274 24.6274 30 18 30V27C22.9706 27 27 22.9706 27 18Z" fill="white"/>
+            <path d="M14 2C14 0.895431 14.8954 0 16 0H20C21.1046 0 22 0.895431 22 2V8H14V2Z" fill="white"/>
+            <path d="M22 34C22 35.1046 21.1046 36 20 36H16C14.8954 36 14 35.1046 14 34V28H22V34Z" fill="white"/>
+            <path d="M34 14C35.1046 14 36 14.8954 36 16V20C36 21.1046 35.1046 22 34 22H28V14H34Z" fill="white"/>
+            <path d="M2 22C0.89543 22 -1.73816e-07 21.1046 0 20L6.29444e-07 16C8.03261e-07 14.8954 0.895431 14 2 14L8 14L8 22H2Z" fill="white"/>
+            <path d="M32.1422 26.4852C32.9232 27.2662 32.9232 28.5326 32.1422 29.3136L29.3138 32.1421C28.5327 32.9231 27.2664 32.9231 26.4853 32.1421L22.2427 27.8994L27.8995 22.2426L32.1422 26.4852Z" fill="white"/>
+            <path d="M3.85782 9.5148C3.07677 8.73375 3.07677 7.46742 3.85782 6.68637L6.68625 3.85794C7.46729 3.0769 8.73362 3.0769 9.51467 3.85795L13.7573 8.10059L8.10046 13.7574L3.85782 9.5148Z" fill="white"/>
+            <path d="M9.5148 32.1424C8.73375 32.9235 7.46742 32.9235 6.68637 32.1424L3.85795 29.314C3.0769 28.533 3.0769 27.2666 3.85795 26.4856L8.10059 22.2429L13.7574 27.8998L9.5148 32.1424Z" fill="white"/>
+            <path d="M26.4852 3.85757C27.2662 3.07652 28.5326 3.07652 29.3136 3.85757L32.1421 6.686C32.9231 7.46705 32.9231 8.73338 32.1421 9.51443L27.8994 13.7571L22.2426 8.10021L26.4852 3.85757Z" fill="white"/>
+            <path d="M23 18C23 20.7614 20.7614 23 18 23C15.2386 23 13 20.7614 13 18C13 15.2386 15.2386 13 18 13C20.7614 13 23 15.2386 23 18Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="stngs-header-text">
+          <div class="stngs-header-title" data-i18n="stngs.title">РќР°СЃС‚СЂРѕР№РєРё</div>
+          <div class="stngs-header-sub" data-i18n="stngs.sub">РџР°СЂР°РјРµС‚СЂС‹ РїСЂРёР»РѕР¶РµРЅРёСЏ</div>
+        </div>
+        <button class="modal-close" id="settings-close">
+          <svg viewBox="0 0 12 12" fill="none">
+            <path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="white"/>
+            <path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="white"/>
+          </svg>
+        </button>
+      </div>
+      <div class="stngs-body">
+        <div class="stngs-sidebar">
+          <div class="be-tab active" data-settings-tab="appearance">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M15 16V18H3V16H15ZM16 15V3C16 2.44772 15.5523 2 15 2H3C2.44772 2 2 2.44772 2 3V15C2 15.5523 2.44772 16 3 16V18C1.39489 18 0.0842145 16.7394 0.00390625 15.1543L0 15V3C1.9328e-07 1.34315 1.34315 4.83192e-08 3 0H15L15.1543 0.00390625C16.7394 0.0842146 18 1.39489 18 3V15L17.9961 15.1543C17.9184 16.6883 16.6883 17.9184 15.1543 17.9961L15 18V16C15.5523 16 16 15.5523 16 15Z" fill="currentColor"/>
+              <path d="M13 3H15V5H13V3Z" fill="currentColor"/>
+              <path d="M10 3H12V5H10V3Z" fill="currentColor"/>
+              <path d="M7 3H9V5H7V3Z" fill="currentColor"/>
+              <path d="M2 6H16V7H2V6Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="stngs.appearance">Р’РЅРµС€РЅРёР№ РІРёРґ</span>
+          </div>
+          <div class="be-tab" data-settings-tab="launch">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M4 0C1.79086 0 0 1.79086 0 4V14C0 16.2091 1.79086 18 4 18H14C16.2091 18 18 16.2091 18 14V4C18 1.79086 16.2091 0 14 0H4ZM4 5.61803V12.382C4 13.2756 4.72442 14 5.61803 14C5.86923 14 6.11697 13.9415 6.34164 13.8292L13.1056 10.4472C13.6537 10.1731 14 9.61287 14 9C14 8.38713 13.6537 7.82687 13.1056 7.55279L6.34164 4.17082C6.11697 4.05848 5.86923 4 5.61803 4C4.72442 4 4 4.72442 4 5.61803Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="stngs.launch">Р—Р°РїСѓСЃРє</span>
+          </div>
+          <div class="be-tab" data-settings-tab="mods">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M7 1C7 0.447715 7.44772 0 8 0H10C10.5523 0 11 0.447715 11 1V4H7V1Z" fill="currentColor"/>
+              <path d="M11 17C11 17.5523 10.5523 18 10 18H8C7.44772 18 7 17.5523 7 17V14H11V17Z" fill="currentColor"/>
+              <path d="M17 7C17.5523 7 18 7.44772 18 8V10C18 10.5523 17.5523 11 17 11H14V7H17Z" fill="currentColor"/>
+              <path d="M1 11C0.447715 11 -7.24234e-08 10.5523 0 10L2.62269e-07 8C3.34693e-07 7.44772 0.447716 7 1 7L4 7L4 11L1 11Z" fill="currentColor"/>
+              <path d="M16.0702 13.2421C16.4608 13.6326 16.4608 14.2658 16.0702 14.6563L14.656 16.0705C14.2655 16.4611 13.6323 16.4611 13.2418 16.0705L11.1205 13.9492L13.9489 11.1208L16.0702 13.2421Z" fill="currentColor"/>
+              <path d="M1.92976 4.75789C1.53924 4.36736 1.53924 3.7342 1.92976 3.34367L3.34398 1.92946C3.7345 1.53894 4.36767 1.53894 4.75819 1.92946L6.87951 4.05078L4.05108 6.87921L1.92976 4.75789Z" fill="currentColor"/>
+              <path d="M4.75789 16.0702C4.36736 16.4608 3.7342 16.4608 3.34367 16.0702L1.92946 14.656C1.53894 14.2655 1.53894 13.6323 1.92946 13.2418L4.05078 11.1205L6.87921 13.9489L4.75789 16.0702Z" fill="currentColor"/>
+              <path d="M13.2421 1.92976C13.6326 1.53924 14.2658 1.53924 14.6563 1.92976L16.0705 3.34398C16.4611 3.7345 16.4611 4.36767 16.0705 4.75819L13.9492 6.87951L11.1208 4.05108L13.2421 1.92976Z" fill="currentColor"/>
+              <path d="M13 9C13 6.79086 11.2091 5 9 5C6.79086 5 5 6.79086 5 9C5 11.2091 6.79086 13 9 13V15C5.68629 15 3 12.3137 3 9C3 5.68629 5.68629 3 9 3C12.3137 3 15 5.68629 15 9C15 12.3137 12.3137 15 9 15V13C11.2091 13 13 11.2091 13 9Z" fill="currentColor"/>
+              <path d="M11 9C11 10.1046 10.1046 11 9 11C7.89543 11 7 10.1046 7 9C7 7.89543 7.89543 7 9 7C10.1046 7 11 7.89543 11 9Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="stngs.mods">РњРѕРґС‹</span>
+          </div>
+          <div class="be-tab" data-settings-tab="interface">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M15 16V18H3V16H15ZM16 15V3C16 2.44772 15.5523 2 15 2H3C2.44772 2 2 2.44772 2 3V15C2 15.5523 2.44772 16 3 16V18C1.39489 18 0.0842145 16.7394 0.00390625 15.1543L0 15V3C1.9328e-07 1.34315 1.34315 4.83192e-08 3 0H15L15.1543 0.00390625C16.7394 0.0842146 18 1.39489 18 3V15L17.9961 15.1543C17.9184 16.6883 16.6883 17.9184 15.1543 17.9961L15 18V16C15.5523 16 16 15.5523 16 15Z" fill="currentColor"/>
+              <path d="M2 5H16V7H2V5Z" fill="currentColor"/>
+              <path d="M6 7H8V16H6V7Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="stngs.interface">РРЅС‚РµСЂС„РµР№СЃ</span>
+          </div>
+          <div class="be-tab" data-settings-tab="updates">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M4 0C1.79086 0 0 1.79086 0 4V14C0 16.2091 1.79086 18 4 18H14C16.2091 18 18 16.2091 18 14V4C18 1.79086 16.2091 0 14 0H4ZM9.06316 2H8.93666C8.34315 2 7.7803 2.2636 7.40031 2.71952L3.33965 7.59159C3.11971 7.85548 2.99926 8.18814 2.99926 8.53167C2.99926 9.34261 3.65665 10 4.46759 10H6.99926L6.99975 14.0002C6.99989 15.1047 7.89528 16 8.99975 16C10.1044 16 10.9999 15.1044 10.9998 13.9998L10.9993 10H13.5308C14.3418 10 14.9993 9.34257 14.9993 8.53158C14.9993 8.1881 14.8788 7.85549 14.659 7.5916L10.5997 2.71974C10.2197 2.26369 9.65677 2 9.06316 2Z" fill="currentColor"/>
+            </svg>
+            <span class="stngs-tab-label" data-i18n="stngs.updates">РћР±РЅРѕРІР»РµРЅРёСЏ<span class="stngs-tab-dot"></span></span>
+          </div>
+          <div class="be-tab" data-settings-tab="debug">
+            <img class="be-tab-icon" src="../../assets/icons/settingsTabs/Devtools.svg" alt="" width="18" height="18" />
+            <span data-i18n="stngs.debug">Отладка</span>
+          </div>
+          <div class="be-tab" data-settings-tab="about">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M0 4C0 1.79086 1.79086 0 4 0H14C16.2091 0 18 1.79086 18 4V14C18 16.2091 16.2091 18 14 18H4C1.79086 18 0 16.2091 0 14V4ZM9 5C8.44772 5 8 4.55228 8 4C8 3.44772 8.44772 3 9 3C9.55228 3 10 3.44772 10 4C10 4.55228 9.55228 5 9 5ZM10 14V8C10 7.44772 9.55228 7 9 7C8.44772 7 8 7.44772 8 8V14C8 14.5523 8.44772 15 9 15C9.55228 15 10 14.5523 10 14Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="stngs.about">Рћ Р»Р°СѓРЅС‡РµСЂРµ</span>
+          </div>
+        </div>
+        <div class="stngs-content">
+
+          <!-- Р’РќР•РЁРќРР™ Р’РР” -->
+          <div class="stngs-panel active" data-settings-panel="appearance">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.appearance">Р’РЅРµС€РЅРёР№ РІРёРґ</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.appearance.sub">Р¦РІРµС‚Р°, Р°РЅРёРјР°С†РёРё Рё РѕС„РѕСЂРјР»РµРЅРёРµ Р»Р°СѓРЅС‡РµСЂР°</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.accentGroup">Р¦РІРµС‚ Р°РєС†РµРЅС‚Р°</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.accentLabel">Р¦РІРµС‚ РІС‹РґРµР»РµРЅРёСЏ</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.accentHint">РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РІ РєРЅРѕРїРєР°С…, РїРѕР»РѕСЃР°С… Р·Р°РіСЂСѓР·РєРё Рё Р°РєС‚РёРІРЅС‹С… СЌР»РµРјРµРЅС‚Р°С…</div>
+                </div>
+                <div class="accent-picker" id="settings-accent-picker">
+                  <div class="accent-swatch active" data-accent="#70ADDF" style="background:#70ADDF" title="Ocean"></div>
+                  <div class="accent-swatch" data-accent="#5b8ed4" style="background:#5b8ed4" title="Midnight"></div>
+                  <div class="accent-swatch" data-accent="#a78bfa" style="background:#a78bfa" title="Purple"></div>
+                  <div class="accent-swatch" data-accent="#4ade80" style="background:#4ade80" title="Forest"></div>
+                  <div class="accent-swatch" data-accent="#f59e0b" style="background:#f59e0b" title="Orange"></div>
+                  <div class="accent-swatch" data-accent="#ef4444" style="background:#ef4444" title="Red"></div>
+                  <div class="accent-swatch" data-accent="#ec4899" style="background:#ec4899" title="Pink"></div>
+                  <div class="accent-swatch" data-accent="#22d3ee" style="background:#22d3ee" title="Cyan"></div>
+                  <div class="accent-swatch accent-custom-swatch" id="settings-custom-accent" title="" data-i18n-title="stngs.customColor">
+                    <svg class="accent-custom-icon" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M5 1C5 0.447715 5.44772 0 6 0C6.55228 0 7 0.447715 7 1V11C7 11.5523 6.55228 12 6 12C5.44772 12 5 11.5523 5 11V1Z" fill="currentColor"/>
+                      <path d="M1 7C0.447715 7 5.33914e-09 6.55228 1.19253e-08 6C1.85115e-08 5.44772 0.447715 5 1 5H11C11.5523 5 12 5.44772 12 6C12 6.55228 11.5523 7 11 7H1Z" fill="currentColor"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.behaviorGroup">РџРѕРІРµРґРµРЅРёРµ</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.animations">РђРЅРёРјР°С†РёРё РёРЅС‚РµСЂС„РµР№СЃР°</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.animationsHint">РџР»Р°РІРЅС‹Рµ РїРµСЂРµС…РѕРґС‹ РјРµР¶РґСѓ РІРєР»Р°РґРєР°РјРё Рё РїРѕСЏРІР»РµРЅРёРµ СЌР»РµРјРµРЅС‚РѕРІ</div>
+                </div>
+                <label class="toggle"><input type="checkbox" id="setting-animations" checked><span class="toggle-track"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Р—РђРџРЈРЎРљ -->
+          <div class="stngs-panel" data-settings-panel="launch">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.launch">Р—Р°РїСѓСЃРє</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.launch.sub">Р РµСЃСѓСЂСЃС‹ Рё РїРѕРІРµРґРµРЅРёРµ РїСЂРё Р·Р°РїСѓСЃРєРµ РёРіСЂС‹</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.resourcesGroup">Р РµСЃСѓСЂСЃС‹</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.ram">РћРїРµСЂР°С‚РёРІРЅР°СЏ РїР°РјСЏС‚СЊ</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.ramHint">РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ, РµСЃР»Рё РІ СЃР±РѕСЂРєРµ РЅРµ СѓРєР°Р·Р°РЅР° СЃРІРѕСЏ</div>
+                </div>
+                <div class="stngs-ram-control">
+                  <input type="range" id="setting-ram" min="1024" max="8192" step="512" value="2048">
+                  <span id="setting-ram-label">2048 РњР‘</span>
+                </div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.javaManagerGroup">РњРµРЅРµРґР¶РµСЂ Java</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.javaManagerHint">РЈСЃС‚Р°РЅРѕРІРёС‚Рµ РЅРµРѕР±С…РѕРґРёРјС‹Рµ РІРµСЂСЃРёРё Java РёР»Рё СѓРґР°Р»РёС‚Рµ РЅРµРёСЃРїРѕР»СЊР·СѓРµРјС‹Рµ. Р’РµСЂСЃРёСЏ РґР»СЏ СЃР±РѕСЂРєРё РІС‹Р±РёСЂР°РµС‚СЃСЏ РІ РµС‘ СЂРµРґР°РєС‚РѕСЂРµ.</span>
+                </div>
+              </div>
+              <div class="java-manager-list" id="java-manager-list"></div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.launchBehaviorGroup">РџРѕРІРµРґРµРЅРёРµ РїСЂРё Р·Р°РїСѓСЃРєРµ</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.closeAfterLaunch">Р—Р°РєСЂС‹РІР°С‚СЊ Р»Р°СѓРЅС‡РµСЂ РїРѕСЃР»Рµ Р·Р°РїСѓСЃРєР°</div>
+                <label class="toggle"><input type="checkbox" id="setting-close-after-launch"><span class="toggle-track"></span></label>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.minimizeOnLaunch">РЎРІРѕСЂР°С‡РёРІР°С‚СЊ Р»Р°СѓРЅС‡РµСЂ РїСЂРё Р·Р°РїСѓСЃРєРµ</div>
+                <label class="toggle"><input type="checkbox" id="setting-minimize-on-launch"><span class="toggle-track"></span></label>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.showConsole">РџРѕРєР°Р·С‹РІР°С‚СЊ РєРѕРЅСЃРѕР»СЊ РїСЂРё Р·Р°РїСѓСЃРєРµ</div>
+                <label class="toggle"><input type="checkbox" id="setting-show-console"><span class="toggle-track"></span></label>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.keepOpen">РћСЃС‚Р°РІР»СЏС‚СЊ Р»Р°СѓРЅС‡РµСЂ РѕС‚РєСЂС‹С‚С‹Рј РІ РёРіСЂРµ</div>
+                <label class="toggle"><input type="checkbox" id="setting-keep-open"><span class="toggle-track"></span></label>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.integrationsGroup">РРЅС‚РµРіСЂР°С†РёРё</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span>Discord Rich Presence</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.discordRpcHint">РџРѕРєР°Р·С‹РІР°РµС‚ СЃС‚Р°С‚СѓСЃ В«Р’ Р»Р°СѓРЅС‡РµСЂРµВ» Рё СЃР±РѕСЂРєСѓ РІ РїСЂРѕС„РёР»Рµ Discord</div>
+                </div>
+                <label class="toggle"><input type="checkbox" id="setting-discord-rpc" checked><span class="toggle-track"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- РњРћР”Р« -->
+          <div class="stngs-panel" data-settings-panel="mods">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.mods">РњРѕРґС‹</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.mods.sub">РљР°С‚Р°Р»РѕРі РјРѕРґРѕРІ Рё РїРѕРІРµРґРµРЅРёРµ РїСЂРё СѓСЃС‚Р°РЅРѕРІРєРµ</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.catalogGroup">РљР°С‚Р°Р»РѕРі</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.pageSize">Р РµР·СѓР»СЊС‚Р°С‚РѕРІ РЅР° СЃС‚СЂР°РЅРёС†Рµ</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.pageSizeHint">РљРѕР»РёС‡РµСЃС‚РІРѕ РјРѕРґРѕРІ РІ РєР°С‚Р°Р»РѕРіРµ РґРѕ РєРЅРѕРїРєРё В«РџРѕРєР°Р·Р°С‚СЊ РµС‰С‘В»</div>
+                </div>
+                <div class="stngs-select-wrap" data-select-target="setting-mods-page-size">
+                  <select class="stngs-select-hidden" id="setting-mods-page-size">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value">20</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu">
+                    <div class="stngs-select-opt" data-value="10">10</div>
+                    <div class="stngs-select-opt" data-value="20">20</div>
+                    <div class="stngs-select-opt" data-value="50">50</div>
+                  </div>
+                </div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.autoUpdateMods">РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё РѕР±РЅРѕРІР»СЏС‚СЊ РјРѕРґС‹</div>
+                <label class="toggle"><input type="checkbox" id="setting-auto-update-mods"><span class="toggle-track"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- РРќРўР•Р Р¤Р•Р™РЎ -->
+          <div class="stngs-panel" data-settings-panel="interface">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.interface">РРЅС‚РµСЂС„РµР№СЃ</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.interface.sub">РЇР·С‹Рє Рё СЂР°Р·РјРµСЂ СЌР»РµРјРµРЅС‚РѕРІ Р»Р°СѓРЅС‡РµСЂР°</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.langGroup">РЇР·С‹Рє Рё СЂР°Р·РјРµСЂ</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.language">РЇР·С‹Рє РёРЅС‚РµСЂС„РµР№СЃР°</div>
+                <div class="stngs-select-wrap" data-select-target="setting-language">
+                  <select class="stngs-select-hidden" id="setting-language">
+                    <option value="ru">Русский</option>
+                    <option value="en">English</option>
+                    <option value="tt">Татар</option>
+                    <option value="kk">Қазақша</option>
+                    <option value="uk">Українська</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value">Р СѓСЃСЃРєРёР№</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu">
+                    <div class="stngs-select-opt" data-value="ru">Русский</div>
+                    <div class="stngs-select-opt" data-value="en">English</div>
+                    <div class="stngs-select-opt" data-value="tt">Татар</div>
+                    <div class="stngs-select-opt" data-value="kk">Қазақша</div>
+                    <div class="stngs-select-opt" data-value="uk">Українська</div>
+                  </div>
+                </div>
+              </div>
+              <div class="stngs-translate-banner">
+                <div class="stngs-translate-banner-title" data-i18n="stngs.translateHelpTitle">Р’С‹ РјРѕР¶РµС‚Рµ РїРѕРјРѕС‡СЊ СЃ РїРµСЂРµРІРѕРґРѕРј Undefined Client!</div>
+                <div class="stngs-translate-banner-desc" data-i18n="stngs.translateHelpDesc">Р•СЃР»Рё РІС‹ С…РѕС‚РёС‚Рµ С‡С‚РѕР±С‹ РІ РєР»РёРµРЅС‚Рµ Р±С‹Р» РЅСѓР¶РЅС‹Р№ РІР°Рј СЏР·С‹Рє, РёР»Рё РµСЃР»Рё РІС‹ РїСЂРѕСЃС‚Рѕ РЅРµ СЂР°РІРЅРѕРґСѓС€РЅС‹Р№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РєР»РёРµРЅС‚Р°, РІС‹ РјРѕР¶РµС‚Рµ РїРѕРјРѕС‡СЊ РЅР°Рј СЃ РїРµСЂРµРІРѕРґРѕРј РµРіРѕ РєРѕРјРїРѕРЅРµРЅС‚РѕРІ! РџСЂРѕСЃС‚Рѕ СЃРѕР·РґР°Р№С‚Рµ PR СЃ РЅСѓР¶РЅС‹Рј СЏР·С‹РєРѕРј СЃРѕРіР»Р°СЃРЅРѕ С€Р°Р±Р»РѕРЅСѓ Р»РѕРєР°Р»РёР·Р°С†РёР№!</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.uiScale">РњР°СЃС€С‚Р°Р± РёРЅС‚РµСЂС„РµР№СЃР°</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.uiScaleHint">Р Р°Р·РјРµСЂ С‚РµРєСЃС‚Р° Рё СЌР»РµРјРµРЅС‚РѕРІ РЅР° СЃС‚СЂР°РЅРёС†Р°С… Р»Р°СѓРЅС‡РµСЂР°</div>
+                </div>
+                <div class="stngs-ram-control">
+                  <input type="range" id="setting-ui-scale" min="90" max="125" step="5" value="100">
+                  <span id="setting-ui-scale-label">100%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- РћР‘РќРћР’Р›Р•РќРРЇ -->
+          <div class="stngs-panel" data-settings-panel="updates">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.updates">РћР±РЅРѕРІР»РµРЅРёСЏ</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.updates.sub">РџСЂРѕРІРµСЂРєР° РЅРѕРІС‹С… РІРµСЂСЃРёР№ Р»Р°СѓРЅС‡РµСЂР°</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.launcherVersionGroup">Р’РµСЂСЃРёСЏ Р»Р°СѓРЅС‡РµСЂР°</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.checkUpdates">РџСЂРѕРІРµСЂРєР° РѕР±РЅРѕРІР»РµРЅРёР№</span>
+                  <div class="stngs-update-status" id="settings-update-status">вЂ”</div>
+                </div>
+                <button class="stngs-update-btn" id="settings-update-btn" data-i18n="btn.check">РџСЂРѕРІРµСЂРёС‚СЊ</button>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.checkOnStart">РџСЂРѕРІРµСЂСЏС‚СЊ РїСЂРё Р·Р°РїСѓСЃРєРµ</div>
+                <label class="toggle"><input type="checkbox" id="setting-check-updates-start" checked><span class="toggle-track"></span></label>
+              </div>
+            </div>
+          </div>
+
+          <!-- ОТЛАДКА -->
+          <div class="stngs-panel" data-settings-panel="debug">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.debug">Отладка</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.debug.sub">Телеметрия движка вьювера скинов</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.debugViewerGroup">Вьювер скинов</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.debugViewerOverlay">Показывать панель отладки</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.debugViewerOverlayHint">Телеметрия Mine3D Embedded и визуальные оверлеи сцены</div>
+                </div>
+                <label class="toggle"><input type="checkbox" id="setting-skin-viewer-debug"><span class="toggle-track"></span></label>
+              </div>
+              <div class="stngs-setting-row stngs-link-row">
+                <div class="stngs-setting-label">
+                  <span data-i18n="stngs.debugResetDefaults">Вернуть по умолчанию</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.debugResetDefaultsHint">Сбросить все опции отладки движка к значениям по умолчанию</div>
+                </div>
+                <button type="button" class="stngs-btn sm" id="setting-skin-viewer-debug-reset" data-i18n="stngs.debugResetDefaultsBtn">Сбросить</button>
+              </div>
+            </div>
+            <div id="skin-debug-options-root"></div>
+          </div>
+
+          <!-- Рћ Р›РђРЈРќР§Р•Р Р• -->
+          <div class="stngs-panel" data-settings-panel="about">
+            <div class="stngs-panel-header">
+              <div class="stngs-panel-texts">
+                <div class="stngs-panel-title" data-i18n="stngs.about">Рћ Р»Р°СѓРЅС‡РµСЂРµ</div>
+                <div class="stngs-panel-sub" data-i18n="stngs.about.sub">РРЅС„РѕСЂРјР°С†РёСЏ Рѕ РїСЂРёР»РѕР¶РµРЅРёРё Рё СЃСЃС‹Р»РєРё</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.appGroup">РџСЂРёР»РѕР¶РµРЅРёРµ</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.appName">РќР°Р·РІР°РЅРёРµ</div>
+                <div class="stngs-setting-value">Undefined Client</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.appVersion">Р’РµСЂСЃРёСЏ</div>
+                <div class="stngs-setting-value" id="settings-about-version">вЂ”</div>
+              </div>
+              <div class="stngs-setting-row">
+                <div class="stngs-setting-label" data-i18n="stngs.appLicense">Р›РёС†РµРЅР·РёСЏ</div>
+                <div class="stngs-setting-value">GPL-3.0</div>
+              </div>
+            </div>
+            <div class="stngs-group">
+              <div class="stngs-group-head">
+                <div class="stngs-group-title" data-i18n="stngs.linksGroup">РЎСЃС‹Р»РєРё</div>
+              </div>
+              <div class="stngs-setting-row stngs-link-row">
+                <div class="stngs-setting-label" data-i18n="stngs.releases">Р РµР»РёР·С‹ Рё РёСЃС‚РѕСЂРёСЏ РёР·РјРµРЅРµРЅРёР№</div>
+                <button class="stngs-btn sm" id="settings-about-releases" data-i18n="stngs.openGitHub">РћС‚РєСЂС‹С‚СЊ GitHub</button>
+              </div>
+              <div class="stngs-setting-row stngs-link-row">
+                <div class="stngs-setting-label" data-i18n="stngs.community">РЎРѕРѕР±С‰РµСЃС‚РІРѕ Рё РїРѕРґРґРµСЂР¶РєР°</div>
+                <button class="stngs-btn sm" id="settings-about-tg">Telegram</button>
+              </div>
+              <div class="stngs-setting-row stngs-link-row">
+                <div class="stngs-setting-label" data-i18n="stngs.copySysInfo">РЎРєРѕРїРёСЂРѕРІР°С‚СЊ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ СЃРёСЃС‚РµРјРµ</div>
+                <button class="stngs-btn sm" id="settings-about-copy" data-i18n="btn.copy">РљРѕРїРёСЂРѕРІР°С‚СЊ</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="modal-confirm" class="hidden" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.1s ease;">
+    <div style="background:var(--bg-content);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:24px;min-width:320px;">
+      <div id="confirm-message" style="font-size:16px;color:#fff;margin-bottom:20px;font-weight:600;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="confirm-no" class="stngs-btn ghost" data-i18n="btn.cancel">РћС‚РјРµРЅР°</button>
+        <button id="confirm-yes" class="stngs-btn primary" data-i18n="confirm.delete">РЈРґР°Р»РёС‚СЊ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Build create/edit ===== -->
+  <div id="modal-build" class="modal-overlay hidden">
+    <div class="modal-window xl" id="build-editor">
+      <div class="build-editor-header">
+        <div class="modal-header">
+          <div class="modal-header-icon">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+              <rect width="36" height="36" rx="9" fill="currentColor"/>
+              <path d="M17.1143 9.55273C17.6725 9.27708 18.3275 9.27708 18.8857 9.55273L24.8857 12.5156C25.568 12.8526 25.9999 13.5476 26 14.3086V21.6914C25.9999 22.4524 25.568 23.1474 24.8857 23.4844L18.8857 26.4473C18.3275 26.7229 17.6725 26.7229 17.1143 26.4473L11.1143 23.4844C10.432 23.1474 10.0001 22.4524 10 21.6914V14.3086C10.0001 13.5476 10.432 12.8526 11.1143 12.5156L17.1143 9.55273Z" stroke="white" stroke-width="2"/>
+              <path d="M18 12C19.1046 12 20 12.8954 20 14V16H22C23.1046 16 24 16.8954 24 18C24 19.1046 23.1046 20 22 20H20V22C20 23.1046 19.1046 24 18 24C16.8954 24 16 23.1046 16 22V20H14C12.8954 20 12 19.1046 12 18C12 16.8954 12.8954 16 14 16H16V14C16 12.8954 16.8954 12 18 12Z" fill="white" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="modal-header-text">
+            <div class="modal-header-title" id="modal-build-title">РќРѕРІР°СЏ СЃР±РѕСЂРєР°</div>
+            <div class="modal-header-sub" id="modal-build-sub">РЎРѕР·РґР°Р№С‚Рµ СЃРІРѕСЋ СЃР±РѕСЂРєСѓ Minecraft</div>
+          </div>
+        </div>
+        <button class="modal-close" id="modal-build-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="build-editor-body">
+        <div class="build-editor-sidebar">
+          <div class="be-tab active" data-be-tab="general">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M0 7.62426C0 7.22755 0.171252 6.85015 0.469807 6.58892L7.43446 0.494846C7.79904 0.175836 8.26702 0 8.75147 0H9.24853C9.73298 0 10.201 0.175836 10.5655 0.494847L17.5302 6.58892C17.8287 6.85015 18 7.22755 18 7.62426C18 8.38406 17.3841 9 16.6243 9H16V16C16 17.1046 15.1046 18 14 18H11V14C11 13.4477 10.5523 13 10 13H8C7.44772 13 7 13.4477 7 14V18H4C2.89543 18 2 17.1046 2 16V9H1.37574C0.615938 9 0 8.38406 0 7.62426Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabGeneral">РћСЃРЅРѕРІРЅС‹Рµ</span>
+          </div>
+          <div class="be-tab" data-be-tab="mods">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M7 1C7 0.447715 7.44772 0 8 0H10C10.5523 0 11 0.447715 11 1V4H7V1Z" fill="currentColor"/>
+              <path d="M11 17C11 17.5523 10.5523 18 10 18H8C7.44772 18 7 17.5523 7 17V14H11V17Z" fill="currentColor"/>
+              <path d="M17 7C17.5523 7 18 7.44772 18 8V10C18 10.5523 17.5523 11 17 11H14V7H17Z" fill="currentColor"/>
+              <path d="M1 11C0.447715 11 -7.24234e-08 10.5523 0 10L2.62269e-07 8C3.34693e-07 7.44772 0.447716 7 1 7L4 7L4 11L1 11Z" fill="currentColor"/>
+              <path d="M16.0702 13.2421C16.4608 13.6326 16.4608 14.2658 16.0702 14.6563L14.656 16.0705C14.2655 16.4611 13.6323 16.4611 13.2418 16.0705L11.1205 13.9492L13.9489 11.1208L16.0702 13.2421Z" fill="currentColor"/>
+              <path d="M1.92976 4.75789C1.53924 4.36736 1.53924 3.7342 1.92976 3.34367L3.34398 1.92946C3.7345 1.53894 4.36767 1.53894 4.75819 1.92946L6.87951 4.05078L4.05108 6.87921L1.92976 4.75789Z" fill="currentColor"/>
+              <path d="M4.75789 16.0702C4.36736 16.4608 3.7342 16.4608 3.34367 16.0702L1.92946 14.656C1.53894 14.2655 1.53894 13.6323 1.92946 13.2418L4.05078 11.1205L6.87921 13.9489L4.75789 16.0702Z" fill="currentColor"/>
+              <path d="M13.2421 1.92976C13.6326 1.53924 14.2658 1.53924 14.6563 1.92976L16.0705 3.34398C16.4611 3.7345 16.4611 4.36767 16.0705 4.75819L13.9492 6.87951L11.1208 4.05108L13.2421 1.92976Z" fill="currentColor"/>
+              <path d="M13 9C13 6.79086 11.2091 5 9 5C6.79086 5 5 6.79086 5 9C5 11.2091 6.79086 13 9 13V15C5.68629 15 3 12.3137 3 9C3 5.68629 5.68629 3 9 3C12.3137 3 15 5.68629 15 9C15 12.3137 12.3137 15 9 15V13C11.2091 13 13 11.2091 13 9Z" fill="currentColor"/>
+              <path d="M11 9C11 10.1046 10.1046 11 9 11C7.89543 11 7 10.1046 7 9C7 7.89543 7.89543 7 9 7C10.1046 7 11 7.89543 11 9Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabMods">РњРѕРґС‹</span>
+          </div>
+          <div class="be-tab" data-be-tab="resourcepacks">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M3.05983e-07 2C3.05983e-07 0.895431 0.895431 8.74206e-08 2 8.74206e-08H9V9H3.05983e-07V2Z" fill="currentColor" fill-opacity="0.45"/>
+              <path d="M9 9H18V16C18 17.1046 17.1046 18 16 18H9V9Z" fill="currentColor" fill-opacity="0.45"/>
+              <path d="M16 0C17.1046 4.82823e-08 18 0.895431 18 2V9H9V8.74206e-08L16 0Z" fill="currentColor"/>
+              <path d="M9 9V18H2C0.89543 18 -4.82823e-08 17.1046 0 16L3.05983e-07 9H9Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabTextures">РўРµРєСЃС‚СѓСЂС‹</span>
+          </div>
+          <div class="be-tab" data-be-tab="shaders">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M1 4L9 0L17 4L9 8L1 4Z" fill="currentColor"/>
+              <path d="M1 14V4L9 8V18L1 14Z" fill="currentColor" fill-opacity="0.5"/>
+              <path d="M17 14V4L9 8V18L17 14Z" fill="currentColor" fill-opacity="0.75"/>
+            </svg>
+            <span data-i18n="be.tabShaders">РЁРµР№РґРµСЂС‹</span>
+          </div>
+          <div class="be-tab" data-be-tab="datapacks">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M16 4.61816V13.3818L9 16.8818L2 13.3818V4.61816L9 1.11816L16 4.61816Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M3 3L5 2L12.9993 6.00055L10.9993 7.00055L3 3Z" fill="currentColor"/>
+              <path d="M1 5V4L8.99926 8.00055L8.99926 9.00055L1 5Z" fill="currentColor" fill-opacity="0.5"/>
+              <path d="M17 4.99989V4L9 8.00011L9 9L17 4.99989Z" fill="currentColor" fill-opacity="0.5"/>
+              <path d="M11 7L13 6L13 16L11 17L11 7Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabDatapacks">Р”Р°С‚Р°-РїР°РєРё</span>
+          </div>
+          <div class="be-tab" data-be-tab="screenshots">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M16 16V18H2V16H16ZM16 5H2V18L1.7959 17.9893C0.854346 17.8938 0.1062 17.1457 0.0107422 16.2041L0 16V5C0 3.89543 0.895431 3 2 3H16C17.1046 3 18 3.89543 18 5V16C18 17.0357 17.2128 17.887 16.2041 17.9893L16 18V5Z" fill="currentColor"/>
+              <path d="M6 1C6 0.447715 6.44772 0 7 0H11C11.5523 0 12 0.447715 12 1V3H6V1Z" fill="currentColor"/>
+              <path d="M2 3C2 2.44772 2.44772 2 3 2H4C4.55228 2 5 2.44772 5 3H2Z" fill="currentColor"/>
+              <path d="M11 11C11 9.89543 10.1046 9 9 9C7.89543 9 7 9.89543 7 11C7 12.1046 7.89543 13 9 13V15C6.79086 15 5 13.2091 5 11C5 8.79086 6.79086 7 9 7C11.2091 7 13 8.79086 13 11C13 13.2091 11.2091 15 9 15V13C10.1046 13 11 12.1046 11 11Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabScreenshots">РЎРєСЂРёРЅС€РѕС‚С‹</span>
+          </div>
+          <div class="be-tab" data-be-tab="worlds">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 16V18H3V16H15ZM16 15V3C16 2.44772 15.5523 2 15 2H3C2.44772 2 2 2.44772 2 3V15C2 15.5523 2.44772 16 3 16V18C1.39489 18 0.0842145 16.7394 0.00390625 15.1543L0 15V3C1.9328e-07 1.34315 1.34315 4.83192e-08 3 0H15L15.1543 0.00390625C16.7394 0.0842146 18 1.39489 18 3V15L17.9961 15.1543C17.9184 16.6883 16.6883 17.9184 15.1543 17.9961L15 18V16C15.5523 16 16 15.5523 16 15Z" fill="currentColor"/>
+              <path d="M2 13L3.55279 9.89443C3.82687 9.34626 4.38713 9 5 9C5.61287 9 6.17313 9.34626 6.44721 9.89443L9.5 16H3C2.44772 16 2 15.5523 2 15V13Z" fill="currentColor" fill-opacity="0.75"/>
+              <path d="M7 10.9985L9.65848 6.90854C10.0274 6.34095 10.6584 5.99852 11.3354 5.99852H11.7639C12.5215 5.99852 13.214 6.42652 13.5528 7.10409L16 11.9985V14.9985C16 15.5508 15.5523 15.9985 15 15.9985H9.5L7 10.9985Z" fill="currentColor" fill-opacity="0.5"/>
+              <path d="M7 5.5C7 6.32843 6.32843 7 5.5 7C4.67157 7 4 6.32843 4 5.5C4 4.67157 4.67157 4 5.5 4C6.32843 4 7 4.67157 7 5.5Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabWorlds">РњРёСЂС‹</span>
+          </div>
+          <div class="be-tab" data-be-tab="tech">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M15 14V16H3V14H15ZM16 13V5C16 4.44772 15.5523 4 15 4H3C2.44772 4 2 4.44772 2 5V13C2 13.5523 2.44772 14 3 14V16C1.39489 16 0.0842144 14.7394 0.00390625 13.1543L0 13V5C1.28853e-07 3.34315 1.34315 2 3 2H15L15.1543 2.00391C16.7394 2.08421 18 3.39489 18 5V13L17.9961 13.1543C17.9184 14.6883 16.6883 15.9184 15.1543 15.9961L15 16V14C15.5523 14 16 13.5523 16 13Z" fill="currentColor"/>
+              <path d="M4 9C4 8.44772 4.44772 8 5 8C5.55228 8 6 8.44772 6 9C6 9.55228 5.55228 10 5 10C4.44772 10 4 9.55228 4 9Z" fill="currentColor"/>
+              <path d="M8 9C8 8.44772 8.44772 8 9 8C9.55228 8 10 8.44772 10 9C10 9.55228 9.55228 10 9 10C8.44772 10 8 9.55228 8 9Z" fill="currentColor"/>
+              <path d="M12 9C12 8.44772 12.4477 8 13 8C13.5523 8 14 8.44772 14 9C14 9.55228 13.5523 10 13 10C12.4477 10 12 9.55228 12 9Z" fill="currentColor"/>
+            </svg>
+            <span data-i18n="be.tabTech">РўРµС…РЅРёС‡РµСЃРєРёРµ</span>
+          </div>
+        </div>
+        <div class="build-editor-content">
+          <!-- General -->
+          <div class="be-panel active" data-be-panel="general">
+            <div class="be-panel-title" data-i18n="be.generalTitle">РћСЃРЅРѕРІРЅС‹Рµ РЅР°СЃС‚СЂРѕР№РєРё</div>
+            <div class="be-field">
+              <label data-i18n="be.name">РќР°Р·РІР°РЅРёРµ СЃР±РѕСЂРєРё</label>
+              <input type="text" id="modal-build-name" placeholder="" data-i18n-ph="be.namePlaceholder">
+            </div>
+            <div class="be-row">
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.gameVersion">Р’РµСЂСЃРёСЏ РёРіСЂС‹</label>
+                <div class="stngs-select-wrap be-select-wrap">
+                  <select class="stngs-select-hidden" id="modal-build-version">
+                    <option value="latest_release" data-i18n="be.latestRelease">РџРѕСЃР»РµРґРЅРёР№ СЂРµР»РёР·</option>
+                    <option value="latest_snapshot" data-i18n="be.latestSnapshot">РџРѕСЃР»РµРґРЅРёР№ СЃРЅР°РїС€РѕС‚</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value">РџРѕСЃР»РµРґРЅРёР№ СЂРµР»РёР·</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu select-scroll-menu" id="modal-build-version-menu">
+                    <div class="stngs-select-opt" data-value="latest_release" data-i18n="be.latestRelease">РџРѕСЃР»РµРґРЅРёР№ СЂРµР»РёР·</div>
+                    <div class="stngs-select-opt" data-value="latest_snapshot" data-i18n="be.latestSnapshot">РџРѕСЃР»РµРґРЅРёР№ СЃРЅР°РїС€РѕС‚</div>
+                  </div>
+                </div>
+              </div>
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.loader">Р—Р°РіСЂСѓР·С‡РёРє</label>
+                <div class="stngs-select-wrap be-select-wrap">
+                  <select class="stngs-select-hidden" id="modal-build-loader">
+                    <option value="vanilla">Vanilla</option>
+                    <option value="fabric">Fabric</option>
+                    <option value="forge">Forge</option>
+                    <option value="neoforge">NeoForge</option>
+                    <option value="quilt">Quilt</option>
+                  </select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value">Vanilla</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu">
+                    <div class="stngs-select-opt" data-value="vanilla">Vanilla</div>
+                    <div class="stngs-select-opt" data-value="fabric">Fabric</div>
+                    <div class="stngs-select-opt" data-value="forge">Forge</div>
+                    <div class="stngs-select-opt" data-value="neoforge">NeoForge</div>
+                    <div class="stngs-select-opt" data-value="quilt">Quilt</div>
+                  </div>
+                </div>
+              </div>
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.loaderVersion">Р’РµСЂСЃРёСЏ Р·Р°РіСЂСѓР·С‡РёРєР°</label>
+                <input type="text" id="modal-build-loader-ver" placeholder="0.15.11" list="modal-loader-versions">
+                <datalist id="modal-loader-versions"></datalist>
+              </div>
+            </div>
+            <div class="be-field">
+              <label data-i18n="be.icon">РРєРѕРЅРєР°</label>
+              <div class="be-icon-picker">
+                <div id="modal-build-icon-preview" class="be-icon-preview"></div>
+                <div class="be-icon-grid" id="modal-build-icon-grid"></div>
+                <label class="be-icon-upload">
+                  <input type="file" id="modal-build-icon-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
+                  <span class="be-icon-upload-btn" data-i18n="be.customIcon">РЎРІРѕСЏ РёРєРѕРЅРєР°</span>
+                </label>
+              </div>
+            </div>
+            <div id="modal-build-open-section" style="display:none;">
+              <button class="stngs-btn ghost" id="modal-build-open-folder" style="margin-top:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span data-i18n="btn.openFolder">РћС‚РєСЂС‹С‚СЊ РїР°РїРєСѓ СЃР±РѕСЂРєРё</span>
+              </button>
+            </div>
+          </div>
+          <!-- Mods -->
+          <div class="be-panel" data-be-panel="mods">
+            <div class="be-panel-title-row">
+              <div class="be-panel-title" data-i18n="be.tabMods">РњРѕРґС‹</div>
+              <div class="be-panel-actions">
+                <button class="be-add-btn be-scan-btn" data-panel="mods">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span data-i18n="btn.scan">РЎРєР°РЅРёСЂРѕРІР°С‚СЊ</span>
+                </button>
+                <button class="be-add-btn" id="be-mods-add">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span data-i18n="btn.installMod">РЈСЃС‚Р°РЅРѕРІРёС‚СЊ РјРѕРґ</span>
+                </button>
+              </div>
+            </div>
+            <div class="be-file-list" id="be-mods-list">
+              <div class="be-file-empty" data-i18n="be.noMods">РќРµС‚ РјРѕРґРѕРІ</div>
+            </div>
+          </div>
+          <!-- Resource Packs -->
+          <div class="be-panel" data-be-panel="resourcepacks">
+            <div class="be-panel-title-row">
+              <div class="be-panel-title" data-i18n="be.tabTextures">РўРµРєСЃС‚СѓСЂС‹</div>
+              <div class="be-panel-actions">
+                <button class="be-add-btn be-scan-btn" data-panel="resourcepacks">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span data-i18n="btn.scan">РЎРєР°РЅРёСЂРѕРІР°С‚СЊ</span>
+                </button>
+                <button class="be-add-btn" id="be-rp-add">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span data-i18n="btn.add">Р”РѕР±Р°РІРёС‚СЊ</span>
+                </button>
+              </div>
+            </div>
+            <div class="be-file-list" id="be-rp-list">
+              <div class="be-file-empty" data-i18n="be.noTextures">РќРµС‚ С‚РµРєСЃС‚СѓСЂ</div>
+            </div>
+          </div>
+          <!-- Shaders -->
+          <div class="be-panel" data-be-panel="shaders">
+            <div class="be-panel-title-row">
+              <div class="be-panel-title" data-i18n="be.tabShaders">РЁРµР№РґРµСЂС‹</div>
+              <div class="be-panel-actions">
+                <button class="be-add-btn be-scan-btn" data-panel="shaders">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span data-i18n="btn.scan">РЎРєР°РЅРёСЂРѕРІР°С‚СЊ</span>
+                </button>
+                <button class="be-add-btn" id="be-shaders-add">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span data-i18n="btn.add">Р”РѕР±Р°РІРёС‚СЊ</span>
+                </button>
+              </div>
+            </div>
+            <div class="be-file-list" id="be-shaders-list">
+              <div class="be-file-empty" data-i18n="be.noShaders">РќРµС‚ С€РµР№РґРµСЂРѕРІ</div>
+            </div>
+          </div>
+          <!-- Data Packs -->
+          <div class="be-panel" data-be-panel="datapacks">
+            <div class="be-panel-title-row">
+              <div class="be-panel-title" data-i18n="be.tabDatapacks">Р”Р°С‚Р°-РїР°РєРё</div>
+              <div class="be-panel-actions">
+                <button class="be-add-btn be-scan-btn" data-panel="datapacks">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span data-i18n="btn.scan">РЎРєР°РЅРёСЂРѕРІР°С‚СЊ</span>
+                </button>
+                <button class="be-add-btn" id="be-dp-add">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  <span data-i18n="btn.add">Р”РѕР±Р°РІРёС‚СЊ</span>
+                </button>
+              </div>
+            </div>
+            <div class="be-file-list" id="be-dp-list">
+              <div class="be-file-empty" data-i18n="be.noDatapacks">РќРµС‚ РґР°С‚Р°-РїР°РєРѕРІ</div>
+            </div>
+          </div>
+          <!-- Screenshots -->
+          <div class="be-panel" data-be-panel="screenshots">
+            <div class="be-panel-title-row">
+              <div class="be-panel-title" data-i18n="be.tabScreenshots">РЎРєСЂРёРЅС€РѕС‚С‹</div>
+              <div class="be-panel-actions">
+                <span class="be-sel-count" id="be-screenshots-count"></span>
+                <button class="be-add-btn be-media-btn" id="be-screenshots-refresh">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                  <span data-i18n="be.refresh">РћР±РЅРѕРІРёС‚СЊ</span>
+                </button>
+                <button class="be-add-btn be-media-btn" id="be-screenshots-save">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>
+                  <span data-i18n="be.saveToFolder">РЎРѕС…СЂР°РЅРёС‚СЊ РІ РїР°РїРєСѓ</span>
+                </button>
+                <button class="be-add-btn be-media-btn danger" id="be-screenshots-delete">
+                  <svg width="14" height="14" viewBox="0 0 12 12" fill="none"><path d="M1.5 3h9M4.5 1.5h3M2 3v7.5a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3M5 4.5v4.5M7 4.5v4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  <span data-i18n="be.deleteSelected">РЈРґР°Р»РёС‚СЊ РІС‹Р±СЂР°РЅРЅРѕРµ</span>
+                </button>
+              </div>
+            </div>
+            <div class="be-media-list" id="be-screenshots-grid">
+              <div class="be-file-empty" data-i18n="be.screenshotsEmpty">РЎРєСЂРёРЅС€РѕС‚РѕРІ РїРѕРєР° РЅРµС‚</div>
+            </div>
+          </div>
+          <!-- Worlds -->
+          <div class="be-panel" data-be-panel="worlds">
+            <div class="be-panel-title-row">
+              <div class="be-panel-title" data-i18n="be.tabWorlds">РњРёСЂС‹</div>
+              <div class="be-panel-actions">
+                <span class="be-sel-count" id="be-worlds-count"></span>
+                <button class="be-add-btn be-media-btn" id="be-worlds-refresh">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                  <span data-i18n="be.refresh">РћР±РЅРѕРІРёС‚СЊ</span>
+                </button>
+                <button class="be-add-btn be-media-btn" id="be-worlds-save">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>
+                  <span data-i18n="be.saveToFolder">РЎРѕС…СЂР°РЅРёС‚СЊ РІ РїР°РїРєСѓ</span>
+                </button>
+                <button class="be-add-btn be-media-btn danger" id="be-worlds-delete">
+                  <svg width="14" height="14" viewBox="0 0 12 12" fill="none"><path d="M1.5 3h9M4.5 1.5h3M2 3v7.5a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3M5 4.5v4.5M7 4.5v4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  <span data-i18n="be.deleteSelected">РЈРґР°Р»РёС‚СЊ РІС‹Р±СЂР°РЅРЅРѕРµ</span>
+                </button>
+              </div>
+            </div>
+            <div class="be-media-list" id="be-worlds-grid">
+              <div class="be-file-empty" data-i18n="be.worldsEmpty">РњРёСЂРѕРІ РїРѕРєР° РЅРµС‚</div>
+            </div>
+          </div>
+          <!-- Tech -->
+          <div class="be-panel" data-be-panel="tech">
+            <div class="be-panel-title" data-i18n="be.techTitle">РўРµС…РЅРёС‡РµСЃРєРёРµ РЅР°СЃС‚СЂРѕР№РєРё</div>
+            <div class="be-field">
+              <label data-i18n="be.jvmArgs">РђСЂРіСѓРјРµРЅС‚С‹ JVM</label>
+              <input type="text" id="modal-build-jvm" placeholder="-Xmx2G -XX:+UseG1GC">
+            </div>
+            <div class="be-field">
+              <label data-i18n="be.mcArgs">РђСЂРіСѓРјРµРЅС‚С‹ Minecraft</label>
+              <input type="text" id="modal-build-mcargs" placeholder="--server localhost --port 25565">
+            </div>
+            <div class="be-row">
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.ramMin">RAM РјРёРЅ. (РњР‘)</label>
+                <input type="number" id="modal-build-ram-min" placeholder="1024" min="256" max="32768" step="256">
+              </div>
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.ramMax">RAM РјР°РєСЃ. (РњР‘)</label>
+                <input type="number" id="modal-build-ram-max" placeholder="2048" min="256" max="65536" step="256">
+              </div>
+            </div>
+            <div class="be-row">
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.winW">РЁРёСЂРёРЅР° РѕРєРЅР°</label>
+                <input type="number" id="modal-build-win-w" placeholder="854" min="400" max="7680" step="1">
+              </div>
+              <div class="be-field" style="flex:1;">
+                <label data-i18n="be.winH">Р’С‹СЃРѕС‚Р° РѕРєРЅР°</label>
+                <input type="number" id="modal-build-win-h" placeholder="480" min="300" max="4320" step="1">
+              </div>
+            </div>
+            <label class="be-checkbox">
+              <input type="checkbox" id="modal-build-fullscreen">
+              <span data-i18n="be.fullscreen">РџРѕР»РЅС‹Р№ СЌРєСЂР°РЅ</span>
+            </label>
+            <div class="be-field">
+              <label data-i18n="be.javaPath">РџСѓС‚СЊ Рє Java</label>
+              <div class="stngs-select-wrap be-select-wrap">
+                <select class="stngs-select-hidden" id="modal-build-java">
+                  <option value=""></option>
+                  <option value="__custom"></option>
+                </select>
+                <button type="button" class="stngs-select-btn">
+                  <span class="stngs-select-value"></span>
+                  <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="stngs-select-menu select-scroll-menu" id="modal-build-java-menu">
+                  <div class="stngs-select-opt" data-value="" data-i18n="be.javaAuto">РђРІС‚Рѕ</div>
+                  <div class="stngs-select-opt" data-value="__custom" data-i18n="be.javaCustom">РЎРІРѕР№ РїСѓС‚СЊ...</div>
+                </div>
+              </div>
+              <div class="be-java-row hidden" id="be-java-custom-row">
+                <input type="text" id="modal-build-java-path" data-i18n-ph="be.javaPlaceholder" placeholder="java (РёР· PATH)">
+                <button class="be-java-browse" id="be-java-browse" data-i18n="btn.browse">РћР±Р·РѕСЂ</button>
+              </div>
+              <div class="be-java-hint hidden" id="be-java-hint">
+                <span class="be-java-hint-dot"></span>
+                <span id="be-java-hint-text"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="build-editor-footer">
+        <button class="stngs-btn ghost" id="build-form-cancel" data-i18n="btn.cancel">РћС‚РјРµРЅР°</button>
+        <button class="stngs-btn primary" id="build-form-submit" data-i18n="btn.create">РЎРѕР·РґР°С‚СЊ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Server add/edit ===== -->
+  <div id="modal-server" class="modal-overlay hidden">
+    <div class="modal-window sm">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M17 13C17 12.4477 17.4477 12 18 12C18.5523 12 19 12.4477 19 13V15V21V23C19 23.5523 18.5523 24 18 24C17.4803 24 17.0531 23.6035 17.0046 23.0965C17.0016 23.0647 17 23.0325 17 23V21V15V13Z" fill="white"/>
+            <path d="M13 19C12.9675 19 12.9353 18.9984 12.9035 18.9954C12.3965 18.9469 12 18.5197 12 18C12 17.4477 12.4477 17 13 17H23C23.5523 17 24 17.4477 24 18C24 18.5197 23.6035 18.9469 23.0965 18.9954C23.0647 18.9984 23.0325 19 23 19H13Z" fill="white"/>
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M11 15C10.4477 15 10 14.5523 10 14V11C10 10.4477 10.4477 10 11 10H18H25C25.5523 10 26 10.4477 26 11V14C26 14.5523 25.5523 15 25 15V15.7639C25.3442 16.0719 25.6168 16.4583 25.7899 16.8949C27.0635 16.5482 28 15.3835 28 14V11C28 9.34315 26.6569 8 25 8H11C9.34315 8 8 9.34315 8 11V14L8.00391 14.1543C8.07054 15.4695 8.98411 16.5612 10.2101 16.8949C10.3832 16.4583 10.6558 16.0719 11 15.7639V15ZM23 21C24.2666 21 25.3499 20.2151 25.7899 19.1051C27.0635 19.4518 28 20.6165 28 22V25C28 26.6051 26.7394 27.9158 25.1543 27.9961L25 28H11L10.8457 27.9961C9.31166 27.9184 8.08163 26.6883 8.00391 25.1543L8 25V22C8 20.6165 8.93647 19.4518 10.2101 19.1051C10.6501 20.2151 11.7334 21 13 21H11C10.4477 21 10 21.4477 10 22V25C10 25.5523 10.4477 26 11 26H18H25C25.5523 26 26 25.5523 26 25V22C26 21.4477 25.5523 21 25 21H23ZM17 21V19H19V21H17ZM17 23L17.0046 23.0965C17.0016 23.0647 17 23.0325 17 23ZM23 19C23.0325 19 23.0647 18.9984 23.0965 18.9954L23 19ZM17 17V15H19V17H17ZM12.9035 18.9954L13 19C12.9675 19 12.9353 18.9984 12.9035 18.9954Z" fill="white"/>
+            <path d="M13 15H11V15.7639C11.5308 15.2889 12.2316 15 13 15Z" fill="white"/>
+            <path d="M25 15H23C23.7684 15 24.4692 15.2889 25 15.7639V15Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" id="modal-server-title" data-i18n="srv.newTitle">РќРѕРІС‹Р№ СЃРµСЂРІРµСЂ</div>
+          <div class="modal-header-sub" id="modal-server-sub" data-i18n="srv.newSub">Р”РѕР±Р°РІСЊС‚Рµ СЃРµСЂРІРµСЂ РІ РёР·Р±СЂР°РЅРЅРѕРµ</div>
+        </div>
+        <button class="modal-close" id="modal-server-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label data-i18n="srv.name">РќР°Р·РІР°РЅРёРµ СЃРµСЂРІРµСЂР°</label>
+          <input type="text" id="modal-server-name" placeholder="" data-i18n-ph="srv.namePlaceholder">
+        </div>
+        <div class="modal-field">
+          <label data-i18n="srv.ip">IP Р°РґСЂРµСЃ</label>
+          <input type="text" id="modal-server-ip" placeholder="mc.example.com">
+        </div>
+        <div class="modal-field">
+          <label data-i18n="srv.version">Р’РµСЂСЃРёСЏ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</label>
+          <input type="text" id="modal-server-version" placeholder="1.20.1">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="modal-server-cancel" data-i18n="btn.cancel">РћС‚РјРµРЅР°</button>
+        <button class="stngs-btn primary" id="modal-server-submit" data-i18n="btn.add">Р”РѕР±Р°РІРёС‚СЊ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Target build selector ===== -->
+  <div id="modal-srv-info" class="modal-overlay hidden">
+    <div class="modal-window lg">
+      <div class="modal-header">
+        <div class="modal-header-icon srv-info-icon" id="srv-info-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="9" fill="currentColor" fill-opacity="0.12"/><rect x="8" y="12" width="20" height="13" rx="2.5" fill="#fff" fill-opacity="0.9"/><rect x="12" y="8" width="12" height="5" rx="1.5" fill="#fff" fill-opacity="0.4"/></svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" id="srv-info-title">&mdash;</div>
+          <div class="modal-header-sub" id="srv-info-sub"></div>
+        </div>
+        <button class="modal-close" id="srv-info-close"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg></button>
+      </div>
+      <div class="mod-details-meta srv-info-meta">
+        <div class="mod-details-meta-item" id="srv-info-meta-status"></div>
+        <div class="mod-details-meta-item" id="srv-info-meta-players"></div>
+        <div class="mod-details-meta-item" id="srv-info-meta-version"></div>
+        <div class="mod-details-meta-item" id="srv-info-meta-latency"></div>
+      </div>
+      <div class="modal-body" id="srv-info-body"></div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="srv-info-close2">Отмена</button>
+        <button class="stngs-btn primary" id="srv-info-launch" data-i18n="btn.launch">Запустить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <div id="modal-target-build" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M17.1143 12.5527C17.6725 12.2771 18.3275 12.2771 18.8857 12.5527L24.8857 15.5156C25.568 15.8526 25.9999 16.5476 26 17.3086V24.6914C25.9999 25.4524 25.568 26.1474 24.8857 26.4844L18.8857 29.4473C18.3275 29.7229 17.6725 29.7229 17.1143 29.4473L11.1143 26.4844C10.432 26.1474 10.0001 25.4524 10 24.6914V17.3086C10.0001 16.5476 10.432 15.8526 11.1143 15.5156L17.1143 12.5527Z" stroke="white" stroke-width="2"/>
+            <path d="M25.7773 11.2217C26.5586 12.0029 26.5583 13.2691 25.7783 14.0498L25.7773 14.0498L19.4131 20.4141C18.632 21.195 17.366 21.1951 16.585 20.4141L10.2207 14.0498C9.44066 13.2691 9.43958 12.0029 10.2207 11.2217C11.0019 10.4404 12.2681 10.4416 13.0488 11.2217L15.999 14.1719L15.999 6C15.999 4.8955 16.8946 4.00012 17.999 4C19.1036 4 19.999 4.89543 19.999 6L19.999 14.1719L22.9492 11.2217C23.7299 10.4416 24.9961 10.4406 25.7773 11.2217Z" fill="white" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="mods.installTo">Р’С‹Р±РµСЂРёС‚Рµ СЃР±РѕСЂРєСѓ</div>
+          <div class="modal-header-sub" data-i18n="mods.installToSub">Р’ РєР°РєСѓСЋ СЃР±РѕСЂРєСѓ СѓСЃС‚Р°РЅРѕРІРёС‚СЊ?</div>
+        </div>
+        <button class="modal-close" id="modal-target-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body compact">
+        <div id="target-build-list" class="build-option-list"></div>
+      </div>
+<div class="modal-footer">
+        <button class="stngs-btn ghost" id="modal-target-cancel" data-i18n="btn.cancel">РћС‚РјРµРЅР°</button>
+        <button class="stngs-btn primary" id="modal-target-confirm" disabled data-i18n="btn.install">РЈСЃС‚Р°РЅРѕРІРёС‚СЊ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Установка по ссылке uclient:// ===== -->
+  <div id="modal-deeplink" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M17.1143 12.5527C17.6725 12.2771 18.3275 12.2771 18.8857 12.5527L24.8857 15.5156C25.568 15.8526 25.9999 16.5476 26 17.3086V24.6914C25.9999 25.4524 25.568 26.1474 24.8857 26.4844L18.8857 29.4473C18.3275 29.7229 17.6725 29.7229 17.1143 29.4473L11.1143 26.4844C10.432 26.1474 10.0001 25.4524 10 24.6914V17.3086C10.0001 16.5476 10.432 15.8526 11.1143 15.5156L17.1143 12.5527Z" stroke="white" stroke-width="2"/>
+            <path d="M25.7773 11.2217C26.5586 12.0029 26.5583 13.2691 25.7783 14.0498L25.7773 14.0498L19.4131 20.4141C18.632 21.195 17.366 21.1951 16.585 20.4141L10.2207 14.0498C9.44066 13.2691 9.43958 12.0029 10.2207 11.2217C11.0019 10.4404 12.2681 10.4416 13.0488 11.2217L15.999 14.1719L15.999 6C15.999 4.8955 16.8946 4.00012 17.999 4C19.1036 4 19.999 4.89543 19.999 6L19.999 14.1719L22.9492 11.2217C23.7299 10.4416 24.9961 10.4406 25.7773 11.2217Z" fill="white" stroke="currentColor" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="deeplink.title">Установка из браузера</div>
+          <div class="modal-header-sub" id="dl-sub" data-i18n="deeplink.checking">Проверяем ссылку…</div>
+        </div>
+        <button class="modal-close" id="dl-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body compact">
+        <div class="dl-card">
+          <div class="dl-card-icon" id="dl-card-icon"></div>
+          <div class="dl-card-info">
+            <div class="dl-card-name" id="dl-card-name">—</div>
+            <div class="dl-card-meta" id="dl-card-meta">—</div>
+          </div>
+          <span class="dl-type-tag hidden" id="dl-card-type"></span>
+        </div>
+        <div class="dl-label hidden" id="dl-build-label" data-i18n="deeplink.pickBuild">Куда установить</div>
+        <div class="build-option-list hidden" id="dl-build-list"></div>
+        <div class="dl-note hidden" id="dl-note"></div>
+        <div class="dl-progress hidden" id="dl-progress">
+          <div class="dl-progress-head">
+            <span id="dl-progress-label">—</span>
+            <span id="dl-progress-percent"></span>
+          </div>
+          <div class="dl-progress-bar"><div class="dl-progress-fill" id="dl-progress-fill"></div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="dl-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary" id="dl-confirm" disabled data-i18n="btn.install">Установить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Поделиться сборкой ===== -->
+  <div id="modal-share" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M22 12C23.6569 12 25 10.6569 25 9C25 7.34315 23.6569 6 22 6C20.3431 6 19 7.34315 19 9C19 9.35064 19.0602 9.68722 19.1707 10L14.8293 12.5858C14.238 11.9041 13.3264 11.5 12.3 11.5C10.6431 11.5 9.3 12.8431 9.3 14.5C9.3 16.1569 10.6431 17.5 12.3 17.5C13.3264 17.5 14.238 17.0959 14.8293 16.4142L19.1707 19C19.0602 19.3128 19 19.6494 19 20C19 21.6569 20.3431 23 22 23C23.6569 23 25 21.6569 25 20C25 18.3431 23.6569 17 22 17C20.9736 17 20.062 17.4041 19.4707 18.0858L15.1293 15.5C15.2398 15.1872 15.3 14.8506 15.3 14.5C15.3 14.1494 15.2398 13.8128 15.1293 13.5L19.4707 10.9142C20.062 11.5959 20.9736 12 22 12Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="share.title">Поделиться сборкой</div>
+          <div class="modal-header-sub" id="share-sub" data-i18n="share.preparing">Готовим ссылку…</div>
+        </div>
+        <button class="modal-close" id="share-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body compact">
+        <div class="dl-card">
+          <div class="dl-card-icon" id="share-card-icon"></div>
+          <div class="dl-card-info">
+            <div class="dl-card-name" id="share-card-name">—</div>
+            <div class="dl-card-meta" id="share-card-meta">—</div>
+          </div>
+        </div>
+        <div class="dl-note hidden" id="share-note"></div>
+        <div class="dl-progress hidden" id="share-progress">
+          <div class="dl-progress-head">
+            <span id="share-progress-label">—</span>
+            <span id="share-progress-percent"></span>
+          </div>
+          <div class="dl-progress-bar"><div class="dl-progress-fill" id="share-progress-fill"></div></div>
+        </div>
+        <div class="share-link-row hidden" id="share-link-row">
+          <input class="stngs-input" id="share-link-input" type="text" readonly>
+          <button class="stngs-btn primary" id="share-copy" data-i18n="btn.copy">Копировать</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="share-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary hidden" id="share-open" data-i18n="btn.open">Открыть</button>
+        <button class="stngs-btn primary" id="share-done" data-i18n="btn.close">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Импорт shared-сборки ===== -->
+  <div id="modal-share-import" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M18 8V22M18 22L12 16M18 22L24 16" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 24V26C8 27.1046 8.89543 28 10 28H26C27.1046 28 28 27.1046 28 26V24" stroke="white" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="shareImport.title">Импорт сборки</div>
+          <div class="modal-header-sub" id="share-import-sub" data-i18n="shareImport.loading">Загружаем сведения…</div>
+        </div>
+        <button class="modal-close" id="share-import-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body compact">
+        <div class="dl-card">
+          <div class="dl-card-icon" id="share-import-icon"></div>
+          <div class="dl-card-info">
+            <div class="dl-card-name" id="share-import-name">—</div>
+            <div class="dl-card-meta" id="share-import-author">—</div>
+          </div>
+        </div>
+        <div class="share-import-details" id="share-import-details"></div>
+        <div class="share-import-stats" id="share-import-stats"></div>
+        <aside class="share-import-warn" role="note">
+          <div class="share-import-warn-title" data-i18n="shareImport.warnTitle">Будьте осторожны при импорте сборки</div>
+          <div class="share-import-warn-text" data-i18n="shareImport.warnText">Импортируйте сборки только от доверенных людей или друзей. Не открывайте ссылку, если не уверены в её безопасности: в сборке могут быть вредоносные моды.</div>
+        </aside>
+        <div class="share-import-foot" data-i18n="shareImport.foot">Миры не передаются — только настройки, моды и паки.</div>
+        <div class="dl-note hidden" id="share-import-note"></div>
+        <div class="dl-progress hidden" id="share-import-progress">
+          <div class="dl-progress-head">
+            <span id="share-import-progress-label">—</span>
+            <span id="share-import-progress-percent"></span>
+          </div>
+          <div class="dl-progress-bar"><div class="dl-progress-fill" id="share-import-progress-fill"></div></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="share-import-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary" id="share-import-confirm" disabled data-i18n="btn.import">Импортировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Server launch build picker ===== -->
+  <div id="modal-server-build" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M8 20H16V26H8V20ZM8 10H16V16H8V10ZM8 24H16V30H8V24ZM16 20H24V30H16V20ZM16 10H24V16H16V10ZM24 10H28V30H24V10Z" stroke="white" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" id="server-build-title" data-i18n="servers.pickBuild">Р’С‹Р±РµСЂРёС‚Рµ СЃР±РѕСЂРєСѓ</div>
+          <div class="modal-header-sub" id="server-build-sub" data-i18n="servers.pickBuildSub">Р’ РєСРєСѓСЋ СЃР±РѕСЂРєСѓ Р·Р°РїСѓСЃС‚РёС‚СЊ? Р РѕРґ СЂРР»СЋС‡РёС‚ РІ РёРіСЂ.</div>
+        </div>
+        <button class="modal-close" id="server-build-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body compact">
+        <div id="server-build-list" class="build-option-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="server-build-cancel" data-i18n="btn.cancel">РћСвРµРЅР°</button>
+        <button class="stngs-btn primary" id="server-build-confirm" disabled data-i18n="btn.launch">Р–Р°РїСѓС‚РёС‚Сь</button>
+      </div>
+    </div>
+  </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Version picker ===== -->
+  <div id="modal-versions" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M8 23C8 22.4477 8.44772 22 9 22C9.55228 22 10 22.4477 10 23V24C10 25.1046 10.8954 26 12 26H24C25.1046 26 26 25.1046 26 24V23C26 22.4477 26.4477 22 27 22C27.5523 22 28 22.4477 28 23V24C28 26.2091 26.2091 28 24 28H12C9.79086 28 8 26.2091 8 24V23Z" fill="white"/>
+            <path d="M19 9C19 8.44772 18.5523 8 18 8C17.4477 8 17 8.44772 17 9L18 9L19 9ZM17.2929 22.7071C17.6834 23.0976 18.3166 23.0976 18.7071 22.7071L25.0711 16.3431C25.4616 15.9526 25.4616 15.3195 25.0711 14.9289C24.6805 14.5384 24.0474 14.5384 23.6569 14.9289L18 20.5858L12.3431 14.9289C11.9526 14.5384 11.3195 14.5384 10.9289 14.9289C10.5384 15.3195 10.5384 15.9526 10.9289 16.3431L17.2929 22.7071ZM18 9L17 9L17 22L18 22L19 22L19 9L18 9Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" id="modal-versions-title" data-i18n="mods.versionsTitle">Р’С‹Р±РµСЂРёС‚Рµ РІРµСЂСЃРёСЋ</div>
+          <div class="modal-header-sub" id="modal-versions-sub" data-i18n="mods.versionsSub">Р’С‹Р±РµСЂРёС‚Рµ РїРѕРґС…РѕРґСЏС‰СѓСЋ РІРµСЂСЃРёСЋ</div>
+        </div>
+        <button class="modal-close" id="modal-versions-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body compact">
+        <div id="versions-list" class="version-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="modal-versions-cancel" data-i18n="btn.cancel">РћС‚РјРµРЅР°</button>
+        <button class="stngs-btn primary" id="modal-versions-confirm" disabled data-i18n="btn.select">Р’С‹Р±СЂР°С‚СЊ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Mod details ===== -->
+  <!-- ===== MODAL: News Details ===== -->
+  <div id="modal-news-details" class="modal-overlay hidden">
+    <div class="modal-window xl">
+      <div class="modal-header">
+        <div class="mod-details-info">
+          <div class="modal-header-title" id="modal-news-title">—</div>
+          <div class="modal-header-sub" id="modal-news-sub">—</div>
+        </div>
+        <button class="modal-close" id="modal-news-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="mod-details-meta">
+        <div class="mod-details-meta-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12V14C3.13401 14 0 10.866 0 7C0 3.13401 3.13401 0 7 0C10.866 0 14 3.13401 14 7C14 10.866 10.866 14 7 14V12C9.76142 12 12 9.76142 12 7Z" fill="currentColor"/>
+            <path d="M6 4C6 3.44772 6.44772 3 7 3C7.55228 3 8 3.44772 8 4V7C8 7.55228 7.55228 8 7 8C6.44772 8 6 7.55228 6 7V4Z" fill="currentColor"/>
+            <path d="M9.87338 8.45916C10.2639 8.84969 10.2639 9.48285 9.87338 9.87338C9.48285 10.2639 8.84969 10.2639 8.45916 9.87338L6.33784 7.75206C5.94732 7.36153 5.94732 6.72837 6.33784 6.33784C6.72837 5.94732 7.36153 5.94732 7.75206 6.33784L9.87338 8.45916Z" fill="currentColor"/>
+          </svg>
+          <span id="modal-news-date">—</span>
+        </div>
+        <div class="mod-details-meta-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M4 2C4 0.89543 4.89543 0 6 0H8C9.10457 0 10 0.895431 10 2V4C10 5.10457 9.10457 6 8 6H6C4.89543 6 4 5.10457 4 4V2Z" fill="currentColor"/>
+            <path d="M1 10C1 8.89543 1.89543 8 3 8H11C12.1046 8 13 8.89543 13 10V11C13 12.6569 11.6569 14 10 14H4C2.34315 14 1 12.6569 1 11V10Z" fill="currentColor"/>
+          </svg>
+          <span id="modal-news-author">—</span>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div id="modal-news-cover-large-wrap" class="news-modal-cover-wrap hidden">
+          <img id="modal-news-cover-large" class="news-modal-cover" src="" alt="">
+        </div>
+        <div id="modal-news-description" class="mod-details-body"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="mdl-btn" id="modal-news-open-url">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 1.99989C1.00023 1.4478 1.44775 1 1.99989 1L12 1.00069C12.5523 1.00069 12.9999 1.4483 12.9999 2.00058L13.0006 12.0001C13.0006 12.5523 12.5528 12.9998 12.0007 13C11.4484 13 11.0008 12.5524 11.0008 12.0001L11.0001 4.41469L2.91421 12.5C2.52369 12.8905 1.89052 12.8905 1.5 12.5C1.10948 12.1095 1.10948 11.4763 1.5 11.0858L9.58589 3.00048L1.99989 2.99979C1.44761 2.99979 1 2.55218 1 1.99989Z" fill="currentColor"/>
+          </svg>
+          <span data-i18n="news.openOnSite">Открыть на сайте</span>
+        </button>
+        <div style="flex:1;"></div>
+        <button class="mdl-btn" id="modal-news-close2" data-i18n="btn.close">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-mod-details" class="modal-overlay hidden">
+    <div class="modal-window xl">
+      <div class="modal-header">
+        <img id="modal-mod-icon" class="modal-header-icon-img" src="" alt="">
+        <div class="mod-details-info">
+          <div class="modal-header-title" id="modal-mod-title">вЂ”</div>
+          <div class="modal-header-sub" id="modal-mod-type">вЂ”</div>
+        </div>
+        <button class="modal-close" id="modal-mod-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="mod-details-meta" id="modal-mod-meta">
+        <div class="mod-details-meta-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M0 11C0 10.4477 0.447715 10 1 10C1.55228 10 2 10.4477 2 11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11C12 10.4477 12.4477 10 13 10C13.5523 10 14 10.4477 14 11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11Z" fill="currentColor"/>
+            <path d="M12.9999 3.09369C13.3903 3.48411 13.3901 4.1172 12.9999 4.50775L7.70704 9.70703C7.31652 10.0976 6.6835 10.0976 6.29298 9.70703L1.04736 4.50775C0.657133 4.1172 0.656935 3.48411 1.04736 3.09369C1.43779 2.70326 2.07087 2.70346 2.46142 3.09369L6.00001 6.58594L6.00001 1C6.00001 0.447715 6.44773 -2.4141e-08 7.00001 0C7.5523 2.4141e-08 8.00001 0.447715 8.00001 1V6.58594L11.5858 3.09369C11.9763 2.70346 12.6094 2.70326 12.9999 3.09369Z" fill="currentColor"/>
+          </svg>
+          <span id="modal-mod-downloads">вЂ”</span>
+        </div>
+        <div class="mod-details-meta-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M12 7C12 4.23858 9.76142 2 7 2C4.23858 2 2 4.23858 2 7C2 9.76142 4.23858 12 7 12V14C3.13401 14 0 10.866 0 7C0 3.13401 3.13401 0 7 0C10.866 0 14 3.13401 14 7C14 10.866 10.866 14 7 14V12C9.76142 12 12 9.76142 12 7Z" fill="currentColor"/>
+            <path d="M6 4C6 3.44772 6.44772 3 7 3C7.55228 3 8 3.44772 8 4V7C8 7.55228 7.55228 8 7 8C6.44772 8 6 7.55228 6 7V4Z" fill="currentColor"/>
+            <path d="M9.87338 8.45916C10.2639 8.84969 10.2639 9.48285 9.87338 9.87338C9.48285 10.2639 8.84969 10.2639 8.45916 9.87338L6.33784 7.75206C5.94732 7.36153 5.94732 6.72837 6.33784 6.33784C6.72837 5.94732 7.36153 5.94732 7.75206 6.33784L9.87338 8.45916Z" fill="currentColor"/>
+          </svg>
+          <span id="modal-mod-updated">вЂ”</span>
+        </div>
+        <div class="mod-details-meta-item">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M4 2C4 0.89543 4.89543 0 6 0H8C9.10457 0 10 0.895431 10 2V4C10 5.10457 9.10457 6 8 6H6C4.89543 6 4 5.10457 4 4V2Z" fill="currentColor"/>
+            <path d="M1 10C1 8.89543 1.89543 8 3 8H11C12.1046 8 13 8.89543 13 10V11C13 12.6569 11.6569 14 10 14H4C2.34315 14 1 12.6569 1 11V10Z" fill="currentColor"/>
+          </svg>
+          <span id="modal-mod-author"></span>
+        </div>
+        <div class="mod-details-meta-tags" id="modal-mod-tags"></div>
+      </div>
+      <div class="modal-body">
+        <div id="modal-mod-description" class="mod-details-body"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="mdl-btn" id="modal-mod-open-url">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 1.99989C1.00023 1.4478 1.44775 1 1.99989 1L12 1.00069C12.5523 1.00069 12.9999 1.4483 12.9999 2.00058L13.0006 12.0001C13.0006 12.5523 12.5528 12.9998 12.0007 13C11.4484 13 11.0008 12.5524 11.0008 12.0001L11.0001 4.41469L2.91421 12.5C2.52369 12.8905 1.89052 12.8905 1.5 12.5C1.10948 12.1095 1.10948 11.4763 1.5 11.0858L9.58589 3.00048L1.99989 2.99979C1.44761 2.99979 1 2.55218 1 1.99989Z" fill="currentColor"/>
+          </svg>
+          <span data-i18n="btn.openInModrinth">РћС‚РєСЂС‹С‚СЊ РІ Modrinth</span>
+        </button>
+        <div style="flex:1;"></div>
+        <button class="mdl-btn" id="modal-mod-versions">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 2C1 1.44772 1.44772 1 2 1C2.55228 1 3 1.44772 3 2C3 2.55228 2.55228 3 2 3C1.44772 3 1 2.55228 1 2Z" fill="currentColor"/>
+            <path d="M4 2C4 1.44772 4.44772 1 5 1H12C12.5523 1 13 1.44772 13 2C13 2.55228 12.5523 3 12 3H5C4.44772 3 4 2.55228 4 2Z" fill="currentColor"/>
+            <path d="M1 12C1 11.4477 1.44772 11 2 11C2.55228 11 3 11.4477 3 12C3 12.5523 2.55228 13 2 13C1.44772 13 1 12.5523 1 12Z" fill="currentColor"/>
+            <path d="M4 12C4 11.4477 4.44772 11 5 11H12C12.5523 11 13 11.4477 13 12C13 12.5523 12.5523 13 12 13H5C4.44772 13 4 12.5523 4 12Z" fill="currentColor"/>
+            <path d="M1 7C1 6.44772 1.44772 6 2 6C2.55228 6 3 6.44772 3 7C3 7.55228 2.55228 8 2 8C1.44772 8 1 7.55228 1 7Z" fill="currentColor"/>
+            <path d="M4 7C4 6.44772 4.44772 6 5 6H12C12.5523 6 13 6.44772 13 7C13 7.55228 12.5523 8 12 8H5C4.44772 8 4 7.55228 4 7Z" fill="currentColor"/>
+          </svg>
+          <span data-i18n="btn.allVersions">Р’СЃРµ РІРµСЂСЃРёРё</span>
+        </button>
+        <button class="mdl-btn primary" id="modal-mod-download-btn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M0 11C0 10.4477 0.447715 10 1 10C1.55228 10 2 10.4477 2 11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11C12 10.4477 12.4477 10 13 10C13.5523 10 14 10.4477 14 11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11Z" fill="currentColor"/>
+            <path d="M12.9999 3.09369C13.3903 3.48411 13.3901 4.1172 12.9999 4.50775L7.70704 9.70703C7.31652 10.0976 6.6835 10.0976 6.29298 9.70703L1.04736 4.50775C0.657133 4.1172 0.656935 3.48411 1.04736 3.09369C1.43779 2.70326 2.07087 2.70346 2.46142 3.09369L6.00001 6.58594L6.00001 1C6.00001 0.447715 6.44773 -2.4141e-08 7.00001 0C7.5523 2.4141e-08 8.00001 0.447715 8.00001 1V6.58594L11.5858 3.09369C11.9763 2.70346 12.6094 2.70326 12.9999 3.09369Z" fill="currentColor"/>
+          </svg>
+          <span data-i18n="btn.download">РЎРєР°С‡Р°С‚СЊ</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: Import ===== -->
+  <div id="modal-import" class="modal-overlay hidden">
+    <div class="modal-window md">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 2V14M10 14L6 10M10 14L14 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 14V17C2 18.1046 2.89543 19 4 19H16C17.1046 19 18 18.1046 18 17V14" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="import.title">РРјРїРѕСЂС‚ СЃР±РѕСЂРєРё</div>
+          <div class="modal-header-sub" data-i18n="import.sub">Р—Р°РіСЂСѓР·РёС‚Рµ .mrpack РёР»Рё .zip РёР· Modrinth / CurseForge</div>
+        </div>
+        <button class="modal-close" id="modal-import-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="import-zone" id="import-dropzone">
+          <div class="import-zone-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <path d="M24 6V30M24 30L16 22M24 30L32 22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"/>
+              <path d="M6 28V34C6 36.2091 7.79086 38 10 38H38C40.2091 38 42 36.2091 42 34V28" stroke="currentColor" stroke-width="2.5" opacity="0.3"/>
+            </svg>
+          </div>
+          <div class="import-zone-title" data-i18n="import.zoneTitle">РќР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ РІС‹Р±СЂР°С‚СЊ С„Р°Р№Р»</div>
+          <div class="import-zone-sub" data-i18n="import.zoneSub">.mrpack (Modrinth) РёР»Рё .zip (CurseForge)</div>
+          <input type="file" id="import-file-input" accept=".mrpack,.zip" style="display:none;">
+        </div>
+        <div id="import-info" class="import-info hidden">
+          <div class="import-info-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 5V9M8 11V10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="import-info-text" id="import-info-text" data-i18n="import.selected">Р’С‹Р±СЂР°РЅ С„Р°Р№Р»: {name}</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" id="modal-import-cancel" data-i18n="btn.cancel">РћС‚РјРµРЅР°</button>
+        <button class="stngs-btn primary" id="modal-import-confirm" disabled data-i18n="btn.import">РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Crash Modal -->
+  <div id="modal-crash" class="modal-overlay hidden">
+    <div class="modal-window" style="width:720px;">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="#FF4D4D"/>
+            <rect x="24.3633" y="8.80664" width="4" height="22" rx="1" transform="rotate(45 24.3633 8.80664)" fill="white"/>
+            <rect x="8.80664" y="11.6367" width="4" height="22" rx="1" transform="rotate(-45 8.80664 11.6367)" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="crash.title">Minecraft СѓРїР°Р»</div>
+          <div class="modal-header-sub" id="modal-crash-sub" data-i18n="crash.sub">РЎР±РѕСЂРєР° Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃ РѕС€РёР±РєРѕР№</div>
+        </div>
+        <button class="modal-close" id="modal-crash-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div id="modal-crash-diagnosis" class="crash-diagnosis hidden">
+        <div class="crash-diag-title" id="modal-crash-diag-title"></div>
+        <div class="crash-diag-tip" id="modal-crash-diag-tip"></div>
+      </div>
+      <div id="modal-crash-body" class="modal-body console-body" style="min-height:180px;"></div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <div style="display:flex;gap:8px;">
+          <button class="stngs-btn ghost" id="modal-crash-folder">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5C2 3.67157 2.67157 3 3.5 3H6L7.5 4.5H12.5C13.3284 4.5 14 5.17157 14 6V11.5C14 12.3284 13.3284 13 12.5 13H3.5C2.67157 13 2 12.3284 2 11.5V4.5Z"/></svg>
+            <span data-i18n="btn.openFolder">РћС‚РєСЂС‹С‚СЊ РїР°РїРєСѓ СЃР±РѕСЂРєРё</span>
+          </button>
+          <button class="stngs-btn ghost" id="modal-crash-log">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1H4C2.89543 1 2 1.89543 2 3V13C2 14.1046 2.89543 15 4 15H12C13.1046 15 14 14.1046 14 13V3C14 1.89543 13.1046 1 12 1Z"/><path d="M5 5H11M5 8H11M5 11H8"/></svg>
+            <span data-i18n="crash.viewLog">РџСЂРѕСЃРјРѕС‚СЂРµС‚СЊ Р»РѕРі</span>
+          </button>
+        </div>
+        <button class="stngs-btn primary" id="modal-crash-fix">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8.5C13.5 11.8137 10.8137 14.5 7.5 14.5C4.18629 14.5 1.5 11.8137 1.5 8.5C1.5 5.18629 4.18629 2.5 7.5 2.5C9.1 2.5 10.5 3.2 11.5 4.3"/><path d="M10 2.5H13V5.5"/></svg>
+            <span data-i18n="crash.fixBuild">РСЃРїСЂР°РІРёС‚СЊ СЃР±РѕСЂРєСѓ</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Modal -->
+  <div id="modal-stats" class="modal-overlay hidden">
+    <div class="modal-window" style="width:560px;">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M26 18C26 13.5817 22.4183 10 18 10C13.5817 10 10 13.5817 10 18C10 22.4183 13.5817 26 18 26V28C12.4772 28 8 23.5228 8 18C8 12.4772 12.4772 8 18 8C23.5228 8 28 12.4772 28 18C28 23.5228 23.5228 28 18 28V26C22.4183 26 26 22.4183 26 18Z" fill="white"/>
+            <path d="M17 13C17 12.4477 17.4477 12 18 12C18.5523 12 19 12.4477 19 13V18C19 18.5523 18.5523 19 18 19C17.4477 19 17 18.5523 17 18V13Z" fill="white"/>
+            <path d="M22.9055 19.6797C23.3838 19.9558 23.5476 20.5674 23.2715 21.0457C22.9953 21.524 22.3838 21.6879 21.9055 21.4117L17.5753 18.9117C17.097 18.6356 16.9332 18.024 17.2093 17.5457C17.4854 17.0674 18.097 16.9035 18.5753 17.1797L22.9055 19.6797Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="stats.title">РЎС‚Р°С‚РёСЃС‚РёРєР° РёРіСЂС‹</div>
+          <div class="modal-header-sub" data-i18n="stats.sub">РќР°РёРіСЂР°РЅРЅРѕРµ РІСЂРµРјСЏ РїРѕ СЃР±РѕСЂРєР°Рј</div>
+        </div>
+        <button class="modal-close" id="modal-stats-close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body stats-body">
+        <div id="stats-total" class="stats-total"></div>
+        <div id="stats-favorite" class="stats-fav hidden"></div>
+        <div id="stats-list" class="stats-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  </div>
+</body>
+</html>
