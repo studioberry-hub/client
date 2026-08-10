@@ -118,8 +118,12 @@ installer/
 ├── unins000.py         ← обёртка --mode uninstall
 └── assets/
     ├── logo.png
-    └── close.svg
+    ├── close.svg
+    └── fonts/nekst/    ← Nekst (Regular/Bold/SemiBold/Medium/…)
 ```
+
+Шрифты лежат **в исходниках установщика** (`installer/assets/fonts/nekst`), а не только в корневом `assets/` лаунчера.  
+`build_installers.cmd` упаковывает весь `installer/assets` в exe (`--add-data installer\assets;assets`).
 
 Сборка описана в корневом [`build_installers.cmd`](../build_installers.cmd).
 
