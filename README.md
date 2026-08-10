@@ -1,10 +1,3 @@
-> [!NOTE]
-> Исходный код проекта выйдет в скором времени. Нам нужно чуть больше времени на полировку. Просим прощения за доставленные неудобства и просим немного потерпеть. Пока вы можете скачать последний билд клиента [отсюда](https://github.com/studioberry-hub/client/releases/latest) и протестировать его.
-
-![Undefined Client](https://github.com/studioberry-hub/client/blob/main/.github/uclientBannerGH2.png?raw=true)
-
-![Undefined Client](https://github.com/studioberry-hub/client/blob/main/.github/uclientBannerWindow.png?raw=true)
-
 [![Лицензия](https://img.shields.io/badge/license-GPL--3.0--only-brightgreen)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-43-blue)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](package.json)
@@ -15,7 +8,7 @@
 Привет! 👋 Это **Undefined Client** — лаунчер Minecraft на Electron с каталогом модов прямо из Modrinth, 3D-просмотром скинов, поддержкой Forge и Fabric и кучей мелочей, которые делают жизнь проще. Собирай сборки, ставь моды в два клика и играй — без боли и шаманства с jar-файлами.
 
 > [!NOTE]
-> Проект активно развивается, интерфейс на русском. Если найдёшь баг — открывай [issue](https://github.com/studioberry-hub/client/issues), а лучше сразу [PR](https://github.com/studioberry-hub/client/pulls) 😉
+> Проект активно развивается, интерфейс на русском. Если найдёшь баг — открывай issue, а лучше сразу PR 😉
 
 ---
 
@@ -55,7 +48,7 @@
 
 ```bash
 # 1. Клонируй репозиторий
-git clone https://github.com/studioberry-hub/uclient.git
+git clone https://github.com/studioberry-hub/client.git
 cd uclient
 
 # 2. Ставь зависимости
@@ -144,7 +137,7 @@ uclient/
 Прежде чем писать код, загляни в [CONTRIBUTING.md](CONTRIBUTING.md) — там порядок работы с PR и условие актуализации форков (ребазинг к новым релизам в течение 30 дней). Вклад лицензируется по [CLA.md](CLA.md) — принимается подписью `Signed-off-by` в коммитах (`git commit -s`).
 
 > [!CAUTION]
-> Присвоение авторства проекта, удаление уведомлений об авторстве и использование названия **«Undefined Client»** и логотипов без письменного согласия автора запрещены. Уважай труд разработчиков — и они будут рады твоим PR! ❤️
+> Присвоение авторства проекта, удаление уведомлений об авторстве и использование названия **«UClient»** и логотипов без письменного согласия автора запрещены. Уважай труд разработчиков — и они будут рады твоим PR! ❤️
 
 ---
 

@@ -1,0 +1,8 @@
+# Артефакты сборки и локальные зависимости
+node_modules/
+dist/
+dist-demo/
+
+# IDE / OS
+.DS_Store
+*.log

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    CSP окна мира отличается от главного окна:
+      'wasm-unsafe-eval' — WASM-мешер компилирует модуль в главном потоке рендерера;
+      'unsafe-eval' — вынужденно: prismarine-nbt на этапе импорта собирает protodef-протоколы
+        через compileProtoDefSync() (new Function), а protodef-validator компилирует
+        JSON-схемы через ajv. Без этого бандл падает с EvalError ещё до старта;
+      worker-src 'self' blob: — воркеры грузятся как отдельные файлы (app://local/mesher*.js),
+        blob: оставлен на случай single-file режима рендерера;
+      img-src blob: data: — атласы текстур собираются в canvas и передаются как ImageBitmap/dataURL.
+    CSP главного окна (src/renderer/index.html) не меняется.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' data: blob:; font-src 'self' data:">
+  <title>Undefined Client — просмотр мира</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #101216; }
+    body { font-family: Consolas, 'Courier New', monospace; color: #e6e6e6; }
+    #viewer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+    #panel {
+      position: absolute; top: 0; left: 0; z-index: 10;
+      width: 460px; max-height: 100%;
+      display: flex; flex-direction: column;
+      background: rgba(12, 14, 18, 0.82);
+      border-right: 1px solid #2b3038; border-bottom: 1px solid #2b3038;
+      font-size: 11px; line-height: 1.45;
+    }
+    #status { padding: 8px 10px; font-size: 13px; font-weight: 700; border-bottom: 1px solid #2b3038; }
+    #status.ok { color: #7bd4b7; }
+    #status.err { color: #ff6b6b; }
+    #stats { padding: 5px 10px; color: #9aa4b2; border-bottom: 1px solid #2b3038; }
+    #log { overflow-y: auto; padding: 6px 10px; max-height: 60vh; }
+    .line { white-space: pre-wrap; word-break: break-word; }
+    .line.ok { color: #7bd4b7; }
+    .line.err { color: #ff6b6b; }
+    /* Крупное сообщение об отказе: версия мира вне диапазона, нет region-файлов и т. п. */
+    #message {
+      position: absolute; inset: 0; z-index: 20; display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; padding: 40px; text-align: center;
+      background: rgba(16, 18, 22, 0.94);
+      font-family: 'Segoe UI', Arial, sans-serif;
+    }
+    .message-title { font-size: 22px; font-weight: 700; color: #ffb454; }
+    .message-text { font-size: 14px; line-height: 1.6; color: #c8cfd8; max-width: 720px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <div id="status">Загрузка…</div>
+    <div id="stats"></div>
+    <div id="log"></div>
+  </div>
+  <div id="message"></div>
+  <script src="world.js"></script>
+</body>
+</html>
