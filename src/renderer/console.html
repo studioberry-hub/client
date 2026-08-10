@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://uprojects.site https://mc-heads.net https://cdn.modrinth.com http: https:; font-src 'self'; script-src 'self' 'unsafe-inline'; media-src 'self' blob: https://live.lofiradio.ru https://air.radioart.com">
+  <title>Undefined Client</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <!-- TitleBar -->
+    <div id="titlebar">
+      <div id="titlebar-title">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect width="11" height="11" fill="#7BD4B7"/>
+          <rect x="11" y="11" width="5" height="5" fill="#7BD4B7"/>
+        </svg>
+        <span data-i18n="console.windowTitle">Консоль разработчика</span>
+      </div>
+      <div id="titlebar-controls">
+        <div class="tb-btn" id="btn-min" title="" data-i18n-title="titlebar.minimize">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <rect x="0" y="5" width="12" height="2" rx="1" fill="white"/>
+          </svg>
+        </div>
+        <div class="tb-btn" id="btn-max" title="" data-i18n-title="titlebar.maximize">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M9 10V12H3V10H9ZM10 9V3C10 2.44772 9.55228 2 9 2H3C2.44772 2 2 2.44772 2 3V9C2 9.55228 2.44772 10 3 10V12C1.34315 12 0 10.6569 0 9V3C0 1.34315 1.34315 0 3 0H9C10.6569 0 12 1.34315 12 3V9C12 10.6569 10.6569 12 9 12V10C9.55228 10 10 9.55228 10 9Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="tb-btn" id="btn-close" title="" data-i18n-title="titlebar.close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 1.06066C1 0.474874 1.47487 0 2.06066 0C2.34201 0 2.61168 0.111675 2.81066 0.31066L11.6893 9.18934C11.8883 9.38832 12 9.65799 12 9.93934C12 10.5251 11.5251 11 10.9393 11C10.658 11 10.3883 10.8883 10.1893 10.6893L1.31066 1.81066C1.11167 1.61168 1 1.34201 1 1.06066Z" fill="white"/>
+            <path d="M2.06066 11C1.47487 11 1 10.5251 1 9.93934C1 9.65799 1.11167 9.38832 1.31066 9.18934L10.1893 0.31066C10.3883 0.111675 10.658 0 10.9393 0C11.5251 0 12 0.474874 12 1.06066C12 1.34201 11.8883 1.61168 11.6893 1.81066L2.81066 10.6893C2.61168 10.8883 2.34201 11 2.06066 11Z" fill="white"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Console -->
+    <div id="console-window-body">
+      <div class="console-toolbar">
+        <input type="text" id="console-search" data-i18n-ph="console.search" placeholder="Поиск по логу...">
+        <div class="console-filter">
+          <button class="console-filter-btn active" data-console-filter="all" data-i18n="console.filterAll">Все</button>
+          <button class="console-filter-btn" data-console-filter="error" data-i18n="console.filterErrors">Ошибки</button>
+        </div>
+        <button class="stngs-btn ghost" id="console-copy" data-i18n="console.copy">Копировать</button>
+        <button class="stngs-btn ghost" id="console-save" data-i18n="console.save">Сохранить</button>
+        <button class="stngs-btn ghost" id="console-clear" data-i18n="btn.clear">Очистить</button>
+        <label class="console-check"><input type="checkbox" id="console-autoscroll" checked><span class="toggle-track"></span><span data-i18n="console.autoScroll">Автопрокрутка</span></label>
+      </div>
+      <div id="console-body" class="console-body"></div>
+      <div id="console-status" class="hidden"></div>
+    </div>
+  </div>
+  <script src="console.js"></script>
+</body>
+</html>

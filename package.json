@@ -1,0 +1,79 @@
+{
+  "name": "uclient",
+  "version": "1.0.3-beta",
+  "description": "Minecraft Launcher",
+  "license": "GPL-3.0-only",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc && esbuild --bundle dist/renderer/app.js --outfile=src/renderer/app.js --format=iife --global-name=app --platform=browser && esbuild --bundle dist/renderer/console.js --outfile=src/renderer/console.js --format=iife --global-name=consoleWin --platform=browser",
+    "build:world": "node scripts/copy-world-assets.mjs && node scripts/build-world.mjs",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron . --dev",
+    "dist": "npm run build && electron-builder --win",
+    "dist:dir": "npm run build && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "undefined-client",
+    "productName": "Undefined Client",
+    "directories": {
+      "output": "dist-windows"
+    },
+    "files": [
+      "dist/**/*",
+      "src/renderer/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "package.json",
+      "!node_modules/minecraft-data/**",
+      "!node_modules/minecraft-renderer/**",
+      "!node_modules/mc-assets/**",
+      "!node_modules/contro-max/**",
+      "!node_modules/prismarine-chunk/**",
+      "!src/renderer/world/**"
+    ],
+    "protocols": [
+      {
+        "name": "Undefined Client",
+        "schemes": [
+          "uclient"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "IconForBuild/icon.ico",
+      "executableName": "uclient"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "installerIcon": "IconForBuild/icon.ico",
+      "uninstallerIcon": "IconForBuild/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.1",
+    "buffer": "6.0.3",
+    "contro-max": "0.1.12",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
+    "mc-assets": "0.2.83",
+    "minecraft-data": "3.112.0",
+    "minecraft-renderer": "0.1.96",
+    "prismarine-chunk": "1.41.0",
+    "process": "0.11.10",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "discord-rpc": "^4.0.1",
+    "eml-lib": "^2.6.0",
+    "marked": "^18.0.7",
+    "minecraft-server-util": "^5.4.4",
+    "pngjs": "^7.0.0",
+    "prismarine-nbt": "^2.8.0",
+    "skinviewengine": "file:./skinviewengine"
+  }
+}

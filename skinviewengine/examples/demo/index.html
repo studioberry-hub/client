@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>skinviewengine — demo</title>
+    <link rel="stylesheet" href="./demo.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>skinviewengine demo</h1>
+    </header>
+
+    <main class="layout">
+      <section class="viewer-column">
+        <div class="toolbar">
+          <label for="skin-file">Загрузить скин</label>
+          <input id="skin-file" type="file" accept="image/png" />
+          <button type="button" id="btn-demo-skin">Демо-скин</button>
+          <button type="button" id="btn-classic" title="Classic (Steve)">Classic</button>
+          <button type="button" id="btn-slim" title="Slim (Alex)">Slim</button>
+          <div class="url-row">
+            <input
+              id="skin-url"
+              type="url"
+              placeholder="URL скина, напр. https://mc-heads.net/skin/Steve"
+              spellcheck="false"
+            />
+            <button type="button" id="btn-apply-url">Применить</button>
+          </div>
+          <div class="url-row username-row">
+            <input
+              id="skin-username"
+              type="text"
+              placeholder="Никнейм, напр. Notch"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <button type="button" id="btn-load-username">Загрузить по нику</button>
+          </div>
+        </div>
+
+        <div class="canvas-wrap" id="canvas-wrap">
+          <canvas id="skin-canvas"></canvas>
+        </div>
+
+        <p id="status" aria-live="polite"></p>
+        <p class="hint">
+          ЛКМ — орбита · ПКМ / Alt+ЛКМ — пан · колёсико — зум · 1/2 — classic/slim
+        </p>
+      </section>
+
+      <aside class="control-panel" aria-label="Настройки вьювера">
+        <section class="panel-section">
+          <h2>Вьювер</h2>
+          <label class="control-row checkbox-row">
+            <input type="checkbox" id="cam-auto-rotate" />
+            <span>Автовращение</span>
+          </label>
+          <button type="button" class="panel-btn" id="btn-reset-camera">Сброс камеры</button>
+        </section>
+
+        <section class="panel-section">
+          <h2>Камера</h2>
+          <label class="control-row">
+            <span class="control-label">FOV</span>
+            <input type="range" id="cam-fov" min="20" max="80" step="1" value="20" />
+            <span class="control-value" id="cam-fov-val">20°</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Zoom</span>
+            <input type="range" id="cam-zoom" min="0.3" max="2" step="0.02" value="1.16" />
+            <span class="control-value" id="cam-zoom-val">1.16</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Дистанция</span>
+            <input type="range" id="cam-distance" min="18" max="110" step="1" value="110" />
+            <span class="control-value" id="cam-distance-val">110</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Центр Y</span>
+            <input type="range" id="cam-target-y" min="-5" max="20" step="0.5" value="0.5" />
+            <span class="control-value" id="cam-target-y-val">0.5</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Мин. полярный</span>
+            <input type="range" id="cam-min-polar" min="0" max="89" step="1" value="39" />
+            <span class="control-value" id="cam-min-polar-val">39°</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Макс. полярный</span>
+            <input type="range" id="cam-max-polar" min="1" max="180" step="1" value="96" />
+            <span class="control-value" id="cam-max-polar-val">96°</span>
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <h2>Свет</h2>
+          <label class="control-row">
+            <span class="control-label">Key азимут</span>
+            <input type="range" id="light-key-az" min="-180" max="180" step="1" value="58" />
+            <span class="control-value" id="light-key-az-val">58°</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Key высота</span>
+            <input type="range" id="light-key-el" min="-10" max="89" step="1" value="40" />
+            <span class="control-value" id="light-key-el-val">40°</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Key яркость</span>
+            <input type="range" id="light-key-int" min="0" max="3" step="0.02" value="1.60" />
+            <span class="control-value" id="light-key-int-val">1.60</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Ambient</span>
+            <input type="range" id="light-amb-int" min="0" max="2" step="0.02" value="0.34" />
+            <span class="control-value" id="light-amb-int-val">0.34</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Fill</span>
+            <input type="range" id="light-fill-int" min="0" max="2" step="0.02" value="0.22" />
+            <span class="control-value" id="light-fill-int-val">0.22</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Мягкость тени</span>
+            <input type="range" id="light-shadow-rad" min="0" max="12" step="0.5" value="3" />
+            <span class="control-value" id="light-shadow-rad-val">3</span>
+          </label>
+          <label class="control-row">
+            <span class="control-label">Интенс. тени</span>
+            <input type="range" id="light-shadow-int" min="0" max="1.5" step="0.02" value="1.00" />
+            <span class="control-value" id="light-shadow-int-val">1.00</span>
+          </label>
+          <label class="control-row checkbox-row">
+            <input type="checkbox" id="light-cast-shadow" checked />
+            <span>Тени key-света</span>
+          </label>
+          <button type="button" class="panel-btn" id="btn-reset-lights">Сброс света</button>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
