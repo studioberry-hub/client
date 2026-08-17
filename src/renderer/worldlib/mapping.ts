@@ -1,15 +1,15 @@
-// Сопоставление блоков и биомов мира с реестром версии рендерера (1.21.4).
+// Сопоставление блоков и биомов мира с реестром версии рендерера (1.21.6).
 //
 // Численные block state ID между версиями Minecraft НЕ совпадают, поэтому индексы
 // из палитры чанка нельзя использовать напрямую. Палитра даёт имя блока и его
-// properties — по ним здесь вычисляется state ID в реестре 1.21.4. То же с биомами:
+// properties — по ним здесь вычисляется state ID в реестре 1.21.6. То же с биомами:
 // сопоставление идёт по имени, а не по числу.
 
 import type { WirePaletteEntry } from './types';
 
 /** Счётчики того, что не удалось сопоставить один в один. */
 export interface MappingStats {
-  /** Имя блока отсутствует в реестре 1.21.4 -> сколько записей палитры затронуто. */
+  /** Имя блока отсутствует в реестре 1.21.6 -> сколько записей палитры затронуто. */
   missingBlocks: Map<string, number>;
   /** Блок переименован между версиями и подменён по таблице. */
   renamedBlocks: Map<string, number>;
@@ -39,7 +39,7 @@ function bump(map: Map<string, number>, key: string): void {
 // ===== Переименования блоков =====
 
 /**
- * Блоки, переименованные между 1.13 и 1.21.4. `maxDataVersion` ограничивает правило
+ * Блоки, переименованные между 1.13 и 1.21.6. `maxDataVersion` ограничивает правило
  * версиями, в которых старое имя означало именно этот блок: например `stone_slab`
  * в 1.13 — это плита из полированного камня, а с 1.14 так называется другой блок.
  */
@@ -55,6 +55,70 @@ const BLOCK_RENAMES: Array<{ from: string; to: string; maxDataVersion?: number }
   { from: 'stone_slab', to: 'smooth_stone_slab', maxDataVersion: 1631 },
   // 1.13 ещё звал вагонетку с воронкой иначе (встречается в TileEntities, не в палитре)
   { from: 'cactus_flower_pot', to: 'potted_cactus' },
+
+  // ===== Блоки новее мешера 1.21.6 (1.21.7–1.21.11) → ближайший аналог =====
+  { from: 'oak_shelf', to: 'chiseled_bookshelf' },
+  { from: 'spruce_shelf', to: 'chiseled_bookshelf' },
+  { from: 'birch_shelf', to: 'chiseled_bookshelf' },
+  { from: 'jungle_shelf', to: 'chiseled_bookshelf' },
+  { from: 'acacia_shelf', to: 'chiseled_bookshelf' },
+  { from: 'dark_oak_shelf', to: 'chiseled_bookshelf' },
+  { from: 'mangrove_shelf', to: 'chiseled_bookshelf' },
+  { from: 'cherry_shelf', to: 'chiseled_bookshelf' },
+  { from: 'bamboo_shelf', to: 'chiseled_bookshelf' },
+  { from: 'crimson_shelf', to: 'chiseled_bookshelf' },
+  { from: 'warped_shelf', to: 'chiseled_bookshelf' },
+  { from: 'pale_oak_shelf', to: 'chiseled_bookshelf' },
+  { from: 'copper_chest', to: 'chest' },
+  { from: 'exposed_copper_chest', to: 'chest' },
+  { from: 'weathered_copper_chest', to: 'chest' },
+  { from: 'oxidized_copper_chest', to: 'chest' },
+  { from: 'waxed_copper_chest', to: 'chest' },
+  { from: 'waxed_exposed_copper_chest', to: 'chest' },
+  { from: 'waxed_weathered_copper_chest', to: 'chest' },
+  { from: 'waxed_oxidized_copper_chest', to: 'chest' },
+  { from: 'copper_golem_statue', to: 'copper_block' },
+  { from: 'exposed_copper_golem_statue', to: 'exposed_copper' },
+  { from: 'weathered_copper_golem_statue', to: 'weathered_copper' },
+  { from: 'oxidized_copper_golem_statue', to: 'oxidized_copper' },
+  { from: 'waxed_copper_golem_statue', to: 'copper_block' },
+  { from: 'waxed_exposed_copper_golem_statue', to: 'exposed_copper' },
+  { from: 'waxed_weathered_copper_golem_statue', to: 'weathered_copper' },
+  { from: 'waxed_oxidized_copper_golem_statue', to: 'oxidized_copper' },
+  { from: 'copper_torch', to: 'torch' },
+  { from: 'copper_wall_torch', to: 'wall_torch' },
+  { from: 'copper_lantern', to: 'lantern' },
+  { from: 'exposed_copper_lantern', to: 'lantern' },
+  { from: 'weathered_copper_lantern', to: 'lantern' },
+  { from: 'oxidized_copper_lantern', to: 'lantern' },
+  { from: 'waxed_copper_lantern', to: 'lantern' },
+  { from: 'waxed_exposed_copper_lantern', to: 'lantern' },
+  { from: 'waxed_weathered_copper_lantern', to: 'lantern' },
+  { from: 'waxed_oxidized_copper_lantern', to: 'lantern' },
+  { from: 'copper_chain', to: 'chain' },
+  { from: 'exposed_copper_chain', to: 'chain' },
+  { from: 'weathered_copper_chain', to: 'chain' },
+  { from: 'oxidized_copper_chain', to: 'chain' },
+  { from: 'waxed_copper_chain', to: 'chain' },
+  { from: 'waxed_exposed_copper_chain', to: 'chain' },
+  { from: 'waxed_weathered_copper_chain', to: 'chain' },
+  { from: 'waxed_oxidized_copper_chain', to: 'chain' },
+  { from: 'iron_chain', to: 'chain' },
+  { from: 'copper_bars', to: 'iron_bars' },
+  { from: 'exposed_copper_bars', to: 'iron_bars' },
+  { from: 'weathered_copper_bars', to: 'iron_bars' },
+  { from: 'oxidized_copper_bars', to: 'iron_bars' },
+  { from: 'waxed_copper_bars', to: 'iron_bars' },
+  { from: 'waxed_exposed_copper_bars', to: 'iron_bars' },
+  { from: 'waxed_weathered_copper_bars', to: 'iron_bars' },
+  { from: 'waxed_oxidized_copper_bars', to: 'iron_bars' },
+  { from: 'exposed_lightning_rod', to: 'lightning_rod' },
+  { from: 'weathered_lightning_rod', to: 'lightning_rod' },
+  { from: 'oxidized_lightning_rod', to: 'lightning_rod' },
+  { from: 'waxed_lightning_rod', to: 'lightning_rod' },
+  { from: 'waxed_exposed_lightning_rod', to: 'lightning_rod' },
+  { from: 'waxed_weathered_lightning_rod', to: 'lightning_rod' },
+  { from: 'waxed_oxidized_lightning_rod', to: 'lightning_rod' },
 ];
 
 /** Быстрый поиск правила по имени. */
@@ -276,7 +340,7 @@ export function formatStats(stats: MappingStats, limit = 12): string[] {
     const tail = sorted.length > limit ? ` … и ещё ${sorted.length - limit}` : '';
     lines.push(`${title} (${map.size}): ${head}${tail}`);
   };
-  dump('нет в 1.21.4 (блоки)', stats.missingBlocks);
+  dump('нет в 1.21.6 (блоки)', stats.missingBlocks);
   dump('переименованные блоки', stats.renamedBlocks);
   dump('отброшенные свойства', stats.droppedProps);
   dump('неизвестные значения свойств', stats.unknownValues);

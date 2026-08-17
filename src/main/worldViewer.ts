@@ -16,6 +16,60 @@ import {
 } from './anvil';
 import { getInstancesDir } from './launcher';
 
+// ===== Профиль игрока для маркера в предпросмотре =====
+
+export interface WorldPreviewProfile {
+  username: string;
+  uuid?: string;
+  skinDataUrl?: string;
+}
+
+let previewProfile: WorldPreviewProfile | null = null;
+
+export function setWorldPreviewProfile(profile: WorldPreviewProfile | null): void {
+  previewProfile = profile && profile.username
+    ? {
+        username: String(profile.username).slice(0, 32),
+        uuid: profile.uuid ? String(profile.uuid) : undefined,
+        skinDataUrl: typeof profile.skinDataUrl === 'string' ? profile.skinDataUrl : undefined,
+      }
+    : null;
+}
+
+/** Профиль из IPC или fallback: accounts.json + первый локальный скин. */
+export function getWorldPreviewProfile(): WorldPreviewProfile {
+  if (previewProfile?.username) return previewProfile;
+  try {
+    const launcherData = path.join(process.env.APPDATA || process.cwd(), '.Undefined Client');
+    const accountsPath = path.join(launcherData, 'accounts.json');
+    let username = 'Player';
+    let uuid: string | undefined;
+    if (fs.existsSync(accountsPath)) {
+      const accounts = JSON.parse(fs.readFileSync(accountsPath, 'utf8'));
+      const acc = Array.isArray(accounts) && accounts[0];
+      if (acc) {
+        username = String(acc.username || acc.name || username);
+        uuid = acc.uuid ? String(acc.uuid) : undefined;
+      }
+    }
+    let skinDataUrl: string | undefined;
+    const skinsMeta = path.join(launcherData, 'skins', 'skins.json');
+    if (fs.existsSync(skinsMeta)) {
+      const skins = JSON.parse(fs.readFileSync(skinsMeta, 'utf8'));
+      const skin = Array.isArray(skins)
+        ? skins.find((s: any) => s?.id && !String(s.id).includes('cape') && fs.existsSync(path.join(launcherData, 'skins', `${s.id}.png`)))
+        : null;
+      if (skin?.id) {
+        const png = path.join(launcherData, 'skins', `${skin.id}.png`);
+        skinDataUrl = `data:image/png;base64,${fs.readFileSync(png).toString('base64')}`;
+      }
+    }
+    return { username, uuid, skinDataUrl };
+  } catch {
+    return { username: 'Player' };
+  }
+}
+
 // ===== Названия версий по DataVersion =====
 
 /** Релизные версии Java Edition: DataVersion -> имя. Нужны только для сообщений. */
@@ -32,6 +86,7 @@ const RELEASES: Array<[number, string]> = [
   [3953, '1.21'], [3955, '1.21.1'], [4080, '1.21.2'], [4082, '1.21.3'], [4189, '1.21.4'],
   [4325, '1.21.5'], [4435, '1.21.6'], [4438, '1.21.7'], [4440, '1.21.8'],
   [4554, '1.21.9'], [4556, '1.21.10'], [4671, '1.21.11'],
+  [4790, '26.1.2'], [4903, '26.2'],
 ];
 
 /** Ближайший релиз, не превышающий dataVersion (для миров из снапшотов). */
@@ -48,7 +103,7 @@ function guessVersionName(dataVersion: number): string {
   return exact ? exact[1] : `~${best} (DataVersion ${dataVersion})`;
 }
 
-export const SUPPORTED_RANGE = '1.13 – 1.21';
+export const SUPPORTED_RANGE = '1.13 – 26.2';
 
 /** Радиус (в чанках), по которому ищется самая плотно сгенерированная область мира. */
 const START_SEARCH_RADIUS = 5;
@@ -65,19 +120,143 @@ export interface WorldInfo {
   dataVersion: number;
   minY: number;
   worldHeight: number;
-  /** Стартовая точка камеры в мировых координатах. */
+  /** Стартовая точка камеры в мировых координатах (ноги игрока / спавн). */
   start: { x: number; y: number; z: number };
+  /** Углы взгляда игрока в градусах (как Rotation в NBT), если известны. */
+  yaw?: number;
+  pitch?: number;
   /** Сколько колонок доступно во всех region-файлах. */
   chunkCount: number;
   regionCount: number;
   /** Источник стартовой позиции: player | spawn | chunk. */
   startSource: string;
+  /** Измерение игрока, если известно. */
+  dimension?: string;
 }
 
 function nbtValue(tag: any): any {
   if (tag == null) return undefined;
   if (typeof tag === 'object' && 'value' in tag) return tag.value;
   return tag;
+}
+
+/** Достаёт числовой список из NBT list (Pos / Rotation) в любом виде prismarine-nbt. */
+function nbtNumberList(tag: any): number[] | null {
+  const raw = nbtValue(tag);
+  const list = Array.isArray(raw) ? raw : nbtValue(raw);
+  if (!Array.isArray(list) || list.length < 2) return null;
+  const nums = list.map((v) => Number(nbtValue(v)));
+  if (nums.some((n) => !Number.isFinite(n))) return null;
+  return nums;
+}
+
+interface PlayerPose {
+  x: number;
+  y: number;
+  z: number;
+  yaw?: number;
+  pitch?: number;
+  /** minecraft:overworld | minecraft:the_nether | minecraft:the_end | … */
+  dimension?: string;
+  /** mtime источника (для выбора freshest). */
+  mtimeMs?: number;
+}
+
+function normalizeDimension(raw: unknown): string | undefined {
+  if (typeof raw === 'string' && raw) {
+    if (raw.includes(':')) return raw;
+    // Старые числовые id иногда приходят строкой
+    if (raw === '0') return 'minecraft:overworld';
+    if (raw === '-1') return 'minecraft:the_nether';
+    if (raw === '1') return 'minecraft:the_end';
+    return raw.startsWith('minecraft:') ? raw : `minecraft:${raw}`;
+  }
+  if (typeof raw === 'number') {
+    if (raw === 0) return 'minecraft:overworld';
+    if (raw === -1) return 'minecraft:the_nether';
+    if (raw === 1) return 'minecraft:the_end';
+  }
+  return undefined;
+}
+
+function poseFromPlayerTag(player: any, mtimeMs?: number): PlayerPose | null {
+  if (!player) return null;
+  const pos = nbtNumberList(player.Pos);
+  if (!pos || pos.length < 3) return null;
+  const rot = nbtNumberList(player.Rotation);
+  const dimRaw = nbtValue(player.Dimension);
+  return {
+    x: pos[0],
+    y: pos[1],
+    z: pos[2],
+    yaw: rot ? rot[0] : undefined,
+    pitch: rot ? rot[1] : undefined,
+    dimension: normalizeDimension(dimRaw),
+    mtimeMs,
+  };
+}
+
+/**
+ * Последняя поза из playerdata/*.dat (новее level.dat Player после выхода в меню).
+ * Берём самый свежий по mtime файл.
+ */
+async function readNewestPlayerdataPose(worldPath: string): Promise<PlayerPose | null> {
+  const dir = path.join(worldPath, 'playerdata');
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.dat'));
+  } catch {
+    return null;
+  }
+  if (files.length === 0) return null;
+  files.sort((a, b) => {
+    try {
+      return fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs;
+    } catch {
+      return 0;
+    }
+  });
+  for (const file of files.slice(0, 3)) {
+    try {
+      const full = path.join(dir, file);
+      const buf = fs.readFileSync(full);
+      const mtimeMs = fs.statSync(full).mtimeMs;
+      const { parsed } = await parseNbt(buf);
+      const root: any = (parsed as any)?.value ?? parsed;
+      const pose = poseFromPlayerTag(root, mtimeMs);
+      if (pose) return pose;
+    } catch {
+      /* битый dat — следующий */
+    }
+  }
+  return null;
+}
+
+/** Каталог region для измерения игрока. */
+function resolveRegionDirForDimension(worldPath: string, dimension?: string): string | null {
+  const dim = dimension || 'minecraft:overworld';
+  const preferred: string[] = [];
+  if (dim === 'minecraft:the_nether' || dim === 'minecraft:nether') {
+    preferred.push(
+      path.join(worldPath, 'DIM-1', 'region'),
+      path.join(worldPath, 'dimensions', 'minecraft', 'the_nether', 'region'),
+    );
+  } else if (dim === 'minecraft:the_end' || dim === 'minecraft:end') {
+    preferred.push(
+      path.join(worldPath, 'DIM1', 'region'),
+      path.join(worldPath, 'dimensions', 'minecraft', 'the_end', 'region'),
+    );
+  } else if (dim !== 'minecraft:overworld') {
+    const [ns, id] = dim.includes(':') ? dim.split(':') : ['minecraft', dim];
+    preferred.push(path.join(worldPath, 'dimensions', ns, id, 'region'));
+  }
+  // Overworld и fallback — общий поиск.
+  for (const dir of preferred) {
+    try {
+      if (fs.existsSync(dir) && fs.readdirSync(dir).some((f) => parseRegionName(f))) return dir;
+    } catch { /* */ }
+  }
+  return resolveRegionDir(worldPath);
 }
 
 /**
@@ -267,8 +446,15 @@ class WorldSession {
     const column = this.readColumnAt(chunkX, chunkZ);
     const usable = column && isRenderableStatus(column.status) ? column : null;
     if (column && !usable) this.stats.skippedStatus++;
-    // Кэш держим ограниченным: 1024 колонки ~ несколько десятков МБ.
-    if (this.columnCache.size > 1024) this.columnCache.clear();
+    // Кэш держим большим: 4096 колонок — чтобы FAR-радиус не вытеснял ближние.
+    if (this.columnCache.size > 4096) {
+      const drop = this.columnCache.size - 3072;
+      let i = 0;
+      for (const k of this.columnCache.keys()) {
+        this.columnCache.delete(k);
+        if (++i >= drop) break;
+      }
+    }
     this.columnCache.set(key, usable);
     return usable;
   }
@@ -329,18 +515,21 @@ export async function describeWorld(worldPath: string): Promise<WorldInfo> {
 
   if (!worldPath || !fs.existsSync(worldPath)) return fail(`Папка мира не найдена: ${worldPath}`);
 
-  const regionDir = resolveRegionDir(worldPath);
-  if (!regionDir) {
-    return fail('В папке мира нет region-файлов (.mca). Похоже, мир ни разу не открывали в игре.');
-  }
-
   let name = path.basename(worldPath);
   let dataVersion = 0;
   let versionName = '';
   let start: { x: number; y: number; z: number } | null = null;
+  let yaw: number | undefined;
+  let pitch: number | undefined;
   let startSource = 'none';
+  let playerDimension: string | undefined;
 
   const datBuffer = readLevelDatBuffer(worldPath);
+  let levelDatMtime = 0;
+  try {
+    levelDatMtime = fs.statSync(path.join(worldPath, 'level.dat')).mtimeMs;
+  } catch { /* */ }
+
   if (datBuffer) {
     try {
       const { parsed } = await parseNbt(datBuffer);
@@ -352,10 +541,20 @@ export async function describeWorld(worldPath: string): Promise<WorldInfo> {
       const vName = nbtValue((data.Version as any)?.value?.Name ?? (data.Version as any)?.Name);
       if (typeof vName === 'string') versionName = vName;
 
-      const playerPos = nbtValue(nbtValue(data.Player)?.Pos);
-      const posList = Array.isArray(playerPos) ? playerPos : nbtValue(playerPos);
-      if (Array.isArray(posList) && posList.length === 3) {
-        start = { x: Number(posList[0]), y: Number(posList[1]), z: Number(posList[2]) };
+      // Берём более свежий источник: playerdata vs вложенный Player в level.dat.
+      const fromFiles = await readNewestPlayerdataPose(worldPath);
+      const fromLevel = poseFromPlayerTag(nbtValue(data.Player), levelDatMtime);
+      let pose: PlayerPose | null = null;
+      if (fromFiles && fromLevel) {
+        pose = (fromFiles.mtimeMs ?? 0) >= (fromLevel.mtimeMs ?? 0) ? fromFiles : fromLevel;
+      } else {
+        pose = fromFiles ?? fromLevel;
+      }
+      if (pose) {
+        start = { x: pose.x, y: pose.y, z: pose.z };
+        yaw = pose.yaw;
+        pitch = pose.pitch;
+        playerDimension = pose.dimension;
         startSource = 'player';
       }
       if (!start) {
@@ -370,6 +569,12 @@ export async function describeWorld(worldPath: string): Promise<WorldInfo> {
     } catch (e: any) {
       console.warn(`[worldViewer] level.dat не разобран: ${e?.message || e}`);
     }
+  }
+
+  // Region для измерения, где стоит игрок (иначе Pos из ада на overworld = «не там»).
+  const regionDir = resolveRegionDirForDimension(worldPath, playerDimension);
+  if (!regionDir) {
+    return fail('В папке мира нет region-файлов (.mca). Похоже, мир ни разу не открывали в игре.');
   }
 
   const session = new WorldSession(regionDir);
@@ -410,8 +615,9 @@ export async function describeWorld(worldPath: string): Promise<WorldInfo> {
       start = { x: probe.x * 16 + 8, y: sampleSurfaceY(probe) + 2, z: probe.z * 16 + 8 };
       startSource = 'chunk';
     }
-  } else {
-    // Позиция игрока может указывать в незагруженную область — уточняем Y по рельефу.
+  } else if (startSource !== 'player') {
+    // Для спавна/чанка поднимаем камеру над поверхностью. Позу игрока не трогаем —
+    // иначе уводит с последней позиции (пещера, полёт, этаж здания).
     const column = session.readColumn(Math.floor(start.x / 16), Math.floor(start.z / 16));
     if (column) {
       start.y = Math.max(start.y, sampleSurfaceY(column, start.x & 15, start.z & 15) + 2);
@@ -434,9 +640,12 @@ export async function describeWorld(worldPath: string): Promise<WorldInfo> {
     minY: geometry.minY,
     worldHeight: geometry.worldHeight,
     start,
+    yaw,
+    pitch,
     chunkCount: session.countChunks(),
     regionCount: session.regionCount,
     startSource,
+    dimension: playerDimension,
   };
 }
 
@@ -501,7 +710,65 @@ export function registerWorldViewerIpc(): void {
     return out;
   });
 
+  /**
+   * Все чанки в квадрате chebyshev ≤ radius одним IPC (быстрее, чем по кольцам).
+   * Для больших radius рендерер лучше стримит кольцами — этот хендлер для NEAR/шагов.
+   */
+  ipcMain.handle(
+    'worldview:columns-radius',
+    (_event, worldPath: string, centerX: number, centerZ: number, radius: number) => {
+      const session = sessions.get(worldPath);
+      if (!session) return { columns: [] as WireColumn[], missing: [] as Array<[number, number]> };
+      const r = Math.max(0, Math.min(16, Math.floor(Number(radius) || 0)));
+      const cx0 = Math.floor(Number(centerX) || 0);
+      const cz0 = Math.floor(Number(centerZ) || 0);
+      const columns: WireColumn[] = [];
+      const missing: Array<[number, number]> = [];
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          const cx = cx0 + dx;
+          const cz = cz0 + dz;
+          const column = session.readColumn(cx, cz);
+          if (column) columns.push(column);
+          else missing.push([cx, cz]);
+        }
+      }
+      return { columns, missing };
+    },
+  );
+
+  /**
+   * Кольцо чанков (chebyshev distance === radius) одним IPC.
+   */
+  ipcMain.handle(
+    'worldview:columns-ring',
+    (_event, worldPath: string, centerX: number, centerZ: number, radius: number) => {
+      const session = sessions.get(worldPath);
+      if (!session) return { columns: [] as WireColumn[], missing: [] as Array<[number, number]> };
+      const r = Math.max(0, Math.floor(Number(radius) || 0));
+      const cx0 = Math.floor(Number(centerX) || 0);
+      const cz0 = Math.floor(Number(centerZ) || 0);
+      const columns: WireColumn[] = [];
+      const missing: Array<[number, number]> = [];
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const cx = cx0 + dx;
+          const cz = cz0 + dz;
+          const column = session.readColumn(cx, cz);
+          if (column) columns.push(column);
+          else missing.push([cx, cz]);
+        }
+      }
+      return { columns, missing };
+    },
+  );
+
+  /** Ник + скин для маркера игрока в окне предпросмотра. */
+  ipcMain.handle('worldview:preview-profile', () => getWorldPreviewProfile());
+
   ipcMain.handle('worldview:stats', (_event, worldPath: string) => sessions.get(worldPath)?.stats ?? null);
+
 
   ipcMain.handle('worldview:close', (_event, worldPath: string) => {
     sessions.get(worldPath)?.close();

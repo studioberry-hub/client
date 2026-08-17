@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, protocol, net, WebContentsView } from 'electron';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { initLauncher, addProgressSink } from './launcher';
-import { setApiBase, getApiBase } from '../shared/apiBase';
+import { setApiBase, getApiBase, releaseLatestUrl } from '../shared/apiBase';
 import {
   DEEP_LINK_SCHEME,
   findDeepLinkInArgv,
@@ -14,6 +14,7 @@ import {
   type DeepLinkPayload,
 } from './deepLink';
 import { registerInstanceShareIpc } from './instanceShare';
+import { listAiToolSchemas, registerAiToolIpc } from './ai-tools';
 
 // ===== Ленивая загрузка модуля просмотра мира =====
 // worldViewer тянет prismarine-nbt (~100 мс на require), а нужен только при
@@ -103,7 +104,7 @@ function createConsoleWindow(): void {
     transparent: false,
     backgroundColor: '#2A2A2A',
     show: false,
-    icon: path.join(__dirname, '../../assets/icons/logo-40.svg'),
+    icon: path.join(__dirname, '../../assets/icons/Icon.svg'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -128,9 +129,15 @@ function createConsoleWindow(): void {
   });
 }
 
-// ===== Окно просмотра мира =====
+// ===== Просмотр мира (модалка в главном окне через WebContentsView) =====
+// Отдельный webContents нужен: app://, wasm-воркеры, world-preload и свой CSP.
+// WebContentsView рисуется поверх HTML в заданных bounds — «дырка» модалки.
 
-let worldWindow: BrowserWindow | null = null;
+let worldView: WebContentsView | null = null;
+/** Путь мира, для которого создан текущий view (additionalArguments только при create). */
+let worldViewPath = '';
+/** Ожидает attach из рендерера после открытия chrome-модалки (CLI / гонка). */
+let pendingWorldPath = '';
 
 /** Корень кастомного протокола: рядом лежат world.html, world.js, воркеры и wasm. */
 const worldRoot = () => path.join(__dirname, '../../src/renderer/world');
@@ -139,10 +146,51 @@ function registerWorldProtocol(): void {
   protocol.handle('app', (request) => {
     const { pathname } = new URL(request.url);
     const rel = decodeURIComponent(pathname).replace(/^[\\/]+/, '');
-    const file = path.join(worldRoot(), rel);
-    // Защита от выхода за пределы корня протокола.
-    if (!file.startsWith(worldRoot())) {
+    // Частые «пустые» запросы браузера — не шумим ERR_FILE_NOT_FOUND.
+    if (!rel || rel === 'favicon.ico') {
+      return new Response(null, { status: 204 });
+    }
+
+    const rootDir = path.resolve(worldRoot());
+    // Шрифты ников / UI окна мира: app://local/fonts/... → assets/fonts/...
+    const file = rel.startsWith('fonts/')
+      ? path.resolve(path.join(__dirname, '../../assets', rel))
+      : path.resolve(path.join(rootDir, rel));
+
+    const assetsRoot = path.resolve(path.join(__dirname, '../../assets'));
+    const allowed =
+      file.startsWith(rootDir + path.sep) || file === rootDir
+      || ((rel.startsWith('fonts/')) && (file.startsWith(assetsRoot + path.sep) || file === assetsRoot));
+    if (!allowed) {
       return new Response('Forbidden', { status: 403 });
+    }
+    if (!fs.existsSync(file)) {
+      return new Response(`Not found: ${rel}`, { status: 404 });
+    }
+    // Явный MIME для wasm: иначе instantiateStreaming падает и идёт медленный fallback.
+    if (rel.endsWith('.wasm')) {
+      const buf = fs.readFileSync(file);
+      return new Response(buf, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/wasm',
+          'Content-Length': String(buf.byteLength),
+        },
+      });
+    }
+    if (rel.endsWith('.ttf') || rel.endsWith('.otf') || rel.endsWith('.woff2') || rel.endsWith('.woff')) {
+      const buf = fs.readFileSync(file);
+      const mime = rel.endsWith('.woff2') ? 'font/woff2'
+        : rel.endsWith('.woff') ? 'font/woff'
+        : rel.endsWith('.otf') ? 'font/otf'
+        : 'font/ttf';
+      return new Response(buf, {
+        status: 200,
+        headers: {
+          'Content-Type': mime,
+          'Content-Length': String(buf.byteLength),
+        },
+      });
     }
     return net.fetch(pathToFileURL(file).toString());
   });
@@ -166,51 +214,112 @@ function worldShotFromArgv(): string {
   return '';
 }
 
-function createWorldWindow(worldPath = ''): void {
-  if (worldWindow && !worldWindow.isDestroyed()) {
-    worldWindow.focus();
+type WorldViewBounds = { x: number; y: number; width: number; height: number };
+
+function normalizeBounds(b: Partial<WorldViewBounds> | null | undefined): WorldViewBounds | null {
+  if (!b) return null;
+  const x = Math.round(Number(b.x) || 0);
+  const y = Math.round(Number(b.y) || 0);
+  const width = Math.max(1, Math.round(Number(b.width) || 0));
+  const height = Math.max(1, Math.round(Number(b.height) || 0));
+  if (!width || !height) return null;
+  return { x, y, width, height };
+}
+
+function defaultWorldBounds(): WorldViewBounds {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return { x: 24, y: 72, width: 980, height: 600 };
+  }
+  const [cw, ch] = mainWindow.getContentSize();
+  const pad = 24;
+  const header = 56;
+  return {
+    x: pad,
+    y: pad + header,
+    width: Math.max(1, cw - pad * 2),
+    height: Math.max(1, ch - pad * 2 - header),
+  };
+}
+
+function destroyWorldView(): void {
+  if (!worldView) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.contentView.removeChildView(worldView); } catch { /* */ }
+  }
+  try {
+    if (!worldView.webContents.isDestroyed()) worldView.webContents.close();
+  } catch { /* */ }
+  worldView = null;
+  worldViewPath = '';
+}
+
+/**
+ * Встраивает просмотр мира в главное окно на заданный прямоугольник (DIP).
+ * Путь мира — только через additionalArguments, поэтому при смене пути view пересоздаётся.
+ */
+function attachWorldView(worldPath: string, bounds?: WorldViewBounds | null): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  ensureWorldViewerIpc();
+  const rect = normalizeBounds(bounds) || defaultWorldBounds();
+  pendingWorldPath = worldPath;
+
+  if (worldView && worldViewPath === worldPath) {
+    worldView.setBounds(rect);
+    try { worldView.webContents.focus(); } catch { /* */ }
     return;
   }
-  ensureWorldViewerIpc();
-  worldWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    backgroundColor: '#101216',
-    show: false,
-    title: 'Undefined Client — просмотр мира',
-    icon: path.join(__dirname, '../../assets/icons/logo-40.svg'),
+
+  destroyWorldView();
+  worldViewPath = worldPath;
+  worldView = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, '../preload/world-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // Путь к миру передаётся окну аргументом процесса рендерера, а не через URL:
-      // так его видно в preload до загрузки документа.
       additionalArguments: [
         `--world-path=${encodeURIComponent(worldPath)}`,
         `--world-shot=${encodeURIComponent(worldShotFromArgv())}`,
+        '--world-embed=1',
       ],
     },
   });
-
-  worldWindow.loadURL('app://local/world.html');
-
-  // Лог окна мира дублируется в stdout процесса: окно диагностическое, и без этого
-  // не видно ни ошибок мешера, ни статистики загрузки при запуске из консоли.
-  worldWindow.webContents.on('console-message', (_event, _level, message) => {
-    if (message.startsWith('[world')) console.log(message);
-  });
-
-  worldWindow.once('ready-to-show', () => {
-    worldWindow?.show();
-    if (process.argv.includes('--dev')) {
-      worldWindow?.webContents.openDevTools({ mode: 'detach' });
+  // Непрозрачный фон + скругление всей карточки (host = вся модалка).
+  worldView.setBackgroundColor('#101216');
+  try { worldView.setBorderRadius(12); } catch { /* */ }
+  mainWindow.contentView.addChildView(worldView);
+  worldView.setBounds(rect);
+  worldView.webContents.loadURL('app://local/world.html');
+  worldView.webContents.once('did-finish-load', () => {
+    // После загрузки ещё раз выровнять bounds — layout модалки мог уточниться.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('world:request-bounds-sync');
     }
   });
-
-  worldWindow.on('closed', () => {
-    worldWindow = null;
+  worldView.webContents.on('console-message', (_event, _level, message) => {
+    if (message.startsWith('[world')) console.log(message);
   });
+  worldView.webContents.on('destroyed', () => {
+    if (worldViewPath === worldPath) {
+      worldView = null;
+      worldViewPath = '';
+    }
+  });
+  if (process.argv.includes('--dev')) {
+    worldView.webContents.openDevTools({ mode: 'detach' });
+  }
+}
+
+/** Просит рендерер открыть chrome-модалку; bounds придут через world:attach. */
+function requestWorldModal(worldPath = ''): void {
+  pendingWorldPath = worldPath;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('world:modal-open', { worldPath });
+}
+
+function createWorldWindow(worldPath = ''): void {
+  // Совместимость CLI `--world`: сначала главное окно, затем модалка.
+  requestWorldModal(worldPath);
 }
 
 function createWindow(): void {
@@ -223,7 +332,7 @@ function createWindow(): void {
     transparent: false,
     backgroundColor: '#2A2A2A',
     show: false,
-    icon: path.join(__dirname, '../../assets/icons/logo-40.svg'),
+    icon: path.join(__dirname, '../../assets/icons/Icon.svg'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -247,6 +356,7 @@ function createWindow(): void {
   });
 
   mainWindow.on('closed', () => {
+    destroyWorldView();
     mainWindow = null;
   });
 
@@ -375,12 +485,16 @@ app.whenReady().then(() => {
   // не нужен, а его модуль тяжёлый.
   setTimeout(ensureWorldViewerIpc, 3000);
 
-  // Окно мира открывается автоматически по флагу запуска:
+  // Просмотр мира по флагу запуска — модалка в главном окне после ready-to-show:
   //   electron . --world                     — первый найденный мир в инстансах сборок
   //   electron . --world=<путь к папке мира>  — конкретный мир
   const worldArg = worldPathFromArgv();
   if (worldArg || process.argv.some((a) => a === '--world' || a.startsWith('--world='))) {
-    createWorldWindow(worldArg);
+    const openCliWorld = () => requestWorldModal(worldArg);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isVisible()) openCliWorld();
+      else mainWindow.once('ready-to-show', () => setTimeout(openCliWorld, 200));
+    }
   }
 
   app.on('activate', () => {
@@ -420,9 +534,69 @@ ipcMain.handle('console:open', () => {
   createConsoleWindow();
 });
 
-ipcMain.handle('world:open', (_event, worldPath?: string) => {
-  createWorldWindow(typeof worldPath === 'string' ? worldPath : '');
+ipcMain.handle('console:append', (_event, message: unknown) => {
+  const text = String(message ?? '').trim();
+  if (!text) return { ok: false };
+  const data = { kind: 'info', message: text };
+  consoleLogHistory.push(data);
+  if (consoleLogHistory.length > 2000) consoleLogHistory.splice(0, consoleLogHistory.length - 2000);
+  if (consoleLive && consoleWindow && !consoleWindow.isDestroyed()) {
+    consoleWindow.webContents.send('launcher:progress', data);
+  }
+  return { ok: true };
 });
+
+ipcMain.handle('world:open', (_event, worldPath?: string, profile?: { username?: string; uuid?: string; skinDataUrl?: string }, bounds?: WorldViewBounds) => {
+  try {
+    const { setWorldPreviewProfile } = require('./worldViewer') as typeof import('./worldViewer');
+    if (profile && typeof profile === 'object') {
+      setWorldPreviewProfile({
+        username: String(profile.username || 'Player'),
+        uuid: profile.uuid ? String(profile.uuid) : undefined,
+        skinDataUrl: typeof profile.skinDataUrl === 'string' ? profile.skinDataUrl : undefined,
+      });
+    }
+  } catch { /* */ }
+  const pathStr = typeof worldPath === 'string' ? worldPath : '';
+  pendingWorldPath = pathStr;
+  const rect = normalizeBounds(bounds);
+  if (rect && mainWindow && !mainWindow.isDestroyed()) {
+    attachWorldView(pathStr, rect);
+    return { ok: true, embedded: true };
+  }
+  // Bounds ещё нет — просим рендерер открыть модалку и вызвать world:attach.
+  requestWorldModal(pathStr);
+  return { ok: true, embedded: true, pending: true };
+});
+
+ipcMain.handle('world:attach', (_event, bounds?: WorldViewBounds) => {
+  const pathStr = pendingWorldPath || worldViewPath || '';
+  attachWorldView(pathStr, normalizeBounds(bounds));
+  return { ok: true };
+});
+
+ipcMain.handle('world:set-bounds', (_event, bounds?: WorldViewBounds) => {
+  if (!worldView) return { ok: false };
+  const rect = normalizeBounds(bounds);
+  if (rect) worldView.setBounds(rect);
+  return { ok: true };
+});
+
+ipcMain.handle('world:close', () => {
+  destroyWorldView();
+  pendingWorldPath = '';
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('world:modal-closed');
+  }
+  return { ok: true };
+});
+
+try {
+  require('./worldExport').registerWorldExportIpc();
+  require('./clientJarAssets').registerClientJarIpc();
+} catch (e) {
+  console.warn('[worldExport] IPC не зарегистрирован:', e);
+}
 
 /** Список миров во всех инстансах — нужен окну выбора и автоподбору при `--world`. */
 ipcMain.handle('world:list', () => worldViewer().listAllWorlds());
@@ -463,10 +637,53 @@ ipcMain.handle('shell:openExternal', async (_event, url: string) => {
   }
 });
 
-ipcMain.handle('shell:openPath', async (_event, dirPath: string) => {
-  if (typeof dirPath === 'string') {
-    await shell.openPath(dirPath);
+// ===== Вложения AI: выбор файлов + безопасное чтение текста =====
+ipcMain.handle('dialog:pickFiles', async () => {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  const result = await dialog.showOpenDialog(win!, {
+    title: 'Прикрепить к агенту',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Text / configs / logs', extensions: ['txt', 'log', 'json', 'md', 'cfg', 'properties', 'toml', 'yml', 'yaml', 'snbt'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled) return [] as string[];
+  return result.filePaths.slice(0, 12);
+});
+
+ipcMain.handle('ai:readAttachFile', async (_event, filePath: string) => {
+  const raw = String(filePath || '').trim();
+  if (!raw) return { error: 'empty_path' };
+  const resolved = path.resolve(raw);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    return { error: 'not_found', path: resolved, name: path.basename(resolved) };
   }
+  const name = path.basename(resolved);
+  const ext = path.extname(resolved).toLowerCase().replace(/^\./, '');
+  const textExt = new Set(['txt', 'log', 'json', 'md', 'cfg', 'properties', 'toml', 'yml', 'yaml', 'snbt', 'css', 'js', 'ts', 'xml', 'csv']);
+  const stat = fs.statSync(resolved);
+  if (stat.size > 2 * 1024 * 1024) {
+    return { name, path: resolved, error: 'too_large' };
+  }
+  if (!textExt.has(ext)) {
+    return { name, path: resolved };
+  }
+  try {
+    const buf = fs.readFileSync(resolved);
+    // Отсекаем явный бинарник
+    if (buf.includes(0)) return { name, path: resolved };
+    const text = buf.toString('utf-8').slice(0, 40_000);
+    return { name, path: resolved, text };
+  } catch (e: any) {
+    return { name, path: resolved, error: e?.message || 'read_failed' };
+  }
+});
+
+ipcMain.handle('shell:openPath', async (_event, dirPath: string) => {
+  if (typeof dirPath !== 'string' || !dirPath.trim()) return 'invalid_path';
+  // Пустая строка = успех (API Electron)
+  return shell.openPath(dirPath);
 });
 
 ipcMain.handle('updates:current', () => app.getVersion());
@@ -482,20 +699,50 @@ ipcMain.handle('locale:load', async (_event, lang: string) => {
 });
 
 ipcMain.handle('updates:check', async () => {
+  const current = app.getVersion();
+
+  // ===== Сначала зеркало на сайте =====
+  try {
+    const res = await fetch(releaseLatestUrl(), {
+      headers: {
+        'User-Agent': 'Undefined-Client',
+        Accept: 'application/json',
+      },
+    });
+    if (res.ok) {
+      const info: any = await res.json();
+      const latest = String(info.tag || info.version || '');
+      const assetName =
+        info.zipFilename ||
+        (info.zipDirectAvailable || info.zipGithubUrl ? UPDATE_ASSET : null);
+      if (latest) {
+        return {
+          current,
+          latest,
+          updateAvailable: isNewerVersion(latest, current),
+          assetName,
+          source: 'site',
+        };
+      }
+    }
+  } catch {
+    /* fallback на GitHub */
+  }
+
+  // ===== Fallback: GitHub Releases =====
   try {
     const res = await fetch(
       `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`,
       {
         headers: {
           'User-Agent': 'Undefined-Client',
-          'Accept': 'application/vnd.github+json',
+          Accept: 'application/vnd.github+json',
         },
       },
     );
     if (!res.ok) return { error: `GitHub API ${res.status}` };
     const release = await res.json();
     const latest = String(release.tag_name || '');
-    const current = app.getVersion();
     const assets: any[] = release.assets || [];
     const asset = assets.find((a: any) => a.name === UPDATE_ASSET)
       ?? assets.find((a: any) => String(a.name || '').toLowerCase().endsWith('.zip'));
@@ -504,6 +751,7 @@ ipcMain.handle('updates:check', async () => {
       latest,
       updateAvailable: !!latest && isNewerVersion(latest, current),
       assetName: asset ? asset.name : null,
+      source: 'github',
     };
   } catch (e: any) {
     return { error: e?.message || 'Network error' };
@@ -558,6 +806,165 @@ ipcMain.handle('news:get', async (_event, id: string, lang?: string) => {
     if (!res.ok) return { error: `HTTP ${res.status}` };
     const data = await res.json();
     return { post: data.post || null, lang: apiLang };
+  } catch (e: any) {
+    return { error: e?.message || 'Network error' };
+  }
+});
+
+// ===== AI-агент через сайт (прокси Timeweb + MCP tools на клиенте) =====
+
+registerAiToolIpc();
+
+ipcMain.handle('ai:status', async (_event, opts?: { testerKey?: string }) => {
+  try {
+    const testerKey = String(opts?.testerKey || '').trim();
+    const headers: Record<string, string> = {
+      'User-Agent': 'Undefined-Client',
+      Accept: 'application/json',
+    };
+    if (testerKey) headers['X-UAgent-Key'] = testerKey;
+    const res = await fetch(`${getApiBase()}/api/ai/status`, { headers });
+    if (!res.ok) return { configured: false, access: false, error: `HTTP ${res.status}` };
+    return await res.json();
+  } catch (e: any) {
+    return { configured: false, access: false, error: e?.message || 'Network error' };
+  }
+});
+
+ipcMain.handle('ai:validateKey', async (_event, rawKey: string) => {
+  const testerKey = String(rawKey || '').trim();
+  if (!testerKey) return { ok: false, reason: 'missing_key', code: 'access_denied' };
+  try {
+    const res = await fetch(`${getApiBase()}/api/ai/validate-key`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Undefined-Client',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-UAgent-Key': testerKey,
+      },
+      body: JSON.stringify({ testerKey }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        reason: data?.reason || data?.error || 'access_denied',
+        code: data?.code || 'access_denied',
+      };
+    }
+    return { ok: true, label: data?.label || '', prefix: data?.prefix || '' };
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || 'Network error' };
+  }
+});
+
+ipcMain.handle('ai:chat', async (_event, payload: any) => {
+  const messages = Array.isArray(payload) ? payload : payload?.messages;
+  const enableTools = Array.isArray(payload) ? true : payload?.tools !== false;
+  const context = Array.isArray(payload) ? null : payload?.context || null;
+  const testerKey = Array.isArray(payload) ? '' : String(payload?.testerKey || '').trim();
+  if (!Array.isArray(messages) || !messages.length) {
+    return { error: 'empty_messages' };
+  }
+
+  // Жёсткий потолок на main: клиент уже сжимает историю, здесь страховка от раздувания
+  const mapped = messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'tool'))
+    .slice(-48)
+    .map((m) => {
+      if (m.role === 'tool') {
+        return {
+          role: 'tool',
+          tool_call_id: String(m.tool_call_id || ''),
+          content: String(m.content || '').slice(0, 4000),
+        };
+      }
+      const msg: any = {
+        role: m.role,
+        content: m.content == null ? null : String(m.content).slice(0, 8000),
+      };
+      if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+        msg.tool_calls = m.tool_calls;
+      }
+      return msg;
+    })
+    .filter((m) => {
+      if (m.role === 'tool') return Boolean(m.tool_call_id && m.content?.trim());
+      if (m.role === 'assistant' && m.tool_calls?.length) return true;
+      return Boolean(String(m.content || '').trim());
+    });
+  // slice(-120) мог отрезать assistant с tool_calls, оставив «осиротевшие» tool
+  const safe: any[] = [];
+  let pending = new Set<string>();
+  const flushPending = (reason: string) => {
+    for (const id of pending) {
+      safe.push({ role: 'tool', tool_call_id: id, content: JSON.stringify({ error: reason }) });
+    }
+    pending = new Set();
+  };
+  for (const m of mapped) {
+    if (m.role === 'user') {
+      flushPending('interrupted');
+      safe.push(m);
+      continue;
+    }
+    if (m.role === 'assistant') {
+      flushPending('interrupted');
+      const tcs = Array.isArray(m.tool_calls) ? m.tool_calls.filter((tc: any) => tc?.id) : [];
+      if (tcs.length) {
+        safe.push({ ...m, tool_calls: tcs, content: m.content == null || m.content === '' ? null : m.content });
+        pending = new Set(tcs.map((tc: any) => String(tc.id)));
+      } else if (String(m.content || '').trim()) {
+        safe.push({ role: 'assistant', content: String(m.content) });
+      }
+      continue;
+    }
+    if (m.role === 'tool') {
+      const id = String(m.tool_call_id || '');
+      if (!id || !pending.has(id)) continue;
+      pending.delete(id);
+      safe.push(m);
+    }
+  }
+  flushPending('incomplete');
+  if (!safe.length) return { error: 'empty_messages' };
+
+  try {
+    const body: any = { messages: safe };
+    if (enableTools) body.tools = listAiToolSchemas({ compact: true });
+    if (context && typeof context === 'object') {
+      body.context = {
+        buildId: context.buildId ? String(context.buildId).slice(0, 80) : undefined,
+        buildName: context.buildName ? String(context.buildName).slice(0, 120) : undefined,
+      };
+    }
+
+    const res = await fetch(`${getApiBase()}/api/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Undefined-Client',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(testerKey ? { 'X-UAgent-Key': testerKey } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const code = data?.code || (res.status === 403 ? 'access_denied' : undefined);
+      return {
+        error: data?.error || `HTTP ${res.status}`,
+        code,
+        reason: data?.reason,
+      };
+    }
+    return {
+      reply: String(data.reply || ''),
+      model: data.model || null,
+      toolsEnabled: Boolean(data.toolsEnabled),
+      toolCalls: Array.isArray(data.toolCalls) ? data.toolCalls : [],
+    };
   } catch (e: any) {
     return { error: e?.message || 'Network error' };
   }

@@ -11,6 +11,12 @@ import {
   runWithConcurrency,
   PROXY_MAX_CONCURRENT_DOWNLOADS,
 } from './modrinthDownload';
+import { importLocalModpack, inspectLocalModpack } from './importModpack';
+import {
+  collectInstalledProjectIds,
+  installModWithDependencies,
+  type ModInstallOptions,
+} from './modDependencies';
 import { skinImageUrl, skinProfileUrl } from '../shared/apiBase';
 
 // ===== Ленивая загрузка тяжёлых зависимостей =====
@@ -79,31 +85,31 @@ const RPC_TEXT: Record<string, { tg: string; vanilla: string; build: string; scr
     tg: 'Перейти в Telegram проекта',
     vanilla: 'Ванилла',
     build: 'Сборка',
-    screens: { home: 'В главной', builds: 'В сборках', mods: 'В каталоге модов', servers: 'На серверах', skins: 'В скинах', settings: 'В настройках', about: 'О программе', console: 'В логе загрузки' },
+    screens: { home: 'В главной', builds: 'В сборках', mods: 'В каталоге модов', servers: 'На серверах', skins: 'В скинах', ai: 'В агенте', settings: 'В настройках', about: 'О программе', console: 'В логе загрузки' },
   },
   en: {
     tg: 'Project Telegram',
     vanilla: 'Vanilla',
     build: 'Build',
-    screens: { home: 'On the main screen', builds: 'In builds', mods: 'In the mod catalog', servers: 'On servers', skins: 'In skins', settings: 'In settings', about: 'About the program', console: 'In the launch log' },
+    screens: { home: 'On the main screen', builds: 'In builds', mods: 'In the mod catalog', servers: 'On servers', skins: 'In skins', ai: 'In the agent', settings: 'In settings', about: 'About the program', console: 'In the launch log' },
   },
   tt: {
     tg: "Проект Telegram'ына күчү",
     vanilla: 'Ванилла',
     build: 'Сборка',
-    screens: { home: 'Баш биттә', builds: 'Сборкаларда', mods: 'Модлар каталогында', servers: 'Серверларда', skins: 'Скиннарда', settings: 'Көйләнмәләрдә', about: 'Программа турында', console: 'Йөкләү журналында' },
+    screens: { home: 'Баш биттә', builds: 'Сборкаларда', mods: 'Модлар каталогында', servers: 'Серверларда', skins: 'Скиннарда', ai: 'Агентта', settings: 'Көйләнмәләрдә', about: 'Программа турында', console: 'Йөкләү журналында' },
   },
   kk: {
     tg: 'Жобаның Telegram-ына өту',
     vanilla: 'Ванилла',
     build: 'Жинақ',
-    screens: { home: 'Бас бетте', builds: 'Жинақтарда', mods: 'Модтар каталогында', servers: 'Серверлерде', skins: 'Скиндерде', settings: 'Баптауларда', about: 'Бағдарлама туралы', console: 'Жүктеу журналында' },
+    screens: { home: 'Бас бетте', builds: 'Жинақтарда', mods: 'Модтар каталогында', servers: 'Серверлерде', skins: 'Скиндерде', ai: 'Агентте', settings: 'Баптауларда', about: 'Бағдарлама туралы', console: 'Жүктеу журналында' },
   },
   uk: {
     tg: 'Перейти у Telegram проєкту',
     vanilla: 'Ванілла',
     build: 'Збірка',
-    screens: { home: 'На головній', builds: 'У збірках', mods: 'У каталозі модів', servers: 'На серверах', skins: 'У скінах', settings: 'У налаштуваннях', about: 'Про програму', console: 'У лозі завантаження' },
+    screens: { home: 'На головній', builds: 'У збірках', mods: 'У каталозі модів', servers: 'На серверах', skins: 'У скінах', ai: 'В агенті', settings: 'У налаштуваннях', about: 'Про програму', console: 'У лозі завантаження' },
   },
 };
 
@@ -633,23 +639,51 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
           await runWithConcurrency(indexFiles, PROXY_MAX_CONCURRENT_DOWNLOADS, async (entry: any) => {
             const dlUrl = entry?.downloads?.[0];
-            if (!dlUrl || !entry.path) return;
+            if (!dlUrl || !entry.path) {
+              const i = ++doneCount;
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: entry?.path ? path.basename(String(entry.path)) : '—', size: '0' },
+              });
+              return;
+            }
             // Пути внутри .mrpack — недоверенный ввод: архив мог собрать кто
             // угодно, а `../` вывел бы запись за пределы инстанса.
             const targetPath = path.resolve(instanceDir, String(entry.path).replace(/\\/g, '/'));
             const root = path.resolve(instanceDir);
             if (targetPath !== root && !targetPath.startsWith(root + path.sep)) {
               console.log(`Пропущен файл модпака с недопустимым путём: ${entry.path}`);
+              const i = ++doneCount;
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: path.basename(String(entry.path)), size: '0' },
+              });
               return;
             }
-            if (fs.existsSync(targetPath)) return;
 
             const name = path.basename(entry.path);
+            if (fs.existsSync(targetPath)) {
+              const i = ++doneCount;
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: name, size: '0' },
+              });
+              return;
+            }
+
             try {
               const { bytes } = await downloadModrinthFile(dlUrl, targetPath, {
                 reason: 'modpack',
                 sha1: entry.hashes?.sha1,
                 expectedSize: Number(entry.fileSize) || 0,
+                onProgress: (received, total) => {
+                  const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+                  // Живой прогресс текущего файла (раньше UI молчал до конца файла)
+                  mainWindow.webContents.send('launcher:download-progress', {
+                    type: 'progress',
+                    percent,
+                    received,
+                    total,
+                    filename: `${name} (${doneCount + 1}/${totalFiles})`,
+                  });
+                },
               });
               const i = ++doneCount;
               const size = (bytes / 1024 / 1024).toFixed(1);
@@ -748,6 +782,60 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     return null;
   });
 
+  // ===== Локальный импорт .mrpack / .zip =====
+  const sendImportProgress = (data: any) => {
+    mainWindow.webContents.send('launcher:download-progress', data);
+  };
+
+  ipcMain.handle('launcher:pick-modpack', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Импорт сборки',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Modpack', extensions: ['mrpack', 'zip'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('launcher:inspect-modpack', async (_event, archivePath: string) => {
+    try {
+      return { success: true, inspect: inspectLocalModpack(String(archivePath || '')) };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'inspect_failed' };
+    }
+  });
+
+  ipcMain.handle('launcher:import-modpack', async (_event, archivePath: string) => {
+    try {
+      const result = await importLocalModpack({
+        archivePath: String(archivePath || ''),
+        appDataDir,
+        getInstanceRoot,
+        sendProgress: sendImportProgress,
+        defaultLoaderVersions: LOADER_VERSIONS,
+        resolveJavaPath: async (gameVersion: string) => {
+          try {
+            const javaVer = await resolveJavaVersion(gameVersion);
+            return bestRuntimeFor(javaVer, detectJavaRuntimes());
+          } catch {
+            return undefined;
+          }
+        },
+      });
+      if (!result.success) {
+        sendImportProgress({ type: 'error', message: result.error || 'import_failed' });
+      }
+      return result;
+    } catch (e: any) {
+      const message = e?.message || 'import_failed';
+      sendImportProgress({ type: 'error', message });
+      return { success: false, error: message };
+    }
+  });
+
   /* ===== SERVERS (direct ping via minecraft-server-util) ===== */
 
   const serverStatusCache = new Map<string, { at: number; data: any }>();
@@ -770,8 +858,19 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     const inflight = serverStatusInFlight.get(cacheKey);
     if (inflight) return inflight;
     const promise = (async () => {
+      const msu = msuLib();
+      // Сначала прямой ping без SRV: DNS SRV у многих провайдеров/VPN таймаутится
+      // и библиотека помечает сервер offline, хотя TCP :25565 жив.
+      const tryPing = async (enableSRV: boolean) =>
+        msu.status(host, port, { timeout: 5000, enableSRV });
+
       try {
-        const res = await msuLib().status(host, port, { timeout: 4000, enableSRV: true });
+        let res: Awaited<ReturnType<typeof msu.status>>;
+        try {
+          res = await tryPing(false);
+        } catch {
+          res = await tryPing(true);
+        }
         const data = {
           online: true,
           players: { online: res.players.online, max: res.players.max },
@@ -954,91 +1053,123 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     datapack: 'datapacks',
   };
 
-  ipcMain.handle('launcher:install-mod', async (_event, buildId: string, projectId: string, versionId?: string, contentType?: string) => {
-    try {
-      const [projectRes, verRes] = await Promise.all([
-        fetch(`https://api.modrinth.com/v2/project/${projectId}`),
-        versionId
-          ? fetch(`https://api.modrinth.com/v2/version/${versionId}`)
-          : fetch(`https://api.modrinth.com/v2/project/${projectId}/version`),
-      ]);
-      if (!verRes.ok) return { success: false, error: 'Version fetch failed' };
-      const project = projectRes.ok ? await projectRes.json() : null;
-      const version = versionId
-        ? await verRes.json()
-        : ((await verRes.json()) as any[])[0];
-      if (!version) return { success: false, error: 'Version not found' };
-      const file = version.files?.[0];
-      if (!file?.url) return { success: false, error: 'No file URL' };
-
-      mainWindow.webContents.send('launcher:download-progress', {
-        type: 'start', filename: file.filename, size: file.size || 0,
-      });
-
-      // Тип из вызова важнее типа проекта: Modrinth отдаёт дата-пакам
-      // project_type='mod', и без подсказки они легли бы в mods вместо datapacks.
-      const projectType = (contentType && INSTALL_SUBDIRS[contentType])
-        ? contentType
-        : (project?.project_type || 'mod');
-      const subDir = INSTALL_SUBDIRS[projectType] || 'mods';
-      const instanceDir = getInstanceRoot(buildId);
-      const targetDir = path.join(instanceDir, subDir);
-      if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-      const filePath = path.join(targetDir, file.filename);
-
+  ipcMain.handle(
+    'launcher:install-mod',
+    async (
+      _event,
+      buildId: string,
+      projectId: string,
+      versionId?: string,
+      contentType?: string,
+      options?: ModInstallOptions,
+    ) => {
       try {
-        await downloadModrinthFile(file.url, filePath, {
-          reason: 'standalone',
-          expectedSize: file.size,
-          sha1: file.hashes?.sha1,
-          onProgress: (received, total) => {
-            const percent = total > 0 ? Math.round((received / total) * 100) : 0;
-            mainWindow.webContents.send('launcher:download-progress', {
-              type: 'progress', percent, received, total, filename: file.filename,
-            });
+        const builds = readJSON(path.join(appDataDir, 'builds.json'));
+        const build = Array.isArray(builds)
+          ? builds.find((b: any) => b?.id === buildId)
+          : null;
+        const instanceDir = getInstanceRoot(buildId);
+        const installedIds = collectInstalledProjectIds(instanceDir, build);
+        // Корневой проект не считаем «уже установленным» — разрешаем переустановку/смену версии
+        installedIds.delete(String(projectId));
+
+        const result = await installModWithDependencies({
+          instanceRoot: instanceDir,
+          projectId,
+          versionId,
+          contentType,
+          gameVersion: String(build?.gameVersion || build?.version || ''),
+          loader: String(build?.loader || 'vanilla'),
+          installedProjectIds: installedIds,
+          options,
+          onProgress: (ev) => {
+            if (ev.type === 'batch') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status',
+                key: 'status.depsProgress',
+                params: { i: ev.i, n: ev.n, file: ev.file },
+              });
+              return;
+            }
+            if (ev.type === 'start') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'start',
+                filename: ev.filename,
+                size: ev.size,
+              });
+              return;
+            }
+            if (ev.type === 'progress') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'progress',
+                percent: ev.percent,
+                received: ev.received,
+                total: ev.total,
+                filename: ev.filename,
+              });
+              return;
+            }
+            if (ev.type === 'file-done' && ev.index === ev.total) {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'done',
+                filename: ev.filename,
+                filePath: ev.filePath,
+              });
+              return;
+            }
+            if (ev.type === 'error') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'error',
+                message: ev.message,
+              });
+            }
           },
         });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return { success: false, error: `Download failed: ${message}` };
-      }
 
-      let modName = file.filename.replace(/\.(jar|zip|disabled)$/i, '');
-      let modVer = '';
-
-      const fabricData = readZipEntry(filePath, 'fabric.mod.json');
-      if (fabricData) {
-        const json = tryParseJson(fabricData);
-        if (json) { modName = json.name || json.id || modName; modVer = json.version || modVer; }
-      }
-      if (!modVer) {
-        const quiltData = readZipEntry(filePath, 'quilt.mod.json');
-        if (quiltData) {
-          const json = tryParseJson(quiltData);
-          if (json) {
-            const ql = json.quilt_loader;
-            if (ql) { modName = ql.metadata?.name || ql.id || modName; modVer = ql.version || modVer; }
+        // Уточняем имя корневого мода из fabric/quilt, если это jar
+        if (result.success && result.filename && result.contentType === 'mod') {
+          const sub = INSTALL_SUBDIRS[result.contentType] || 'mods';
+          const filePath = path.join(instanceDir, sub, result.filename);
+          if (fs.existsSync(filePath)) {
+            let modName = result.name;
+            let modVer = result.version;
+            const fabricData = readZipEntry(filePath, 'fabric.mod.json');
+            if (fabricData) {
+              const json = tryParseJson(fabricData);
+              if (json) {
+                modName = json.name || json.id || modName;
+                modVer = json.version || modVer;
+              }
+            }
+            if (!modVer) {
+              const quiltData = readZipEntry(filePath, 'quilt.mod.json');
+              if (quiltData) {
+                const json = tryParseJson(quiltData);
+                const ql = json?.quilt_loader;
+                if (ql) {
+                  modName = ql.metadata?.name || ql.id || modName;
+                  modVer = ql.version || modVer;
+                }
+              }
+            }
+            result.name = modName;
+            result.version = modVer;
+            const rootMeta = result.installed.find((m) => !m.isDependency);
+            if (rootMeta) {
+              rootMeta.name = modName;
+              rootMeta.version = modVer;
+            }
           }
         }
+
+        return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        mainWindow.webContents.send('launcher:download-progress', { type: 'error', message });
+        return { success: false, error: message };
       }
-
-      mainWindow.webContents.send('launcher:download-progress', {
-        type: 'done', filename: file.filename, filePath,
-      });
-
-      return {
-        success: true, name: modName, version: modVer, filename: file.filename,
-        projectId: project?.id || projectId,
-        iconUrl: project?.icon_url || '',
-        description: project?.description || '',
-        contentType: projectType,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      mainWindow.webContents.send('launcher:download-progress', { type: 'error', message });
-      return { success: false, error: message };
-    }
-  });
+    },
+  );
 
   /* ===== AUTH ===== */
 
@@ -3205,7 +3336,7 @@ export function initLauncher(mainWindow: BrowserWindow): void {
       const wdir = path.join(dir, item.name);
       const datPath = path.join(wdir, 'level.dat');
       if (!fs.existsSync(datPath)) continue;
-      const entry: any = { folder: item.name, name: item.name, icon: '', lastPlayed: 0, gameType: 0, hardcore: false, difficulty: 0, version: '', size: 0 };
+      const entry: any = { folder: item.name, name: item.name, icon: '', lastPlayed: 0, gameType: 0, hardcore: false, difficulty: 0, version: '', dataVersion: 0, size: 0 };
       try {
         const buf = fs.readFileSync(datPath);
         const { parsed } = await nbtLib().parse(buf);
@@ -3236,6 +3367,8 @@ export function initLauncher(mainWindow: BrowserWindow): void {
         if (typeof difficulty === 'number') entry.difficulty = difficulty;
         const verName = nbtValue((data.Version as any)?.Name);
         if (typeof verName === 'string') entry.version = verName;
+        const dataVersion = nbtValue(data.DataVersion);
+        if (typeof dataVersion === 'number') entry.dataVersion = dataVersion;
         entry.size = folderSize(wdir);
       } catch (e) {
         console.warn(`Failed to parse world ${item.name}:`, e);
@@ -3245,6 +3378,83 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     worlds.sort((a, b) => b.lastPlayed - a.lastPlayed);
     return worlds;
   });
+
+  // ===== Импорт локальных модов/паков в папку инстанса =====
+  const IMPORT_SUBDIRS = new Set(['mods', 'resourcepacks', 'shaderpacks', 'datapacks']);
+  const IMPORT_FILTERS: Record<string, { name: string; extensions: string[] }[]> = {
+    mods: [
+      { name: 'Mods', extensions: ['jar', 'litemod', 'zip', 'disabled'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    resourcepacks: [
+      { name: 'Resource packs', extensions: ['zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    shaderpacks: [
+      { name: 'Shader packs', extensions: ['zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    datapacks: [
+      { name: 'Datapacks', extensions: ['zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  };
+
+  ipcMain.handle(
+    'launcher:import-instance-files',
+    async (_event, buildId: string, sub: string, sourcePaths?: string[]) => {
+      try {
+        if (typeof buildId !== 'string' || !/^[a-z0-9-]+$/i.test(buildId)) {
+          return { success: false, error: 'invalid_build' };
+        }
+        if (!IMPORT_SUBDIRS.has(sub)) {
+          return { success: false, error: 'invalid_subdir' };
+        }
+
+        let paths = Array.isArray(sourcePaths)
+          ? sourcePaths.map((p) => String(p || '').trim()).filter(Boolean)
+          : [];
+
+        if (!paths.length) {
+          const win = BrowserWindow.getFocusedWindow() || mainWindow;
+          const result = await dialog.showOpenDialog(win, {
+            title: 'Импорт в сборку',
+            properties: ['openFile', 'multiSelections'],
+            filters: IMPORT_FILTERS[sub] || [{ name: 'All files', extensions: ['*'] }],
+          });
+          if (result.canceled || !result.filePaths.length) {
+            return { success: false, canceled: true };
+          }
+          paths = result.filePaths;
+        }
+
+        const instanceRoot = getInstanceRoot(buildId);
+        const targetDir = path.join(instanceRoot, sub);
+        fs.mkdirSync(targetDir, { recursive: true });
+
+        const imported: string[] = [];
+        for (const src of paths.slice(0, 64)) {
+          const resolved = path.resolve(src);
+          if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) continue;
+          const base = path.basename(resolved);
+          // Защита от path traversal в имени
+          if (!base || base !== path.basename(base) || base.includes('..')) continue;
+          const dest = path.join(targetDir, base);
+          fs.copyFileSync(resolved, dest);
+          imported.push(base);
+        }
+
+        return {
+          success: true,
+          imported,
+          targetDir,
+          count: imported.length,
+        };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
 
   ipcMain.handle('launcher:delete-instance-files', async (_event, buildId: string, sub: string, names: string[]) => {
     if (!['screenshots', 'saves'].includes(sub) || !Array.isArray(names)) {
@@ -3333,15 +3543,23 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   ipcMain.handle('launcher:crash-report', async (_event, buildId: string) => {
     try {
       if (typeof buildId !== 'string' || !/^[a-z0-9-]+$/i.test(buildId)) return null;
-      const crashDir = path.join(INSTANCE_BASE, buildId, 'crash-reports');
-      if (!fs.existsSync(crashDir)) return null;
-      const files = fs.readdirSync(crashDir).filter(f => f.endsWith('.txt')).sort((a, b) => {
-        try {
-          return fs.statSync(path.join(crashDir, b)).mtimeMs - fs.statSync(path.join(crashDir, a)).mtimeMs;
-        } catch { return 0; }
-      });
-      if (files.length === 0) return null;
-      return fs.readFileSync(path.join(crashDir, files[0]), 'utf-8').slice(0, 16000);
+      const root = getInstanceRoot(buildId);
+      const crashDir = path.join(root, 'crash-reports');
+      const latestLog = path.join(root, 'logs', 'latest.log');
+      if (fs.existsSync(crashDir)) {
+        const files = fs.readdirSync(crashDir).filter(f => f.endsWith('.txt')).sort((a, b) => {
+          try {
+            return fs.statSync(path.join(crashDir, b)).mtimeMs - fs.statSync(path.join(crashDir, a)).mtimeMs;
+          } catch { return 0; }
+        });
+        if (files.length > 0) {
+          return fs.readFileSync(path.join(crashDir, files[0]), 'utf-8').slice(0, 16000);
+        }
+      }
+      if (fs.existsSync(latestLog)) {
+        return fs.readFileSync(latestLog, 'utf-8').slice(-16000);
+      }
+      return null;
     } catch { return null; }
   });
 

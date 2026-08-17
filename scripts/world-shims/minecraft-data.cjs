@@ -9,8 +9,9 @@
 // вызываемый default), и `require('minecraft-data').legacy.pc` (CJS, нужны свойства
 // на самой функции). ESM-обёртка такую двойственность не воспроизводит.
 //
-// Переиспользуются штатные loader/indexer/supportsFeature самого minecraft-data,
-// чтобы форма объекта совпадала с оригиналом один в один.
+// Версия должна совпадать с той, что вшита в mesherWasm.js (minecraft-renderer):
+// у воркера нет 1.21.11 — максимум pc/1.21.6 (+ latest). Иначе state ID колонок
+// и реестр мешера расходятся, чанки уходят в mesherWork и не появляются на экране.
 const mcDataToNode = require('minecraft-data/lib/loader.js');
 const supportFeature = require('minecraft-data/lib/supportsFeature.js');
 const indexer = require('minecraft-data/lib/indexer.js');
@@ -19,26 +20,25 @@ const protocolVersionsPc = require('minecraft-data/minecraft-data/data/pc/common
 const versionsPc = require('minecraft-data/minecraft-data/data/pc/common/versions.json');
 const legacyPc = require('minecraft-data/minecraft-data/data/pc/common/legacy.json');
 
-const BUNDLED_VERSION = '1.21.4';
+const BUNDLED_VERSION = '1.21.6';
 
 // ===== Данные единственной поддерживаемой версии =====
-// Пути повторяют data.js оригинала для '1.21.4' (часть файлов там шарится
-// с более ранними версиями — это учтено).
+// Пути как в dataPaths.json для '1.21.6'.
 const rawData = {
-  blocks: require('minecraft-data/minecraft-data/data/pc/1.21.4/blocks.json'),
-  blockCollisionShapes: require('minecraft-data/minecraft-data/data/pc/1.21.4/blockCollisionShapes.json'),
-  biomes: require('minecraft-data/minecraft-data/data/pc/1.21.4/biomes.json'),
-  items: require('minecraft-data/minecraft-data/data/pc/1.21.4/items.json'),
-  materials: require('minecraft-data/minecraft-data/data/pc/1.21.4/materials.json'),
-  effects: require('minecraft-data/minecraft-data/data/pc/1.21.4/effects.json'),
-  enchantments: require('minecraft-data/minecraft-data/data/pc/1.21.1/enchantments.json'),
-  entities: require('minecraft-data/minecraft-data/data/pc/1.21.4/entities.json'),
-  foods: require('minecraft-data/minecraft-data/data/pc/1.21.1/foods.json'),
+  blocks: require('minecraft-data/minecraft-data/data/pc/1.21.6/blocks.json'),
+  blockCollisionShapes: require('minecraft-data/minecraft-data/data/pc/1.21.6/blockCollisionShapes.json'),
+  biomes: require('minecraft-data/minecraft-data/data/pc/1.21.6/biomes.json'),
+  items: require('minecraft-data/minecraft-data/data/pc/1.21.6/items.json'),
+  materials: require('minecraft-data/minecraft-data/data/pc/1.21.6/materials.json'),
+  effects: require('minecraft-data/minecraft-data/data/pc/1.21.6/effects.json'),
+  enchantments: require('minecraft-data/minecraft-data/data/pc/1.21.6/enchantments.json'),
+  entities: require('minecraft-data/minecraft-data/data/pc/1.21.6/entities.json'),
+  foods: require('minecraft-data/minecraft-data/data/pc/1.21.6/foods.json'),
   instruments: require('minecraft-data/minecraft-data/data/pc/1.20.5/instruments.json'),
-  particles: require('minecraft-data/minecraft-data/data/pc/1.21.4/particles.json'),
-  attributes: require('minecraft-data/minecraft-data/data/pc/1.21.3/attributes.json'),
-  tints: require('minecraft-data/minecraft-data/data/pc/1.21.4/tints.json'),
-  version: require('minecraft-data/minecraft-data/data/pc/1.21.4/version.json'),
+  particles: require('minecraft-data/minecraft-data/data/pc/1.21.6/particles.json'),
+  attributes: require('minecraft-data/minecraft-data/data/pc/1.21.6/attributes.json'),
+  tints: require('minecraft-data/minecraft-data/data/pc/1.21.6/tints.json'),
+  version: require('minecraft-data/minecraft-data/data/pc/1.21.6/version.json'),
 };
 
 const protocolVersions = { pc: protocolVersionsPc, bedrock: [] };
@@ -56,8 +56,6 @@ const versionsByMajorVersion = {
   bedrock: {},
 };
 
-// Повторяет конструктор Version из index.js minecraft-data: объект версии с
-// операторами сравнения, на них опираются supportFeature и prismarine-*.
 function Version(type, version, majorVersion) {
   const versions = versionsByMinecraftVersion[type];
   for (const key in versions) {
@@ -82,8 +80,6 @@ function Version(type, version, majorVersion) {
 let cached = null;
 
 function loadVersion(mcVersion) {
-  // Любой запрос отдаёт единственную вшитую версию: PoC работает только с ней,
-  // но рендерер и prismarine-* спрашивают данные по разным строкам версии.
   if (mcVersion !== undefined && String(mcVersion) !== BUNDLED_VERSION) {
     console.warn(`[mcdata-mini] запрошена версия ${mcVersion}, отдаём вшитую ${BUNDLED_VERSION}`);
   }
@@ -110,7 +106,6 @@ loadVersion.preNettyVersionsByProtocolVersion = { pc: {}, bedrock: {} };
 loadVersion.postNettyVersionsByProtocolVersion = { pc: {}, bedrock: {} };
 loadVersion.legacy = { pc: legacyPc, bedrock: { blocks: {}, items: {} } };
 loadVersion.schemas = {};
-// Совместимость с `import { default as X }` и `import * as X` в бандле esbuild.
 loadVersion.default = loadVersion;
 
 module.exports = loadVersion;

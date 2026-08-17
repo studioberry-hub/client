@@ -25,6 +25,16 @@ export function getApiBase(): string {
   return apiBase;
 }
 
+/** Метаданные последнего релиза (версия, URL exe/zip на зеркале). */
+export function releaseLatestUrl(): string {
+  return `${apiBase}/api/release/latest`;
+}
+
+/** Прямая раздача zip-клиента с сайта (инсталлер / updater). */
+export function releaseZipDirectUrl(): string {
+  return `${apiBase}/api/download/zip`;
+}
+
 /**
  * Делает адрес абсолютным. Сервер отдаёт в JSON относительные ссылки на свои
  * же роуты (`/client/api/catalog/image?...`), а в лаунчере нет страницы,

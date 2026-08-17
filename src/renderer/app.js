@@ -28199,6 +28199,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       exports.DEFAULT_API_BASE = void 0;
       exports.setApiBase = setApiBase;
       exports.getApiBase = getApiBase;
+      exports.releaseLatestUrl = releaseLatestUrl;
+      exports.releaseZipDirectUrl = releaseZipDirectUrl;
       exports.absoluteApiUrl = absoluteApiUrl;
       exports.isModrinthCdnUrl = isModrinthCdnUrl;
       exports.catalogFileUrl = catalogFileUrl;
@@ -28216,6 +28218,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       }
       function getApiBase() {
         return apiBase;
+      }
+      function releaseLatestUrl() {
+        return `${apiBase}/api/release/latest`;
+      }
+      function releaseZipDirectUrl() {
+        return `${apiBase}/api/download/zip`;
       }
       function absoluteApiUrl(pathOrUrl) {
         const text = String(pathOrUrl ?? "").trim();
@@ -28283,6 +28291,1933 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     }
   });
 
+  // dist/shared/world-preview-matrix.js
+  var require_world_preview_matrix = __commonJS({
+    "dist/shared/world-preview-matrix.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.READ_MAX_DATA_VERSION = exports.MESHER_MAX_DATA_VERSION = exports.MESHER_MAX_VERSION = exports.MIN_READ_DATA_VERSION = void 0;
+      exports.guessVersionName = guessVersionName;
+      exports.resolvePreviewStrategy = resolvePreviewStrategy;
+      exports.previewBadge = previewBadge;
+      exports.MIN_READ_DATA_VERSION = 1519;
+      exports.MESHER_MAX_VERSION = "1.21.6";
+      exports.MESHER_MAX_DATA_VERSION = 4435;
+      exports.READ_MAX_DATA_VERSION = 4903;
+      var RELEASES = [
+        [1519, "1.13"],
+        [1631, "1.13.2"],
+        [1976, "1.14.4"],
+        [2230, "1.15.2"],
+        [2586, "1.16.5"],
+        [2730, "1.17.1"],
+        [2975, "1.18.2"],
+        [3337, "1.19.4"],
+        [3700, "1.20.4"],
+        [3839, "1.20.6"],
+        [3955, "1.21.1"],
+        [4189, "1.21.4"],
+        [4325, "1.21.5"],
+        [4435, "1.21.6"],
+        [4440, "1.21.8"],
+        [4556, "1.21.10"],
+        [4671, "1.21.11"],
+        [4790, "26.1.2"],
+        [4903, "26.2"]
+      ];
+      function guessVersionName(dataVersion) {
+        let name = `DataVersion ${dataVersion}`;
+        for (const [dv, n] of RELEASES) {
+          if (dataVersion >= dv)
+            name = n;
+        }
+        return name;
+      }
+      function resolvePreviewStrategy(dataVersion, preferExport = false) {
+        const ver = guessVersionName(dataVersion);
+        const mesher = exports.MESHER_MAX_VERSION;
+        if (!dataVersion || dataVersion < exports.MIN_READ_DATA_VERSION) {
+          return {
+            strategy: "unsupported",
+            renderVersion: mesher,
+            degraded: false,
+            liveAvailable: false,
+            reason: "too_old",
+            messageKey: "be.worldPreviewTooOld"
+          };
+        }
+        if (dataVersion > exports.READ_MAX_DATA_VERSION) {
+          return {
+            strategy: "export",
+            renderVersion: mesher,
+            degraded: true,
+            liveAvailable: false,
+            reason: "unreadably_new",
+            messageKey: "be.worldPreviewNeedExport",
+            messageParams: { version: ver, mesher }
+          };
+        }
+        if (dataVersion > exports.MESHER_MAX_DATA_VERSION) {
+          if (preferExport || dataVersion >= 4790) {
+            return {
+              strategy: "export",
+              renderVersion: mesher,
+              degraded: true,
+              liveAvailable: dataVersion <= exports.READ_MAX_DATA_VERSION,
+              reason: "need_export",
+              messageKey: "be.worldPreviewNeedExport",
+              messageParams: { version: ver, mesher }
+            };
+          }
+          return {
+            strategy: "live",
+            renderVersion: mesher,
+            degraded: true,
+            liveAvailable: true,
+            reason: "live_degraded",
+            messageKey: "be.worldPreviewDegraded",
+            messageParams: { version: ver, mesher }
+          };
+        }
+        if (preferExport) {
+          return {
+            strategy: "export",
+            renderVersion: mesher,
+            degraded: false,
+            liveAvailable: true,
+            reason: "need_export",
+            messageKey: "be.worldPreviewExportPreferred",
+            messageParams: { version: ver }
+          };
+        }
+        return {
+          strategy: "live",
+          renderVersion: mesher,
+          degraded: false,
+          liveAvailable: true,
+          reason: "ok",
+          messageKey: "be.worldPreviewLiveOk",
+          messageParams: { mesher }
+        };
+      }
+      function previewBadge(dataVersion) {
+        if (!dataVersion || dataVersion < exports.MIN_READ_DATA_VERSION) {
+          return { kind: "unsupported", labelKey: "be.worldBadgeUnsupported" };
+        }
+        if (dataVersion > exports.READ_MAX_DATA_VERSION) {
+          return { kind: "export", labelKey: "be.worldBadgeExport" };
+        }
+        if (dataVersion >= 4790) {
+          return { kind: "export", labelKey: "be.worldBadgeExport" };
+        }
+        if (dataVersion > exports.MESHER_MAX_DATA_VERSION) {
+          return { kind: "degraded", labelKey: "be.worldBadgeDegraded" };
+        }
+        return { kind: "live", labelKey: "be.worldBadgeLive" };
+      }
+    }
+  });
+
+  // dist/renderer/ai/confirm-ui.js
+  var require_confirm_ui = __commonJS({
+    "dist/renderer/ai/confirm-ui.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.describeAiAction = describeAiAction;
+      exports.parkAiConfirmsFromRoot = parkAiConfirmsFromRoot;
+      exports.restoreAiConfirmsForSession = restoreAiConfirmsForSession;
+      exports.askAiConfirmInChat = askAiConfirmInChat;
+      exports.askAiConfirmBatch = askAiConfirmBatch;
+      exports.pushAiUndo = pushAiUndo;
+      exports.popAiUndo = popAiUndo;
+      exports.peekAiUndo = peekAiUndo;
+      exports.getAiUndoStack = getAiUndoStack;
+      exports.renderAiUndoChip = renderAiUndoChip;
+      exports.renderAiUndoBar = renderAiUndoBar;
+      exports.renderAiBuildDiff = renderAiBuildDiff;
+      var AI_UNDO_MAX = 20;
+      var undoStack = [];
+      function strArg(args, key) {
+        const v2 = args[key];
+        return typeof v2 === "string" ? v2.trim() : v2 != null ? String(v2) : "";
+      }
+      function boolArg(args, key) {
+        const v2 = args[key];
+        return typeof v2 === "boolean" ? v2 : null;
+      }
+      function resolveBuildLabel(host, buildId) {
+        if (!buildId)
+          return "";
+        const build = host?.getBuild?.(buildId);
+        return build?.name || buildId;
+      }
+      function javaVersionFromPath(raw) {
+        const s = String(raw || "").trim();
+        if (!s)
+          return "";
+        const m2 = s.match(/java[-_]?(\d+(?:\.\d+)*)/i) || s.match(/[/\\](jdk|jre)[-_]?(\d+)/i);
+        if (m2) {
+          const ver = m2[1] && /^\d/.test(m2[1]) ? m2[1] : m2[2];
+          if (ver)
+            return ver;
+        }
+        const leaf = s.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || s;
+        return leaf.length > 22 ? `${leaf.slice(0, 20)}\u2026` : leaf;
+      }
+      function shortJavaLabel(raw) {
+        const ver = javaVersionFromPath(raw);
+        if (!ver)
+          return "";
+        return /^\d/.test(ver) ? `Java ${ver}` : ver;
+      }
+      function shortFieldValue(key, raw) {
+        if (!raw)
+          return "";
+        if (key === "javaPath")
+          return javaVersionFromPath(raw);
+        if (key === "memory")
+          return raw;
+        return raw;
+      }
+      function describeAiAction(tool, args, t, host) {
+        const buildId = strArg(args, "buildId");
+        const buildName = resolveBuildLabel(host || null, buildId);
+        const buildPart = buildName || buildId;
+        switch (tool) {
+          case "update_build": {
+            const parts = [];
+            if (args.gameVersion != null)
+              parts.push(`MC ${strArg(args, "gameVersion")}`);
+            if (args.loader != null)
+              parts.push(strArg(args, "loader"));
+            if (args.javaPath != null)
+              parts.push(shortJavaLabel(strArg(args, "javaPath")));
+            if (args.memoryMin != null || args.memoryMax != null) {
+              parts.push(`RAM ${args.memoryMin ?? "\u2026"}\u2013${args.memoryMax ?? "\u2026"}`);
+            }
+            if (args.name != null)
+              parts.push(strArg(args, "name"));
+            return {
+              title: t("ai.action.update_build"),
+              detail: [buildPart, parts.join(" \xB7 ")].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "install_mod": {
+            const title = strArg(args, "title") || strArg(args, "projectId") || strArg(args, "slug");
+            return {
+              title: t("ai.action.install_mod"),
+              detail: [title, buildPart].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "delete_build": {
+            const files = boolArg(args, "deleteFiles");
+            return {
+              title: t("ai.action.delete_build"),
+              detail: [buildPart, files ? t("ai.action.delete_build.files") : ""].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "toggle_mod": {
+            const file = strArg(args, "filename");
+            const enabled = boolArg(args, "enabled");
+            const state = enabled === true ? t("ai.action.toggle_mod.on") : enabled === false ? t("ai.action.toggle_mod.off") : t("ai.action.toggle_mod.flip");
+            return {
+              title: t("ai.action.toggle_mod"),
+              detail: [file, state, buildPart].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "remove_build_file": {
+            return {
+              title: t("ai.action.remove_build_file"),
+              detail: [strArg(args, "filename"), buildPart].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "select_build": {
+            return {
+              title: t("ai.action.select_build"),
+              detail: buildPart
+            };
+          }
+          case "create_build": {
+            const name = strArg(args, "name");
+            const ver = strArg(args, "gameVersion");
+            return {
+              title: t("ai.action.create_build"),
+              detail: [name, ver].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "duplicate_build": {
+            return {
+              title: t("ai.action.duplicate_build"),
+              detail: buildPart
+            };
+          }
+          case "delete_world": {
+            return {
+              title: t("ai.action.delete_world"),
+              detail: [strArg(args, "worldName") || strArg(args, "folder"), buildPart].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "delete_screenshot": {
+            return {
+              title: t("ai.action.delete_screenshot"),
+              detail: [strArg(args, "filename"), buildPart].filter(Boolean).join(" \xB7 ")
+            };
+          }
+          case "clear_logs": {
+            return {
+              title: t("ai.action.clear_logs"),
+              detail: buildPart
+            };
+          }
+          default: {
+            const actionTitle = t(`ai.action.${tool}`);
+            const toolTitle = t(`ai.tool.${tool}`);
+            const nice = actionTitle && actionTitle !== `ai.action.${tool}` ? actionTitle : toolTitle && toolTitle !== `ai.tool.${tool}` ? toolTitle : tool;
+            return {
+              title: t("ai.confirm.title", { tool: nice }),
+              detail: buildPart || nice
+            };
+          }
+        }
+      }
+      var parkedConfirmsBySession = /* @__PURE__ */ new Map();
+      function isConfirmPending(el) {
+        const body = el.querySelector(".ai-confirm-card");
+        if (!body)
+          return false;
+        return !body.classList.contains("is-applied") && !body.classList.contains("is-rejected");
+      }
+      function parkAiConfirmsFromRoot(root) {
+        if (!root)
+          return;
+        root.querySelectorAll(".ai-msg--confirm").forEach((node) => {
+          const el = node;
+          if (!isConfirmPending(el)) {
+            el.remove();
+            return;
+          }
+          const sid = el.getAttribute("data-session-id") || "";
+          if (!sid) {
+            el.remove();
+            return;
+          }
+          const list = parkedConfirmsBySession.get(sid) || [];
+          list.push(el);
+          parkedConfirmsBySession.set(sid, list);
+          el.remove();
+        });
+      }
+      function restoreAiConfirmsForSession(sessionId, host) {
+        if (!sessionId)
+          return;
+        const list = parkedConfirmsBySession.get(sessionId);
+        if (!list?.length)
+          return;
+        parkedConfirmsBySession.delete(sessionId);
+        const root = host.getMessagesRoot();
+        if (!root)
+          return;
+        const empty = root.querySelector("#ai-empty");
+        if (empty)
+          empty.classList.add("hidden");
+        for (const el of list) {
+          if (isConfirmPending(el))
+            root.appendChild(el);
+        }
+        host.scrollToEnd();
+      }
+      function appendConfirmCard(host, innerHtml, sessionId) {
+        const root = host.getMessagesRoot();
+        if (!root)
+          return null;
+        const empty = root.querySelector("#ai-empty");
+        if (empty)
+          empty.classList.add("hidden");
+        const el = document.createElement("div");
+        el.className = "ai-msg ai-msg--confirm";
+        if (sessionId)
+          el.setAttribute("data-session-id", sessionId);
+        el.innerHTML = `<div class="ai-msg__bubble">${innerHtml}</div>`;
+        root.appendChild(el);
+        host.scrollToEnd();
+        return el;
+      }
+      function markConfirmResolved(card, applied, host) {
+        if (!card)
+          return;
+        const body = card.querySelector(".ai-confirm-card");
+        body?.classList.add(applied ? "is-applied" : "is-rejected");
+        card.querySelectorAll("button").forEach((btn) => {
+          btn.disabled = true;
+        });
+        host.scrollToEnd();
+      }
+      function askAiConfirmInChat(opts) {
+        const { host, tool, args } = opts;
+        const { title, detail } = describeAiAction(tool, args, host.t, host);
+        const esc = host.escapeHtml;
+        const card = appendConfirmCard(host, `<div class="ai-confirm-card" data-tool="${esc(tool)}" data-risk="${esc(opts.risk || "write")}">
+      <div class="ai-confirm-card__title">${esc(title)}</div>
+      ${detail ? `<div class="ai-confirm-card__detail">${esc(detail)}</div>` : ""}
+      <div class="ai-confirm-card__actions">
+        <button type="button" class="ai-confirm-card__btn ai-confirm-card__btn--apply" data-ai-confirm="apply">${esc(host.t("ai.confirm.apply"))}</button>
+        <button type="button" class="ai-confirm-card__btn ai-confirm-card__btn--reject" data-ai-confirm="reject">${esc(host.t("ai.confirm.reject"))}</button>
+      </div>
+    </div>`, opts.sessionId);
+        return new Promise((resolve) => {
+          if (!card) {
+            resolve(false);
+            return;
+          }
+          const onClick = (e) => {
+            const btn = e.target?.closest?.("[data-ai-confirm]");
+            if (!btn || !card.contains(btn))
+              return;
+            const apply = btn.getAttribute("data-ai-confirm") === "apply";
+            card.removeEventListener("click", onClick);
+            markConfirmResolved(card, apply, host);
+            resolve(apply);
+          };
+          card.addEventListener("click", onClick);
+        });
+      }
+      function askAiConfirmBatch(opts) {
+        const { host, items } = opts;
+        if (!items.length)
+          return Promise.resolve(true);
+        if (items.length === 1) {
+          return askAiConfirmInChat({
+            host,
+            tool: items[0].tool,
+            args: items[0].args,
+            risk: "write",
+            sessionId: opts.sessionId
+          });
+        }
+        const esc = host.escapeHtml;
+        const listHtml = items.map((item) => {
+          const d2 = describeAiAction(item.tool, item.args, host.t, host);
+          return `<li class="ai-confirm-card__item">
+        <span class="ai-confirm-card__item-title">${esc(d2.title)}</span>
+        ${d2.detail ? `<span class="ai-confirm-card__item-detail">${esc(d2.detail)}</span>` : ""}
+      </li>`;
+        }).join("");
+        const card = appendConfirmCard(host, `<div class="ai-confirm-card ai-confirm-card--batch">
+      <div class="ai-confirm-card__title">${esc(host.t("ai.confirm.batch", { n: items.length }))}</div>
+      <ul class="ai-confirm-card__list">${listHtml}</ul>
+      <div class="ai-confirm-card__actions">
+        <button type="button" class="ai-confirm-card__btn ai-confirm-card__btn--apply" data-ai-confirm="apply">${esc(host.t("ai.confirm.approveAll"))}</button>
+        <button type="button" class="ai-confirm-card__btn ai-confirm-card__btn--reject" data-ai-confirm="reject">${esc(host.t("ai.confirm.rejectAll"))}</button>
+      </div>
+    </div>`, opts.sessionId);
+        return new Promise((resolve) => {
+          if (!card) {
+            resolve(false);
+            return;
+          }
+          const onClick = (e) => {
+            const btn = e.target?.closest?.("[data-ai-confirm]");
+            if (!btn || !card.contains(btn))
+              return;
+            const apply = btn.getAttribute("data-ai-confirm") === "apply";
+            card.removeEventListener("click", onClick);
+            markConfirmResolved(card, apply, host);
+            resolve(apply);
+          };
+          card.addEventListener("click", onClick);
+        });
+      }
+      function pushAiUndo(action) {
+        undoStack.push(action);
+        while (undoStack.length > AI_UNDO_MAX)
+          undoStack.shift();
+      }
+      function popAiUndo() {
+        return undoStack.pop();
+      }
+      function peekAiUndo() {
+        return undoStack[undoStack.length - 1];
+      }
+      function getAiUndoStack() {
+        return undoStack;
+      }
+      function renderAiUndoChip(host) {
+        const toolbarLeft = document.querySelector(".ai-composer__toolbar-left");
+        const meta = document.querySelector(".ai-composer-meta");
+        const messages = host.getMessagesRoot();
+        const mount = toolbarLeft || meta || messages;
+        if (!mount)
+          return;
+        let chip = document.getElementById("ai-undo-chip") || mount.querySelector(".ai-undo-chip");
+        const top = peekAiUndo();
+        if (!top) {
+          if (chip) {
+            chip.classList.add("hidden");
+            chip.hidden = true;
+            chip.textContent = "";
+          }
+          return;
+        }
+        if (!chip) {
+          chip = document.createElement("button");
+          chip.type = "button";
+          chip.id = "ai-undo-chip";
+          chip.className = "ai-undo-chip";
+          if (toolbarLeft) {
+            toolbarLeft.appendChild(chip);
+          } else if (meta) {
+            const ring = meta.querySelector("#ai-context-ring");
+            if (ring)
+              meta.insertBefore(chip, ring);
+            else
+              meta.appendChild(chip);
+          } else {
+            messages.appendChild(chip);
+          }
+        }
+        if (!chip.dataset.bound) {
+          chip.dataset.bound = "1";
+          chip.addEventListener("click", async () => {
+            const action = popAiUndo();
+            renderAiUndoChip(host);
+            if (!action)
+              return;
+            try {
+              await action.revert();
+            } catch {
+            }
+          });
+        }
+        const label = top.label || host.t("ai.undo");
+        chip.textContent = host.t("ai.undo");
+        chip.title = label;
+        chip.setAttribute("aria-label", label);
+        chip.classList.remove("hidden");
+        chip.hidden = false;
+      }
+      function renderAiUndoBar(host) {
+        renderAiUndoChip(host);
+      }
+      function formatMemory(v2) {
+        if (v2 == null)
+          return "";
+        if (typeof v2 === "object") {
+          const m2 = v2;
+          return `${m2.min ?? "\u2026"}\u2013${m2.max ?? "\u2026"}`;
+        }
+        return String(v2);
+      }
+      function normalizeField(key, snap) {
+        if (key === "memory") {
+          if (snap.memory != null)
+            return formatMemory(snap.memory);
+          if (snap.memoryMin != null || snap.memoryMax != null) {
+            return `${snap.memoryMin ?? "\u2026"}\u2013${snap.memoryMax ?? "\u2026"}`;
+          }
+          return "";
+        }
+        const raw = snap[key];
+        return raw == null ? "" : String(raw);
+      }
+      var DIFF_FIELD_LABEL = {
+        gameVersion: "ai.diff.field.gameVersion",
+        loader: "ai.diff.field.loader",
+        javaPath: "ai.diff.field.java",
+        memory: "ai.diff.field.memory"
+      };
+      function renderAiBuildDiff(before, after, host) {
+        const fields = ["gameVersion", "loader", "javaPath", "memory"];
+        const t = host?.t || ((k) => k);
+        const esc = host?.escapeHtml || ((s) => s);
+        const rows = [];
+        for (const key of fields) {
+          const rawA = normalizeField(key, before || {});
+          const rawB = normalizeField(key, after || {});
+          if (rawA === rawB)
+            continue;
+          const a = shortFieldValue(key, rawA) || "\u2014";
+          const b2 = shortFieldValue(key, rawB) || "\u2014";
+          const labelKey = DIFF_FIELD_LABEL[key];
+          const label = labelKey ? t(labelKey) : key;
+          const titleAttr = key === "javaPath" && (rawA || rawB) ? ` title="${esc(`${rawA || "\u2014"} \u2192 ${rawB || "\u2014"}`)}"` : "";
+          rows.push(`<div class="ai-diff__row"${titleAttr}>
+      <span class="ai-diff__key">${esc(label)}</span>
+      <span class="ai-diff__change">
+        <span class="ai-diff__before">${esc(a)}</span>
+        <span class="ai-diff__arrow" aria-hidden="true">\u2192</span>
+        <span class="ai-diff__after">${esc(b2)}</span>
+      </span>
+    </div>`);
+        }
+        const el = document.createElement("div");
+        el.className = "ai-diff";
+        el.innerHTML = rows.length ? rows.join("") : `<div class="ai-diff__empty">${esc(t("ai.diff.empty"))}</div>`;
+        return el;
+      }
+    }
+  });
+
+  // dist/renderer/ai/integrations-ui.js
+  var require_integrations_ui = __commonJS({
+    "dist/renderer/ai/integrations-ui.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.markBuildTouchedByAgent = markBuildTouchedByAgent;
+      exports.isBuildTouchedByAgent = isBuildTouchedByAgent;
+      exports.appendAiCrashQuote = appendAiCrashQuote;
+      exports.hideAiCrashBanner = hideAiCrashBanner;
+      exports.showAiCrashBanner = showAiCrashBanner;
+      exports.appendAiBuildPreview = appendAiBuildPreview;
+      exports.askAgentAboutMod = askAgentAboutMod;
+      var TOUCHED_STORAGE_KEY = "uclient-ai-touched-builds";
+      var CRASH_BANNER_ID = "ai-crash-banner";
+      function readTouchedSet() {
+        try {
+          const raw = sessionStorage.getItem(TOUCHED_STORAGE_KEY);
+          if (!raw)
+            return /* @__PURE__ */ new Set();
+          const arr = JSON.parse(raw);
+          return new Set(Array.isArray(arr) ? arr.map(String) : []);
+        } catch {
+          return /* @__PURE__ */ new Set();
+        }
+      }
+      function writeTouchedSet(ids) {
+        try {
+          sessionStorage.setItem(TOUCHED_STORAGE_KEY, JSON.stringify([...ids]));
+        } catch {
+        }
+      }
+      function markBuildTouchedByAgent(buildId) {
+        const id = String(buildId || "").trim();
+        if (!id)
+          return;
+        const set = readTouchedSet();
+        set.add(id);
+        writeTouchedSet(set);
+      }
+      function isBuildTouchedByAgent(buildId) {
+        const id = String(buildId || "").trim();
+        if (!id)
+          return false;
+        return readTouchedSet().has(id);
+      }
+      function appendAiCrashQuote(host, opts) {
+        const root = host.getMessagesRoot();
+        if (!root)
+          return null;
+        const name = opts.buildName || "build";
+        const excerpt = String(opts.logExcerpt || "").trim() || "\u2014";
+        const summary = host.t("ai.crash.quote", { name });
+        const wrap = document.createElement("div");
+        wrap.className = "ai-msg ai-msg--system";
+        wrap.innerHTML = `
+    <div class="ai-msg__bubble">
+      <details class="ai-crash-quote">
+        <summary class="ai-crash-quote__summary">${host.escapeHtml(summary)}</summary>
+        <pre class="ai-crash-quote__body">${host.escapeHtml(excerpt)}</pre>
+      </details>
+    </div>`;
+        root.appendChild(wrap);
+        host.scrollToEnd();
+        return wrap;
+      }
+      function hideAiCrashBanner() {
+        const el = document.getElementById(CRASH_BANNER_ID);
+        if (!el)
+          return;
+        el.classList.add("hidden");
+        el.innerHTML = "";
+      }
+      function showAiCrashBanner(host, opts) {
+        let el = document.getElementById(CRASH_BANNER_ID);
+        if (!el) {
+          const stage = document.querySelector(".ai-stage");
+          if (!stage)
+            return;
+          el = document.createElement("div");
+          el.id = CRASH_BANNER_ID;
+          el.className = "ai-crash-banner";
+          const body = document.getElementById("ai-messages");
+          if (body)
+            stage.insertBefore(el, body);
+          else
+            stage.appendChild(el);
+        }
+        const buildId = String(opts.buildId || "");
+        const buildName = opts.buildName || buildId || "build";
+        el.classList.remove("hidden");
+        el.innerHTML = `
+    <div class="ai-crash-banner__text">${host.escapeHtml(host.t("ai.crash.banner", { name: buildName }))}</div>
+    <button type="button" class="ai-crash-banner__btn" data-build-id="${host.escapeHtml(buildId)}" data-build-name="${host.escapeHtml(buildName)}">
+      ${host.escapeHtml(host.t("ai.crash.continue"))}
+    </button>
+    <button type="button" class="ai-crash-banner__close" aria-label="Close">\xD7</button>`;
+        el.querySelector(".ai-crash-banner__close")?.addEventListener("click", () => hideAiCrashBanner());
+        el.querySelector(".ai-crash-banner__btn")?.addEventListener("click", () => {
+          const btn = el.querySelector(".ai-crash-banner__btn");
+          const name = btn?.dataset.buildName || buildName;
+          const id = btn?.dataset.buildId || buildId;
+          hideAiCrashBanner();
+          host.sendPrompt(host.t("crash.agentPrompt", { name }) + (id ? `
+
+buildId: ${id}` : ""));
+        });
+      }
+      function appendAiBuildPreview(host, build) {
+        const root = host.getMessagesRoot();
+        if (!root || !build?.id)
+          return null;
+        const icon = build.icon ? `<img class="ai-build-preview__icon" src="${host.escapeHtml(build.icon)}" alt="">` : `<div class="ai-build-preview__icon ai-build-preview__icon--empty" aria-hidden="true"></div>`;
+        const meta = [build.gameVersion, build.loader].filter(Boolean).join(" \xB7 ");
+        const wrap = document.createElement("div");
+        wrap.className = "ai-msg ai-msg--system";
+        wrap.innerHTML = `
+    <div class="ai-msg__bubble">
+      <div class="ai-build-preview" data-build-id="${host.escapeHtml(build.id)}">
+        ${icon}
+        <div class="ai-build-preview__body">
+          <div class="ai-build-preview__label">${host.escapeHtml(host.t("ai.build.preview"))}</div>
+          <div class="ai-build-preview__name">${host.escapeHtml(build.name || build.id)}</div>
+          ${meta ? `<div class="ai-build-preview__meta">${host.escapeHtml(meta)}</div>` : ""}
+        </div>
+        <button type="button" class="ai-build-preview__btn" data-build-id="${host.escapeHtml(build.id)}">
+          ${host.escapeHtml(host.t("ai.build.openSettings"))}
+        </button>
+      </div>
+    </div>`;
+        wrap.querySelector(".ai-build-preview__btn")?.addEventListener("click", () => {
+          host.openBuildSettings(build.id);
+        });
+        root.appendChild(wrap);
+        host.scrollToEnd();
+        return wrap;
+      }
+      function askAgentAboutMod(host, projectTitle, projectId) {
+        const title = String(projectTitle || "").trim() || projectId;
+        const id = String(projectId || "").trim();
+        if (!id)
+          return;
+        host.switchToAiTab();
+        host.sendPrompt(`\u0420\u0430\u0441\u0441\u043A\u0430\u0436\u0438 \u043F\u0440\u043E \u043C\u043E\u0434 \xAB${title}\xBB (Modrinth id: ${id}): \u0441\u043E\u0432\u043C\u0435\u0441\u0442\u0438\u043C\u043E\u0441\u0442\u044C, \u0437\u0430\u0432\u0438\u0441\u0438\u043C\u043E\u0441\u0442\u0438 \u0438 \u0441\u0442\u043E\u0438\u0442 \u043B\u0438 \u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0432 \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0431\u043E\u0440\u043A\u0443.`);
+      }
+    }
+  });
+
+  // dist/renderer/ai/attach-icons.js
+  var require_attach_icons = __commonJS({
+    "dist/renderer/ai/attach-icons.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.FileArchive = exports.X = exports.Search = exports.ChevronLeft = exports.ChevronRight = exports.Stethoscope = exports.Terminal = exports.Globe = exports.ScrollText = exports.TriangleAlert = exports.FileText = exports.Layers = exports.Sparkles = exports.Image = exports.Package = exports.Boxes = void 0;
+      exports.Boxes = [["path", { "d": "M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z" }], ["path", { "d": "m7 16.5-4.74-2.85" }], ["path", { "d": "m7 16.5 5-3" }], ["path", { "d": "M7 16.5v5.17" }], ["path", { "d": "M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z" }], ["path", { "d": "m17 16.5-5-3" }], ["path", { "d": "m17 16.5 4.74-2.85" }], ["path", { "d": "M17 16.5v5.17" }], ["path", { "d": "M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z" }], ["path", { "d": "M12 8 7.26 5.15" }], ["path", { "d": "m12 8 4.74-2.85" }], ["path", { "d": "M12 13.5V8" }]];
+      exports.Package = [["path", { "d": "M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" }], ["path", { "d": "M12 22V12" }], ["polyline", { "points": "3.29 7 12 12 20.71 7" }], ["path", { "d": "m7.5 4.27 9 5.15" }]];
+      exports.Image = [["rect", { "width": "18", "height": "18", "x": "3", "y": "3", "rx": "2", "ry": "2" }], ["circle", { "cx": "9", "cy": "9", "r": "2" }], ["path", { "d": "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }]];
+      exports.Sparkles = [["path", { "d": "M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" }], ["path", { "d": "M20 2v4" }], ["path", { "d": "M22 4h-4" }], ["circle", { "cx": "4", "cy": "20", "r": "2" }]];
+      exports.Layers = [["path", { "d": "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" }], ["path", { "d": "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" }], ["path", { "d": "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" }]];
+      exports.FileText = [["path", { "d": "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" }], ["path", { "d": "M14 2v5a1 1 0 0 0 1 1h5" }], ["path", { "d": "M10 9H8" }], ["path", { "d": "M16 13H8" }], ["path", { "d": "M16 17H8" }]];
+      exports.TriangleAlert = [["path", { "d": "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" }], ["path", { "d": "M12 9v4" }], ["path", { "d": "M12 17h.01" }]];
+      exports.ScrollText = [["path", { "d": "M15 12h-5" }], ["path", { "d": "M15 8h-5" }], ["path", { "d": "M19 17V5a2 2 0 0 0-2-2H4" }], ["path", { "d": "M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" }]];
+      exports.Globe = [["circle", { "cx": "12", "cy": "12", "r": "10" }], ["path", { "d": "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" }], ["path", { "d": "M2 12h20" }]];
+      exports.Terminal = [["path", { "d": "M12 19h8" }], ["path", { "d": "m4 17 6-6-6-6" }]];
+      exports.Stethoscope = [["path", { "d": "M11 2v2" }], ["path", { "d": "M5 2v2" }], ["path", { "d": "M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1" }], ["path", { "d": "M8 15a6 6 0 0 0 12 0v-3" }], ["circle", { "cx": "20", "cy": "10", "r": "2" }]];
+      exports.ChevronRight = [["path", { "d": "m9 18 6-6-6-6" }]];
+      exports.ChevronLeft = [["path", { "d": "m15 18-6-6 6-6" }]];
+      exports.Search = [["path", { "d": "m21 21-4.34-4.34" }], ["circle", { "cx": "11", "cy": "11", "r": "8" }]];
+      exports.X = [["path", { "d": "M18 6 6 18" }], ["path", { "d": "m6 6 12 12" }]];
+      exports.FileArchive = [["path", { "d": "M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5" }], ["path", { "d": "M14 2v5a1 1 0 0 0 1 1h5" }], ["path", { "d": "M8 12v-1" }], ["path", { "d": "M8 18v-2" }], ["path", { "d": "M8 7V6" }], ["circle", { "cx": "8", "cy": "20", "r": "2" }]];
+    }
+  });
+
+  // dist/renderer/ai/attach-ui.js
+  var require_attach_ui = __commonJS({
+    "dist/renderer/ai/attach-ui.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.getAiAttachments = getAiAttachments;
+      exports.clearAiAttachments = clearAiAttachments;
+      exports.removeAiAttachment = removeAiAttachment;
+      exports.formatAiAttachmentsPrompt = formatAiAttachmentsPrompt;
+      exports.parseAiAttachmentsPrompt = parseAiAttachmentsPrompt;
+      exports.renderAiAttachBadgesHtml = renderAiAttachBadgesHtml;
+      exports.renderAiAttachChips = renderAiAttachChips;
+      exports.closeAiAttachMenu = closeAiAttachMenu;
+      exports.toggleAiAttachMenu = toggleAiAttachMenu;
+      exports.initAiAttachUi = initAiAttachUi;
+      var attach_icons_1 = require_attach_icons();
+      var MAX_ATTACH = 12;
+      var MAX_TEXT_CHARS = 12e3;
+      var CAPABILITY_KINDS = ["web", "commands", "diagnose"];
+      var host = null;
+      var attachments = [];
+      var view = { mode: "root" };
+      var filterQuery = "";
+      var menuBound = false;
+      var viewAnimDir = "forward";
+      function uid() {
+        return `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+      }
+      function esc(s) {
+        return host ? host.escapeHtml(s) : s;
+      }
+      function t(key, params) {
+        return host?.t(key, params) || key;
+      }
+      function kindLabel(kind) {
+        const map = {
+          build: "ai.attach.kind.build",
+          mod: "ai.attach.kind.mod",
+          resourcepack: "ai.attach.kind.resourcepack",
+          shader: "ai.attach.kind.shader",
+          datapack: "ai.attach.kind.datapack",
+          file: "ai.attach.kind.file",
+          crash: "ai.attach.kind.crash",
+          log: "ai.attach.kind.log",
+          web: "ai.attach.kind.web",
+          commands: "ai.attach.kind.commands",
+          diagnose: "ai.attach.kind.diagnose"
+        };
+        return t(map[kind]);
+      }
+      function isCapability(kind) {
+        return CAPABILITY_KINDS.includes(kind);
+      }
+      function lucideSvg(icon, size = 15, cls = "ai-attach-ico") {
+        const body = icon.map(([tag, attrs]) => {
+          const a = Object.entries(attrs).map(([k, v2]) => `${k}="${String(v2).replace(/"/g, "&quot;")}"`).join(" ");
+          return `<${tag} ${a}/>`;
+        }).join("");
+        return `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+      }
+      function kindLucide(kind) {
+        switch (kind) {
+          case "build":
+            return attach_icons_1.Boxes;
+          case "mod":
+            return attach_icons_1.Package;
+          case "resourcepack":
+            return attach_icons_1.Image;
+          case "shader":
+            return attach_icons_1.Sparkles;
+          case "datapack":
+            return attach_icons_1.Layers;
+          case "file":
+            return attach_icons_1.FileText;
+          case "crash":
+            return attach_icons_1.TriangleAlert;
+          case "log":
+            return attach_icons_1.ScrollText;
+          case "web":
+            return attach_icons_1.Globe;
+          case "commands":
+            return attach_icons_1.Terminal;
+          case "diagnose":
+            return attach_icons_1.Stethoscope;
+          default:
+            return attach_icons_1.FileArchive;
+        }
+      }
+      function kindIcon(kind, size = 15) {
+        return lucideSvg(kindLucide(kind), size);
+      }
+      function chevronSvg(dir = "right") {
+        return lucideSvg(dir === "left" ? attach_icons_1.ChevronLeft : attach_icons_1.ChevronRight, 16, "ai-attach-menu__chev");
+      }
+      function buildThumbHtml(opts) {
+        const cls = opts.size === "sm" ? "ai-attach-thumb ai-attach-thumb--sm" : "ai-attach-thumb";
+        const src = opts.iconSrc || "../../assets/InstancesIcons/newBuild.png";
+        return `<img class="${cls}" src="${esc(src)}" alt="" draggable="false">`;
+      }
+      function getAiAttachments() {
+        return attachments;
+      }
+      function clearAiAttachments() {
+        attachments = [];
+        host?.onAttachmentsChange(attachments);
+        renderAiAttachChips();
+      }
+      function pushAttachment(item) {
+        if (attachments.length >= MAX_ATTACH)
+          return;
+        const dup = attachments.some((a) => {
+          if (a.kind !== item.kind)
+            return false;
+          if (isCapability(item.kind))
+            return true;
+          if (item.kind === "build")
+            return a.buildId === item.buildId;
+          if (item.kind === "file")
+            return a.path === item.path;
+          if (item.kind === "crash" || item.kind === "log")
+            return a.buildId === item.buildId && a.kind === item.kind;
+          return a.buildId === item.buildId && a.filename === item.filename;
+        });
+        if (dup)
+          return;
+        attachments = [...attachments, item];
+        host?.onAttachmentsChange(attachments);
+        renderAiAttachChips();
+      }
+      function removeAiAttachment(id) {
+        attachments = attachments.filter((a) => a.id !== id);
+        host?.onAttachmentsChange(attachments);
+        renderAiAttachChips();
+      }
+      function hasCapability(kind) {
+        return attachments.some((a) => a.kind === kind);
+      }
+      function toggleCapability(kind) {
+        const existing = attachments.find((a) => a.kind === kind);
+        if (existing) {
+          removeAiAttachment(existing.id);
+          return;
+        }
+        pushAttachment({
+          id: uid(),
+          kind,
+          label: kindLabel(kind),
+          detail: t(`ai.attach.${kind}Hint`)
+        });
+      }
+      var ATTACH_WIRE_HEADER = "### \u0412\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F";
+      var CONTENT_KIND_BY_LABEL = {
+        \u041C\u043E\u0434: "mod",
+        Mod: "mod",
+        \u0420\u041F: "resourcepack",
+        RP: "resourcepack",
+        \u0428\u0435\u0439\u0434\u0435\u0440: "shader",
+        Shader: "shader",
+        \u0414\u041F: "datapack",
+        DP: "datapack"
+      };
+      var LOG_KIND_BY_LABEL = {
+        Crash: "crash",
+        \u041B\u043E\u0433: "log",
+        Log: "log"
+      };
+      function niceAttachFileLabel(filename) {
+        return (filename.replace(/\.disabled$/i, "").replace(/\.(jar|zip)$/i, "") || filename).trim();
+      }
+      function pathBasename(p) {
+        const parts = p.replace(/\\/g, "/").split("/");
+        return parts[parts.length - 1] || p;
+      }
+      function formatAiAttachmentsPrompt(items) {
+        if (!items.length)
+          return "";
+        const blocks = [ATTACH_WIRE_HEADER];
+        for (const a of items) {
+          if (a.kind === "web") {
+            blocks.push("- \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C: \u043F\u043E\u0438\u0441\u043A \u0432 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442\u0435 \u0412\u041A\u041B\u042E\u0427\u0415\u041D\u0410. \u041E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E \u0432\u044B\u0437\u044B\u0432\u0430\u0439 tool `web_search` \u0434\u043B\u044F \u0430\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u044B\u0445 \u0444\u0430\u043A\u0442\u043E\u0432 \u0438 \u0432\u043D\u0435\u0448\u043D\u0438\u0445 \u0441\u0441\u044B\u043B\u043E\u043A; \u043F\u0440\u0438 \u043D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E\u0441\u0442\u0438 \u0447\u0438\u0442\u0430\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0447\u0435\u0440\u0435\u0437 `fetch_url`. \u041D\u0435 \u0443\u0442\u0432\u0435\u0440\u0436\u0434\u0430\u0439, \u0447\u0442\u043E \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0430 \u043A \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442\u0443 \u0438\u043B\u0438 \u043D\u0435\u0442 tool \u043F\u043E\u0438\u0441\u043A\u0430. \u041D\u0435 \u0432\u044B\u0434\u0443\u043C\u044B\u0432\u0430\u0439 URL \u2014 \u0431\u0435\u0440\u0438 \u0438\u0445 \u0442\u043E\u043B\u044C\u043A\u043E \u0438\u0437 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u043E\u0432 tools.");
+            continue;
+          }
+          if (a.kind === "commands") {
+            blocks.push("- \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C: \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u2014 \u0434\u0430\u0432\u0430\u0439 \u0433\u043E\u0442\u043E\u0432\u044B\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u044B Minecraft / \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430 / shell \u0442\u0430\u043C, \u0433\u0434\u0435 \u044D\u0442\u043E \u0443\u043C\u0435\u0441\u0442\u043D\u043E.");
+            continue;
+          }
+          if (a.kind === "diagnose") {
+            blocks.push("- \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C: \u0433\u043B\u0443\u0431\u043E\u043A\u0430\u044F \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0430 \u2014 \u0441\u0438\u0441\u0442\u0435\u043C\u043D\u043E \u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0439 \u043B\u043E\u0433\u0438, \u043A\u043E\u043D\u0444\u043B\u0438\u043A\u0442\u044B \u043C\u043E\u0434\u043E\u0432 \u0438 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 Java.");
+            continue;
+          }
+          if (a.kind === "build") {
+            blocks.push(`- \u0421\u0431\u043E\u0440\u043A\u0430: \xAB${a.label}\xBB (id=${a.buildId || "?"}${a.detail ? `, ${a.detail}` : ""}). \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 select_build / tools \u0441 \u044D\u0442\u0438\u043C buildId.`);
+            continue;
+          }
+          if (a.kind === "mod" || a.kind === "resourcepack" || a.kind === "shader" || a.kind === "datapack") {
+            blocks.push(`- ${kindLabel(a.kind)}: \`${a.filename || a.label}\` \u0432 \u0441\u0431\u043E\u0440\u043A\u0435 id=${a.buildId || "?"}${a.detail ? ` (${a.detail})` : ""}.`);
+            continue;
+          }
+          if (a.kind === "file") {
+            blocks.push(`- \u0424\u0430\u0439\u043B: ${a.path || a.label}`);
+            if (a.text)
+              blocks.push("```\n" + a.text.slice(0, MAX_TEXT_CHARS) + "\n```");
+            continue;
+          }
+          if (a.kind === "crash" || a.kind === "log") {
+            blocks.push(`- ${kindLabel(a.kind)} \u0441\u0431\u043E\u0440\u043A\u0438 id=${a.buildId || "?"}:`);
+            if (a.text)
+              blocks.push("```\n" + a.text.slice(0, MAX_TEXT_CHARS) + "\n```");
+            else
+              blocks.push("  (\u043F\u0443\u0441\u0442\u043E \u2014 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0439 \u0447\u0435\u0440\u0435\u0437 get_crash_report / get_latest_log)");
+          }
+        }
+        return blocks.join("\n");
+      }
+      function parseAiAttachmentsPrompt(wire) {
+        const raw = String(wire || "");
+        const headerIdx = raw.indexOf(ATTACH_WIRE_HEADER);
+        if (headerIdx < 0)
+          return { text: raw, attachments: [] };
+        const before = raw.slice(0, headerIdx).trim();
+        const lines = raw.slice(headerIdx + ATTACH_WIRE_HEADER.length).split("\n");
+        let i = lines[0] === "" ? 1 : 0;
+        const attachments2 = [];
+        let attachEnd = i;
+        const readFence = (start) => {
+          if (lines[start] !== "```")
+            return { next: start };
+          let j2 = start + 1;
+          const body = [];
+          while (j2 < lines.length && lines[j2] !== "```") {
+            body.push(lines[j2]);
+            j2 += 1;
+          }
+          if (j2 < lines.length && lines[j2] === "```")
+            j2 += 1;
+          return { text: body.join("\n"), next: j2 };
+        };
+        while (i < lines.length) {
+          const line = lines[i];
+          if (line === "") {
+            let k = i + 1;
+            while (k < lines.length && lines[k] === "")
+              k += 1;
+            if (k >= lines.length || !lines[k].startsWith("- ")) {
+              attachEnd = i;
+              break;
+            }
+            i += 1;
+            continue;
+          }
+          if (!line.startsWith("- ")) {
+            attachEnd = i;
+            break;
+          }
+          if (line.startsWith("- \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C: \u043F\u043E\u0438\u0441\u043A \u0432 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442\u0435")) {
+            attachments2.push({ id: uid(), kind: "web", label: kindLabel("web") });
+            i += 1;
+            attachEnd = i;
+            continue;
+          }
+          if (line.startsWith("- \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C: \u043A\u043E\u043C\u0430\u043D\u0434\u044B")) {
+            attachments2.push({ id: uid(), kind: "commands", label: kindLabel("commands") });
+            i += 1;
+            attachEnd = i;
+            continue;
+          }
+          if (line.startsWith("- \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u044C: \u0433\u043B\u0443\u0431\u043E\u043A\u0430\u044F \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0430")) {
+            attachments2.push({ id: uid(), kind: "diagnose", label: kindLabel("diagnose") });
+            i += 1;
+            attachEnd = i;
+            continue;
+          }
+          const buildMatch = line.match(/^- Сборка: «(.+?)» \(id=([^,)]+)(?:,\s*(.+?))?\)\./);
+          if (buildMatch) {
+            attachments2.push({
+              id: uid(),
+              kind: "build",
+              label: buildMatch[1],
+              buildId: buildMatch[2] === "?" ? void 0 : buildMatch[2],
+              detail: buildMatch[3]
+            });
+            i += 1;
+            attachEnd = i;
+            continue;
+          }
+          const contentMatch = line.match(/^- (.+?): `([^`]+)` в сборке id=([^\s(]+)(?:\s*\(([^)]*)\))?\.?\s*$/);
+          if (contentMatch) {
+            const kind = CONTENT_KIND_BY_LABEL[contentMatch[1]];
+            if (kind) {
+              const filename = contentMatch[2];
+              attachments2.push({
+                id: uid(),
+                kind,
+                label: niceAttachFileLabel(filename),
+                filename,
+                buildId: contentMatch[3] === "?" ? void 0 : contentMatch[3],
+                detail: contentMatch[4] || void 0
+              });
+              i += 1;
+              attachEnd = i;
+              continue;
+            }
+          }
+          if (line.startsWith("- \u0424\u0430\u0439\u043B: ")) {
+            const filePath = line.slice("- \u0424\u0430\u0439\u043B: ".length).trim();
+            i += 1;
+            const fence = readFence(i);
+            i = fence.next;
+            attachments2.push({
+              id: uid(),
+              kind: "file",
+              label: pathBasename(filePath),
+              path: filePath,
+              detail: filePath,
+              text: fence.text
+            });
+            attachEnd = i;
+            continue;
+          }
+          const logMatch = line.match(/^- (.+?) сборки id=([^:]+):\s*$/);
+          if (logMatch) {
+            const kind = LOG_KIND_BY_LABEL[logMatch[1]];
+            if (kind) {
+              const buildId = logMatch[2].trim() === "?" ? void 0 : logMatch[2].trim();
+              i += 1;
+              let text2;
+              if (lines[i] === "```") {
+                const fence = readFence(i);
+                text2 = fence.text;
+                i = fence.next;
+              } else if ((lines[i] || "").trim() === "(\u043F\u0443\u0441\u0442\u043E \u2014 \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0439 \u0447\u0435\u0440\u0435\u0437 get_crash_report / get_latest_log)") {
+                i += 1;
+              }
+              attachments2.push({
+                id: uid(),
+                kind,
+                label: buildId || kindLabel(kind),
+                buildId,
+                detail: kind === "crash" ? kindLabel("crash") : "latest.log",
+                text: text2
+              });
+              attachEnd = i;
+              continue;
+            }
+          }
+          attachEnd = i;
+          break;
+        }
+        if (i >= lines.length)
+          attachEnd = lines.length;
+        const userPart = lines.slice(attachEnd).join("\n").replace(/^\n+/, "").trim();
+        const text = [before, userPart].filter(Boolean).join("\n\n");
+        return { text, attachments: attachments2 };
+      }
+      function badgeHtml(a, removable) {
+        const title = a.detail || a.label;
+        const x2 = removable ? `<span class="ai-attach-badge__x" aria-hidden="true">${lucideSvg(attach_icons_1.X, 12, "ai-attach-badge__xico")}</span>` : "";
+        const tag = removable ? "button" : "span";
+        const typeAttr = removable ? ' type="button"' : "";
+        const data = removable ? ` data-attach-id="${esc(a.id)}"` : "";
+        const text = isCapability(a.kind) ? `<span class="ai-attach-badge__label">${esc(a.label)}</span>` : `<span class="ai-attach-badge__kind">${esc(kindLabel(a.kind))}</span>
+       <span class="ai-attach-badge__label">${esc(a.label)}</span>`;
+        const useBuildThumb = (a.kind === "build" || a.kind === "crash" || a.kind === "log") && (a.iconSrc || a.iconBg);
+        const ico = useBuildThumb ? buildThumbHtml({ iconSrc: a.iconSrc, iconBg: a.iconBg, size: "sm" }) : `<span class="ai-attach-badge__ico">${kindIcon(a.kind, 14)}</span>`;
+        return `<${tag}${typeAttr} class="ai-attach-badge ai-attach-badge--${esc(a.kind)}"${data} title="${esc(title)}">
+    ${ico}
+    <span class="ai-attach-badge__text">${text}</span>
+    ${x2}
+  </${tag}>`;
+      }
+      function renderAiAttachBadgesHtml(items) {
+        if (!items.length)
+          return "";
+        return `<div class="ai-attach-badges ai-attach-badges--msg">${items.map((a) => badgeHtml(a, false)).join("")}</div>`;
+      }
+      function renderAiAttachChips() {
+        const root = document.getElementById("ai-attach-chips");
+        if (!root)
+          return;
+        if (!attachments.length) {
+          root.innerHTML = "";
+          root.hidden = true;
+          return;
+        }
+        root.hidden = false;
+        root.innerHTML = `<div class="ai-attach-badges">${attachments.map((a) => badgeHtml(a, true)).join("")}</div>`;
+      }
+      function setAttachMenuOpen(open) {
+        const menu = document.getElementById("ai-attach-menu");
+        const btn = document.getElementById("ai-attach");
+        if (!menu || !btn)
+          return;
+        if (open) {
+          view = { mode: "root" };
+          filterQuery = "";
+          viewAnimDir = "forward";
+          renderAttachMenuBody();
+          menu.classList.remove("hidden");
+          requestAnimationFrame(() => menu.classList.add("is-open"));
+          btn.setAttribute("aria-expanded", "true");
+        } else if (menu.classList.contains("is-open") || !menu.classList.contains("hidden")) {
+          menu.classList.remove("is-open");
+          btn.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!menu.classList.contains("is-open"))
+              menu.classList.add("hidden");
+          }, 180);
+        }
+      }
+      function closeAiAttachMenu() {
+        setAttachMenuOpen(false);
+      }
+      function toggleAiAttachMenu() {
+        const menu = document.getElementById("ai-attach-menu");
+        if (!menu)
+          return;
+        setAttachMenuOpen(!menu.classList.contains("is-open"));
+      }
+      function rowBtn(opts) {
+        const i = opts.index ?? 0;
+        const state = opts.toggle ? opts.active ? " is-active" : "" : opts.disabled ? " is-disabled" : "";
+        const trailing = opts.toggle ? `<span class="ai-attach-menu__check${opts.active ? " is-on" : ""}" aria-hidden="true"></span>` : `<span class="ai-attach-menu__trail">${chevronSvg("right")}</span>`;
+        return `<button type="button" class="ai-attach-menu__row${state}" style="--i:${i}" data-attach-action="${esc(opts.id)}" ${opts.disabled ? "disabled" : ""}>
+    <span class="ai-attach-menu__ico ai-attach-badge--${esc(opts.kind)}">${kindIcon(opts.kind, 16)}</span>
+    <span class="ai-attach-menu__row-main">
+      <span class="ai-attach-menu__row-title">${esc(opts.title)}</span>
+      ${opts.hint ? `<span class="ai-attach-menu__row-hint">${esc(opts.hint)}</span>` : ""}
+    </span>
+    ${trailing}
+  </button>`;
+      }
+      function sectionLabel(text) {
+        return `<div class="ai-attach-menu__section">${esc(text)}</div>`;
+      }
+      function matchQuery(text, q2) {
+        return !q2 || text.toLowerCase().includes(q2);
+      }
+      function renderAttachMenuBody() {
+        const menu = document.getElementById("ai-attach-menu");
+        if (!menu || !host)
+          return;
+        const anim = viewAnimDir === "back" ? "is-slide-back" : "is-slide-fwd";
+        if (view.mode === "loading") {
+          menu.innerHTML = `
+      <div class="ai-attach-menu__panel ${anim}">
+        <div class="ai-attach-menu__head">
+          <div class="ai-attach-menu__title">${esc(t("ai.attach.title"))}</div>
+        </div>
+        <div class="ai-attach-menu__empty ai-attach-menu__empty--load">
+          <span class="ai-attach-menu__spinner" aria-hidden="true"></span>
+          ${esc(view.label)}
+        </div>
+      </div>`;
+          return;
+        }
+        if (view.mode === "root") {
+          const hasBuild = Boolean(host.getSessionBuildId());
+          const q2 = filterQuery.trim().toLowerCase();
+          const ctxAll = [
+            { id: "build", kind: "build", title: t("ai.attach.addBuild"), hint: t("ai.attach.addBuildHint") },
+            {
+              id: "mod",
+              kind: "mod",
+              title: t("ai.attach.addMod"),
+              hint: hasBuild ? t("ai.attach.fromContextBuild") : t("ai.attach.pickBuildFirst")
+            },
+            { id: "resourcepack", kind: "resourcepack", title: t("ai.attach.addResourcepack"), hint: t("ai.attach.addResourcepackHint") },
+            { id: "shader", kind: "shader", title: t("ai.attach.addShader"), hint: t("ai.attach.addShaderHint") },
+            { id: "datapack", kind: "datapack", title: t("ai.attach.addDatapack"), hint: t("ai.attach.addDatapackHint") },
+            { id: "file", kind: "file", title: t("ai.attach.addFile"), hint: t("ai.attach.addFileHint") },
+            { id: "crash", kind: "crash", title: t("ai.attach.addCrash"), hint: t("ai.attach.addCrashHint"), disabled: !hasBuild },
+            { id: "log", kind: "log", title: t("ai.attach.addLog"), hint: t("ai.attach.addLogHint"), disabled: !hasBuild }
+          ];
+          const ctxRows = ctxAll.filter((r) => matchQuery(`${r.title} ${r.hint || ""}`, q2));
+          const capAll = [
+            { id: "web", kind: "web", title: t("ai.attach.addWeb"), hint: t("ai.attach.webHint") },
+            { id: "commands", kind: "commands", title: t("ai.attach.addCommands"), hint: t("ai.attach.commandsHint") },
+            { id: "diagnose", kind: "diagnose", title: t("ai.attach.addDiagnose"), hint: t("ai.attach.diagnoseHint") }
+          ];
+          const capRows = capAll.filter((r) => matchQuery(`${r.title} ${r.hint}`, q2));
+          let i = 0;
+          menu.innerHTML = `
+      <div class="ai-attach-menu__panel ${anim}">
+        <div class="ai-attach-menu__head">
+          <div class="ai-attach-menu__title">${esc(t("ai.attach.title"))}</div>
+        </div>
+        <div class="ai-attach-menu__search-wrap">
+          <span class="ai-attach-menu__search-ico" aria-hidden="true">${lucideSvg(attach_icons_1.Search, 14)}</span>
+          <input type="search" class="ai-attach-menu__search" id="ai-attach-search" placeholder="${esc(t("ai.attach.search"))}" value="${esc(filterQuery)}" autocomplete="off">
+        </div>
+        <div class="ai-attach-menu__list">
+          ${ctxRows.length ? sectionLabel(t("ai.attach.sectionContext")) : ""}
+          ${ctxRows.map((r) => rowBtn({ ...r, index: i++ })).join("")}
+          ${capRows.length ? sectionLabel(t("ai.attach.sectionSkills")) : ""}
+          ${capRows.map((r) => rowBtn({
+            id: r.id,
+            kind: r.kind,
+            title: r.title,
+            hint: r.hint,
+            toggle: true,
+            active: hasCapability(r.kind),
+            index: i++
+          })).join("")}
+          ${!ctxRows.length && !capRows.length ? `<div class="ai-attach-menu__empty">${esc(t("ai.attach.emptySearch"))}</div>` : ""}
+        </div>
+        <div class="ai-attach-menu__foot">${esc(t("ai.attach.foot", { n: attachments.length, max: MAX_ATTACH }))}</div>
+      </div>`;
+          bindSearch();
+          return;
+        }
+        if (view.mode === "builds") {
+          const q2 = filterQuery.trim().toLowerCase();
+          const builds = host.getBuilds().filter((b2) => !q2 || b2.name.toLowerCase().includes(q2) || b2.id.toLowerCase().includes(q2));
+          menu.innerHTML = `
+      <div class="ai-attach-menu__panel ${anim}">
+        <div class="ai-attach-menu__head">
+          <button type="button" class="ai-attach-menu__back" data-attach-action="back" aria-label="Back">${chevronSvg("left")}</button>
+          <div class="ai-attach-menu__title">${esc(t("ai.attach.pickBuild"))}</div>
+        </div>
+        <div class="ai-attach-menu__search-wrap">
+          <input type="search" class="ai-attach-menu__search" id="ai-attach-search" placeholder="${esc(t("ai.attach.search"))}" value="${esc(filterQuery)}" autocomplete="off">
+        </div>
+        <div class="ai-attach-menu__list">
+          ${builds.length ? builds.map((b2, idx) => `<button type="button" class="ai-attach-menu__row" style="--i:${idx}" data-attach-build="${esc(b2.id)}">
+              ${buildThumbHtml({ iconSrc: b2.iconSrc, iconBg: b2.iconBg })}
+              <span class="ai-attach-menu__row-main">
+                <span class="ai-attach-menu__row-title">${esc(b2.name)}</span>
+                <span class="ai-attach-menu__row-hint">${esc([b2.gameVersion, b2.loader].filter(Boolean).join(" \xB7 "))}</span>
+              </span>
+              <span class="ai-attach-menu__trail">${chevronSvg("right")}</span>
+            </button>`).join("") : `<div class="ai-attach-menu__empty">${esc(t("ai.attach.emptyBuilds"))}</div>`}
+        </div>
+      </div>`;
+          bindSearch();
+          return;
+        }
+        if (view.mode === "content") {
+          const q2 = filterQuery.trim().toLowerCase();
+          const contentBuildId = view.buildId;
+          const contentKind = view.contentKind;
+          const contentBuildName = view.buildName;
+          const items = view.items.filter((it2) => !q2 || it2.filename.toLowerCase().includes(q2) || (it2.title || "").toLowerCase().includes(q2));
+          menu.innerHTML = `
+      <div class="ai-attach-menu__panel ${anim}">
+        <div class="ai-attach-menu__head">
+          <button type="button" class="ai-attach-menu__back" data-attach-action="back-content" aria-label="Back">${chevronSvg("left")}</button>
+          <div class="ai-attach-menu__title">${esc(contentBuildName)} \xB7 ${esc(kindLabel(contentKind))}</div>
+        </div>
+        <div class="ai-attach-menu__search-wrap">
+          <input type="search" class="ai-attach-menu__search" id="ai-attach-search" placeholder="${esc(t("ai.attach.search"))}" value="${esc(filterQuery)}" autocomplete="off">
+        </div>
+        <div class="ai-attach-menu__list">
+          ${items.length ? items.map((it2, idx) => `<button type="button" class="ai-attach-menu__row" style="--i:${idx}" data-attach-file="${esc(it2.filename)}" data-attach-build="${esc(contentBuildId)}" data-attach-kind="${esc(contentKind)}">
+              <span class="ai-attach-menu__ico ai-attach-badge--${esc(contentKind)}">${kindIcon(contentKind)}</span>
+              <span class="ai-attach-menu__row-main">
+                <span class="ai-attach-menu__row-title">${esc((it2.title || it2.filename).replace(/\.disabled$/i, "").replace(/\.(jar|zip)$/i, ""))}</span>
+                <span class="ai-attach-menu__row-hint">${esc(it2.filename)}</span>
+              </span>
+            </button>`).join("") : `<div class="ai-attach-menu__empty">${esc(t("ai.attach.emptyContent"))}</div>`}
+        </div>
+      </div>`;
+          bindSearch();
+        }
+      }
+      function bindSearch() {
+        const input = document.getElementById("ai-attach-search");
+        if (!input)
+          return;
+        input.focus();
+        input.addEventListener("input", () => {
+          filterQuery = input.value || "";
+          renderAttachMenuBody();
+          const again = document.getElementById("ai-attach-search");
+          if (again) {
+            const pos = filterQuery.length;
+            again.focus();
+            again.setSelectionRange(pos, pos);
+          }
+        });
+      }
+      async function openContentPicker(buildId, contentKind) {
+        if (!host)
+          return;
+        const build = host.getBuilds().find((b2) => b2.id === buildId);
+        viewAnimDir = "forward";
+        view = { mode: "loading", label: t("ai.attach.loading") };
+        renderAttachMenuBody();
+        const scanned = await host.scanBuildContent(buildId);
+        const key = contentKind === "mod" ? "mods" : contentKind === "resourcepack" ? "resourcepacks" : contentKind === "shader" ? "shaders" : "datapacks";
+        const raw = scanned?.[key] || [];
+        view = {
+          mode: "content",
+          buildId,
+          buildName: build?.name || buildId,
+          contentKind,
+          items: raw.map((x2) => ({ filename: x2.filename, title: x2.name }))
+        };
+        filterQuery = "";
+        viewAnimDir = "forward";
+        renderAttachMenuBody();
+      }
+      async function attachLog(kind) {
+        if (!host)
+          return;
+        const buildId = host.getSessionBuildId();
+        if (!buildId)
+          return;
+        const build = host.getBuilds().find((b2) => b2.id === buildId);
+        view = { mode: "loading", label: t("ai.attach.loading") };
+        renderAttachMenuBody();
+        const text = kind === "crash" ? await host.getCrashLog(buildId) : await host.getLatestLog(buildId);
+        pushAttachment({
+          id: uid(),
+          kind,
+          label: build?.name || buildId,
+          detail: kind === "crash" ? t("ai.attach.kind.crash") : "latest.log",
+          buildId,
+          iconSrc: build?.iconSrc,
+          iconBg: build?.iconBg,
+          text: text ? text.slice(-MAX_TEXT_CHARS) : void 0
+        });
+        setAttachMenuOpen(false);
+      }
+      async function attachFilesFromDisk() {
+        if (!host)
+          return;
+        const paths = await host.pickFiles();
+        if (!paths.length)
+          return;
+        for (const p of paths.slice(0, MAX_ATTACH - attachments.length)) {
+          const read = await host.readAttachFile(p);
+          if (!read || read.error)
+            continue;
+          pushAttachment({
+            id: uid(),
+            kind: "file",
+            label: read.name,
+            path: read.path,
+            detail: read.path,
+            text: read.text
+          });
+        }
+        setAttachMenuOpen(false);
+      }
+      function onMenuClick(e) {
+        const target = e.target;
+        const back = target.closest('[data-attach-action="back"], [data-attach-action="back-content"]');
+        if (back) {
+          const action2 = back.getAttribute("data-attach-action");
+          viewAnimDir = "back";
+          if (action2 === "back-content" && view.mode === "content") {
+            view = { mode: "builds", purpose: "pick-for-content", contentKind: view.contentKind };
+          } else {
+            view = { mode: "root" };
+          }
+          filterQuery = "";
+          renderAttachMenuBody();
+          return;
+        }
+        const buildBtn = target.closest("[data-attach-build]");
+        if (buildBtn?.dataset.attachBuild) {
+          const buildId = buildBtn.dataset.attachBuild;
+          const file = buildBtn.dataset.attachFile;
+          const kind = buildBtn.dataset.attachKind;
+          if (file && kind && view.mode === "content") {
+            const build = host?.getBuilds().find((b2) => b2.id === buildId);
+            const nice = (file.replace(/\.disabled$/i, "").replace(/\.(jar|zip)$/i, "") || file).trim();
+            pushAttachment({
+              id: uid(),
+              kind,
+              label: nice,
+              filename: file,
+              buildId,
+              detail: build?.name
+            });
+            setAttachMenuOpen(false);
+            return;
+          }
+          if (view.mode === "builds") {
+            if (view.purpose === "attach") {
+              const b2 = host?.getBuilds().find((x2) => x2.id === buildId);
+              if (b2) {
+                pushAttachment({
+                  id: uid(),
+                  kind: "build",
+                  label: b2.name,
+                  buildId: b2.id,
+                  detail: [b2.gameVersion, b2.loader].filter(Boolean).join(" \xB7 "),
+                  iconSrc: b2.iconSrc,
+                  iconBg: b2.iconBg
+                });
+              }
+              setAttachMenuOpen(false);
+            } else {
+              viewAnimDir = "forward";
+              void openContentPicker(buildId, view.contentKind);
+            }
+          }
+          return;
+        }
+        const actionBtn = target.closest("[data-attach-action]");
+        const action = actionBtn?.dataset.attachAction;
+        if (!action || !host)
+          return;
+        if (action === "web" || action === "commands" || action === "diagnose") {
+          toggleCapability(action);
+          const on = hasCapability(action);
+          actionBtn.classList.toggle("is-active", on);
+          actionBtn.querySelector(".ai-attach-menu__check")?.classList.toggle("is-on", on);
+          const foot = document.querySelector(".ai-attach-menu__foot");
+          if (foot)
+            foot.textContent = t("ai.attach.foot", { n: String(attachments.length), max: String(MAX_ATTACH) });
+          return;
+        }
+        if (action === "build") {
+          viewAnimDir = "forward";
+          view = { mode: "builds", purpose: "attach", contentKind: "build" };
+          filterQuery = "";
+          renderAttachMenuBody();
+          return;
+        }
+        if (action === "mod" || action === "resourcepack" || action === "shader" || action === "datapack") {
+          viewAnimDir = "forward";
+          const sid = host.getSessionBuildId();
+          if (sid)
+            void openContentPicker(sid, action);
+          else {
+            view = { mode: "builds", purpose: "pick-for-content", contentKind: action };
+            filterQuery = "";
+            renderAttachMenuBody();
+          }
+          return;
+        }
+        if (action === "file") {
+          void attachFilesFromDisk();
+          return;
+        }
+        if (action === "crash") {
+          void attachLog("crash");
+          return;
+        }
+        if (action === "log") {
+          void attachLog("log");
+        }
+      }
+      function onChipsClick(e) {
+        const btn = e.target.closest(".ai-attach-badge[data-attach-id]");
+        if (!btn?.dataset.attachId)
+          return;
+        removeAiAttachment(btn.dataset.attachId);
+      }
+      function initAiAttachUi(h) {
+        host = h;
+        renderAiAttachChips();
+        if (menuBound)
+          return;
+        menuBound = true;
+        document.getElementById("ai-attach-menu")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onMenuClick(e);
+        });
+        document.getElementById("ai-attach-chips")?.addEventListener("click", onChipsClick);
+        document.getElementById("ai-attach")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const menu = document.getElementById("ai-attach-menu");
+          const willOpen = !menu?.classList.contains("is-open");
+          if (willOpen)
+            host?.closeOtherPopovers();
+          toggleAiAttachMenu();
+        });
+      }
+    }
+  });
+
+  // dist/renderer/ai/shell-ui.js
+  var require_shell_ui = __commonJS({
+    "dist/renderer/ai/shell-ui.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.renderAiContextBar = renderAiContextBar;
+      exports.renderAiQuickChips = renderAiQuickChips;
+      exports.renderAiEmptyScenarios = renderAiEmptyScenarios;
+      exports.bindAiEmptyScenarios = bindAiEmptyScenarios;
+      exports.renderAiContextHints = renderAiContextHints;
+      var shellHost = null;
+      var emptyScenariosBound = false;
+      function setShellHost(host) {
+        shellHost = host;
+      }
+      function promptFromKey(key) {
+        return shellHost?.t(key) || key;
+      }
+      function renderAiContextBar(host, build) {
+        setShellHost(host);
+        const bar = document.getElementById("ai-context-bar");
+        if (!bar)
+          return;
+        bar.hidden = false;
+        bar.removeAttribute("hidden");
+        if (!build) {
+          bar.classList.add("is-empty");
+          bar.innerHTML = `
+      <div class="ai-context-bar__main">
+        <span class="ai-context-bar__name">${host.escapeHtml(host.t("ai.noBuild"))}</span>
+        <span class="ai-context-bar__meta"></span>
+      </div>
+      <div class="ai-context-bar__slot" id="ai-context-bar-slot" aria-hidden="true"></div>
+    `;
+          return;
+        }
+        bar.classList.remove("is-empty");
+        const meta = [build.gameVersion, build.loader].filter(Boolean).join(" \xB7 ");
+        bar.innerHTML = `
+    <div class="ai-context-bar__main">
+      <span class="ai-context-bar__name">${host.escapeHtml(build.name)}</span>
+      <span class="ai-context-bar__meta">${host.escapeHtml(meta)}</span>
+    </div>
+    <div class="ai-context-bar__slot" id="ai-context-bar-slot" aria-hidden="true"></div>
+  `;
+      }
+      function renderAiQuickChips(host, _opts) {
+        setShellHost(host);
+      }
+      var EMPTY_SCENARIOS = [
+        { id: "crash", labelKey: "ai.scenario.crash", promptKey: "ai.prompt.scenario.crash" },
+        { id: "newBuild", labelKey: "ai.scenario.newBuild", promptKey: "ai.prompt.scenario.newBuild" },
+        { id: "optimize", labelKey: "ai.scenario.optimize", promptKey: "ai.prompt.scenario.optimize" },
+        { id: "findMod", labelKey: "ai.scenario.findMod", promptKey: "ai.prompt.scenario.findMod" }
+      ];
+      function renderAiEmptyScenarios(host) {
+        setShellHost(host);
+        const root = document.getElementById("ai-empty-scenarios");
+        if (!root)
+          return;
+        root.innerHTML = EMPTY_SCENARIOS.map((s) => {
+          const label = host.t(s.labelKey);
+          const text = label === s.labelKey ? "" : label;
+          return `<button type="button" class="ai-scenario" data-scenario="${s.id}" data-prompt-key="${s.promptKey}" data-i18n="${s.labelKey}">
+        <span class="ai-scenario__title">${host.escapeHtml(text)}</span>
+      </button>`;
+        }).join("");
+        bindAiEmptyScenarios(host);
+      }
+      function bindAiEmptyScenarios(host) {
+        setShellHost(host);
+        const root = document.getElementById("ai-empty-scenarios");
+        if (!root || emptyScenariosBound)
+          return;
+        emptyScenariosBound = true;
+        root.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-prompt-key]");
+          if (!btn?.dataset.promptKey || !shellHost)
+            return;
+          shellHost.sendPrompt(promptFromKey(btn.dataset.promptKey));
+        });
+      }
+      function renderAiContextHints(host, build) {
+        setShellHost(host);
+        let hint = document.getElementById("ai-context-hint");
+        if (!hint) {
+          const bar = document.getElementById("ai-context-bar");
+          if (bar) {
+            hint = document.createElement("div");
+            hint.id = "ai-context-hint";
+            hint.className = "ai-context-hint hidden";
+            bar.insertAdjacentElement("afterend", hint);
+          }
+        }
+        const noMods = Boolean(build && !(build.mods && build.mods.length));
+        if (hint) {
+          if (noMods) {
+            hint.textContent = host.t("ai.hint.noMods");
+            hint.classList.remove("hidden");
+          } else {
+            hint.textContent = "";
+            hint.classList.add("hidden");
+          }
+        }
+      }
+    }
+  });
+
+  // dist/renderer/ai/turn-ui.js
+  var require_turn_ui = __commonJS({
+    "dist/renderer/ai/turn-ui.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.mountAiPlan = mountAiPlan;
+      exports.updateAiPlanStep = updateAiPlanStep;
+      exports.wrapAiToolCollapsible = wrapAiToolCollapsible;
+      exports.beginAiRound = beginAiRound;
+      exports.endAiRound = endAiRound;
+      exports.ensureAiStageStatus = ensureAiStageStatus;
+      exports.setAiAgentStatus = setAiAgentStatus;
+      exports.setAiStopVisible = setAiStopVisible;
+      exports.onAiStop = onAiStop;
+      exports.showAiSkeleton = showAiSkeleton;
+      exports.hideAiSkeleton = hideAiSkeleton;
+      exports.attachAiMessageActions = attachAiMessageActions;
+      var STATUS_I18N = {
+        thinking: "ai.status.thinking",
+        tool: "ai.status.tool",
+        confirm: "ai.status.confirm",
+        streaming: "ai.status.streaming"
+      };
+      var STATUS_FALLBACK = {
+        thinking: "\u0414\u0443\u043C\u0430\u044E\u2026",
+        tool: "\u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u2026",
+        confirm: "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u0435\u2026",
+        streaming: "\u041F\u0435\u0447\u0430\u0442\u0430\u0435\u0442\u2026"
+      };
+      var PLAN_ICON = {
+        pending: "\u25CB",
+        running: "\u25C9",
+        done: "\u2713",
+        error: "!"
+      };
+      var stopCallback = null;
+      var stopBound = false;
+      var skeletonTimer = null;
+      var skeletonEl = null;
+      var planRoots = /* @__PURE__ */ new WeakMap();
+      function esc(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+      function ensureStopListener() {
+        if (stopBound)
+          return;
+        const btn = document.getElementById("ai-stop");
+        if (!btn)
+          return;
+        stopBound = true;
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          stopCallback?.();
+        });
+      }
+      function planStepIcon(status) {
+        return PLAN_ICON[status] || PLAN_ICON.pending;
+      }
+      function formatDetail(detail) {
+        if (!detail)
+          return "";
+        const trimmed = detail.trim();
+        if (!trimmed)
+          return "";
+        try {
+          const parsed = JSON.parse(trimmed);
+          return JSON.stringify(parsed, null, 2);
+        } catch {
+          return trimmed.length > 4e3 ? `${trimmed.slice(0, 4e3)}\u2026` : trimmed;
+        }
+      }
+      function bubblePlainText(bubbleEl) {
+        const md = bubbleEl.querySelector(".ai-md, .ai-stream__md, .ai-stream__text");
+        if (md?.textContent)
+          return md.textContent;
+        const clone = bubbleEl.cloneNode(true);
+        clone.querySelectorAll(".ai-msg__actions, .ai-stream__caret").forEach((n) => n.remove());
+        return (clone.textContent || "").trim();
+      }
+      function mountAiPlan(host, steps) {
+        let root = planRoots.get(host);
+        if (!root) {
+          root = document.createElement("div");
+          root.className = "ai-plan";
+          root.innerHTML = `<div class="ai-plan__title" data-i18n="ai.plan.title">\u041F\u043B\u0430\u043D</div>
+      <ul class="ai-plan__list"></ul>`;
+          host.appendChild(root);
+          planRoots.set(host, root);
+        }
+        const list = root.querySelector(".ai-plan__list");
+        if (!list)
+          return root;
+        list.innerHTML = steps.map((s) => `<li class="ai-plan__step is-${esc(s.status)}" data-plan-id="${esc(s.id)}">
+        <span class="ai-plan__icon" aria-hidden="true">${planStepIcon(s.status)}</span>
+        <span class="ai-plan__label">${esc(s.label)}</span>
+      </li>`).join("");
+        return root;
+      }
+      function updateAiPlanStep(id, status) {
+        document.querySelectorAll(".ai-plan__step[data-plan-id]").forEach((step) => {
+          if (step.getAttribute("data-plan-id") !== id)
+            return;
+          step.classList.remove("is-pending", "is-running", "is-done", "is-error");
+          step.classList.add(`is-${status}`);
+          const icon = step.querySelector(".ai-plan__icon");
+          if (icon)
+            icon.textContent = planStepIcon(status);
+        });
+      }
+      function wrapAiToolCollapsible(el, opts) {
+        const status = opts.status || "done";
+        const existing = el.classList.contains("ai-tool") ? el : el.querySelector(".ai-tool");
+        const toolRow = existing || el;
+        let wrap = toolRow.closest(".ai-tool-collapsible");
+        if (!wrap) {
+          wrap = document.createElement("div");
+          wrap.className = "ai-tool-collapsible";
+          const parent = toolRow.parentElement;
+          if (parent) {
+            parent.insertBefore(wrap, toolRow);
+            wrap.appendChild(toolRow);
+          } else {
+            wrap.appendChild(toolRow);
+          }
+        }
+        wrap.classList.remove("is-pending", "is-running", "is-done", "is-error");
+        wrap.classList.add(`is-${status}`);
+        toolRow.classList.remove("is-pending", "is-running", "is-done", "is-error");
+        toolRow.classList.add(`is-${status}`, "ai-tool--summary");
+        let labelEl = toolRow.querySelector(".ai-tool__label");
+        if (!labelEl) {
+          labelEl = document.createElement("span");
+          labelEl.className = "ai-tool__label";
+          toolRow.appendChild(labelEl);
+        }
+        labelEl.textContent = opts.label;
+        let details = wrap.querySelector(".ai-tool__details");
+        if (!details) {
+          details = document.createElement("pre");
+          details.className = "ai-tool__details";
+          details.hidden = true;
+          wrap.appendChild(details);
+        }
+        const formatted = formatDetail(opts.detail);
+        details.textContent = formatted;
+        wrap.classList.toggle("has-detail", Boolean(formatted));
+        let toggle = wrap.querySelector(".ai-tool__toggle");
+        if (!toggle) {
+          toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "ai-tool__toggle";
+          toggle.setAttribute("aria-expanded", "false");
+          toggle.title = "Details";
+          toggle.innerHTML = '<span class="ai-tool__chevron" aria-hidden="true"></span>';
+          toolRow.appendChild(toggle);
+          toggle.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const open = wrap.classList.toggle("is-open");
+            toggle.setAttribute("aria-expanded", open ? "true" : "false");
+            const panel = wrap.querySelector(".ai-tool__details");
+            if (panel)
+              panel.hidden = !open;
+          });
+        }
+        toggle.hidden = !formatted;
+        if (!formatted) {
+          wrap.classList.remove("is-open");
+          toggle.setAttribute("aria-expanded", "false");
+          details.hidden = true;
+        } else {
+          details.hidden = !wrap.classList.contains("is-open");
+        }
+        return wrap;
+      }
+      function beginAiRound(host) {
+        const round = document.createElement("div");
+        round.className = "ai-round is-active";
+        round.setAttribute("data-ai-round", "1");
+        host.appendChild(round);
+        return round;
+      }
+      function endAiRound(container) {
+        container.classList.remove("is-active");
+        container.classList.add("is-ended");
+      }
+      function ensureAiStageStatus() {
+        let el = document.getElementById("ai-stage-status");
+        if (el)
+          return el;
+        const title = document.getElementById("ai-stage-title");
+        const bar = title?.parentElement || document.getElementById("ai-chat-title");
+        if (!bar || !title)
+          return null;
+        el = document.createElement("span");
+        el.id = "ai-stage-status";
+        el.className = "ai-stage-status";
+        el.hidden = true;
+        title.insertAdjacentElement("afterend", el);
+        return el;
+      }
+      function setAiAgentStatus(status, label) {
+        const el = ensureAiStageStatus();
+        if (!el)
+          return;
+        el.classList.remove("is-idle", "is-thinking", "is-tool", "is-confirm", "is-streaming");
+        el.classList.add(`is-${status}`);
+        if (status === "idle") {
+          el.hidden = true;
+          el.textContent = "";
+          el.removeAttribute("data-i18n");
+          return;
+        }
+        el.hidden = false;
+        const key = STATUS_I18N[status];
+        if (label) {
+          el.textContent = label;
+          el.removeAttribute("data-i18n");
+        } else {
+          el.setAttribute("data-i18n", key);
+          el.textContent = STATUS_FALLBACK[status];
+        }
+      }
+      function setAiStopVisible(visible) {
+        ensureStopListener();
+        const btn = document.getElementById("ai-stop");
+        if (!btn)
+          return;
+        btn.hidden = !visible;
+        btn.classList.toggle("hidden", !visible);
+      }
+      function onAiStop(cb) {
+        stopCallback = cb;
+        ensureStopListener();
+      }
+      function showAiSkeleton(host) {
+        hideAiSkeleton();
+        const root = host || document.getElementById("ai-messages") || document.querySelector(".ai-stage__body");
+        if (!root)
+          return;
+        skeletonTimer = setTimeout(() => {
+          skeletonTimer = null;
+          if (skeletonEl?.isConnected)
+            return;
+          const el = document.createElement("div");
+          el.className = "ai-skeleton";
+          el.setAttribute("aria-hidden", "true");
+          el.innerHTML = `
+      <div class="ai-skeleton__line ai-skeleton__line--lg"></div>
+      <div class="ai-skeleton__line"></div>
+      <div class="ai-skeleton__line ai-skeleton__line--sm"></div>`;
+          root.appendChild(el);
+          skeletonEl = el;
+        }, 400);
+      }
+      function hideAiSkeleton() {
+        if (skeletonTimer != null) {
+          clearTimeout(skeletonTimer);
+          skeletonTimer = null;
+        }
+        skeletonEl?.remove();
+        skeletonEl = null;
+        document.querySelectorAll(".ai-skeleton").forEach((n) => n.remove());
+      }
+      var ICON_COPY = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 10.5V3.5A1 1 0 0 1 4.5 2.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+      var ICON_RETRY = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.2-3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M13 3.5V7h-3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      function attachAiMessageActions(msgEl, opts) {
+        const host = msgEl.classList.contains("ai-msg__bubble") ? msgEl : msgEl.querySelector(".ai-msg__bubble") || msgEl;
+        host.querySelector(".ai-msg__actions")?.remove();
+        const actions = document.createElement("div");
+        actions.className = "ai-msg__actions";
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "ai-msg__action";
+        copyBtn.setAttribute("data-i18n-title", "ai.copy");
+        copyBtn.title = opts.copyLabel || "\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C";
+        copyBtn.setAttribute("aria-label", opts.copyLabel || "\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C");
+        copyBtn.innerHTML = ICON_COPY;
+        copyBtn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          const text = bubblePlainText(msgEl);
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch {
+          }
+          opts.onCopy?.(text);
+        });
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "ai-msg__action";
+        retryBtn.setAttribute("data-i18n-title", "ai.retry");
+        retryBtn.title = opts.retryLabel || "\u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u044C";
+        retryBtn.setAttribute("aria-label", opts.retryLabel || "\u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u044C");
+        retryBtn.innerHTML = ICON_RETRY;
+        retryBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          opts.onRetry?.();
+        });
+        if (!opts.onRetry)
+          retryBtn.hidden = true;
+        actions.append(copyBtn, retryBtn);
+        host.appendChild(actions);
+        return actions;
+      }
+    }
+  });
+
   // dist/renderer/app.js
   var require_app = __commonJS({
     "dist/renderer/app.js"(exports) {
@@ -28290,6 +30225,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       var skinviewengine_1 = (init_dist2(), __toCommonJS(dist_exports));
       var marked_1 = (init_marked_esm(), __toCommonJS(marked_esm_exports));
       var apiBase_1 = require_apiBase();
+      var world_preview_matrix_1 = require_world_preview_matrix();
+      var confirm_ui_1 = require_confirm_ui();
+      var integrations_ui_1 = require_integrations_ui();
+      var attach_ui_1 = require_attach_ui();
+      var shell_ui_1 = require_shell_ui();
+      var turn_ui_1 = require_turn_ui();
       var api = window.electronAPI;
       (0, apiBase_1.setApiBase)(api?.apiBase);
       var ELY_AUTH_SERVER = "https://authserver.ely.by";
@@ -28299,6 +30240,17 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (icon.startsWith("modrinth:"))
           return (0, apiBase_1.catalogImageUrl)(icon.slice(9));
         return icon;
+      }
+      var DEFAULT_BUILD_ICON_SRC = "../../assets/InstancesIcons/newBuild.png";
+      function defaultBuildIconHtml(extraStyle = "") {
+        const style = extraStyle ? `width:100%;height:100%;object-fit:cover;${extraStyle}` : "width:100%;height:100%;object-fit:cover;";
+        return `<img src="${DEFAULT_BUILD_ICON_SRC}" style="${style}" alt="">`;
+      }
+      function buildCardIconHtml(build) {
+        if (build.icon) {
+          return `<img src="${buildIconSrc(build.icon)}" style="width:100%;height:100%;object-fit:cover;" alt="">`;
+        }
+        return defaultBuildIconHtml();
       }
       var pendingBuildIcon;
       function setBuildIconPreview(icon) {
@@ -28380,13 +30332,19 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           const key = el.getAttribute("data-i18n");
           if (!key)
             return;
+          const translated = tr(key);
+          const nested = el.querySelector(".ai-scenario__title, [data-i18n-target]");
+          if (nested) {
+            nested.textContent = translated;
+            return;
+          }
           if (el.querySelector("*")) {
             el.childNodes.forEach((node) => {
               if (node.nodeType === Node.TEXT_NODE)
-                node.textContent = tr(key);
+                node.textContent = translated;
             });
           } else {
-            el.textContent = tr(key);
+            el.textContent = translated;
           }
         });
         document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
@@ -28457,6 +30415,11 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const aboutVer = document.getElementById("about-version");
         if (aboutVer && appVersion)
           aboutVer.textContent = `${t("about.version")} ${appVersion}`;
+        if (aiInited) {
+          (0, shell_ui_1.renderAiEmptyScenarios)(getAiUiHost());
+          renderAiSessionList();
+          refreshAiShellUi(activeAiSession());
+        }
       }
       document.getElementById("btn-min")?.addEventListener("click", () => api?.windowMinimize());
       document.getElementById("btn-max")?.addEventListener("click", () => api?.windowMaximize());
@@ -28464,6 +30427,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       function switchTab(target) {
         if (!target)
           return;
+        if (target === "ai") {
+          if (!isAiFeatureEnabled()) {
+            showAiAccessDeniedModal();
+            return;
+          }
+          if (!getAiTesterKey()) {
+            showAiAccessDeniedModal();
+            return;
+          }
+        }
         tabs.forEach((t2) => t2.classList.remove("active"));
         tabViews.forEach((v2) => v2.classList.remove("active"));
         const tabBtn = document.querySelector(`.tab-btn[data-tab="${target}"]`);
@@ -28482,10 +30455,19 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           void ensureModsCatalog();
         if (target === "servers")
           void loadServerCatalog();
-        if (target === "home")
+        if (target === "home") {
           renderHomeNews();
+          refreshHomeDashboard();
+        }
         if (target === "news")
           void loadNews(false);
+        if (target === "ai") {
+          ensureAiTab();
+          void refreshAiAccessStatus().then(() => {
+            if (!getAiTesterKey() || aiAccessOk === false)
+              showAiAccessDeniedModal();
+          });
+        }
       }
       function scheduleIdle(fn, timeout = 2e3) {
         const ric = window.requestIdleCallback;
@@ -29031,24 +31013,44 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const speedEl = document.getElementById("download-progress-speed");
         const percent = document.getElementById("download-progress-percent");
         const fill = document.getElementById("download-progress-fill");
-        const log = document.getElementById("download-progress-log");
-        if (!el || !label || !speedEl || !percent || !fill || !log)
+        if (!el || !label || !speedEl || !percent || !fill)
           return;
+        const applyCountProgress = (done, total, fileLabel) => {
+          const safeTotal = Math.max(0, total);
+          const safeDone = Math.max(0, Math.min(done, safeTotal || done));
+          const pct = safeTotal > 0 ? Math.min(100, Math.round(safeDone / safeTotal * 100)) : 0;
+          el.classList.remove("is-success", "is-error");
+          fill.style.animation = "none";
+          fill.style.width = `${pct}%`;
+          percent.textContent = safeTotal > 0 ? `${pct}%` : "";
+          speedEl.textContent = safeTotal > 0 ? `${safeDone}/${safeTotal}` : "";
+          if (fileLabel)
+            label.textContent = fileLabel;
+          el.classList.remove("hidden");
+        };
+        const hideProgressLater = (ms) => {
+          setTimeout(() => {
+            el.classList.add("hidden");
+            el.classList.remove("is-success", "is-error");
+          }, ms);
+        };
         if (api?.onDownloadProgress) {
           api.onDownloadProgress((data) => {
             if (data.type === "start") {
-              el.classList.remove("hidden");
+              el.classList.remove("hidden", "is-success", "is-error");
               label.textContent = `${data.filename || "..."}`;
               speedEl.textContent = "";
               percent.textContent = "0%";
+              fill.style.animation = "none";
               fill.style.width = "0%";
-              log.innerHTML = "";
               downloadStartTime = Date.now();
               downloadPrevReceived = 0;
               downloadPrevTime = downloadStartTime;
-              addLogToEl(log, t("log.downloadStart", { file: data.filename, size: formatSizeGlobal(data.size || 0) }));
+              pushConsoleLog(t("log.downloadStart", { file: data.filename, size: formatSizeGlobal(data.size || 0) }));
             } else if (data.type === "progress") {
+              el.classList.remove("is-success", "is-error");
               percent.textContent = `${data.percent}%`;
+              fill.style.animation = "none";
               fill.style.width = `${data.percent}%`;
               label.textContent = `${data.filename || ""}`;
               const now2 = Date.now();
@@ -29061,97 +31063,150 @@ Please report this to https://github.com/markedjs/marked.`, e) {
               }
             } else if (data.type === "done") {
               percent.textContent = "100%";
+              fill.style.animation = "none";
               fill.style.width = "100%";
               speedEl.textContent = "";
+              el.classList.remove("is-error");
+              el.classList.add("is-success");
               if (data.buildCreated) {
                 label.textContent = t("log.buildCreatedLabel", { name: data.build.name });
-                addLogToEl(log, t("log.buildCreated", { name: data.build.name }));
-                savedBuilds.push(data.build);
+                pushConsoleLog(t("log.buildCreated", { name: data.build.name }));
+                const idx = savedBuilds.findIndex((b2) => b2.id === data.build.id);
+                if (idx >= 0)
+                  savedBuilds[idx] = { ...savedBuilds[idx], ...data.build };
+                else
+                  savedBuilds.push(data.build);
                 renderBuilds();
                 updateBanner();
                 updateSidebarCards();
               } else {
                 label.textContent = t("log.done", { file: data.filename });
-                addLogToEl(log, t("log.savedTo", { path: data.filePath }));
+                pushConsoleLog(t("log.savedTo", { path: data.filePath }));
               }
-              setTimeout(() => el.classList.add("hidden"), 3e3);
+              hideProgressLater(3e3);
             } else if (data.type === "error") {
+              el.classList.remove("is-success");
+              el.classList.add("is-error");
               label.textContent = t("log.error", { msg: data.message });
               speedEl.textContent = "";
-              addLogToEl(log, t("log.error", { msg: data.message }));
-              setTimeout(() => el.classList.add("hidden"), 4e3);
+              if (!percent.textContent)
+                percent.textContent = "\u2014";
+              fill.style.animation = "none";
+              if (!fill.style.width || fill.style.width === "0%")
+                fill.style.width = "100%";
+              pushConsoleLog(t("log.error", { msg: data.message }));
+              hideProgressLater(4e3);
             } else if (data.kind === "status") {
-              const msg = data.key ? t(data.key, { ...data.params, unit: t("common.mb") }) : data.message;
-              addLogToEl(log, msg);
-              label.textContent = msg;
-              el.classList.remove("hidden");
+              const params = data.params || {};
+              const msg = data.key ? t(data.key, { ...params, unit: t("common.mb") }) : data.message;
+              pushConsoleLog(msg);
+              const total = Number(params.n);
+              const done = Number(params.i);
+              const hasTotal = Number.isFinite(total) && total > 0;
+              const hasDone = Number.isFinite(done) && done >= 0;
+              const isPackErr = data.key === "smp.packFileErr";
+              if (hasTotal && hasDone) {
+                const fileName = params.file ? String(params.file) : "";
+                applyCountProgress(done, total, fileName || msg);
+                if (isPackErr) {
+                  el.classList.remove("is-success");
+                  el.classList.add("is-error");
+                }
+              } else if (hasTotal) {
+                applyCountProgress(0, total, msg);
+              } else {
+                el.classList.remove("is-success", "is-error");
+                label.textContent = msg;
+                el.classList.remove("hidden");
+              }
             }
           });
         }
       }
-      function addLogToEl(logEl, message) {
-        const time = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-        const entry = document.createElement("div");
-        entry.className = "dp-log-entry";
-        entry.textContent = `[${time}] ${message}`;
-        logEl.appendChild(entry);
-        logEl.scrollTop = logEl.scrollHeight;
-      }
-      function classifyLogLine(line) {
-        if (/(error|fail(ed)?|crash|exception|ошиб|упал|xatа|ҡата)/i.test(line))
-          return "error";
-        if (/(warn(ing)?|предупрежд|аваз|ескерту)/i.test(line))
-          return "warn";
-        return "";
+      function pushConsoleLog(message) {
+        const text = String(message || "").trim();
+        if (!text)
+          return;
+        void api?.appendConsoleLog?.(text);
       }
       function openConsoleLog() {
         api?.openConsole?.();
       }
       document.getElementById("download-progress-log-btn")?.addEventListener("click", openConsoleLog);
-      async function analyzeCrash(logText) {
-        if (!logText)
-          return null;
-        let report = "";
-        if (runningBuild?.id && api?.getCrashReport) {
-          try {
-            report = await api.getCrashReport(runningBuild.id) || "";
-          } catch {
-          }
-        }
-        const text = (logText + "\n" + report).toLowerCase();
-        const rules = [
-          [/outofmemoryerror|could not reserve enough space for object heap|failed to allocate/i, "oom"],
-          [/modloadingerror|modloadingexception|failed to load mods|found multiple mods|circular dependency/i, "modconflict"],
-          [/nosuchmethoderror|nosuchfielderror|abstractmethoderror|noclassdeffounderror|linkageerror/i, "conflict"],
-          [/unsupported class file major version|class file version/i, "java"],
-          [/access_violation|sigsegv|hs_err|exit code: -805306369/i, "native"]
-        ];
-        for (const [re, key] of rules)
-          if (re.test(text))
-            return key;
-        return "unknown";
+      var lastCrashLogs = [];
+      var lastCrashBuild = null;
+      function joinInstancePath(root, ...parts) {
+        const sep = root.includes("/") && !root.includes("\\") ? "/" : "\\";
+        return [root.replace(/[\\/]+$/, ""), ...parts].join(sep);
       }
       async function showCrashModal(logs) {
-        const body = document.getElementById("modal-crash-body");
-        if (body)
-          body.textContent = logs.join("\n");
+        lastCrashLogs = Array.isArray(logs) ? logs.slice() : [];
+        lastCrashBuild = runningBuild;
         const sub = document.getElementById("modal-crash-sub");
-        if (sub && runningBuild)
-          sub.textContent = t("crash.subBuild", { name: runningBuild.name });
-        const diag = document.getElementById("modal-crash-diagnosis");
-        const diagTitle = document.getElementById("modal-crash-diag-title");
-        const diagTip = document.getElementById("modal-crash-diag-tip");
-        if (diag && diagTitle && diagTip) {
-          const key = logs.length > 0 ? await analyzeCrash(logs.join("\n")) : null;
-          if (key) {
-            diagTitle.textContent = t(`crash.diag.${key}.title`);
-            diagTip.textContent = t(`crash.diag.${key}.tip`);
-            diag.classList.remove("hidden");
-          } else {
-            diag.classList.add("hidden");
-          }
+        if (sub) {
+          sub.textContent = runningBuild ? t("crash.subBuild", { name: runningBuild.name }) : t("crash.sub");
         }
+        const msg = document.getElementById("modal-crash-message");
+        if (msg)
+          msg.textContent = t("crash.message");
         openModal("modal-crash");
+      }
+      async function openCrashLaunchLog() {
+        const build = lastCrashBuild || runningBuild;
+        if (!build?.id || !api?.getInstancePath || !api?.openPath)
+          return;
+        const instanceDir = await api.getInstancePath(build.id);
+        if (!instanceDir)
+          return;
+        const latestLog = joinInstancePath(instanceDir, "logs", "latest.log");
+        const err = await api.openPath(latestLog);
+        if (!err) {
+          closeModal("modal-crash");
+          return;
+        }
+        const buffer = lastCrashLogs.join("\n").trim();
+        if (buffer && api.saveLogFile) {
+          const result = await api.saveLogFile(build.id, buffer);
+          if (result?.success && result.path)
+            await api.openPath(result.path);
+        } else {
+          await api.openPath(joinInstancePath(instanceDir, "logs"));
+        }
+        closeModal("modal-crash");
+      }
+      async function openCrashWithAgent() {
+        const build = lastCrashBuild || runningBuild;
+        const logs = lastCrashLogs;
+        closeModal("modal-crash");
+        switchTab("ai");
+        ensureAiTab();
+        const session = createAiSession(true, {
+          buildId: build?.id || null,
+          title: t("crash.agentChatTitle")
+        });
+        renderAiSessionList();
+        renderAiConversation();
+        updateAiBuildChip(session);
+        const host = getAiUiHost();
+        const excerpt = logs.join("\n").slice(-8e3);
+        (0, integrations_ui_1.appendAiCrashQuote)(host, {
+          buildName: build?.name || build?.id || "build",
+          logExcerpt: excerpt || "(\u043B\u043E\u0433 \u043F\u0443\u0441\u0442 \u2014 \u0432\u044B\u0437\u043E\u0432\u0438 get_crash_report / get_latest_log)"
+        });
+        if (build?.id) {
+          (0, integrations_ui_1.showAiCrashBanner)(host, {
+            buildId: build.id,
+            buildName: build.name || build.id
+          });
+        }
+        const prompt = [
+          t("crash.agentPrompt", { name: build?.name || build?.id || "build" }),
+          "",
+          "```",
+          excerpt || "(\u043B\u043E\u0433 \u043F\u0443\u0441\u0442 \u2014 \u0432\u044B\u0437\u043E\u0432\u0438 get_crash_report / get_latest_log)",
+          "```"
+        ].join("\n");
+        await sendAiMessage(prompt);
       }
       document.getElementById("modal-crash-close")?.addEventListener("click", () => closeModal("modal-crash"));
       document.getElementById("modal-crash")?.addEventListener("click", (e) => {
@@ -29159,36 +31214,21 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           closeModal("modal-crash");
       });
       document.getElementById("modal-crash-folder")?.addEventListener("click", async () => {
-        if (!runningBuild?.id)
+        const build = lastCrashBuild || runningBuild;
+        if (!build?.id)
           return;
         if (api?.getInstancePath && api?.openPath) {
-          const instanceDir = await api.getInstancePath(runningBuild.id);
+          const instanceDir = await api.getInstancePath(build.id);
           if (instanceDir)
             await api.openPath(instanceDir);
         }
         closeModal("modal-crash");
       });
-      document.getElementById("modal-crash-log")?.addEventListener("click", async () => {
-        if (!runningBuild?.id)
-          return;
-        const body = document.getElementById("modal-crash-body");
-        const logContent = body?.textContent || "";
-        if (api?.saveLogFile) {
-          const result = await api.saveLogFile(runningBuild.id, logContent);
-          if (result.success && result.path && api?.openPath) {
-            await api.openPath(result.path);
-          }
-        }
-        closeModal("modal-crash");
+      document.getElementById("modal-crash-log")?.addEventListener("click", () => {
+        void openCrashLaunchLog();
       });
-      document.getElementById("modal-crash-fix")?.addEventListener("click", async () => {
-        closeModal("modal-crash");
-        if (runningBuild) {
-          const build = runningBuild;
-          runningBuild = null;
-          updateStatus(t("status.fixingBuild", { name: build.name }));
-          await launchBuild(build);
-        }
+      document.getElementById("modal-crash-agent")?.addEventListener("click", () => {
+        void openCrashWithAgent();
       });
       function formatSpeedGlobal(bytesPerSec) {
         if (bytesPerSec < 1024)
@@ -29220,8 +31260,25 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       var downloadPrevTime = 0;
       var SPLASH_MIN_MS = 600;
       var SPLASH_SAFETY_MS = 6e3;
+      var STARTUP_AI_SEEN_KEY = "Undefined Client-seen-startup-ai-1.0.4-beta";
       var initStartedAt = performance.now();
       var splashClosed = false;
+      var splashAwaitingWelcome = false;
+      var splashWelcomeShown = false;
+      function needsStartupAiAnnounce() {
+        try {
+          return localStorage.getItem(STARTUP_AI_SEEN_KEY) !== "true";
+        } catch {
+          return false;
+        }
+      }
+      function markStartupAiSeen() {
+        try {
+          localStorage.setItem(STARTUP_AI_SEEN_KEY, "true");
+        } catch {
+        }
+        document.documentElement.classList.remove("splash-first-run", "splash-announce-done");
+      }
       function closeSplash() {
         if (splashClosed)
           return;
@@ -29237,10 +31294,180 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             splash.style.display = "none";
         }, 500);
       }
+      function showSplashWelcome() {
+        if (splashWelcomeShown || splashClosed)
+          return;
+        splashWelcomeShown = true;
+        splashAwaitingWelcome = false;
+        const loader = document.getElementById("splash-loader");
+        if (loader)
+          loader.classList.add("hidden");
+        const content = document.getElementById("splash-content");
+        if (content) {
+          content.style.opacity = "0";
+          content.style.pointerEvents = "none";
+        }
+        const welcome = document.getElementById("splash-welcome");
+        if (welcome) {
+          welcome.hidden = false;
+          welcome.removeAttribute("hidden");
+        }
+        bindSplashWelcomeWizard();
+      }
+      function bindSplashWelcomeWizard() {
+        let step = "1";
+        const titleEl = document.getElementById("splash-welcome-title");
+        const subEl = document.getElementById("splash-welcome-sub");
+        const nextBtn = document.getElementById("splash-welcome-next");
+        const toggle = document.getElementById("splash-welcome-ai-toggle");
+        const stepsEl = document.getElementById("splash-welcome-steps");
+        const headerFor = (s) => {
+          switch (s) {
+            case "1":
+              return { title: t("splash.welcomeTitle"), sub: t("splash.welcomeSub", { ver: "1.0.4-beta" }) };
+            case "2":
+              return { title: t("splash.welcome.p2.header"), sub: t("splash.welcome.p2.headerSub") };
+            case "3":
+              return { title: t("splash.welcome.p3.header"), sub: t("splash.welcome.p3.headerSub") };
+            case "4-on":
+              return { title: t("splash.welcome.p4on.header"), sub: t("splash.welcome.p4on.headerSub") };
+            case "4-off":
+              return { title: t("splash.welcome.p4off.header"), sub: t("splash.welcome.p4off.headerSub") };
+          }
+        };
+        const render = () => {
+          document.querySelectorAll("[data-welcome-page]").forEach((page) => {
+            const id = page.getAttribute("data-welcome-page");
+            const on = id === step;
+            page.classList.toggle("is-active", on);
+            page.hidden = !on;
+          });
+          const hdr = headerFor(step);
+          if (titleEl)
+            titleEl.textContent = hdr.title;
+          if (subEl)
+            subEl.textContent = hdr.sub;
+          if (nextBtn) {
+            const isFinal = step === "4-on" || step === "4-off";
+            nextBtn.textContent = isFinal ? t("splash.welcomeStart") : t("splash.welcomeNext");
+          }
+          if (stepsEl) {
+            const idx = step === "1" ? 0 : step === "2" ? 1 : 2;
+            const dots = stepsEl.querySelectorAll(".splash-welcome-step");
+            dots.forEach((dot, i) => dot.classList.toggle("is-on", i === idx || step.startsWith("4") && i === 2));
+            stepsEl.style.visibility = step.startsWith("4") ? "hidden" : "";
+          }
+        };
+        const applyAgentChoice = (enabled) => {
+          localStorage.setItem(AI_ENABLED_LS_KEY, String(enabled));
+          const settingsToggle = document.getElementById("setting-ai-enabled");
+          if (settingsToggle)
+            settingsToggle.checked = enabled;
+          applyAiTabVisibility();
+        };
+        const finish = () => {
+          markStartupAiSeen();
+          closeSplash();
+        };
+        nextBtn?.addEventListener("click", () => {
+          if (step === "1") {
+            step = "2";
+            render();
+            return;
+          }
+          if (step === "2") {
+            step = "3";
+            render();
+            return;
+          }
+          if (step === "3") {
+            const enabled = Boolean(toggle?.checked);
+            applyAgentChoice(enabled);
+            step = enabled ? "4-on" : "4-off";
+            render();
+            return;
+          }
+          finish();
+        });
+        render();
+      }
+      function requestCloseSplash() {
+        if (splashClosed)
+          return;
+        if (splashAwaitingWelcome && !splashWelcomeShown) {
+          showSplashWelcome();
+          return;
+        }
+        if (splashWelcomeShown)
+          return;
+        closeSplash();
+      }
+      function playStartupAnnounceVideo() {
+        const wrap = document.getElementById("splash-announce");
+        const video = document.getElementById("splash-announce-video");
+        if (!wrap || !video)
+          return Promise.resolve();
+        wrap.hidden = false;
+        wrap.removeAttribute("hidden");
+        return new Promise((resolve) => {
+          let finished = false;
+          const finish = () => {
+            if (finished)
+              return;
+            finished = true;
+            try {
+              video.pause();
+            } catch {
+            }
+            wrap.classList.add("fade-out");
+            document.documentElement.classList.add("splash-announce-done");
+            setTimeout(() => {
+              wrap.hidden = true;
+              wrap.setAttribute("hidden", "");
+              wrap.classList.remove("fade-out");
+              document.documentElement.classList.remove("splash-first-run");
+              const content = document.getElementById("splash-content");
+              if (content) {
+                content.style.opacity = "";
+                content.style.pointerEvents = "";
+              }
+              resolve();
+            }, 420);
+          };
+          video.addEventListener("ended", finish, { once: true });
+          video.addEventListener("error", finish, { once: true });
+          const tryPlay = () => {
+            const p = video.play();
+            if (p && typeof p.then === "function") {
+              p.catch(() => {
+                video.muted = true;
+                video.play().catch(() => finish());
+              });
+            }
+          };
+          if (video.readyState >= 2)
+            tryPlay();
+          else {
+            video.addEventListener("canplay", tryPlay, { once: true });
+            setTimeout(() => {
+              if (!finished && video.readyState < 2)
+                finish();
+            }, 8e3);
+          }
+        });
+      }
       async function init() {
         await setLang(localStorage.getItem("Undefined Client-language") || "ru");
+        initCustomCarets();
+        applyAiTabVisibility();
+        initAiAssistant();
+        const firstAiRun = needsStartupAiAnnounce();
+        if (firstAiRun) {
+          splashAwaitingWelcome = true;
+          await playStartupAnnounceVideo();
+        }
         initStartedAt = performance.now();
-        setTimeout(closeSplash, SPLASH_SAFETY_MS);
+        setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
         const videoEl = document.getElementById("quick-banner-bg");
         if (videoEl) {
           let updateGlow = function() {
@@ -29313,25 +31540,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             if (bytesPerSec < 1024 * 1024)
               return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
             return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
-          }, addLog = function(msg) {
-            if (!log)
-              return;
-            while (log.childElementCount > 200)
-              log.removeChild(log.firstChild);
-            const line = document.createElement("div");
-            line.textContent = msg;
-            const cls = classifyLogLine(msg);
-            if (cls)
-              line.classList.add("log-" + cls);
-            log.appendChild(line);
-            log.scrollTop = log.scrollHeight;
           };
           const el = document.getElementById("download-progress");
           const label = document.getElementById("download-progress-label");
           const speedEl = document.getElementById("download-progress-speed");
           const percent = document.getElementById("download-progress-percent");
           const fill = document.getElementById("download-progress-fill");
-          const log = document.getElementById("download-progress-log");
           let crashLogs = [];
           api.onLaunchProgress((data) => {
             if (!el)
@@ -29339,6 +31553,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             const msg = (d2) => d2.key ? t(d2.key, d2.params) : d2.message || "";
             switch (data.kind) {
               case "status":
+                el.classList.remove("is-success", "is-error");
                 if (label)
                   label.textContent = msg(data);
                 if (speedEl)
@@ -29352,8 +31567,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
                 el.classList.remove("hidden");
                 break;
               case "download":
-                if (el)
-                  el.classList.remove("hidden");
+                el.classList.remove("hidden", "is-success", "is-error");
                 if (label)
                   label.textContent = msg(data);
                 if (fill) {
@@ -29394,11 +31608,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
               case "info":
               case "debug":
                 pushCrashLog(msg(data));
-                addLog(msg(data));
                 break;
               case "launching":
                 crashLogs = [];
-                addLog(t("status.minecraftStarted"));
+                el.classList.remove("is-success", "is-error");
                 if (runningBuild) {
                   runningBuildStart = Date.now();
                   startRunningTimer();
@@ -29413,10 +31626,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
                 break;
               case "log":
                 pushCrashLog(msg(data));
-                addLog(msg(data));
                 break;
               case "close":
-                updateStatus(msg(data));
                 if (label)
                   label.textContent = t("status.minecraftClosed");
                 if (speedEl)
@@ -29427,26 +31638,40 @@ Please report this to https://github.com/markedjs/marked.`, e) {
                   fill.style.width = "0%";
                   fill.style.animation = "none";
                 }
-                addLog(msg(data));
                 stopRunningTimer();
+                updateBanner();
                 if (data.code && data.code !== 0) {
                   showCrashModal(crashLogs);
                 }
                 setTimeout(() => el.classList.add("hidden"), 4e3);
                 break;
               case "crash":
+                el.classList.remove("is-success");
+                el.classList.add("is-error");
                 if (label)
                   label.textContent = t("status.minecraftCrashed");
-                if (fill)
+                if (fill) {
                   fill.style.animation = "none";
-                addLog(t("log.error", { msg: msg(data) }));
+                  fill.style.width = "100%";
+                }
+                if (percent)
+                  percent.textContent = "\u2014";
                 stopRunningTimer();
+                updateBanner();
                 showCrashModal(crashLogs);
                 break;
               case "error":
+                el.classList.remove("hidden", "is-success");
+                el.classList.add("is-error");
                 if (label)
                   label.textContent = msg(data);
-                addLog(msg(data));
+                if (fill) {
+                  fill.style.animation = "none";
+                  if (!fill.style.width || fill.style.width === "0%")
+                    fill.style.width = "100%";
+                }
+                if (percent && !percent.textContent)
+                  percent.textContent = "\u2014";
                 updateStatus(msg(data));
                 break;
             }
@@ -29471,6 +31696,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
         pushPresence("home");
         await loadBuilds();
+        api?.onBuildsChanged?.(() => {
+          void loadBuilds();
+        });
         await loadServers();
         renderSavedAccounts();
         loadTheme();
@@ -29490,6 +31718,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (aboutVer && api?.getAppVersion) {
             api.getAppVersion().then((ver) => {
               appVersion = ver;
+              const aiVer = document.getElementById("ai-agent-ver");
+              if (aiVer && ver)
+                aiVer.textContent = ver;
               aboutVer.textContent = `${t("about.version")} ${ver}`;
             });
           }
@@ -29515,7 +31746,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           });
         }
         const remaining = SPLASH_MIN_MS - (performance.now() - initStartedAt);
-        setTimeout(closeSplash, Math.max(0, remaining));
+        setTimeout(requestCloseSplash, Math.max(0, remaining));
         api?.onDeepLink?.((payload) => void handleDeepLinkPayload(payload));
         if (api?.consumeDeepLink) {
           void api.consumeDeepLink().then((payload) => {
@@ -29569,7 +31800,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (savedBuilds.length === 0) {
           list.innerHTML = `
       <div class="builds-empty">
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <img src="../../assets/icons/newBuild.svg" width="56" height="56" alt="" aria-hidden="true">
         <div>${t("builds.empty")}</div>
         <button class="action-btn" id="builds-empty-create"><span>${t("builds.add")}</span></button>
       </div>`;
@@ -29577,19 +31808,15 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           return;
         }
         list.innerHTML = savedBuilds.map((b2) => {
-          let iconHtml;
-          if (b2.icon) {
-            iconHtml = `<img src="${buildIconSrc(b2.icon)}" style="width:100%;height:100%;object-fit:cover;">`;
-          } else {
-            iconHtml = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M6 4L16 10L6 16V4Z" fill="#1a1a1a"/></svg>`;
-          }
+          const iconHtml = buildCardIconHtml(b2);
           const isRunning = runningBuild?.id === b2.id;
+          const agentTouched = (0, integrations_ui_1.isBuildTouchedByAgent)(b2.id);
           const meta = [b2.gameVersion, b2.loader, b2.loaderVersion].filter(Boolean).join(" \u2022 ");
           return `
-    <div class="build-card${isRunning ? " running" : ""}" data-build-id="${b2.id}">
+    <div class="build-card${isRunning ? " running" : ""}${agentTouched ? " build-card--agent-touched" : ""}" data-build-id="${b2.id}">
       <div class="build-card-icon">${iconHtml}</div>
       <div class="build-card-info">
-        <div class="build-card-title">
+        <div class="build-card-title"${agentTouched ? ` data-agent-badge="${t("ai.build.touchedByAgent").replace(/"/g, "&quot;")}"` : ""}>
           ${isRunning ? '<span class="build-running-dot"></span>' : ""}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b2.name}</span>
         </div>
@@ -29662,18 +31889,21 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           return;
         const recent = savedBuilds.slice(-5).reverse();
         if (recent.length === 0) {
-          container.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.2);font-weight:300;">' + t("builds.none") + "</div>";
+          container.innerHTML = `<div class="home-empty">
+      <div class="home-empty__title">${escapeAiHtml(t("home.empty.buildsTitle"))}</div>
+      <div class="home-empty__desc">${escapeAiHtml(t("home.empty.buildsDesc"))}</div>
+      <button type="button" class="home-empty__btn" data-home-empty="add-build">${escapeAiHtml(t("home.empty.buildsCta"))}</button>
+    </div>`;
+          container.querySelector('[data-home-empty="add-build"]')?.addEventListener("click", () => {
+            switchTab("builds");
+            openModalBuild();
+          });
           return;
         }
         container.innerHTML = recent.map((b2) => {
-          let iconHtml;
-          if (b2.icon) {
-            iconHtml = `<img src="${buildIconSrc(b2.icon)}" style="width:100%;height:100%;object-fit:cover;">`;
-          } else {
-            iconHtml = `<svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 4L16 10L6 16V4Z" fill="#1a1a1a"/></svg>`;
-          }
+          const iconHtml = buildCardIconHtml(b2);
           return `<div class="home-row${runningBuild?.id === b2.id ? " running" : ""}" data-build-id="${b2.id}">
-      <div class="home-row-icon" style="background:rgba(255,255,255,0.1)">${iconHtml}</div>
+      <div class="home-row-icon" style="background:transparent">${iconHtml}</div>
       <div class="home-row-info">
         <div class="home-row-title">${b2.name}</div>
         <div class="home-row-meta">${b2.gameVersion} \xB7 ${b2.loader}${b2.playtime ? " \xB7 " + formatPlaytime(b2.playtime) : ""}</div>
@@ -29698,6 +31928,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         });
       }
       document.getElementById("add-build-btn")?.addEventListener("click", () => openModalBuild());
+      document.getElementById("import-build-btn")?.addEventListener("click", () => openModalImport());
       document.getElementById("build-form-cancel")?.addEventListener("click", () => closeModalBuildModal());
       document.getElementById("build-form-submit")?.addEventListener("click", () => submitModalBuild());
       function populateLoaderVersions(loader, mcVersion) {
@@ -30124,14 +32355,25 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       function updateSrvCardStatus(e) {
         const addr = srvAddr(e);
         const card = document.querySelector(`.srv-card[data-srv-ip="${CSS.escape(addr)}"]`);
-        if (!card)
+        if (!card) {
+          if (e.status)
+            srvStatusCache[addr] = e.status;
+          const last2 = savedServers[savedServers.length - 1];
+          if (last2 && savedServerAddr(last2) === addr)
+            updateSidebarLastServer();
           return;
+        }
         const st2 = e.status || {};
+        if (st2)
+          srvStatusCache[addr] = st2;
         const online = !!st2.online;
         if (!online) {
           srvOfflineAddrs[addr] = true;
           card.remove();
           refreshServersGridAfterRemoval();
+          const lastOff = savedServers[savedServers.length - 1];
+          if (lastOff && savedServerAddr(lastOff) === addr)
+            updateSidebarLastServer();
           return;
         }
         const players = st2.players?.online != null ? st2.players.online : null;
@@ -30163,6 +32405,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (iconEl)
             iconEl.innerHTML = `<img src="${srvEsc(icon)}" alt="">`;
         }
+        const last = savedServers[savedServers.length - 1];
+        if (last && savedServerAddr(last) === addr)
+          updateSidebarLastServer();
       }
       function srvServerFavicon(st2) {
         const raw = String(st2.icon || "");
@@ -30293,6 +32538,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             }
             if (srvCategory === "mine")
               renderSavedServersGrid();
+            const last = savedServers[savedServers.length - 1];
+            if (last && savedServerAddr(last) === addr)
+              updateSidebarLastServer();
           }
         };
         await Promise.all(Array.from({ length: 6 }, () => worker()));
@@ -30662,42 +32910,104 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           closeServersFiltersPopup();
         }
       });
+      var homeServersStatusPending = false;
+      function homeServerRowHtml(s) {
+        const addr = savedServerAddr(s);
+        const st2 = resolveLastServerStatus(addr);
+        const online = !!st2.online;
+        const players = st2.players?.online != null ? st2.players.online : null;
+        const max = st2.players?.max != null ? st2.players.max : null;
+        const version = String(st2.version || s.version || "").split("\n")[0] || "";
+        const latency = st2.latency != null && Number.isFinite(Number(st2.latency)) ? `${Math.round(Number(st2.latency))} ms` : "";
+        const statusTxt = online ? players != null ? `${Number(players).toLocaleString()}${max != null ? "/" + Number(max).toLocaleString() : ""}` : t("servers.online") : Object.keys(st2).length ? t("servers.offline") : "\u2026";
+        const fav = srvServerFavicon(st2);
+        const icon = fav ? `<img src="${srvEsc(fav)}" alt="">` : `<img src="../../assets/icons/serverIcon.png" alt="">`;
+        return `
+    <div class="home-row" data-server-id="${escapeHtml(s.id)}" data-srv-ip="${srvEsc(addr)}">
+      <div class="home-row-icon">${icon}</div>
+      <div class="home-row-info">
+        <div class="home-row-title">${escapeHtml(s.name)}</div>
+        <div class="home-row-meta home-srv-meta">
+          <span class="srv-dot ${online ? "srv-online" : "srv-offline"}"></span>
+          <span class="home-srv-online">${escapeHtml(statusTxt)}</span>
+          ${version ? `<span class="srv-sep">\xB7</span><span class="home-srv-ver">${escapeHtml(version)}</span>` : ""}
+          ${latency ? `<span class="srv-sep">\xB7</span><span class="home-srv-ping">${escapeHtml(latency)}</span>` : ""}
+        </div>
+      </div>
+      <button class="home-row-btn">${t("btn.launch")}</button>
+    </div>
+  `;
+      }
+      async function refreshHomeServersStatus(servers) {
+        if (homeServersStatusPending || !api?.serverStatus)
+          return;
+        const need = servers.filter((s) => {
+          const addr = savedServerAddr(s);
+          return !addr || srvStatusCache[addr]?.online == null;
+        });
+        if (!need.length)
+          return;
+        homeServersStatusPending = true;
+        try {
+          await Promise.all(need.map(async (s) => {
+            const addr = savedServerAddr(s);
+            if (!addr || srvStatusCache[addr]?.online != null)
+              return;
+            try {
+              srvStatusCache[addr] = await api.serverStatus(addr) || { online: false };
+            } catch {
+              srvStatusCache[addr] = { online: false };
+            }
+            const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+            if (cat)
+              cat.status = srvStatusCache[addr];
+          }));
+          renderHomeServers();
+        } finally {
+          homeServersStatusPending = false;
+        }
+      }
       function renderHomeServers() {
         const list = document.getElementById("home-servers-list");
         if (!list)
           return;
         const recent = savedServers.slice(-5).reverse();
         if (recent.length === 0) {
-          list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.2);font-weight:300;">' + t("servers.none") + "</div>";
+          list.innerHTML = `<div class="home-empty">
+      <div class="home-empty__title">${escapeAiHtml(t("home.empty.serversTitle"))}</div>
+      <div class="home-empty__desc">${escapeAiHtml(t("home.empty.serversDesc"))}</div>
+      <button type="button" class="home-empty__btn" data-home-empty="add-server">${escapeAiHtml(t("home.empty.serversCta"))}</button>
+    </div>`;
+          list.querySelector('[data-home-empty="add-server"]')?.addEventListener("click", () => {
+            switchTab("servers");
+            openModalServer();
+          });
           return;
         }
-        list.innerHTML = recent.map((s) => `
-    <div class="home-row" data-server-id="${s.id}">
-      <div class="home-row-icon" style="background:${stringToColor(s.name)}">
-        <span style="color:#1a1a1a;font-size:13px;font-weight:700">${s.name.charAt(0).toUpperCase()}</span>
-      </div>
-      <div class="home-row-info">
-        <div class="home-row-title">${s.name}</div>
-        <div class="home-row-meta">${s.version || t("servers.anyVersion")} \xB7 ${s.ip}</div>
-      </div>
-      <button class="home-row-btn">${t("btn.launch")}</button>
-    </div>
-  `).join("");
+        list.innerHTML = recent.map(homeServerRowHtml).join("");
         list.querySelectorAll(".home-row-btn").forEach((btn) => {
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
             const server = savedServers.find((s) => s.id === btn.closest(".home-row")?.getAttribute("data-server-id"));
             if (server)
-              joinServer(server.ip);
+              void openLastServerLaunch(server);
           });
         });
         list.querySelectorAll(".home-row").forEach((row) => {
           row.addEventListener("click", () => {
             const server = savedServers.find((s) => s.id === row.getAttribute("data-server-id"));
             if (server)
-              joinServer(server.ip);
+              void openLastServerLaunch(server);
           });
         });
+        void refreshHomeServersStatus(recent);
+      }
+      async function openLastServerLaunch(srv) {
+        if (!await requireAccount())
+          return;
+        const addr = savedServerAddr(srv);
+        const [host, portPart] = addr.split(":");
+        openServerLaunchPicker(host, parseInt(portPart, 10) || Number(srv.port) || 25565, srv.name);
       }
       function stringToColor(str) {
         const colors2 = ["#4ECDC4", "#FFD93D", "#FF6B6B", "#7BD4B7", "#70ADDF", "#C084FC", "#FB923C"];
@@ -32252,6 +34562,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const b2 = Math.max(0, parseInt(hex.slice(5, 7), 16) - amount);
         return `#${r.toString(16).padStart(2, "0")}${g2.toString(16).padStart(2, "0")}${b2.toString(16).padStart(2, "0")}`;
       }
+      function relativeLuminance(r, g2, b2) {
+        const lin = (c) => {
+          const s = c / 255;
+          return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * lin(r) + 0.7152 * lin(g2) + 0.0722 * lin(b2);
+      }
       function applyAccent(accent) {
         document.documentElement.style.setProperty("--accent", accent);
         document.documentElement.style.setProperty("--accent-hover", darkenColor(accent, 20));
@@ -32259,6 +34576,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const g2 = parseInt(accent.slice(3, 5), 16);
         const b2 = parseInt(accent.slice(5, 7), 16);
         document.documentElement.style.setProperty("--accent-rgb", `${r},${g2},${b2}`);
+        const lum = relativeLuminance(r, g2, b2);
+        const onAccent = lum > 0.48 ? "#0d1421" : "#ffffff";
+        const onRgb = onAccent === "#ffffff" ? "255,255,255" : "13,20,33";
+        document.documentElement.style.setProperty("--on-accent", onAccent);
+        document.documentElement.style.setProperty("--on-accent-rgb", onRgb);
+        document.documentElement.setAttribute("data-accent-fg", lum > 0.48 ? "dark" : "light");
         const theme = THEME_ACCENTS[accent];
         if (theme)
           document.documentElement.setAttribute("data-theme", theme);
@@ -32292,18 +34615,240 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       }
       document.querySelectorAll("#settings-accent-picker .accent-swatch[data-accent]").forEach((swatch) => {
         swatch.addEventListener("click", () => {
+          closeAccentColorPop();
           setAccentColor(swatch.getAttribute("data-accent"));
         });
       });
-      document.getElementById("settings-custom-accent")?.addEventListener("click", () => {
-        const input = document.createElement("input");
-        input.type = "color";
-        input.value = localStorage.getItem("Undefined Client-accent") || "#70ADDF";
-        document.body.appendChild(input);
-        input.addEventListener("input", () => setAccentColor(input.value));
-        input.addEventListener("blur", () => input.remove());
-        input.click();
-      });
+      var accentPickerHsv = { h: 210, s: 1, v: 1 };
+      var accentPickerOpen = false;
+      var accentPickerDragging = null;
+      function clamp01(n) {
+        return Math.min(1, Math.max(0, n));
+      }
+      function hexToRgb(hex) {
+        const m2 = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+        if (!m2)
+          return null;
+        return { r: parseInt(m2[1], 16), g: parseInt(m2[2], 16), b: parseInt(m2[3], 16) };
+      }
+      function rgbToHex(r, g2, b2) {
+        const to = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+        return `#${to(r)}${to(g2)}${to(b2)}`;
+      }
+      function rgbToHsv(r, g2, b2) {
+        r /= 255;
+        g2 /= 255;
+        b2 /= 255;
+        const max = Math.max(r, g2, b2);
+        const min = Math.min(r, g2, b2);
+        const d2 = max - min;
+        let h = 0;
+        if (d2 !== 0) {
+          if (max === r)
+            h = ((g2 - b2) / d2 + (g2 < b2 ? 6 : 0)) / 6;
+          else if (max === g2)
+            h = ((b2 - r) / d2 + 2) / 6;
+          else
+            h = ((r - g2) / d2 + 4) / 6;
+        }
+        const s = max === 0 ? 0 : d2 / max;
+        return { h: h * 360, s, v: max };
+      }
+      function hsvToRgb(h, s, v2) {
+        const hh = (h % 360 + 360) % 360 / 60;
+        const c = v2 * s;
+        const x2 = c * (1 - Math.abs(hh % 2 - 1));
+        const m2 = v2 - c;
+        let rp = 0, gp = 0, bp = 0;
+        if (hh < 1) {
+          rp = c;
+          gp = x2;
+        } else if (hh < 2) {
+          rp = x2;
+          gp = c;
+        } else if (hh < 3) {
+          gp = c;
+          bp = x2;
+        } else if (hh < 4) {
+          gp = x2;
+          bp = c;
+        } else if (hh < 5) {
+          rp = x2;
+          bp = c;
+        } else {
+          rp = c;
+          bp = x2;
+        }
+        return {
+          r: Math.round((rp + m2) * 255),
+          g: Math.round((gp + m2) * 255),
+          b: Math.round((bp + m2) * 255)
+        };
+      }
+      function accentHsvToHex(hsv) {
+        const { r, g: g2, b: b2 } = hsvToRgb(hsv.h, hsv.s, hsv.v);
+        return rgbToHex(r, g2, b2);
+      }
+      function syncAccentColorPopUi(opts) {
+        const sv = document.getElementById("accent-sv");
+        const svCursor = document.getElementById("accent-sv-cursor");
+        const hueThumb = document.getElementById("accent-hue-thumb");
+        const preview = document.getElementById("accent-preview");
+        const hexInput = document.getElementById("accent-hex");
+        const rInput = document.getElementById("accent-r");
+        const gInput = document.getElementById("accent-g");
+        const bInput = document.getElementById("accent-b");
+        const hex = accentHsvToHex(accentPickerHsv);
+        const rgb = hsvToRgb(accentPickerHsv.h, accentPickerHsv.s, accentPickerHsv.v);
+        if (sv)
+          sv.style.backgroundColor = `hsl(${accentPickerHsv.h}, 100%, 50%)`;
+        if (svCursor) {
+          svCursor.style.left = `${accentPickerHsv.s * 100}%`;
+          svCursor.style.top = `${(1 - accentPickerHsv.v) * 100}%`;
+        }
+        if (hueThumb) {
+          hueThumb.style.left = `${accentPickerHsv.h / 360 * 100}%`;
+          hueThumb.style.background = `hsl(${accentPickerHsv.h}, 100%, 50%)`;
+        }
+        if (preview)
+          preview.style.background = hex;
+        if (!opts?.skipInputs) {
+          if (hexInput && document.activeElement !== hexInput)
+            hexInput.value = hex.toUpperCase();
+          if (rInput && document.activeElement !== rInput)
+            rInput.value = String(rgb.r);
+          if (gInput && document.activeElement !== gInput)
+            gInput.value = String(rgb.g);
+          if (bInput && document.activeElement !== bInput)
+            bInput.value = String(rgb.b);
+        }
+      }
+      function applyAccentFromPicker() {
+        setAccentColor(accentHsvToHex(accentPickerHsv));
+      }
+      function setAccentColorPopOpen(open) {
+        const pop = document.getElementById("settings-accent-color-pop");
+        const btn = document.getElementById("settings-custom-accent");
+        if (!pop || !btn)
+          return;
+        accentPickerOpen = open;
+        if (open) {
+          const current = localStorage.getItem("Undefined Client-accent") || "#70ADDF";
+          const rgb = hexToRgb(current);
+          if (rgb)
+            accentPickerHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+          syncAccentColorPopUi();
+          pop.classList.remove("hidden");
+          requestAnimationFrame(() => pop.classList.add("is-open"));
+          btn.setAttribute("aria-expanded", "true");
+        } else if (pop.classList.contains("is-open") || !pop.classList.contains("hidden")) {
+          pop.classList.remove("is-open");
+          btn.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!pop.classList.contains("is-open"))
+              pop.classList.add("hidden");
+          }, 180);
+        }
+      }
+      function closeAccentColorPop() {
+        if (accentPickerOpen)
+          setAccentColorPopOpen(false);
+      }
+      function pickAccentSvFromEvent(e) {
+        const sv = document.getElementById("accent-sv");
+        if (!sv)
+          return;
+        const rect = sv.getBoundingClientRect();
+        accentPickerHsv.s = clamp01((e.clientX - rect.left) / rect.width);
+        accentPickerHsv.v = clamp01(1 - (e.clientY - rect.top) / rect.height);
+        syncAccentColorPopUi();
+        applyAccentFromPicker();
+      }
+      function pickAccentHueFromEvent(e) {
+        const hue = document.getElementById("accent-hue");
+        if (!hue)
+          return;
+        const rect = hue.getBoundingClientRect();
+        accentPickerHsv.h = clamp01((e.clientX - rect.left) / rect.width) * 360;
+        syncAccentColorPopUi();
+        applyAccentFromPicker();
+      }
+      function initAccentColorPicker() {
+        const btn = document.getElementById("settings-custom-accent");
+        const pop = document.getElementById("settings-accent-color-pop");
+        const sv = document.getElementById("accent-sv");
+        const hue = document.getElementById("accent-hue");
+        const hexInput = document.getElementById("accent-hex");
+        const rInput = document.getElementById("accent-r");
+        const gInput = document.getElementById("accent-g");
+        const bInput = document.getElementById("accent-b");
+        if (!btn || !pop)
+          return;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setAccentColorPopOpen(!accentPickerOpen);
+        });
+        pop.addEventListener("click", (e) => e.stopPropagation());
+        const bindDrag = (el, kind) => {
+          if (!el)
+            return;
+          el.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            accentPickerDragging = kind;
+            el.setPointerCapture?.(e.pointerId);
+            if (kind === "sv")
+              pickAccentSvFromEvent(e);
+            else
+              pickAccentHueFromEvent(e);
+          });
+        };
+        bindDrag(sv, "sv");
+        bindDrag(hue, "hue");
+        window.addEventListener("pointermove", (e) => {
+          if (!accentPickerDragging)
+            return;
+          if (accentPickerDragging === "sv")
+            pickAccentSvFromEvent(e);
+          else
+            pickAccentHueFromEvent(e);
+        });
+        window.addEventListener("pointerup", () => {
+          accentPickerDragging = null;
+        });
+        hexInput?.addEventListener("input", () => {
+          const raw = hexInput.value.trim();
+          const rgb = hexToRgb(raw.startsWith("#") ? raw : `#${raw}`);
+          if (!rgb)
+            return;
+          accentPickerHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+          syncAccentColorPopUi({ skipInputs: true });
+          applyAccentFromPicker();
+        });
+        hexInput?.addEventListener("change", () => {
+          const rgb = hexToRgb(hexInput.value);
+          if (rgb)
+            hexInput.value = rgbToHex(rgb.r, rgb.g, rgb.b).toUpperCase();
+          else
+            syncAccentColorPopUi();
+        });
+        const onRgbInput = () => {
+          const r = Math.max(0, Math.min(255, Number(rInput?.value) || 0));
+          const g2 = Math.max(0, Math.min(255, Number(gInput?.value) || 0));
+          const b2 = Math.max(0, Math.min(255, Number(bInput?.value) || 0));
+          accentPickerHsv = rgbToHsv(r, g2, b2);
+          syncAccentColorPopUi({ skipInputs: true });
+          applyAccentFromPicker();
+        };
+        rInput?.addEventListener("input", onRgbInput);
+        gInput?.addEventListener("input", onRgbInput);
+        bInput?.addEventListener("input", onRgbInput);
+        document.addEventListener("click", () => closeAccentColorPop());
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape")
+            closeAccentColorPop();
+        });
+      }
+      initAccentColorPicker();
       function settingSave(id, key) {
         const el = document.getElementById(id);
         if (!el)
@@ -32337,6 +34882,20 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       settingSave("setting-check-updates-start", "check-updates-start");
       settingSave("setting-mods-page-size", "mods-page-size");
       settingSave("setting-skin-viewer-debug", "skin-viewer-debug");
+      (() => {
+        const minEl = document.getElementById("setting-minimize-on-launch");
+        const keepEl = document.getElementById("setting-keep-open");
+        if (!minEl || !keepEl)
+          return;
+        minEl.addEventListener("change", () => {
+          keepEl.checked = !minEl.checked;
+          localStorage.setItem("Undefined Client-keep-open", String(keepEl.checked));
+        });
+        keepEl.addEventListener("change", () => {
+          minEl.checked = !keepEl.checked;
+          localStorage.setItem("Undefined Client-minimize-on-launch", String(minEl.checked));
+        });
+      })();
       document.getElementById("setting-skin-viewer-debug")?.addEventListener("change", () => {
         applySkinViewerDebugSetting();
       });
@@ -32344,6 +34903,30 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         resetSkinViewerDebugDefaults();
       });
       ensureSkinDebugOptionsUi();
+      var LANGUAGE_NATIVE_NAMES = {
+        ru: "\u0420\u0443\u0441\u0441\u043A\u0438\u0439",
+        en: "English",
+        tt: "\u0422\u0430\u0442\u0430\u0440",
+        kk: "\u049A\u0430\u0437\u0430\u049B\u0448\u0430",
+        uk: "\u0423\u043A\u0440\u0430\u0438\u043D\u0441\u043A\u0438\u0439",
+        kbd: "\u041A\u044A\u044D\u0431\u044D\u0440\u0434\u0435\u0439\u0431\u0437\u044D"
+      };
+      function applyLanguageSelectLabels() {
+        const select = document.getElementById("setting-language");
+        if (!select)
+          return;
+        const wrap = select.closest(".stngs-select-wrap");
+        for (const opt of Array.from(select.options)) {
+          const name = LANGUAGE_NATIVE_NAMES[opt.value];
+          if (name)
+            opt.textContent = name;
+        }
+        wrap?.querySelectorAll(".stngs-select-opt[data-value]").forEach((el) => {
+          const name = LANGUAGE_NATIVE_NAMES[el.dataset.value || ""];
+          if (name)
+            el.textContent = name;
+        });
+      }
       var customSelectsInit = false;
       function syncSelectUI(wrap) {
         const select = wrap.querySelector("select");
@@ -32416,6 +34999,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           localStorage.setItem(animKey, String(animationsToggle.checked));
         });
       }
+      function syncRangeProgress(el) {
+        const min = Number(el.min) || 0;
+        const max = Number(el.max) || 100;
+        const val = Number(el.value);
+        const pct = max === min ? 0 : (val - min) / (max - min) * 100;
+        el.style.setProperty("--range-progress", `${pct}%`);
+      }
       var ramSlider = document.getElementById("setting-ram");
       var ramLabel = document.getElementById("setting-ram-label");
       if (ramSlider && ramLabel) {
@@ -32423,28 +35013,71 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const stored = localStorage.getItem(ramKey);
         ramSlider.value = stored || "2048";
         ramLabel.textContent = ramSlider.value + t("common.mb");
+        syncRangeProgress(ramSlider);
         ramSlider.addEventListener("input", () => {
           ramLabel.textContent = ramSlider.value + t("common.mb");
           localStorage.setItem(ramKey, ramSlider.value);
+          syncRangeProgress(ramSlider);
         });
       }
-      var uiScaleSlider = document.getElementById("setting-ui-scale");
+      var UI_SCALE_STEPS = [90, 95, 100, 105, 110, 115, 120, 125];
+      var uiScaleSegments = document.getElementById("setting-ui-scale-segments");
       var uiScaleLabel = document.getElementById("setting-ui-scale-label");
-      if (uiScaleSlider && uiScaleLabel) {
+      if (uiScaleSegments && uiScaleLabel) {
         const scaleKey = "Undefined Client-ui-scale";
-        const storedScale = localStorage.getItem(scaleKey);
-        uiScaleSlider.value = storedScale || "100";
-        uiScaleLabel.textContent = uiScaleSlider.value + "%";
         const applyScale = (v2) => {
-          const zoom = Number(v2) / 100;
-          document.body.style.zoom = String(zoom);
+          document.body.style.zoom = String(v2 / 100);
         };
-        applyScale(uiScaleSlider.value);
-        uiScaleSlider.addEventListener("input", () => {
-          uiScaleLabel.textContent = uiScaleSlider.value + "%";
-          localStorage.setItem(scaleKey, uiScaleSlider.value);
-          applyScale(uiScaleSlider.value);
+        const snapScale = (raw) => {
+          let best = UI_SCALE_STEPS[0];
+          let bestDist = Math.abs(raw - best);
+          for (const step of UI_SCALE_STEPS) {
+            const d2 = Math.abs(raw - step);
+            if (d2 < bestDist) {
+              best = step;
+              bestDist = d2;
+            }
+          }
+          return best;
+        };
+        let currentScale = snapScale(Number(localStorage.getItem(scaleKey) || "100") || 100);
+        const renderScaleSegments = () => {
+          uiScaleSegments.innerHTML = "";
+          for (const step of UI_SCALE_STEPS) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "stngs-scale-seg";
+            btn.dataset.scale = String(step);
+            btn.setAttribute("aria-label", `${step}%`);
+            btn.setAttribute("role", "radio");
+            btn.setAttribute("aria-checked", step === currentScale ? "true" : "false");
+            if (step <= currentScale)
+              btn.classList.add("is-filled");
+            if (step === currentScale)
+              btn.classList.add("is-active");
+            btn.addEventListener("click", () => setUiScale(step));
+            uiScaleSegments.appendChild(btn);
+          }
+          uiScaleLabel.textContent = `${currentScale}%`;
+        };
+        const setUiScale = (value) => {
+          currentScale = snapScale(value);
+          localStorage.setItem(scaleKey, String(currentScale));
+          applyScale(currentScale);
+          renderScaleSegments();
+        };
+        uiScaleSegments.addEventListener("keydown", (e) => {
+          const idx = UI_SCALE_STEPS.indexOf(currentScale);
+          if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            e.preventDefault();
+            setUiScale(UI_SCALE_STEPS[Math.min(UI_SCALE_STEPS.length - 1, Math.max(0, idx) + 1)]);
+          } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            e.preventDefault();
+            setUiScale(UI_SCALE_STEPS[Math.max(0, (idx < 0 ? 0 : idx) - 1)]);
+          }
         });
+        applyScale(currentScale);
+        renderScaleSegments();
       }
       function loadTheme() {
         const theme = localStorage.getItem("Undefined Client-theme") || "ocean";
@@ -32466,13 +35099,23 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         settingLoad("setting-language", "language", "ru");
         void setLang(localStorage.getItem("Undefined Client-language") || "ru");
         settingLoad("setting-minimize-on-launch", "minimize-on-launch", false);
+        {
+          const minEl = document.getElementById("setting-minimize-on-launch");
+          const keepEl = document.getElementById("setting-keep-open");
+          if (minEl && keepEl) {
+            keepEl.checked = !minEl.checked;
+            localStorage.setItem("Undefined Client-keep-open", String(keepEl.checked));
+          }
+        }
         settingLoad("setting-discord-rpc", "discord-rpc", true);
         settingLoad("setting-check-updates-start", "check-updates-start", true);
         settingLoad("setting-mods-page-size", "mods-page-size", "20");
         settingLoad("setting-skin-viewer-debug", "skin-viewer-debug", false);
         ensureSkinDebugOptionsUi();
         applySkinViewerDebugSetting();
+        applyLanguageSelectLabels();
         initCustomSelects();
+        bindAiAccessSettingsUi();
       }
       document.getElementById("quick-launch")?.addEventListener("click", async () => {
         if (savedBuilds.length > 0) {
@@ -32483,21 +35126,23 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           updateStatus(t("status.noBuilds"));
       });
       document.getElementById("last-server")?.addEventListener("click", () => {
-        if (savedServers.length > 0)
-          joinServer(savedServers[savedServers.length - 1].ip);
-        else
-          updateStatus(t("status.noServers"));
+        void (async () => {
+          if (savedServers.length === 0) {
+            updateStatus(t("status.noServers"));
+            return;
+          }
+          await openLastServerLaunch(savedServers[savedServers.length - 1]);
+        })();
       });
       function applyLaunchBehavior() {
         const showConsole = localStorage.getItem("Undefined Client-show-console") === "true";
         const closeAfterLaunch = localStorage.getItem("Undefined Client-close-after-launch") === "true";
         const minimizeOnLaunch = localStorage.getItem("Undefined Client-minimize-on-launch") === "true";
-        const keepOpen = localStorage.getItem("Undefined Client-keep-open") !== "false";
         if (showConsole)
           openConsoleLog();
         if (closeAfterLaunch) {
           api?.windowClose();
-        } else if (!keepOpen || minimizeOnLaunch) {
+        } else if (minimizeOnLaunch) {
           api?.windowMinimize();
         }
       }
@@ -32575,6 +35220,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         });
         if (result.success) {
           localStorage.setItem("last-launch-id", build.id);
+          localStorage.setItem("last-launch-at", String(Date.now()));
           applyLaunchBehavior();
         } else {
           runningBuild = null;
@@ -32652,25 +35298,6 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         updateBanner();
         updateSidebarCards();
         updateStats();
-      }
-      async function joinServer(ip) {
-        const [host, portStr] = ip.split(":");
-        const port = parseInt(portStr, 10) > 0 ? parseInt(portStr, 10) : 25565;
-        updateStatus(t("status.connecting", { ip: host }));
-        showLaunchProgress(t("status.connecting", { ip: host }));
-        if (!api?.launch)
-          return;
-        const result = await api.launch({
-          minecraft: { version: "latest_release" },
-          server: { ip: host, port, name: savedServers.find((s) => s.ip === ip)?.name },
-          account: currentAccount,
-          discordRpc: localStorage.getItem("Undefined Client-discord-rpc") !== "false"
-        });
-        if (result.success) {
-          applyLaunchBehavior();
-        } else {
-          updateStatus(t("status.error", { msg: result.errorKey ? t(result.errorKey) : result.error || t("common.error") }));
-        }
       }
       function updateStatus(message) {
         const bannerSub = document.getElementById("quick-banner-sub");
@@ -32942,6 +35569,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       </div>
       <div class="mod-card-actions">
         <button class="details-btn" data-modrinth-id="${p.slug || p.id}">${t("btn.details")}</button>
+        <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${p.slug || p.id}" data-modrinth-title="${String(p.title || "").replace(/"/g, "&quot;")}">${t("ai.askAboutMod")}</button>
         <button class="list-row-btn download-btn" data-modrinth-id="${p.slug || p.id}">${t("btn.download")}</button>
       </div>
     </div>
@@ -32961,6 +35589,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             const id = btn.getAttribute("data-modrinth-id");
             if (id)
               openModalDetails(id);
+          });
+        });
+        grid.querySelectorAll(".ai-ask-mod-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute("data-modrinth-id") || "";
+            const title = btn.getAttribute("data-modrinth-title") || id;
+            (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, id);
           });
         });
         grid.querySelectorAll(".download-btn").forEach((btn) => {
@@ -33084,12 +35720,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t("mods.noBuildsForInstall") + "</div>";
         } else {
           list.innerHTML = savedBuilds.map((b2) => {
-            const iconSrc = b2.icon ? buildIconSrc(b2.icon) : "";
+            const iconSrc = b2.icon ? buildIconSrc(b2.icon) : DEFAULT_BUILD_ICON_SRC;
             const compatible = pendingDownloadGameVersions.length === 0 || b2.gameVersion === "latest_release" || b2.gameVersion === "latest_snapshot" || pendingDownloadGameVersions.includes(b2.gameVersion);
             const compatCls = compatible ? "" : " incompatible";
             const compatAttr = compatible ? "" : ` title="${t("mods.incompatibleBuild")}"`;
             return `<div class="build-option-item${compatCls}" data-build-id="${b2.id}"${compatAttr}>
-        <div class="build-option-icon" style="background:rgba(255,255,255,0.1)">${iconSrc ? `<img src="${iconSrc}">` : ""}</div>
+        <div class="build-option-icon" style="background:transparent"><img src="${iconSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
         <div class="build-option-info">
           <div class="build-option-name">${b2.name}</div>
           <div class="build-option-meta">${b2.gameVersion} \xB7 ${b2.loader}</div>
@@ -33120,40 +35756,111 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         updateStatus(t("status.downloading"));
         await downloadModToBuild(pendingTargetProjectId, buildId, pendingDownloadVersionId);
       });
-      async function downloadModToBuild(projectId, buildId, versionId, contentTypeHint) {
+      async function downloadModToBuild(projectId, buildId, versionId, contentTypeHint, options) {
         try {
-          const result = await api?.installMod(buildId, projectId, versionId, contentTypeHint);
+          const result = await api?.installMod(buildId, projectId, versionId, contentTypeHint, options);
+          if (result?.error === "mod_conflicts" && !options?.force) {
+            const lines = (result.conflicts || []).map((c) => `\u2022 ${c.title} \u2194 ${c.withTitle}`).slice(0, 8);
+            const depsNote = result.pendingDeps && result.pendingDeps > 0 ? `
+
+${t("mods.depsWillInstall", { n: result.pendingDeps })}` : "";
+            const msgEl = document.getElementById("confirm-message");
+            if (msgEl)
+              msgEl.style.whiteSpace = "pre-wrap";
+            const ok = await confirmAction(`${t("mods.depsConflictConfirm")}
+
+${lines.join("\n")}${depsNote}`);
+            if (msgEl)
+              msgEl.style.whiteSpace = "";
+            if (!ok) {
+              updateStatus(t("mods.depsInstallCancelled"));
+              return { success: false, error: "cancelled" };
+            }
+            return downloadModToBuild(projectId, buildId, versionId, contentTypeHint, {
+              ...options,
+              force: true
+            });
+          }
           if (result?.success) {
             const contentType = result.contentType || "mod";
-            const typeLabel = { mod: t("type.mod"), resourcepack: t("type.resourcepack"), shader: t("type.shader") };
-            updateStatus(t("status.typeInstalled", { type: typeLabel[contentType] || t("type.file") }));
+            const typeLabel = {
+              mod: t("type.mod"),
+              resourcepack: t("type.resourcepack"),
+              shader: t("type.shader"),
+              datapack: t("type.datapack")
+            };
+            const depCount = result.dependenciesInstalled || 0;
+            if (depCount > 0) {
+              updateStatus(t("status.typeInstalledWithDeps", {
+                type: typeLabel[contentType] || t("type.file"),
+                n: depCount
+              }));
+            } else {
+              updateStatus(t("status.typeInstalled", { type: typeLabel[contentType] || t("type.file") }));
+            }
             const build = savedBuilds.find((b2) => b2.id === buildId);
-            if (build && result.name && result.filename) {
+            if (build) {
               const buildMap = {
                 mod: "mods",
                 resourcepack: "resourcePacks",
                 shader: "shaders",
                 datapack: "dataPacks"
               };
-              const buildKey = buildMap[contentType] || "mods";
-              if (!build[buildKey])
-                build[buildKey] = [];
-              build[buildKey].push({
-                name: result.name,
-                enabled: true,
-                filename: result.filename,
-                version: result.version || "",
-                description: result.description || "",
-                projectId: result.projectId || projectId,
-                iconUrl: result.iconUrl || ""
-              });
+              const items = result.installed && result.installed.length ? result.installed : result.name && result.filename ? [
+                {
+                  name: result.name,
+                  version: result.version || "",
+                  filename: result.filename,
+                  projectId: result.projectId || projectId,
+                  iconUrl: result.iconUrl || "",
+                  description: result.description || "",
+                  contentType,
+                  isDependency: false
+                }
+              ] : [];
+              for (const item of items) {
+                const buildKey = buildMap[item.contentType || contentType] || "mods";
+                if (!build[buildKey])
+                  build[buildKey] = [];
+                const arr = build[buildKey];
+                const existingIdx = arr.findIndex((m2) => item.projectId && m2.projectId === item.projectId || item.filename && m2.filename === item.filename);
+                const entry = {
+                  name: item.name,
+                  enabled: true,
+                  filename: item.filename,
+                  version: item.version || "",
+                  description: item.description || "",
+                  projectId: item.projectId || "",
+                  iconUrl: item.iconUrl || ""
+                };
+                if (existingIdx >= 0)
+                  arr[existingIdx] = { ...arr[existingIdx], ...entry };
+                else
+                  arr.push(entry);
+              }
               if (api?.saveBuild)
                 await api.saveBuild(build);
+            }
+            if (result.conflicts?.length) {
+              pushConsoleLog(t("mods.depsConflictLog", {
+                list: result.conflicts.map((c) => `${c.title} \u2194 ${c.withTitle}`).join(", ")
+              }));
+            }
+            if (result.optionalSuggested?.length) {
+              pushConsoleLog(t("mods.depsOptionalLog", {
+                list: result.optionalSuggested.map((o) => o.title).join(", ")
+              }));
+            }
+            if (result.unresolved?.length) {
+              pushConsoleLog(t("mods.depsUnresolvedLog", {
+                list: result.unresolved.map((u) => u.projectId).join(", ")
+              }));
             }
             await loadBuilds();
             return { success: true };
           }
-          updateStatus(t("status.error", { msg: result?.error || t("common.unknown") }));
+          const errKey = result?.error === "no_compatible_version" ? "mods.depsNoCompatible" : result?.error === "project_not_found" ? "mods.depsProjectMissing" : null;
+          updateStatus(t("status.error", { msg: errKey ? t(errKey) : result?.error || t("common.unknown") }));
           return { success: false, error: result?.error };
         } catch (e) {
           updateStatus(t("status.downloadError"));
@@ -33353,14 +36060,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
         let compatibleCount = 0;
         list.innerHTML = savedBuilds.map((b2) => {
-          const iconSrc = b2.icon ? buildIconSrc(b2.icon) : "";
+          const iconSrc = b2.icon ? buildIconSrc(b2.icon) : DEFAULT_BUILD_ICON_SRC;
           const compatible = deepLinkFixedVersion ? dlVersionFitsBuild(deepLinkFixedVersion, b2, payload.type) : resolved.versions.some((v2) => dlVersionFitsBuild(v2, b2, payload.type));
           if (compatible)
             compatibleCount++;
           const compatCls = compatible ? "" : " incompatible";
           const compatAttr = compatible ? "" : ` title="${t("mods.incompatibleBuild")}"`;
           return `<div class="build-option-item${compatCls}" data-build-id="${srvEsc(b2.id)}"${compatAttr}>
-      <div class="build-option-icon" style="background:rgba(255,255,255,0.1)">${iconSrc ? `<img src="${srvEsc(iconSrc)}">` : ""}</div>
+      <div class="build-option-icon" style="background:transparent"><img src="${srvEsc(iconSrc)}" style="width:100%;height:100%;object-fit:cover;"></div>
       <div class="build-option-info">
         <div class="build-option-name">${srvEsc(b2.name)}</div>
         <div class="build-option-meta">${srvEsc(b2.gameVersion)} \xB7 ${srvEsc(b2.loader)}</div>
@@ -33586,10 +36293,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
       }
       function shareBuildIconHtml(build) {
-        if (build.icon) {
-          return `<img src="${buildIconSrc(build.icon)}" style="width:100%;height:100%;object-fit:cover;">`;
-        }
-        return `<img src="../../assets/InstancesIcons/emptyIcon.png" style="width:100%;height:100%;object-fit:cover;">`;
+        return buildCardIconHtml(build);
       }
       async function openShareModal(build) {
         if (shareBusy) {
@@ -34032,6 +36736,112 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         closeModsFiltersPopup();
         modsSearchWithFilters();
       });
+      function formatRelativeLaunch(ts) {
+        if (!ts || !Number.isFinite(ts))
+          return "";
+        const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1e3));
+        if (diffSec < 60)
+          return t("home.relative.justNow");
+        if (diffSec < 3600)
+          return t("home.relative.minutes", { n: Math.floor(diffSec / 60) });
+        if (diffSec < 86400)
+          return t("home.relative.hours", { n: Math.floor(diffSec / 3600) });
+        const days = Math.floor(diffSec / 86400);
+        if (days === 1)
+          return t("home.relative.yesterday");
+        return t("home.relative.days", { n: days });
+      }
+      function getHomeFeaturedBuild() {
+        const lastId = localStorage.getItem("last-launch-id");
+        if (lastId) {
+          const found = savedBuilds.find((b2) => b2.id === lastId);
+          if (found)
+            return found;
+        }
+        return savedBuilds[0] || null;
+      }
+      function countInstalledMods() {
+        return savedBuilds.reduce((sum, b2) => sum + (Array.isArray(b2.mods) ? b2.mods.length : 0), 0);
+      }
+      function getLastPlayedBuild() {
+        const lastId = localStorage.getItem("last-launch-id");
+        if (!lastId)
+          return null;
+        return savedBuilds.find((b2) => b2.id === lastId) || null;
+      }
+      function updateHomeWelcomeSub() {
+        const el = document.getElementById("home-welcome-sub");
+        if (!el)
+          return;
+        if (savedBuilds.length === 0) {
+          el.textContent = t("home.welcomeEmpty");
+          return;
+        }
+        if (getLastPlayedBuild()) {
+          el.textContent = t("home.welcome");
+          return;
+        }
+        el.textContent = t("home.welcomePick");
+      }
+      function updateHomeInsights() {
+        const featured = getHomeFeaturedBuild();
+        const lastPlayed = getLastPlayedBuild();
+        const sessionValue = document.getElementById("home-insight-session-value");
+        const sessionHint = document.getElementById("home-insight-session-hint");
+        const libraryValue = document.getElementById("home-insight-library-value");
+        const libraryHint = document.getElementById("home-insight-library-hint");
+        const playtimeValue = document.getElementById("home-insight-playtime-value");
+        const playtimeHint = document.getElementById("home-insight-playtime-hint");
+        const heroStatus = document.getElementById("quick-banner-status");
+        updateHomeWelcomeSub();
+        if (featured) {
+          if (sessionValue)
+            sessionValue.textContent = featured.name;
+          const lastAt = Number(localStorage.getItem("last-launch-at") || 0);
+          const rel = lastPlayed ? formatRelativeLaunch(lastAt) : "";
+          const played = featured.playtime ? formatPlaytime(featured.playtime) : "";
+          if (sessionHint) {
+            sessionHint.textContent = [rel, played ? t("home.insight.sessionPlayed", { time: played }) : ""].filter(Boolean).join(" \xB7 ") || t("home.insight.sessionReady");
+          }
+          if (heroStatus) {
+            heroStatus.textContent = rel ? t("home.hero.statusPlayed", { when: rel }) : t("home.hero.statusReady");
+          }
+        } else {
+          if (sessionValue)
+            sessionValue.textContent = t("home.insight.sessionEmpty");
+          if (sessionHint)
+            sessionHint.textContent = t("home.insight.sessionEmptyHint");
+          if (heroStatus)
+            heroStatus.textContent = t("home.hero.statusEmpty");
+        }
+        const modsN = countInstalledMods();
+        if (savedBuilds.length === 0) {
+          if (libraryValue)
+            libraryValue.textContent = t("home.insight.libraryEmpty");
+          if (libraryHint)
+            libraryHint.textContent = t("home.insight.libraryEmptyHint");
+        } else {
+          if (libraryValue) {
+            libraryValue.textContent = t("home.insight.libraryValue", {
+              builds: savedBuilds.length,
+              servers: savedServers.length
+            });
+          }
+          if (libraryHint) {
+            libraryHint.textContent = modsN > 0 ? t("home.insight.libraryMods", { n: modsN }) : t("home.insight.libraryHint");
+          }
+        }
+        const totalPlay = savedBuilds.reduce((sum, b2) => sum + (b2.playtime || 0), 0);
+        if (playtimeValue)
+          playtimeValue.textContent = formatPlaytime(totalPlay);
+        if (playtimeHint) {
+          playtimeHint.textContent = totalPlay > 0 ? t("home.insight.playtimeHint") : t("home.insight.playtimeEmpty");
+        }
+      }
+      function refreshHomeDashboard() {
+        updateBanner();
+        updateHomeInsights();
+      }
       function updateStats() {
         const statBuilds = document.getElementById("stat-builds");
         if (statBuilds)
@@ -34041,7 +36851,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           statServers.textContent = String(savedServers.length);
         const statMods = document.getElementById("stat-mods");
         if (statMods)
-          statMods.textContent = String(savedMods?.length || 0);
+          statMods.textContent = String(countInstalledMods() || savedMods?.length || 0);
         const statSkins = document.getElementById("stat-skins");
         if (statSkins)
           statSkins.textContent = String(savedSkins.length);
@@ -34050,6 +36860,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           const total = savedBuilds.reduce((sum, b2) => sum + (b2.playtime || 0), 0);
           statPlaytime.textContent = formatPlaytime(total);
         }
+        updateHomeInsights();
       }
       function escapeHtml(text) {
         return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -34112,11 +36923,96 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
       }
       document.getElementById("stat-card-playtime")?.addEventListener("click", openStatsModal);
+      document.getElementById("home-insights")?.addEventListener("click", (e) => {
+        const btn = e.target?.closest("[data-home-action]");
+        if (!btn)
+          return;
+        const action = btn.getAttribute("data-home-action");
+        if (action === "play") {
+          void document.getElementById("quick-banner-play")?.click();
+        } else if (action === "builds") {
+          switchTab("builds");
+        } else if (action === "stats") {
+          openStatsModal();
+        }
+      });
       document.getElementById("modal-stats-close")?.addEventListener("click", () => closeModal("modal-stats"));
       document.getElementById("modal-stats")?.addEventListener("click", (e) => {
         if (e.target === e.currentTarget)
           closeModal("modal-stats");
       });
+      function resolveLastServerStatus(addr) {
+        if (srvStatusCache[addr])
+          return srvStatusCache[addr];
+        const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+        if (cat?.status) {
+          srvStatusCache[addr] = cat.status;
+          return cat.status;
+        }
+        return {};
+      }
+      function updateSidebarLastServer() {
+        const lsCard = document.getElementById("last-server");
+        const lsName = document.getElementById("last-server-name");
+        const lsVer = document.getElementById("last-server-version");
+        const lsIcon = document.getElementById("last-server-icon");
+        if (savedServers.length === 0) {
+          if (lsCard)
+            lsCard.classList.add("hidden-card");
+          return;
+        }
+        const srv = savedServers[savedServers.length - 1];
+        const addr = savedServerAddr(srv);
+        const st2 = resolveLastServerStatus(addr);
+        const online = !!st2.online;
+        const players = st2.players?.online != null ? st2.players.online : null;
+        const max = st2.players?.max != null ? st2.players.max : null;
+        const version = String(st2.version || srv.version || "").split("\n")[0] || "";
+        const statusTxt = online ? players != null ? `${Number(players).toLocaleString()}${max != null ? "/" + Number(max).toLocaleString() : ""}` : t("servers.online") : Object.keys(st2).length ? t("servers.offline") : "\u2026";
+        const fav = srvServerFavicon(st2);
+        if (lsName)
+          lsName.textContent = srv.name;
+        if (lsCard)
+          lsCard.classList.remove("hidden-card");
+        if (lsIcon) {
+          lsIcon.innerHTML = fav ? `<img src="${srvEsc(fav)}" alt="">` : `<img src="../../assets/icons/serverIcon.png" alt="">`;
+        }
+        if (lsVer) {
+          const verPart = version || addr;
+          lsVer.innerHTML = `
+      <span class="srv-dot ${online ? "srv-online" : "srv-offline"}"></span>
+      <span class="sidebar-srv-online">${escapeHtml(statusTxt)}</span>
+      ${verPart ? `<span class="srv-sep">\xB7</span><span class="sidebar-srv-ver">${escapeHtml(verPart)}</span>` : ""}
+    `;
+        }
+      }
+      async function ensureLastServerStatus() {
+        if (!savedServers.length || !api?.serverStatus)
+          return;
+        const srv = savedServers[savedServers.length - 1];
+        const addr = savedServerAddr(srv);
+        if (!addr)
+          return;
+        if (srvStatusCache[addr]?.online != null || srvServerFavicon(srvStatusCache[addr] || {})) {
+          return;
+        }
+        const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+        if (cat?.status && (cat.status.online != null || srvServerFavicon(cat.status))) {
+          srvStatusCache[addr] = cat.status;
+          updateSidebarLastServer();
+          return;
+        }
+        try {
+          const st2 = await api.serverStatus(addr) || { online: false };
+          srvStatusCache[addr] = st2;
+          if (cat)
+            cat.status = st2;
+          updateSidebarLastServer();
+        } catch {
+          srvStatusCache[addr] = { online: false };
+          updateSidebarLastServer();
+        }
+      }
       function updateSidebarCards() {
         const qlIcon = document.getElementById("quick-launch-icon");
         const qlName = document.getElementById("quick-launch-name");
@@ -34129,11 +37025,11 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (qlVer)
             qlVer.textContent = `${build.gameVersion} \xB7 ${build.loader}`;
           if (qlIcon) {
-            qlIcon.style.background = "rgba(255, 255, 255, 0)";
+            qlIcon.style.background = "transparent";
             if (build.icon) {
               qlIcon.innerHTML = `<img src="${buildIconSrc(build.icon)}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;">`;
             } else {
-              qlIcon.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="4" fill="rgba(255,255,255,0.1)"/><path d="M12 10L22 16L12 22V10Z" fill="#2A2A2A"/></svg>`;
+              qlIcon.innerHTML = defaultBuildIconHtml("border-radius:4px;");
             }
           }
         } else {
@@ -34142,62 +37038,37 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (qlVer)
             qlVer.textContent = "";
           if (qlIcon) {
-            qlIcon.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="4" fill="#7BD4B7"/><path d="M12 10L22 16L12 22V10Z" fill="#2A2A2A"/></svg>`;
+            qlIcon.style.background = "transparent";
+            qlIcon.innerHTML = defaultBuildIconHtml("border-radius:4px;");
           }
         }
-        const lsCard = document.getElementById("last-server");
-        const lsName = document.getElementById("last-server-name");
-        const lsVer = document.getElementById("last-server-version");
-        const lsIcon = document.getElementById("last-server-icon");
-        if (savedServers.length > 0) {
-          const srv = savedServers[savedServers.length - 1];
-          if (lsName)
-            lsName.textContent = srv.name;
-          if (lsVer)
-            lsVer.textContent = srv.version || srv.ip;
-          if (lsCard)
-            lsCard.classList.remove("hidden-card");
-          if (lsIcon) {
-            lsIcon.innerHTML = `<div style="width:100%;height:100%;border-radius:4px;background:${stringToColor(srv.name)};display:flex;align-items:center;justify-content:center;overflow:hidden;"><span style="color:#1a1a1a;font-size:15px;font-weight:700;font-family:'Nekst',Arial,sans-serif">${escapeHtml(String(srv.name).charAt(0).toUpperCase())}</span></div>`;
-          }
-        } else {
-          if (lsCard)
-            lsCard.classList.add("hidden-card");
-        }
+        updateSidebarLastServer();
+        void ensureLastServerStatus();
       }
       function updateBanner() {
-        const lastId = localStorage.getItem("last-launch-id");
-        if (lastId) {
-          const build = savedBuilds.find((b2) => b2.id === lastId);
-          if (build) {
-            const title = document.getElementById("quick-banner-title");
-            if (title)
-              title.textContent = build.name;
-            const meta = document.getElementById("quick-banner-meta");
-            if (meta)
-              meta.textContent = `${build.gameVersion} \xB7 ${build.loader}${build.loaderVersion ? " \xB7 " + build.loaderVersion : ""}`;
-            updateStatus(t("home.continueGame"));
-            return;
-          }
-        }
-        if (savedBuilds.length > 0) {
-          const build = savedBuilds[0];
-          const title = document.getElementById("quick-banner-title");
+        const featured = getHomeFeaturedBuild();
+        const title = document.getElementById("quick-banner-title");
+        const meta = document.getElementById("quick-banner-meta");
+        const sub = document.getElementById("quick-banner-sub");
+        if (featured) {
           if (title)
-            title.textContent = build.name;
-          const meta = document.getElementById("quick-banner-meta");
-          if (meta)
-            meta.textContent = `${build.gameVersion} \xB7 ${build.loader}${build.loaderVersion ? " \xB7 " + build.loaderVersion : ""}`;
-          updateStatus(t("sidebar.quickLaunch"));
+            title.textContent = featured.name;
+          if (meta) {
+            meta.textContent = `${featured.gameVersion} \xB7 ${featured.loader}${featured.loaderVersion ? " \xB7 " + featured.loaderVersion : ""}`;
+          }
+          if (sub)
+            sub.textContent = t("home.continueGame");
+          updateStatus(t("home.continueGame"));
         } else {
-          const title = document.getElementById("quick-banner-title");
           if (title)
             title.textContent = t("sidebar.noBuilds");
-          const meta = document.getElementById("quick-banner-meta");
           if (meta)
             meta.textContent = t("home.noBuildsHint");
+          if (sub)
+            sub.textContent = t("home.welcome");
           updateStatus(t("home.welcomeStatus"));
         }
+        updateHomeInsights();
       }
       var PRESENCE_MODALS = { "modal-settings": "settings", "modal-about": "about" };
       function openModal(id) {
@@ -34220,6 +37091,88 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (PRESENCE_MODALS[id])
           pushPresence(presenceTab);
       }
+      var worldPreviewBoundsObserver = null;
+      var worldPreviewResizeHandler = null;
+      function getWorldPreviewHostBounds() {
+        const host = document.getElementById("world-preview-host") || document.querySelector("#modal-world-preview .world-preview-window");
+        if (!host)
+          return null;
+        const r = host.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2)
+          return null;
+        return {
+          x: Math.max(0, Math.round(r.left)),
+          y: Math.max(0, Math.round(r.top)),
+          width: Math.max(1, Math.round(r.width)),
+          height: Math.max(1, Math.round(r.height))
+        };
+      }
+      function syncWorldPreviewBounds() {
+        const bounds = getWorldPreviewHostBounds();
+        if (!bounds || !api?.setWorldViewerBounds)
+          return;
+        void api.setWorldViewerBounds(bounds);
+      }
+      function stopWorldPreviewBoundsSync() {
+        worldPreviewBoundsObserver?.disconnect();
+        worldPreviewBoundsObserver = null;
+        if (worldPreviewResizeHandler) {
+          window.removeEventListener("resize", worldPreviewResizeHandler);
+          worldPreviewResizeHandler = null;
+        }
+      }
+      function startWorldPreviewBoundsSync() {
+        stopWorldPreviewBoundsSync();
+        const host = document.getElementById("world-preview-host");
+        const win = document.querySelector("#modal-world-preview .world-preview-window");
+        if (!host)
+          return;
+        worldPreviewBoundsObserver = new ResizeObserver(() => syncWorldPreviewBounds());
+        worldPreviewBoundsObserver.observe(host);
+        if (win)
+          worldPreviewBoundsObserver.observe(win);
+        worldPreviewResizeHandler = () => syncWorldPreviewBounds();
+        window.addEventListener("resize", worldPreviewResizeHandler);
+        requestAnimationFrame(() => syncWorldPreviewBounds());
+      }
+      async function closeWorldPreviewModal() {
+        stopWorldPreviewBoundsSync();
+        try {
+          await api?.closeWorldViewer?.();
+        } catch {
+        }
+        closeModal("modal-world-preview");
+      }
+      async function openWorldPreviewModalChrome() {
+        openModal("modal-world-preview");
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        startWorldPreviewBoundsSync();
+        return getWorldPreviewHostBounds();
+      }
+      document.getElementById("modal-world-preview")?.addEventListener("click", (e) => {
+        if (e.target === e.currentTarget)
+          void closeWorldPreviewModal();
+      });
+      api?.onWorldModalOpen?.((data) => {
+        void (async () => {
+          const bounds = await openWorldPreviewModalChrome();
+          if (!bounds)
+            return;
+          if (api?.attachWorldViewer)
+            await api.attachWorldViewer(bounds);
+          else if (api?.openWorldViewer)
+            await api.openWorldViewer(data?.worldPath || "", void 0, bounds);
+        })();
+      });
+      api?.onWorldModalClosed?.(() => {
+        stopWorldPreviewBoundsSync();
+        const el = document.getElementById("modal-world-preview");
+        if (el && !el.classList.contains("hidden"))
+          closeModal("modal-world-preview");
+      });
+      api?.onWorldBoundsSyncRequest?.(() => {
+        syncWorldPreviewBounds();
+      });
       var ESC_CLOSEABLE_MODALS = [
         { id: "modal-build", close: closeModalBuildModal },
         { id: "modal-server", close: closeModalServerModal },
@@ -34236,8 +37189,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         { id: "modal-deeplink", close: closeDeepLinkModal },
         { id: "modal-share", close: closeShareModal },
         { id: "modal-share-import", close: closeShareImportModal },
+        { id: "modal-server-build", close: () => closeModal("modal-server-build") },
         { id: "modal-srv-info", close: () => closeModal("modal-srv-info") },
-        { id: "modal-crash", close: () => closeModal("modal-crash") }
+        { id: "modal-crash", close: () => closeModal("modal-crash") },
+        // Последним: поверх остальных (в т.ч. редактора сборки).
+        { id: "modal-world-preview", close: () => {
+          void closeWorldPreviewModal();
+        } }
       ];
       document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape")
@@ -34558,6 +37516,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         "be-rp-list": "resourcePacks",
         "be-shaders-list": "shaders",
         "be-dp-list": "dataPacks"
+      };
+      var LIST_ID_TO_INSTANCE_SUB = {
+        "be-mods-list": "mods",
+        "be-rp-list": "resourcepacks",
+        "be-shaders-list": "shaderpacks",
+        "be-dp-list": "datapacks"
       };
       function listIdToBuildKey(listId) {
         return LIST_ID_TO_BUILD_KEY[listId];
@@ -34996,8 +37960,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const coverEl = document.getElementById("home-news-cover");
         const titleEl = document.getElementById("home-news-title");
         const summaryEl = document.getElementById("home-news-summary");
-        const openBtn = document.getElementById("home-news-open-btn");
-        if (!block || !coverEl || !titleEl || !summaryEl || !openBtn)
+        if (!block || !coverEl || !titleEl || !summaryEl)
           return;
         const hide = () => block.classList.add("hidden");
         if (newsLoading && !newsLoaded) {
@@ -35019,9 +37982,15 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           summaryEl.textContent = "";
           summaryEl.classList.add("hidden");
         }
-        openBtn.onclick = (e) => {
-          e.stopPropagation();
+        const openPost = () => {
           void openModalNews(post.id);
+        };
+        block.onclick = openPost;
+        block.onkeydown = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openPost();
+          }
         };
         block.classList.remove("hidden");
       }
@@ -35185,43 +38154,199 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (detailsProjectId)
           openModalVersionsForDownload(detailsProjectId);
       });
-      document.getElementById("import-dropzone")?.addEventListener("click", () => {
-        document.getElementById("import-file-input")?.click();
-      });
-      document.getElementById("import-file-input")?.addEventListener("change", function() {
-        const file = this.files?.[0];
+      var pendingImportPath = null;
+      var SHARE_IMPORT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+      function parseShareImportRef(raw) {
+        const text = String(raw || "").trim().replace(/^["']+|["']+$/g, "").trim();
+        if (!text)
+          return null;
+        if (SHARE_IMPORT_ID_RE.test(text))
+          return text;
+        try {
+          if (/^uclient:\/\//i.test(text)) {
+            const u2 = new URL(text);
+            if (u2.hostname.toLowerCase() === "import-instance") {
+              const id = String(u2.searchParams.get("id") || "").trim();
+              return SHARE_IMPORT_ID_RE.test(id) ? id : null;
+            }
+            return null;
+          }
+          const u = new URL(text);
+          const pathMatch = u.pathname.match(/\/instanceShare\/([A-Za-z0-9_-]{8,64})\/?$/i);
+          if (pathMatch?.[1])
+            return pathMatch[1];
+          const qId = String(u.searchParams.get("id") || "").trim();
+          if (SHARE_IMPORT_ID_RE.test(qId))
+            return qId;
+        } catch {
+        }
+        return null;
+      }
+      function setImportLinkError(message) {
+        const err = document.getElementById("import-link-error");
+        if (!err)
+          return;
+        err.textContent = message;
+        err.classList.toggle("hidden", !message);
+      }
+      function getImportLinkValue() {
+        const input = document.getElementById("import-link-input");
+        return String(input?.value || "").trim();
+      }
+      function syncImportConfirmEnabled() {
+        const confirmBtn = document.getElementById("modal-import-confirm");
+        if (!confirmBtn)
+          return;
+        confirmBtn.disabled = !pendingImportPath && !getImportLinkValue();
+      }
+      function openModalImport() {
+        pendingImportPath = null;
+        const info = document.getElementById("import-info");
+        const infoText = document.getElementById("import-info-text");
+        const zone = document.getElementById("import-dropzone");
+        const linkInput = document.getElementById("import-link-input");
+        if (info) {
+          info.classList.add("hidden");
+          info.classList.remove("is-loading");
+        }
+        zone?.classList.remove("is-busy");
+        if (infoText)
+          infoText.textContent = "";
+        if (linkInput)
+          linkInput.value = "";
+        setImportLinkError("");
+        syncImportConfirmEnabled();
+        openModal("modal-import");
+      }
+      async function selectImportModpackFile() {
+        if (!api?.pickModpack)
+          return;
+        const filePath = await api.pickModpack();
+        if (!filePath)
+          return;
+        pendingImportPath = filePath;
         const info = document.getElementById("import-info");
         const infoText = document.getElementById("import-info-text");
         const confirmBtn = document.getElementById("modal-import-confirm");
-        if (file) {
-          if (info)
-            info.classList.remove("hidden");
+        const zone = document.getElementById("import-dropzone");
+        const name = filePath.replace(/^.*[\\/]/, "");
+        if (info) {
+          info.classList.remove("hidden");
+          info.classList.add("is-loading");
+        }
+        zone?.classList.add("is-busy");
+        if (infoText)
+          infoText.textContent = t("import.detecting");
+        if (confirmBtn)
+          confirmBtn.disabled = true;
+        try {
+          if (api.inspectModpack) {
+            const res = await api.inspectModpack(filePath);
+            if (res.success && res.inspect && infoText) {
+              const i = res.inspect;
+              const formatKey = `import.format.${i.format}`;
+              const formatLabel = t(formatKey) !== formatKey ? t(formatKey) : i.format;
+              const loaderVer = i.loaderVersion ? ` ${i.loaderVersion}` : "";
+              infoText.textContent = `${formatLabel} \xB7 ${t("import.preview", {
+                name: i.name || name,
+                version: i.gameVersion || "\u2014",
+                loader: i.loader || "vanilla",
+                loaderVer,
+                n: String(i.fileCount ?? 0)
+              })}`;
+            } else if (infoText) {
+              infoText.textContent = t("import.selected", { name });
+            }
+          } else if (infoText) {
+            infoText.textContent = t("import.selected", { name });
+          }
+        } catch {
           if (infoText)
-            infoText.textContent = t("import.selected", { name: file.name });
-          if (confirmBtn)
-            confirmBtn.disabled = false;
+            infoText.textContent = t("import.selected", { name });
+        } finally {
+          info?.classList.remove("is-loading");
+          zone?.classList.remove("is-busy");
+          syncImportConfirmEnabled();
+        }
+      }
+      document.getElementById("import-link-input")?.addEventListener("input", () => {
+        setImportLinkError("");
+        syncImportConfirmEnabled();
+      });
+      document.getElementById("import-link-input")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          void document.getElementById("modal-import-confirm")?.click();
         }
       });
+      document.getElementById("import-dropzone")?.addEventListener("click", () => {
+        void selectImportModpackFile();
+      });
       document.getElementById("modal-import-confirm")?.addEventListener("click", async () => {
-        const fileInput = document.getElementById("import-file-input");
-        const file = fileInput?.files?.[0];
-        if (!file)
+        const linkRaw = getImportLinkValue();
+        if (!pendingImportPath && linkRaw) {
+          const id = parseShareImportRef(linkRaw);
+          if (!id) {
+            setImportLinkError(t("import.linkInvalid"));
+            return;
+          }
+          closeModal("modal-import");
+          await openShareImportModal(id);
           return;
-        updateStatus(t("status.importing"));
+        }
+        if (!pendingImportPath || !api?.importModpack)
+          return;
+        const archivePath = pendingImportPath;
         closeModal("modal-import");
-        if (file.name.endsWith(".mrpack")) {
-          updateStatus(t("status.mrpackNotImplemented"));
-        } else if (file.name.endsWith(".zip")) {
-          updateStatus(t("status.cfNotImplemented"));
-        } else {
-          updateStatus(t("status.unsupportedFormat"));
+        updateStatus(t("status.importing"));
+        const progressEl = document.getElementById("download-progress");
+        progressEl?.classList.remove("hidden");
+        try {
+          const res = await api.importModpack(archivePath);
+          if (!res.success || !res.build) {
+            updateStatus(t("import.failed", { error: res.error || "unknown" }));
+            return;
+          }
+          let enriched = { ...res.build };
+          if (api.scanInstance) {
+            try {
+              const scan = await api.scanInstance(res.build.id);
+              const mapItems = (list) => (list || []).map((m2) => ({
+                name: m2.name || m2.filename,
+                enabled: m2.enabled !== false,
+                filename: m2.filename,
+                version: m2.version,
+                description: m2.description,
+                projectId: m2.projectId,
+                iconUrl: m2.iconUrl
+              }));
+              const mods = mapItems(scan.mods);
+              const resourcePacks = mapItems(scan.resourcepacks);
+              const shaders = mapItems(scan.shaders);
+              const dataPacks = mapItems(scan.datapacks);
+              enriched = {
+                ...res.build,
+                mods: mods.length ? mods : res.build.mods || [],
+                resourcePacks: resourcePacks.length ? resourcePacks : res.build.resourcePacks || [],
+                shaders: shaders.length ? shaders : res.build.shaders || [],
+                dataPacks: dataPacks.length ? dataPacks : res.build.dataPacks || []
+              };
+              await api.saveBuild?.(enriched);
+            } catch {
+            }
+          }
+          await loadBuilds();
+          const modsN = enriched.mods?.length || 0;
+          updateStatus(t("import.done", { name: res.build.name }) + (modsN ? ` \xB7 ${modsN}` : ""));
+        } catch (e) {
+          updateStatus(t("import.failed", { error: e?.message || "unknown" }));
         }
       });
       var beScreenshots = [];
       var beWorlds = [];
       var beSelScreenshots = /* @__PURE__ */ new Set();
       var beSelWorlds = /* @__PURE__ */ new Set();
-      var BE_MEDIA_CHECK_SVG = '<span class="be-media-check"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="#0d1421" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+      var BE_MEDIA_CHECK_SVG = '<span class="be-media-check"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
       function formatBeSize(bytes) {
         return (bytes / (1024 * 1024)).toFixed(2) + t("common.mb");
       }
@@ -35281,6 +38406,44 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           });
         });
       }
+      function trParams(key, params) {
+        let s = t(key);
+        if (params) {
+          for (const [k, v2] of Object.entries(params))
+            s = s.replace(`{${k}}`, v2);
+        }
+        return s;
+      }
+      async function openBeWorldPreview(folder) {
+        if (!editingBuildId || !folder || !api?.getInstancePath || !api?.openWorldViewer)
+          return;
+        try {
+          const root = await api.getInstancePath(editingBuildId);
+          if (!root) {
+            updateStatus(t("be.worldPreviewFail"));
+            return;
+          }
+          const worldPath = joinInstancePath(root, "saves", folder);
+          const world = beWorlds.find((w2) => w2.folder === folder);
+          const dataVersion = Number(world?.dataVersion || 0);
+          const gate = (0, world_preview_matrix_1.resolvePreviewStrategy)(dataVersion, false);
+          if (gate.strategy === "unsupported" || !gate.liveAvailable) {
+            window.alert(trParams(gate.messageKey, gate.messageParams));
+            return;
+          }
+          const skinId = getActiveSkinId();
+          const skin = skinId && savedSkins.find((s) => s.id === skinId && s.dataUrl) || savedSkins.find((s) => s.dataUrl && !isCapeId(s.id));
+          const bounds = await openWorldPreviewModalChrome();
+          await api.openWorldViewer(worldPath, {
+            username: currentAccount?.username || "Player",
+            uuid: currentAccount?.uuid || void 0,
+            skinDataUrl: skin?.dataUrl
+          }, bounds || void 0);
+        } catch {
+          await closeWorldPreviewModal();
+          updateStatus(t("be.worldPreviewFail"));
+        }
+      }
       function renderBeWorlds() {
         const grid = document.getElementById("be-worlds-grid");
         const countEl = document.getElementById("be-worlds-count");
@@ -35306,13 +38469,19 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (w2.lastPlayed > 0)
             info.push(t("be.worldLastPlayed").replace("{d}", new Date(w2.lastPlayed).toLocaleString(dateLocale)));
           info.push(t("be.worldSize").replace("{s}", (w2.size / (1024 * 1024)).toFixed(1)));
+          const folderAttr = escapeHtml(w2.folder);
+          const badge = (0, world_preview_matrix_1.previewBadge)(Number(w2.dataVersion || 0));
           return `
-    <div class="be-media-card${beSelWorlds.has(w2.folder) ? " selected" : ""}" data-name="${w2.folder}">
+    <div class="be-media-card${beSelWorlds.has(w2.folder) ? " selected" : ""}" data-name="${folderAttr}">
       ${w2.icon ? `<img class="be-media-thumb world" src="${w2.icon}" loading="lazy">` : '<div class="be-media-thumb world"></div>'}
       <div class="be-media-text">
-        <div class="be-media-name">${w2.name}</div>
+        <div class="be-media-name">
+          <span class="be-world-badge be-world-badge-${badge.kind}">${escapeHtml(t(badge.labelKey))}</span>
+          ${escapeHtml(w2.name)}
+        </div>
         <div class="be-media-info">${info.join(" \u2022 ")}</div>
       </div>
+      <button type="button" class="be-world-preview-btn" data-folder="${folderAttr}" title="${escapeHtml(t("be.worldPreview"))}">${escapeHtml(t("be.worldPreview"))}</button>
       ${BE_MEDIA_CHECK_SVG}
     </div>
   `;
@@ -35329,6 +38498,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             else
               beSelWorlds.add(name);
             renderBeWorlds();
+          });
+        });
+        grid.querySelectorAll(".be-world-preview-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const folder = btn.getAttribute("data-folder");
+            if (folder)
+              void openBeWorldPreview(folder);
           });
         });
       }
@@ -35426,28 +38603,31 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           closeModalBuildModal();
       });
       document.querySelectorAll(".be-add-btn:not(.be-scan-btn):not(.be-media-btn)").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const input = document.createElement("input");
-          input.type = "file";
-          input.accept = ".jar,.zip,.litemod,.disabled,.mcpack,.mcaddon";
-          input.multiple = true;
-          input.onchange = () => {
-            const files = input.files;
-            if (!files)
+        btn.addEventListener("click", async () => {
+          const listId = btn.closest(".be-panel")?.querySelector(".be-file-list")?.id;
+          if (!listId)
+            return;
+          const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+          if (!sub)
+            return;
+          if (!editingBuildId) {
+            window.alert(t("be.importNeedSave"));
+            return;
+          }
+          if (!api?.importInstanceFiles)
+            return;
+          try {
+            const result = await api.importInstanceFiles(editingBuildId, sub);
+            if (!result || result.canceled)
               return;
-            const listId = btn.closest(".be-panel")?.querySelector(".be-file-list")?.id;
-            if (!listId)
+            if (!result.success) {
+              console.error("[be-import] failed", result.error);
               return;
-            const buildKey = listIdToBuildKey(listId);
-            const arr = buildKey && editingBuild ? editingBuild[buildKey] : null;
-            if (!arr)
-              return;
-            for (const file of Array.from(files)) {
-              arr.push({ name: file.name.replace(/\.[^.]+$/, ""), enabled: true, filename: file.name });
             }
-            renderBeFileList(listId, arr);
-          };
-          input.click();
+            await autoScanBuildInstance();
+          } catch (e) {
+            console.error("[be-import] error", e);
+          }
         });
       });
       document.querySelectorAll(".be-scan-btn").forEach((btn) => {
@@ -35525,9 +38705,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t("servers.noBuildsForLaunch") + "</div>";
         } else {
           list.innerHTML = savedBuilds.map((b2) => {
-            const iconSrc = b2.icon ? buildIconSrc(b2.icon) : "";
+            const iconSrc = b2.icon ? buildIconSrc(b2.icon) : DEFAULT_BUILD_ICON_SRC;
             return `<div class="build-option-item" data-build-id="${srvEsc(b2.id)}">
-        <div class="build-option-icon" style="background:rgba(255,255,255,0.1)">${iconSrc ? `<img src="${iconSrc}">` : ""}</div>
+        <div class="build-option-icon" style="background:transparent"><img src="${iconSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
         <div class="build-option-info">
           <div class="build-option-name">${srvEsc(b2.name)}</div>
           <div class="build-option-meta">${srvEsc(b2.gameVersion)} \xB7 ${srvEsc(b2.loader)}</div>
@@ -35586,13 +38766,2099 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (e.target === e.currentTarget)
           closeModal("modal-mod-details");
       });
+      document.getElementById("modal-mod-ask-agent")?.addEventListener("click", () => {
+        const title = document.getElementById("modal-mod-title")?.textContent?.trim() || detailsProjectId || "";
+        if (!detailsProjectId)
+          return;
+        closeModal("modal-mod-details");
+        (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, detailsProjectId);
+      });
       document.getElementById("modal-import-close")?.addEventListener("click", () => closeModal("modal-import"));
       document.getElementById("modal-import-cancel")?.addEventListener("click", () => closeModal("modal-import"));
       document.getElementById("modal-import")?.addEventListener("click", (e) => {
         if (e.target === e.currentTarget)
           closeModal("modal-import");
       });
-      init();
+      var AI_STORE_KEY = "Undefined Client-ai-sessions";
+      var AI_MAX_TOOL_ROUNDS = 5;
+      var AI_CONTEXT_BUDGET_TOKENS = 65e3;
+      var AI_CONTEXT_COMPACT_AT = 0.88;
+      var AI_CONTEXT_KEEP_RECENT = 6;
+      var AI_TOOL_LABELS = {
+        list_builds: "\u0421\u043F\u0438\u0441\u043E\u043A \u0441\u0431\u043E\u0440\u043E\u043A",
+        get_build: "\u0414\u0435\u0442\u0430\u043B\u0438 \u0441\u0431\u043E\u0440\u043A\u0438",
+        select_build: "\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        get_instance_path: "\u041F\u0443\u0442\u044C \u0438\u043D\u0441\u0442\u0430\u043D\u0441\u0430",
+        create_build: "\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        update_build: "\u041E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        delete_build: "\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        duplicate_build: "\u0414\u0443\u0431\u043B\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        list_java: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 Java",
+        list_mc_versions: "\u0412\u0435\u0440\u0441\u0438\u0438 Minecraft",
+        list_loader_versions: "\u0412\u0435\u0440\u0441\u0438\u0438 loader",
+        search_mods: "\u041F\u043E\u0438\u0441\u043A \u043C\u043E\u0434\u043E\u0432",
+        search_modpacks: "\u041F\u043E\u0438\u0441\u043A \u043C\u043E\u0434\u043F\u0430\u043A\u043E\u0432",
+        search_resourcepacks: "\u041F\u043E\u0438\u0441\u043A \u0440\u0435\u0441\u0443\u0440\u0441\u043F\u0430\u043A\u043E\u0432",
+        search_shaders: "\u041F\u043E\u0438\u0441\u043A \u0448\u0435\u0439\u0434\u0435\u0440\u043E\u0432",
+        get_mod: "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430",
+        list_build_mods: "\u041C\u043E\u0434\u044B \u0441\u0431\u043E\u0440\u043A\u0438",
+        list_build_content: "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        toggle_mod: "\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043C\u043E\u0434\u0430",
+        remove_build_file: "\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0444\u0430\u0439\u043B\u0430",
+        get_crash_report: "Crash-\u043B\u043E\u0433",
+        get_latest_log: "\u0418\u0433\u0440\u043E\u0432\u043E\u0439 \u043B\u043E\u0433",
+        clear_logs: "\u041E\u0447\u0438\u0441\u0442\u043A\u0430 \u043B\u043E\u0433\u043E\u0432",
+        open_build_folder: "\u041F\u0430\u043F\u043A\u0430 \u0441\u0431\u043E\u0440\u043A\u0438",
+        open_build_subfolder: "\u041F\u0430\u043F\u043A\u0430 \u0438\u043D\u0441\u0442\u0430\u043D\u0441\u0430",
+        open_launcher_data_folder: "\u0414\u0430\u043D\u043D\u044B\u0435 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430",
+        ensure_instance_dirs: "\u041F\u0430\u043F\u043A\u0438 \u0438\u043D\u0441\u0442\u0430\u043D\u0441\u0430",
+        install_mod: "\u0423\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u043C\u043E\u0434\u0430",
+        list_worlds: "\u0421\u043F\u0438\u0441\u043E\u043A \u043C\u0438\u0440\u043E\u0432",
+        delete_world: "\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u043C\u0438\u0440\u0430",
+        list_screenshots: "\u0421\u043A\u0440\u0438\u043D\u0448\u043E\u0442\u044B",
+        delete_screenshot: "\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442\u0430",
+        list_configs: "\u041A\u043E\u043D\u0444\u0438\u0433\u0438",
+        list_accounts: "\u0410\u043A\u043A\u0430\u0443\u043D\u0442\u044B",
+        list_servers: "\u0421\u0435\u0440\u0432\u0435\u0440\u044B",
+        get_launcher_info: "\u0421\u0432\u043E\u0434\u043A\u0430 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430",
+        web_search: "\u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442 \u043F\u043E\u0438\u0441\u043A\u0430",
+        fetch_url: "\u0427\u0442\u0435\u043D\u0438\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B"
+      };
+      var aiSessions = [];
+      var aiActiveId = "";
+      var aiBusy = false;
+      var aiBusySessionId = null;
+      var aiInited = false;
+      var aiConfigured = null;
+      var aiAccessOk = null;
+      var aiSearchQuery = "";
+      var aiStreamGen = 0;
+      var aiStopRequested = false;
+      var aiActiveRound = null;
+      var aiLastDividerDay = "";
+      var AI_ENABLED_LS_KEY = "Undefined Client-ai-enabled";
+      var AI_TESTER_LS_KEY = "Undefined Client-ai-tester-key";
+      function isAiFeatureEnabled() {
+        return localStorage.getItem(AI_ENABLED_LS_KEY) !== "false";
+      }
+      function getAiTesterKey() {
+        return String(localStorage.getItem(AI_TESTER_LS_KEY) || "").trim();
+      }
+      function setAiTesterKey(raw) {
+        const key = String(raw || "").trim();
+        if (key)
+          localStorage.setItem(AI_TESTER_LS_KEY, key);
+        else
+          localStorage.removeItem(AI_TESTER_LS_KEY);
+      }
+      function applyAiTabVisibility() {
+        const enabled = isAiFeatureEnabled();
+        document.querySelectorAll('.tab-btn[data-tab="ai"]').forEach((el) => {
+          el.style.display = enabled ? "" : "none";
+        });
+        if (!enabled && presenceTab === "ai")
+          switchTab("home");
+        syncAiSettingsKeyUi();
+      }
+      function syncAiSettingsKeyUi() {
+        const hint = document.getElementById("setting-ai-key-hint");
+        const btn = document.getElementById("setting-ai-key-btn");
+        const key = getAiTesterKey();
+        if (btn)
+          btn.textContent = key ? t("stngs.agentKeyChange") : t("stngs.agentKeyEnter");
+        if (hint) {
+          if (key) {
+            const prefix = key.slice(0, 12);
+            hint.textContent = t("stngs.agentKeyHintSet", { prefix });
+          } else {
+            hint.textContent = t("stngs.agentKeyHint");
+          }
+        }
+      }
+      function showAiAccessDeniedModal() {
+        openModal("modal-ai-access");
+      }
+      function openAiKeyModal(opts) {
+        const input = document.getElementById("modal-ai-key-input");
+        const status = document.getElementById("modal-ai-key-status");
+        if (input)
+          input.value = getAiTesterKey();
+        if (status) {
+          status.textContent = "";
+          status.className = "modal-ai-key-status";
+        }
+        window.__aiKeyModalRequired = Boolean(opts?.required);
+        openModal("modal-ai-key");
+        setTimeout(() => input?.focus(), 30);
+      }
+      function closeAiKeyModal(cancelled = false) {
+        const required = Boolean(window.__aiKeyModalRequired);
+        closeModal("modal-ai-key");
+        if (cancelled && required) {
+          const toggle = document.getElementById("setting-ai-enabled");
+          if (toggle)
+            toggle.checked = false;
+          localStorage.setItem(AI_ENABLED_LS_KEY, "false");
+          applyAiTabVisibility();
+        }
+        window.__aiKeyModalRequired = false;
+      }
+      async function saveAiTesterKeyFromModal() {
+        const input = document.getElementById("modal-ai-key-input");
+        const status = document.getElementById("modal-ai-key-status");
+        const raw = String(input?.value || "").trim();
+        if (!raw) {
+          if (status) {
+            status.textContent = t("ai.keyModal.empty");
+            status.className = "modal-ai-key-status is-error";
+          }
+          return;
+        }
+        if (status) {
+          status.textContent = t("common.loading");
+          status.className = "modal-ai-key-status";
+        }
+        const result = await api?.aiValidateKey?.(raw);
+        if (!result?.ok) {
+          if (status) {
+            status.textContent = t("ai.keyModal.invalid");
+            status.className = "modal-ai-key-status is-error";
+          }
+          aiAccessOk = false;
+          return;
+        }
+        setAiTesterKey(raw);
+        aiAccessOk = true;
+        aiConfigured = true;
+        if (status) {
+          status.textContent = t("ai.keyModal.ok");
+          status.className = "modal-ai-key-status is-ok";
+        }
+        syncAiSettingsKeyUi();
+        window.__aiKeyModalRequired = false;
+        closeModal("modal-ai-key");
+      }
+      function isAiAccessDeniedResult(result) {
+        if (!result)
+          return false;
+        const code = String(result.code || result.reason || result.error || "").toLowerCase();
+        return code.includes("access_denied") || code === "missing_key";
+      }
+      function handleAiAccessDenied() {
+        aiAccessOk = false;
+        showAiAccessDeniedModal();
+      }
+      async function refreshAiAccessStatus() {
+        if (!isAiFeatureEnabled()) {
+          aiConfigured = false;
+          aiAccessOk = false;
+          return;
+        }
+        const key = getAiTesterKey();
+        if (!key) {
+          aiConfigured = true;
+          aiAccessOk = false;
+          return;
+        }
+        try {
+          const status = await api?.aiStatus?.({ testerKey: key });
+          aiConfigured = status?.configured !== false;
+          aiAccessOk = Boolean(status?.access);
+          if (status && status.access === false && (status.reason === "access_denied" || status.reason === "missing_key")) {
+            if (status.reason === "access_denied")
+              setAiTesterKey("");
+            syncAiSettingsKeyUi();
+          }
+        } catch {
+          aiConfigured = false;
+          aiAccessOk = false;
+        }
+      }
+      function withAiTesterKey(payload) {
+        const key = getAiTesterKey();
+        return key ? { ...payload, testerKey: key } : { ...payload };
+      }
+      var AI_WRITE_TOOLS = /* @__PURE__ */ new Set([
+        "create_build",
+        "update_build",
+        "delete_build",
+        "duplicate_build",
+        "toggle_mod",
+        "remove_build_file",
+        "install_mod",
+        "open_build_folder",
+        "open_build_subfolder",
+        "open_launcher_data_folder",
+        "ensure_instance_dirs",
+        "clear_logs",
+        "delete_world",
+        "delete_screenshot",
+        "launch_build",
+        "install_java",
+        "remove_java",
+        "set_build_memory",
+        "set_jvm_args",
+        "set_build_window",
+        "write_config",
+        "write_options",
+        "set_options_value",
+        "import_modpack",
+        "backup_build",
+        "create_instance_share",
+        "import_instance_share",
+        "install_mod_bulk",
+        "update_outdated_mods",
+        "add_server",
+        "remove_server",
+        "edit_server",
+        "switch_account",
+        "open_console",
+        "launch_updater",
+        "disable_all_mods",
+        "enable_all_mods",
+        "copy_mods_to_build",
+        "open_modrinth_project",
+        "clear_instance_cache",
+        "set_java_for_build",
+        "rename_build"
+      ]);
+      function escapeAiHtml(text) {
+        return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+      function aiUid() {
+        return `ai_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      }
+      function loadAiSessions() {
+        try {
+          const raw = localStorage.getItem(AI_STORE_KEY);
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (Array.isArray(parsed?.sessions)) {
+            aiSessions = parsed.sessions;
+            aiActiveId = String(parsed.activeId || aiSessions[0]?.id || "");
+          }
+        } catch {
+          aiSessions = [];
+          aiActiveId = "";
+        }
+        if (!aiSessions.length) {
+          const created = createAiSession(false);
+          aiActiveId = created.id;
+        } else if (!aiSessions.some((s) => s.id === aiActiveId)) {
+          aiActiveId = aiSessions[0].id;
+        }
+      }
+      function saveAiSessions() {
+        try {
+          localStorage.setItem(AI_STORE_KEY, JSON.stringify({ activeId: aiActiveId, sessions: aiSessions.slice(0, 40) }));
+        } catch {
+        }
+      }
+      function activeAiSession() {
+        return aiSessions.find((s) => s.id === aiActiveId) || null;
+      }
+      function createAiSession(persist = true, opts) {
+        const lastId = localStorage.getItem("Undefined Client-last-build") || "";
+        const fallback = savedBuilds.find((b2) => b2.id === lastId) || savedBuilds[0];
+        const session = {
+          id: aiUid(),
+          title: opts?.title || t("ai.newChatTitle"),
+          updatedAt: Date.now(),
+          messages: [],
+          buildId: opts?.buildId !== void 0 ? opts.buildId : fallback?.id || null
+        };
+        aiSessions.unshift(session);
+        aiActiveId = session.id;
+        if (persist)
+          saveAiSessions();
+        return session;
+      }
+      function formatAiRelative(ts) {
+        const sec = Math.max(0, Math.floor((Date.now() - ts) / 1e3));
+        if (sec < 60)
+          return `${Math.max(1, sec)}s`;
+        if (sec < 3600)
+          return `${Math.floor(sec / 60)}m`;
+        if (sec < 86400)
+          return `${Math.floor(sec / 3600)}h`;
+        return `${Math.floor(sec / 86400)}d`;
+      }
+      function titleFromPrompt(text) {
+        const clean = text.replace(/\s+/g, " ").trim();
+        if (!clean)
+          return t("ai.newChatTitle");
+        return clean.length > 34 ? `${clean.slice(0, 34)}\u2026` : clean;
+      }
+      function formatAiDownloads(n) {
+        const v2 = Number(n) || 0;
+        if (v2 >= 1e6)
+          return `${(v2 / 1e6).toFixed(v2 >= 1e7 ? 0 : 1).replace(/\.0$/, "")}M`;
+        if (v2 >= 1e3)
+          return `${Math.round(v2 / 1e3)}K`;
+        return String(v2);
+      }
+      function formatAiDate(raw) {
+        if (!raw)
+          return "\u2014";
+        const d2 = new Date(raw);
+        if (Number.isNaN(d2.getTime()))
+          return "\u2014";
+        const dd = String(d2.getDate()).padStart(2, "0");
+        const mm = String(d2.getMonth() + 1).padStart(2, "0");
+        const yyyy = d2.getFullYear();
+        return `${dd}.${mm}.${yyyy}`;
+      }
+      function sessionBuild(session) {
+        if (!session?.buildId)
+          return null;
+        return savedBuilds.find((b2) => b2.id === session.buildId) || null;
+      }
+      function aiContextPayload(session) {
+        const build = sessionBuild(session);
+        if (!build)
+          return null;
+        return { buildId: build.id, buildName: build.name };
+      }
+      function charsToTokens(chars) {
+        return Math.max(0, Math.ceil(chars / 4));
+      }
+      function estimateAiContextBreakdown(session) {
+        const budget = AI_CONTEXT_BUDGET_TOKENS;
+        const systemTokens = 280;
+        const mcpTokens = 1800;
+        const build = sessionBuild(session);
+        const buildTokens = build ? charsToTokens(`build:${build.id}:${build.name}:${build.gameVersion}:${build.loader}`.length) + 40 : 0;
+        let conversationChars = 0;
+        if (session) {
+          for (const m2 of session.messages) {
+            conversationChars += String(m2.content || "").length;
+            if (m2.tool_calls)
+              conversationChars += JSON.stringify(m2.tool_calls).length;
+          }
+        }
+        const conversationTokens = charsToTokens(conversationChars);
+        const buckets = [
+          {
+            id: "system",
+            label: t("ai.ctx.system"),
+            hint: t("ai.ctx.systemHint"),
+            tokens: systemTokens,
+            color: "rgba(255,255,255,0.35)"
+          },
+          {
+            id: "mcp",
+            label: t("ai.ctx.mcp"),
+            hint: t("ai.ctx.mcpHint"),
+            tokens: mcpTokens,
+            color: "var(--accent)"
+          },
+          {
+            id: "build",
+            label: t("ai.ctx.build"),
+            hint: build ? build.name : t("ai.noBuild"),
+            tokens: buildTokens,
+            color: "#7dd3a7"
+          },
+          {
+            id: "conversation",
+            label: t("ai.ctx.conversation"),
+            hint: t("ai.ctx.conversationHint"),
+            tokens: conversationTokens,
+            color: "#e2b86b"
+          }
+        ].filter((b2) => b2.tokens > 0 || b2.id === "conversation" || b2.id === "mcp" || b2.id === "system");
+        const total = buckets.reduce((s, b2) => s + b2.tokens, 0);
+        return {
+          buckets,
+          total,
+          budget,
+          usage: Math.min(1, total / budget)
+        };
+      }
+      function formatAiTokens(n) {
+        if (n >= 1e3) {
+          const k = n / 1e3;
+          const text = (n >= 1e4 ? k.toFixed(0) : k.toFixed(1)).replace(/\.0$/, "");
+          return `${text}K`;
+        }
+        return String(n);
+      }
+      function updateAiContextRing(session) {
+        const ring = document.getElementById("ai-context-ring-value");
+        const wrap = document.getElementById("ai-context-ring");
+        if (!ring)
+          return;
+        const { usage, total, budget } = estimateAiContextBreakdown(session);
+        const C2 = 2 * Math.PI * 6;
+        ring.style.strokeDasharray = String(C2);
+        ring.style.strokeDashoffset = String(C2 * (1 - usage));
+        if (wrap) {
+          wrap.title = `${t("ai.contextUsage")}: ${Math.round(usage * 100)}% \xB7 ${formatAiTokens(total)} / ${formatAiTokens(budget)}`;
+        }
+        const menu = document.getElementById("ai-context-menu");
+        if (menu?.classList.contains("is-open"))
+          renderAiContextMenu();
+      }
+      function renderAiContextMenu() {
+        const menu = document.getElementById("ai-context-menu");
+        if (!menu)
+          return;
+        const session = activeAiSession();
+        const { buckets, total, budget, usage } = estimateAiContextBreakdown(session);
+        const pct = Math.round(usage * 100);
+        const free = Math.max(0, budget - total);
+        const barUsed = buckets.map((b2) => {
+          const w2 = Math.max(b2.tokens > 0 ? 0.4 : 0, b2.tokens / budget * 100);
+          return `<span class="ai-context-menu__bar-seg" style="width:${w2}%;background:${b2.color}" title="${escapeAiHtml(b2.label)}: ${formatAiTokens(b2.tokens)}"></span>`;
+        }).join("");
+        const barFree = `<span class="ai-context-menu__bar-seg ai-context-menu__bar-seg--free" style="width:${free / budget * 100}%" title="${escapeAiHtml(t("ai.ctx.free"))}: ${formatAiTokens(free)}"></span>`;
+        const rows = [
+          ...buckets.map((b2) => `
+      <div class="ai-context-menu__row">
+        <span class="ai-context-menu__dot" style="background:${b2.color}"></span>
+        <span class="ai-context-menu__name">
+          ${escapeAiHtml(b2.label)}
+          <span class="ai-context-menu__hint">${escapeAiHtml(b2.hint)}</span>
+        </span>
+        <span class="ai-context-menu__tokens">${escapeAiHtml(formatAiTokens(b2.tokens))}</span>
+      </div>`),
+          `<div class="ai-context-menu__row">
+      <span class="ai-context-menu__dot ai-context-menu__dot--free"></span>
+      <span class="ai-context-menu__name">
+        ${escapeAiHtml(t("ai.ctx.free"))}
+        <span class="ai-context-menu__hint">${escapeAiHtml(t("ai.ctx.freeHint"))}</span>
+      </span>
+      <span class="ai-context-menu__tokens">${escapeAiHtml(formatAiTokens(free))}</span>
+    </div>`
+        ].join("");
+        menu.innerHTML = `
+    <div class="ai-context-menu__head">
+      <div class="ai-context-menu__title">${escapeAiHtml(t("ai.contextUsage"))}</div>
+      <div class="ai-context-menu__pct">${pct}% \xB7 ${escapeAiHtml(formatAiTokens(total))} / ${escapeAiHtml(formatAiTokens(budget))}</div>
+    </div>
+    <div class="ai-context-menu__bar">${barUsed}${barFree}</div>
+    <div class="ai-context-menu__list">${rows}</div>
+    <div class="ai-context-menu__foot">${escapeAiHtml(t("ai.ctx.foot"))}</div>
+  `;
+      }
+      function setAiContextMenuOpen(open) {
+        const menu = document.getElementById("ai-context-menu");
+        const ring = document.getElementById("ai-context-ring");
+        if (!menu || !ring)
+          return;
+        if (open) {
+          renderAiContextMenu();
+          menu.classList.remove("hidden");
+          requestAnimationFrame(() => menu.classList.add("is-open"));
+          ring.setAttribute("aria-expanded", "true");
+        } else if (menu.classList.contains("is-open") || !menu.classList.contains("hidden")) {
+          menu.classList.remove("is-open");
+          ring.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!menu.classList.contains("is-open"))
+              menu.classList.add("hidden");
+          }, 160);
+        }
+      }
+      function setAiChatMenuOpen(open) {
+        const menu = document.getElementById("ai-chat-menu-pop");
+        const btn = document.getElementById("ai-chat-menu");
+        if (!menu || !btn)
+          return;
+        if (open) {
+          menu.classList.remove("hidden");
+          requestAnimationFrame(() => menu.classList.add("is-open"));
+          btn.setAttribute("aria-expanded", "true");
+        } else if (menu.classList.contains("is-open") || !menu.classList.contains("hidden")) {
+          menu.classList.remove("is-open");
+          btn.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!menu.classList.contains("is-open"))
+              menu.classList.add("hidden");
+          }, 160);
+        }
+      }
+      function setAiBuildMenuOpen(open) {
+        const menu = document.getElementById("ai-build-menu");
+        const btn = document.getElementById("ai-build-btn");
+        if (!menu || !btn)
+          return;
+        if (open) {
+          renderAiBuildMenu();
+          menu.classList.remove("hidden");
+          requestAnimationFrame(() => menu.classList.add("is-open"));
+          btn.setAttribute("aria-expanded", "true");
+        } else if (menu.classList.contains("is-open") || !menu.classList.contains("hidden")) {
+          menu.classList.remove("is-open");
+          btn.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!menu.classList.contains("is-open"))
+              menu.classList.add("hidden");
+          }, 180);
+        }
+      }
+      function closeAiPopovers(except) {
+        if (except !== "ai-build-menu")
+          setAiBuildMenuOpen(false);
+        if (except !== "ai-context-menu")
+          setAiContextMenuOpen(false);
+        if (except !== "ai-attach-menu")
+          (0, attach_ui_1.closeAiAttachMenu)();
+        if (except !== "ai-chat-menu-pop")
+          setAiChatMenuOpen(false);
+      }
+      function toggleAiContextMenu() {
+        const menu = document.getElementById("ai-context-menu");
+        if (!menu)
+          return;
+        const willOpen = !menu.classList.contains("is-open");
+        closeAiPopovers(willOpen ? "ai-context-menu" : void 0);
+        setAiContextMenuOpen(willOpen);
+      }
+      async function compactAiSession(session) {
+        if (session.messages.length <= AI_CONTEXT_KEEP_RECENT + 2)
+          return false;
+        let cut = Math.max(1, session.messages.length - AI_CONTEXT_KEEP_RECENT);
+        while (cut > 0 && session.messages[cut]?.role !== "user")
+          cut -= 1;
+        if (cut <= 0)
+          return false;
+        const older = session.messages.slice(0, cut);
+        const keep = session.messages.slice(cut);
+        if (!older.length || !keep.length)
+          return false;
+        const digest = older.map((m2) => {
+          if (m2.role === "user")
+            return `User: ${String(m2.content || "").slice(0, 400)}`;
+          if (m2.role === "assistant")
+            return `Assistant: ${String(m2.content || "").slice(0, 400)}`;
+          if (m2.role === "tool")
+            return `Tool: ${String(m2.content || "").slice(0, 180)}`;
+          return "";
+        }).filter(Boolean).join("\n").slice(0, 14e3);
+        const status = appendAiToolStatus("compact", "running", { label: t("ai.compacting") });
+        const started = Date.now();
+        try {
+          const result = await api?.aiChat?.(withAiTesterKey({
+            tools: false,
+            context: aiContextPayload(session),
+            messages: [
+              {
+                role: "user",
+                content: [
+                  "\u0421\u0434\u0435\u043B\u0430\u0439 \u043A\u043E\u043C\u043F\u0430\u043A\u0442 (\u043A\u0440\u0430\u0442\u043A\u043E\u0435 \u0440\u0435\u0437\u044E\u043C\u0435) \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u0434\u0438\u0430\u043B\u043E\u0433\u0430 \u0434\u043B\u044F \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0435\u043D\u0438\u044F \u0440\u0430\u0431\u043E\u0442\u044B \u0430\u0433\u0435\u043D\u0442\u0430 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430.",
+                  "\u0421\u043E\u0445\u0440\u0430\u043D\u0438: \u0446\u0435\u043B\u044C \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F, \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u0443\u044E \u0441\u0431\u043E\u0440\u043A\u0443, \u043D\u0430\u0439\u0434\u0435\u043D\u043D\u044B\u0435 \u043C\u043E\u0434\u044B/id, \u0443\u0436\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F, \u0432\u0430\u0436\u043D\u044B\u0435 \u0444\u0430\u043A\u0442\u044B.",
+                  "\u041E\u0442\u0432\u0435\u0442\u044C \u043E\u0434\u043D\u0438\u043C \u0441\u0432\u044F\u0437\u043D\u044B\u043C \u0442\u0435\u043A\u0441\u0442\u043E\u043C \u0431\u0435\u0437 markdown-\u0442\u0430\u0431\u043B\u0438\u0446, \u0434\u043E 1400 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.",
+                  "",
+                  "\u0418\u0441\u0442\u043E\u0440\u0438\u044F:",
+                  digest
+                ].join("\n")
+              }
+            ]
+          }));
+          const summary = String(result?.reply || "").trim();
+          if (!summary || result?.error) {
+            if (isAiAccessDeniedResult(result))
+              handleAiAccessDenied();
+            setAiToolStatus(status, "error", Date.now() - started);
+            return false;
+          }
+          session.messages = sanitizeAiWireMessages([
+            {
+              role: "assistant",
+              content: `${t("ai.compactPrefix")}
+${summary}`
+            },
+            ...keep
+          ]);
+          session.updatedAt = Date.now();
+          saveAiSessions();
+          setAiToolStatus(status, "done", Date.now() - started);
+          updateAiContextRing(session);
+          return true;
+        } catch {
+          setAiToolStatus(status, "error", Date.now() - started);
+          return false;
+        }
+      }
+      async function ensureAiContextCapacity(session) {
+        let guard = 0;
+        let compacted = false;
+        while (guard < 3) {
+          guard += 1;
+          const { usage } = estimateAiContextBreakdown(session);
+          if (usage < AI_CONTEXT_COMPACT_AT)
+            break;
+          const ok = await compactAiSession(session);
+          if (!ok)
+            break;
+          compacted = true;
+        }
+        if (compacted)
+          renderAiConversation();
+      }
+      function getAiUiHost() {
+        return {
+          t,
+          escapeHtml: escapeAiHtml,
+          getMessagesRoot: () => document.getElementById("ai-messages"),
+          scrollToEnd: scrollAiMessagesToEnd,
+          getBuild: (id) => {
+            const b2 = savedBuilds.find((x2) => x2.id === id) || null;
+            if (!b2)
+              return null;
+            return {
+              id: b2.id,
+              name: b2.name,
+              gameVersion: b2.gameVersion,
+              loader: b2.loader,
+              icon: b2.icon
+            };
+          },
+          openBuildSettings: (buildId) => {
+            const b2 = savedBuilds.find((x2) => x2.id === buildId);
+            if (b2)
+              void openModalBuild(b2);
+          },
+          sendPrompt: (text) => {
+            void sendAiMessage(text);
+          },
+          switchToAiTab: () => {
+            switchTab("ai");
+            ensureAiTab();
+          }
+        };
+      }
+      function refreshAiShellUi(session) {
+        const host = getAiUiHost();
+        const build = sessionBuild(session);
+        (0, shell_ui_1.renderAiContextBar)(host, build);
+        (0, shell_ui_1.renderAiQuickChips)(host, { buildId: session?.buildId || build?.id || null });
+        (0, shell_ui_1.renderAiContextHints)(host, build);
+      }
+      function updateAiBuildChip(session) {
+        const nameEl = document.getElementById("ai-build-name");
+        const iconEl = document.querySelector(".ai-build-chip__icon");
+        const build = sessionBuild(session);
+        if (nameEl)
+          nameEl.textContent = build?.name || t("ai.noBuild");
+        if (iconEl) {
+          if (build?.icon) {
+            const src = buildIconSrc(build.icon).replace(/\\/g, "/").replace(/"/g, "");
+            iconEl.style.backgroundImage = `url("${src}")`;
+            iconEl.style.backgroundColor = "transparent";
+          } else if (build) {
+            iconEl.style.backgroundImage = `url("${DEFAULT_BUILD_ICON_SRC}")`;
+            iconEl.style.backgroundColor = "transparent";
+          } else {
+            iconEl.style.backgroundImage = "";
+            iconEl.style.backgroundColor = "#666";
+          }
+        }
+        refreshAiShellUi(session);
+      }
+      function autoResizeAiInput() {
+        const input = document.getElementById("ai-input");
+        if (!input)
+          return;
+        const minH = 24;
+        const maxH = 160;
+        input.style.height = `${minH}px`;
+        const next = Math.min(Math.max(input.scrollHeight, minH), maxH);
+        input.style.height = `${next}px`;
+        input.style.overflowY = next >= maxH ? "auto" : "hidden";
+        syncCustomCaret();
+      }
+      function isCustomCaretField(el) {
+        if (!el)
+          return false;
+        if (el instanceof HTMLTextAreaElement)
+          return !el.disabled && !el.readOnly;
+        if (!(el instanceof HTMLInputElement))
+          return false;
+        if (el.disabled || el.readOnly)
+          return false;
+        const type = (el.getAttribute("type") || el.type || "text").toLowerCase();
+        return ["text", "password", "search", "email", "url", "tel", "number"].includes(type);
+      }
+      function ensureUcCaretEl() {
+        let caret = document.getElementById("uc-caret");
+        if (!caret) {
+          caret = document.createElement("span");
+          caret.id = "uc-caret";
+          caret.className = "uc-caret";
+          caret.setAttribute("aria-hidden", "true");
+          caret.hidden = true;
+          document.body.appendChild(caret);
+        }
+        return caret;
+      }
+      function getTextFieldCaretOffset(el) {
+        const style = window.getComputedStyle(el);
+        const isTextarea = el instanceof HTMLTextAreaElement;
+        const mirror = document.createElement("div");
+        const copyProps = [
+          "boxSizing",
+          "width",
+          "height",
+          "overflowX",
+          "overflowY",
+          "borderTopWidth",
+          "borderRightWidth",
+          "borderBottomWidth",
+          "borderLeftWidth",
+          "paddingTop",
+          "paddingRight",
+          "paddingBottom",
+          "paddingLeft",
+          "fontStyle",
+          "fontVariant",
+          "fontWeight",
+          "fontStretch",
+          "fontSize",
+          "lineHeight",
+          "fontFamily",
+          "textAlign",
+          "textTransform",
+          "textIndent",
+          "textDecoration",
+          "letterSpacing",
+          "wordSpacing",
+          "tabSize",
+          "whiteSpace",
+          "wordWrap",
+          "wordBreak"
+        ];
+        mirror.style.position = "absolute";
+        mirror.style.visibility = "hidden";
+        mirror.style.pointerEvents = "none";
+        mirror.style.top = "0";
+        mirror.style.left = "-9999px";
+        if (isTextarea) {
+          mirror.style.whiteSpace = "pre-wrap";
+          mirror.style.overflowWrap = "break-word";
+        } else {
+          mirror.style.whiteSpace = "pre";
+          mirror.style.height = "auto";
+          mirror.style.width = `${el.clientWidth}px`;
+          mirror.style.overflow = "hidden";
+        }
+        for (const prop of copyProps) {
+          mirror.style[prop] = style[prop];
+        }
+        if (!isTextarea) {
+          mirror.style.width = `${Math.max(el.clientWidth, el.scrollWidth)}px`;
+        }
+        const pos = el.selectionEnd ?? 0;
+        const isPassword = el instanceof HTMLInputElement && el.type === "password";
+        const before = isPassword ? "\u2022".repeat(pos) : el.value.slice(0, pos);
+        mirror.textContent = before;
+        const marker = document.createElement("span");
+        marker.textContent = "\u200B";
+        mirror.appendChild(marker);
+        document.body.appendChild(mirror);
+        const lineH = (() => {
+          const lh = style.lineHeight;
+          if (lh && lh !== "normal") {
+            const n = parseFloat(lh);
+            if (Number.isFinite(n))
+              return n;
+          }
+          return parseFloat(style.fontSize) * 1.2 || 16;
+        })();
+        let top;
+        let left;
+        let height;
+        if (isTextarea) {
+          left = marker.offsetLeft - el.scrollLeft;
+          if (el.id === "ai-input") {
+            height = 16;
+            top = marker.offsetTop - el.scrollTop + 1;
+          } else {
+            height = Math.max(12, Math.min(lineH, el.clientHeight - 2));
+            top = marker.offsetTop - el.scrollTop;
+          }
+        } else {
+          const padTop = parseFloat(style.paddingTop) || 0;
+          const padBot = parseFloat(style.paddingBottom) || 0;
+          const borderTop = parseFloat(style.borderTopWidth) || 0;
+          const contentH = el.clientHeight - padTop - padBot;
+          height = Math.max(12, Math.min(16, contentH - 2));
+          top = borderTop + padTop + Math.max(0, (contentH - height) / 2);
+          left = marker.offsetLeft - el.scrollLeft;
+        }
+        mirror.remove();
+        return { top, left, height };
+      }
+      function syncCustomCaret() {
+        const caret = ensureUcCaretEl();
+        const el = document.activeElement;
+        if (!isCustomCaretField(el)) {
+          caret.hidden = true;
+          return;
+        }
+        let start = 0;
+        let end = 0;
+        try {
+          start = el.selectionStart ?? 0;
+          end = el.selectionEnd ?? 0;
+        } catch {
+          caret.hidden = true;
+          return;
+        }
+        if (start !== end) {
+          caret.hidden = true;
+          return;
+        }
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) {
+          caret.hidden = true;
+          return;
+        }
+        const { top, left, height } = getTextFieldCaretOffset(el);
+        if (left < -1 || left > el.clientWidth + 1 || top < -2 || top > el.clientHeight + 2) {
+          caret.hidden = true;
+          return;
+        }
+        caret.hidden = false;
+        caret.style.height = `${height}px`;
+        caret.style.transform = `translate(${Math.round(rect.left + left)}px, ${Math.round(rect.top + top)}px)`;
+        caret.style.animation = "none";
+        void caret.offsetWidth;
+        caret.style.animation = "";
+      }
+      var customCaretBound = false;
+      function initCustomCarets() {
+        if (customCaretBound)
+          return;
+        customCaretBound = true;
+        ensureUcCaretEl();
+        const sync = () => syncCustomCaret();
+        document.addEventListener("focusin", (e) => {
+          if (isCustomCaretField(e.target))
+            sync();
+        });
+        document.addEventListener("focusout", () => {
+          requestAnimationFrame(() => {
+            if (!isCustomCaretField(document.activeElement)) {
+              ensureUcCaretEl().hidden = true;
+            }
+          });
+        });
+        document.addEventListener("selectionchange", () => {
+          if (isCustomCaretField(document.activeElement))
+            sync();
+        });
+        document.addEventListener("input", (e) => {
+          if (isCustomCaretField(e.target))
+            sync();
+        }, true);
+        document.addEventListener("keyup", (e) => {
+          if (isCustomCaretField(e.target))
+            sync();
+        }, true);
+        document.addEventListener("pointerup", (e) => {
+          if (isCustomCaretField(e.target))
+            sync();
+        }, true);
+        document.addEventListener("scroll", (e) => {
+          if (isCustomCaretField(e.target) || isCustomCaretField(document.activeElement))
+            sync();
+        }, true);
+        window.addEventListener("resize", sync);
+      }
+      function setAiEmptyVisible(show) {
+        document.getElementById("ai-empty")?.classList.toggle("hidden", !show);
+      }
+      function clearAiMessages(keepEmpty = true) {
+        aiStreamGen += 1;
+        aiLastDividerDay = "";
+        aiActiveRound = null;
+        (0, integrations_ui_1.hideAiCrashBanner)();
+        (0, turn_ui_1.hideAiSkeleton)();
+        const root = document.getElementById("ai-messages");
+        if (!root)
+          return;
+        (0, confirm_ui_1.parkAiConfirmsFromRoot)(root);
+        root.querySelectorAll(".ai-msg, .ai-day-divider, .ai-round, .ai-skeleton").forEach((n) => n.remove());
+        if (keepEmpty)
+          setAiEmptyVisible(true);
+      }
+      var AI_SEND_ICON = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 10V2M6 2L2.5 5.5M6 2L9.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      var AI_STOP_ICON = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor"/></svg>';
+      function syncAiComposerBusyUi() {
+        const sendBtn = document.getElementById("ai-send");
+        if (!sendBtn)
+          return;
+        const busyHere = Boolean(aiBusy && aiBusySessionId && aiBusySessionId === aiActiveId);
+        sendBtn.classList.toggle("is-stop", busyHere);
+        sendBtn.disabled = false;
+        sendBtn.type = busyHere ? "button" : "submit";
+        sendBtn.innerHTML = busyHere ? AI_STOP_ICON : AI_SEND_ICON;
+        sendBtn.title = busyHere ? t("ai.stop") : t("ai.send");
+        sendBtn.setAttribute("aria-label", busyHere ? t("ai.stop") : t("ai.send"));
+        (0, turn_ui_1.setAiStopVisible)(false);
+      }
+      function scrollAiMessagesToEnd() {
+        const root = document.getElementById("ai-messages");
+        if (root)
+          root.scrollTop = root.scrollHeight;
+      }
+      function appendAiDayDivider(ts = Date.now()) {
+        const dayKey = new Date(ts).toDateString();
+        if (aiLastDividerDay === dayKey)
+          return;
+        aiLastDividerDay = dayKey;
+        const root = document.getElementById("ai-messages");
+        if (!root)
+          return;
+        const el = document.createElement("div");
+        el.className = "ai-day-divider";
+        el.setAttribute("role", "separator");
+        el.innerHTML = `<span>${escapeAiHtml(formatAiDate(new Date(ts).toISOString()))}</span>`;
+        root.appendChild(el);
+      }
+      function appendAiNode(role, html) {
+        const root = aiActiveRound?.isConnected ? aiActiveRound : document.getElementById("ai-messages");
+        if (!root)
+          return null;
+        setAiEmptyVisible(false);
+        const el = document.createElement("div");
+        el.className = `ai-msg ai-msg--${role}`;
+        el.innerHTML = `<div class="ai-msg__bubble">${html}</div>`;
+        root.appendChild(el);
+        scrollAiMessagesToEnd();
+        return el;
+      }
+      function appendAiText(role, content, opts) {
+        if (role === "assistant") {
+          const el = appendAiNode(role, `<div class="ai-md">${sanitizeHtml(markedParse(content || ""))}</div>`);
+          if (el) {
+            const retryPrompt = opts?.retryPrompt !== void 0 ? opts.retryPrompt : [...activeAiSession()?.messages || []].reverse().find((m2) => m2.role === "user")?.content;
+            (0, turn_ui_1.attachAiMessageActions)(el, {
+              copyLabel: t("ai.copy"),
+              retryLabel: t("ai.retry"),
+              onRetry: retryPrompt?.trim() ? () => {
+                void sendAiMessage(retryPrompt.trim());
+              } : void 0
+            });
+          }
+          return;
+        }
+        if (role === "user") {
+          const parsed = opts?.attachments?.length ? { text: content, attachments: opts.attachments } : (0, attach_ui_1.parseAiAttachmentsPrompt)(content);
+          if (parsed.attachments.length) {
+            const badges = (0, attach_ui_1.renderAiAttachBadgesHtml)(parsed.attachments);
+            const body = parsed.text.trim() ? `<div class="ai-msg__text">${escapeAiHtml(parsed.text).replace(/\n/g, "<br>")}</div>` : "";
+            appendAiNode(role, `${badges}${body}`);
+            return;
+          }
+        }
+        appendAiNode(role, escapeAiHtml(content).replace(/\n/g, "<br>"));
+      }
+      function appendAiStreamBubble() {
+        return appendAiNode("assistant", `<div class="ai-stream" aria-live="polite" aria-busy="true"><div class="ai-md ai-stream__md"></div><span class="ai-stream__caret" aria-hidden="true"></span></div>`);
+      }
+      function sleepAi(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+      }
+      async function streamAiAssistantText(content, into) {
+        const full = String(content || "");
+        const el = into && into.isConnected ? into : appendAiStreamBubble();
+        if (!el)
+          return null;
+        const gen = aiStreamGen;
+        const mdEl = el.querySelector(".ai-stream__md");
+        const bubble = el.querySelector(".ai-msg__bubble");
+        if (!mdEl || !bubble) {
+          appendAiText("assistant", full);
+          el.remove();
+          return null;
+        }
+        if (!full) {
+          bubble.innerHTML = `<div class="ai-md"></div>`;
+          return el;
+        }
+        const chunk = full.length > 1200 ? 10 : full.length > 400 ? 5 : 3;
+        const delay = full.length > 1200 ? 8 : 14;
+        let i = 0;
+        let lastRenderAt = 0;
+        while (i < full.length) {
+          if (gen !== aiStreamGen || !el.isConnected)
+            return el;
+          i = Math.min(full.length, i + chunk);
+          const now2 = Date.now();
+          if (now2 - lastRenderAt >= 32 || i >= full.length) {
+            lastRenderAt = now2;
+            mdEl.innerHTML = sanitizeHtml(markedParse(full.slice(0, i)));
+            scrollAiMessagesToEnd();
+          }
+          await sleepAi(delay);
+        }
+        if (gen !== aiStreamGen || !el.isConnected)
+          return el;
+        bubble.innerHTML = `<div class="ai-md">${sanitizeHtml(markedParse(full))}</div>`;
+        scrollAiMessagesToEnd();
+        const session = activeAiSession();
+        const lastUser = [...session?.messages || []].reverse().find((m2) => m2.role === "user");
+        (0, turn_ui_1.attachAiMessageActions)(el, {
+          copyLabel: t("ai.copy"),
+          retryLabel: t("ai.retry"),
+          onRetry: () => {
+            const prompt = lastUser?.content?.trim();
+            if (prompt)
+              void sendAiMessage(prompt);
+          }
+        });
+        return el;
+      }
+      function toolLabel(name, args) {
+        if (name === "install_mod") {
+          const title = asStringMaybe(args?.title) || asStringMaybe(args?.projectId);
+          const base = dict["ai.tool.install_mod"] || AI_TOOL_LABELS.install_mod;
+          return title ? `${base} ${title}\u2026` : ensureToolEllipsis(base);
+        }
+        const localized = dict[`ai.tool.${name}`];
+        if (localized)
+          return ensureToolEllipsis(localized);
+        const fallback = AI_TOOL_LABELS[name];
+        if (fallback)
+          return ensureToolEllipsis(fallback);
+        return `${t("ai.toolUsing")}\u2026`;
+      }
+      function ensureToolEllipsis(label) {
+        const s = label.trim();
+        if (!s)
+          return t("ai.toolUsing") + "\u2026";
+        return /…|\.\.\.$/.test(s) ? s : `${s}\u2026`;
+      }
+      function asStringMaybe(v2) {
+        return typeof v2 === "string" ? v2.trim() : "";
+      }
+      function appendAiToolStatus(name, status, opts) {
+        const label = opts?.label || toolLabel(name);
+        const time = status !== "running" && opts?.durationMs != null ? `${Math.max(1, Math.round(opts.durationMs / 1e3))}sec` : "";
+        const pixel = status === "running" ? '<span class="ai-pixel is-running" aria-hidden="true"></span>' : "";
+        return appendAiNode("tool", `<div class="ai-tool is-${status}" data-tool="${escapeAiHtml(name)}">
+      ${pixel}
+      <span class="ai-tool__label">${escapeAiHtml(label)}</span>
+      ${time ? `<span class="ai-tool__time">${escapeAiHtml(time)}</span>` : ""}
+    </div>`);
+      }
+      function setAiToolStatus(el, status, durationMs) {
+        const row = el?.querySelector(".ai-tool");
+        if (!row)
+          return;
+        row.classList.remove("is-running", "is-done", "is-error");
+        row.classList.add(`is-${status}`);
+        row.querySelector(".ai-pixel")?.remove();
+        if (status !== "running" && durationMs != null) {
+          let time = row.querySelector(".ai-tool__time");
+          if (!time) {
+            time = document.createElement("span");
+            time.className = "ai-tool__time";
+            row.appendChild(time);
+          }
+          time.textContent = `${Math.max(1, Math.round(durationMs / 1e3))}sec`;
+        }
+      }
+      function setAiBusySession(sessionId) {
+        aiBusySessionId = sessionId;
+        renderAiSessionList();
+        const titlePixel = document.getElementById("ai-title-pixel");
+        const activeBusy = Boolean(sessionId && sessionId === aiActiveId);
+        if (titlePixel) {
+          titlePixel.classList.toggle("hidden", !activeBusy);
+          titlePixel.classList.toggle("is-running", activeBusy);
+        }
+        syncAiComposerBusyUi();
+      }
+      function appendAiModCards(mods) {
+        if (!mods.length)
+          return;
+        const cards = mods.slice(0, 6).map((m2) => {
+          const icon = m2.iconUrl ? `<img class="ai-mod-card__icon" src="${escapeAiHtml(m2.iconUrl)}" alt="">` : `<div class="ai-mod-card__icon"></div>`;
+          return `<button type="button" class="ai-mod-card" data-mod-id="${escapeAiHtml(m2.id)}" data-mod-slug="${escapeAiHtml(m2.slug || "")}">
+        ${icon}
+        <div class="ai-mod-card__body">
+          <div class="ai-mod-card__title">${escapeAiHtml(m2.title)}</div>
+          <div class="ai-mod-card__meta">
+            <span class="ai-mod-card__meta-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5V9M7 9L3.5 5.5M7 9L10.5 5.5M2 11.5H12" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              ${escapeAiHtml(formatAiDownloads(m2.downloads))} ${escapeAiHtml(t("ai.downloads"))}
+            </span>
+            <span class="ai-mod-card__meta-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.25" stroke="white" stroke-width="1.4"/><path d="M7 3.8V7L9.2 8.3" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+              ${escapeAiHtml(t("ai.updated"))} ${escapeAiHtml(formatAiDate(m2.updatedAt))}
+            </span>
+          </div>
+        </div>
+      </button>`;
+        }).join("");
+        appendAiNode("mods", `<div class="ai-mod-cards">${cards}</div>`);
+      }
+      function extractModsFromToolResult(result) {
+        if (!result || typeof result !== "object")
+          return [];
+        const obj = result;
+        const list = Array.isArray(obj.mods) ? obj.mods : obj.mod ? [obj.mod] : [];
+        return list.filter((m2) => m2 && (m2.id || m2.slug) && m2.title).map((m2) => ({
+          id: String(m2.id || m2.slug),
+          slug: m2.slug,
+          title: String(m2.title),
+          description: m2.description,
+          iconUrl: m2.iconUrl || m2.icon_url || null,
+          downloads: Number(m2.downloads) || 0,
+          updatedAt: m2.updatedAt || m2.date_modified || null
+        }));
+      }
+      function renderAiSessionList() {
+        const list = document.getElementById("ai-chat-list");
+        if (!list)
+          return;
+        list.innerHTML = "";
+        const q2 = aiSearchQuery.trim().toLowerCase();
+        for (const session of aiSessions) {
+          if (q2 && !session.title.toLowerCase().includes(q2))
+            continue;
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = `ai-session${session.id === aiActiveId ? " active" : ""}`;
+          row.dataset.id = session.id;
+          const busy = session.id === aiBusySessionId;
+          row.innerHTML = `
+      ${busy ? '<span class="ai-pixel is-running" aria-hidden="true"></span>' : `<img class="ai-session__ico" src="../../assets/icons/aiPanel/chat.svg" width="14" height="14" alt="" aria-hidden="true">`}
+      <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
+      <span class="ai-session__time">${escapeAiHtml(formatAiRelative(session.updatedAt))}</span>
+    `;
+          row.addEventListener("click", () => selectAiSession(session.id));
+          list.appendChild(row);
+        }
+      }
+      function renderAiConversation() {
+        clearAiMessages(true);
+        aiLastDividerDay = "";
+        aiActiveRound = null;
+        const session = activeAiSession();
+        const titleEl = document.getElementById("ai-stage-title");
+        if (titleEl) {
+          titleEl.textContent = session?.messages.length ? session.title : t("ai.title");
+          if (!session?.messages.length)
+            titleEl.setAttribute("data-i18n", "ai.title");
+          else
+            titleEl.removeAttribute("data-i18n");
+        }
+        updateAiBuildChip(session);
+        updateAiContextRing(session);
+        refreshAiShellUi(session);
+        (0, confirm_ui_1.renderAiUndoChip)(getAiUiHost());
+        if (!session || !session.messages.length) {
+          setAiEmptyVisible(true);
+          (0, confirm_ui_1.restoreAiConfirmsForSession)(session?.id || "", getAiUiHost());
+          syncAiComposerBusyUi();
+          return;
+        }
+        appendAiDayDivider(session.updatedAt);
+        const toolResults = /* @__PURE__ */ new Map();
+        for (const msg of session.messages) {
+          if (msg.role === "tool") {
+            try {
+              toolResults.set(msg.tool_call_id, JSON.parse(msg.content));
+            } catch {
+              toolResults.set(msg.tool_call_id, null);
+            }
+          }
+        }
+        let lastUserPrompt = "";
+        for (const msg of session.messages) {
+          if (msg.role === "user") {
+            lastUserPrompt = msg.content;
+            appendAiText("user", msg.content);
+          } else if (msg.role === "assistant") {
+            if (msg.content)
+              appendAiText("assistant", msg.content, { retryPrompt: lastUserPrompt });
+            if (msg.tool_calls?.length) {
+              for (const tc of msg.tool_calls) {
+                const result = toolResults.get(tc.id);
+                appendAiToolStatus(tc.function.name, result?.error ? "error" : "done", {
+                  label: toolLabel(tc.function.name, parseToolArgs(tc.function.arguments)),
+                  durationMs: void 0
+                });
+                const mods = extractModsFromToolResult(result);
+                if (mods.length)
+                  appendAiModCards(mods);
+              }
+            }
+          }
+        }
+        (0, confirm_ui_1.restoreAiConfirmsForSession)(session.id, getAiUiHost());
+        syncAiComposerBusyUi();
+      }
+      function selectAiSession(id) {
+        if (!aiSessions.some((s) => s.id === id))
+          return;
+        aiActiveId = id;
+        saveAiSessions();
+        (0, attach_ui_1.clearAiAttachments)();
+        (0, attach_ui_1.closeAiAttachMenu)();
+        renderAiSessionList();
+        renderAiConversation();
+        syncAiComposerBusyUi();
+        document.getElementById("ai-input")?.focus();
+      }
+      function deleteAiSession(id) {
+        aiSessions = aiSessions.filter((s) => s.id !== id);
+        if (!aiSessions.length)
+          createAiSession(false);
+        if (aiActiveId === id)
+          aiActiveId = aiSessions[0].id;
+        saveAiSessions();
+        renderAiSessionList();
+        renderAiConversation();
+      }
+      function parseToolArgs(raw) {
+        try {
+          const parsed = JSON.parse(raw || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      }
+      var AI_WIRE_HOT_USER_TURNS = 3;
+      var AI_WIRE_TOOL_HOT_CHARS = 3500;
+      var AI_WIRE_TOOL_COLD_CHARS = 400;
+      var AI_WIRE_USER_HOT_CHARS = 6e3;
+      var AI_WIRE_USER_COLD_CHARS = 1200;
+      function slimAiToolPayload(value, depth = 0) {
+        if (depth > 4)
+          return null;
+        if (typeof value === "string") {
+          if (value.length > 500)
+            return value.slice(0, 400) + "\u2026";
+          return value;
+        }
+        if (Array.isArray(value)) {
+          const sliced = value.slice(0, 10).map((x2) => slimAiToolPayload(x2, depth + 1));
+          return value.length > 10 ? [...sliced, { _truncated: value.length }] : sliced;
+        }
+        if (value && typeof value === "object") {
+          const out = {};
+          for (const [k, v2] of Object.entries(value)) {
+            if (typeof v2 === "string" && v2.length > 400 && /excerpt|text|content|log|html|body|raw/i.test(k)) {
+              out[k] = v2.slice(0, 350) + "\u2026";
+              continue;
+            }
+            out[k] = slimAiToolPayload(v2, depth + 1);
+          }
+          return out;
+        }
+        return value;
+      }
+      function compactAiToolContent(raw, maxChars) {
+        const text = String(raw || "");
+        if (!text)
+          return JSON.stringify({ error: "empty" });
+        try {
+          const parsed = JSON.parse(text);
+          const slim = slimAiToolPayload(parsed);
+          const out = JSON.stringify(slim);
+          if (out.length <= maxChars)
+            return out;
+          return out.slice(0, maxChars) + "\u2026";
+        } catch {
+          return text.length <= maxChars ? text : text.slice(0, maxChars) + "\u2026";
+        }
+      }
+      function compactAiUserContent(raw, maxChars, stripBlocks) {
+        let s = String(raw || "");
+        if (stripBlocks) {
+          s = s.replace(/```[\s\S]*?```/g, "[\u2026\u0444\u0430\u0439\u043B/\u043B\u043E\u0433\u2026]");
+        }
+        if (s.length > maxChars)
+          s = s.slice(0, maxChars) + "\n\u2026";
+        return s;
+      }
+      function prepareAiWireMessages(messages) {
+        const clean = sanitizeAiWireMessages(messages);
+        let userTurns = 0;
+        const hotFlags = new Array(clean.length).fill(false);
+        for (let i = clean.length - 1; i >= 0; i -= 1) {
+          if (clean[i].role === "user") {
+            userTurns += 1;
+          }
+          hotFlags[i] = userTurns <= AI_WIRE_HOT_USER_TURNS;
+        }
+        return clean.map((m2, i) => {
+          const hot = hotFlags[i];
+          if (m2.role === "tool") {
+            return {
+              ...m2,
+              content: compactAiToolContent(String(m2.content || ""), hot ? AI_WIRE_TOOL_HOT_CHARS : AI_WIRE_TOOL_COLD_CHARS)
+            };
+          }
+          if (m2.role === "user") {
+            return {
+              ...m2,
+              content: compactAiUserContent(String(m2.content || ""), hot ? AI_WIRE_USER_HOT_CHARS : AI_WIRE_USER_COLD_CHARS, !hot)
+            };
+          }
+          if (m2.role === "assistant" && m2.content) {
+            const text = String(m2.content);
+            const max = hot ? 4e3 : 1200;
+            return { ...m2, content: text.length > max ? text.slice(0, max) + "\u2026" : text };
+          }
+          return m2;
+        });
+      }
+      function sanitizeAiWireMessages(messages) {
+        const out = [];
+        let pending = /* @__PURE__ */ new Set();
+        const flushPending = (reason) => {
+          for (const id of pending) {
+            out.push({
+              role: "tool",
+              tool_call_id: id,
+              content: JSON.stringify({ error: reason })
+            });
+          }
+          pending = /* @__PURE__ */ new Set();
+        };
+        for (const m2 of messages) {
+          if (m2.role === "user") {
+            flushPending("interrupted");
+            const content = String(m2.content || "").trim();
+            if (content)
+              out.push({ role: "user", content: m2.content });
+            continue;
+          }
+          if (m2.role === "assistant") {
+            flushPending("interrupted");
+            const tcs = Array.isArray(m2.tool_calls) ? m2.tool_calls.filter((tc) => tc?.id && tc?.function?.name) : [];
+            if (tcs.length) {
+              out.push({
+                role: "assistant",
+                content: m2.content == null || m2.content === "" ? null : m2.content,
+                tool_calls: tcs
+              });
+              pending = new Set(tcs.map((tc) => String(tc.id)));
+            } else if (String(m2.content || "").trim()) {
+              out.push({ role: "assistant", content: String(m2.content) });
+            }
+            continue;
+          }
+          if (m2.role === "tool") {
+            const id = String(m2.tool_call_id || "");
+            if (!id || !pending.has(id))
+              continue;
+            pending.delete(id);
+            out.push({
+              role: "tool",
+              tool_call_id: id,
+              content: compactAiToolContent(String(m2.content || ""), AI_WIRE_TOOL_HOT_CHARS)
+            });
+          }
+        }
+        flushPending("incomplete");
+        return out;
+      }
+      async function runAiToolSafe(name, args, opts) {
+        let exec = await api?.aiToolsRun?.(name, args, opts?.preconfirmed ? { confirmed: true } : void 0);
+        if (exec && !exec.ok && exec.error === "confirm_required") {
+          (0, turn_ui_1.setAiAgentStatus)("confirm");
+          const ok = await (0, confirm_ui_1.askAiConfirmInChat)({
+            host: getAiUiHost(),
+            tool: name,
+            args,
+            risk: "write",
+            sessionId: opts?.sessionId || activeAiSession()?.id
+          });
+          if (!ok)
+            return { ok: false, error: "cancelled" };
+          exec = await api?.aiToolsRun?.(name, args, { confirmed: true });
+        }
+        return exec || { ok: false, error: "no_api" };
+      }
+      async function runAiAgentTurn(session) {
+        let rounds = 0;
+        const messagesRoot = document.getElementById("ai-messages");
+        while (rounds < AI_MAX_TOOL_ROUNDS) {
+          if (aiStopRequested)
+            break;
+          rounds += 1;
+          (0, turn_ui_1.setAiAgentStatus)("thinking");
+          syncAiComposerBusyUi();
+          (0, turn_ui_1.showAiSkeleton)(messagesRoot);
+          const result = await api?.aiChat?.(withAiTesterKey({
+            messages: prepareAiWireMessages(session.messages),
+            tools: true,
+            context: aiContextPayload(session)
+          }));
+          (0, turn_ui_1.hideAiSkeleton)();
+          if (aiStopRequested)
+            break;
+          if (!result || result.error) {
+            if (isAiAccessDeniedResult(result)) {
+              handleAiAccessDenied();
+              break;
+            }
+            appendAiText("system", t("ai.error", { error: result?.error || "unknown" }));
+            break;
+          }
+          const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
+          const round = messagesRoot ? (0, turn_ui_1.beginAiRound)(messagesRoot) : null;
+          aiActiveRound = round;
+          if (toolCalls.length) {
+            if (round) {
+              (0, turn_ui_1.mountAiPlan)(round, toolCalls.map((tc, i) => ({
+                id: `step_${rounds}_${i}`,
+                label: toolLabel(tc.function.name, parseToolArgs(tc.function.arguments)),
+                status: "pending"
+              })));
+            }
+            if (result.reply) {
+              session.messages.push({
+                role: "assistant",
+                content: result.reply,
+                tool_calls: toolCalls
+              });
+              (0, turn_ui_1.setAiAgentStatus)("streaming");
+              await streamAiAssistantText(result.reply);
+            } else {
+              session.messages.push({
+                role: "assistant",
+                content: null,
+                tool_calls: toolCalls
+              });
+            }
+            const prepared = toolCalls.map((tc) => {
+              const args = parseToolArgs(tc.function.arguments);
+              if (!args.buildId && session.buildId)
+                args.buildId = session.buildId;
+              return { tc, args };
+            });
+            const writeItems = prepared.filter((x2) => AI_WRITE_TOOLS.has(x2.tc.function.name)).map((x2) => ({ tool: x2.tc.function.name, args: x2.args }));
+            let batchOk = true;
+            if (writeItems.length > 1) {
+              (0, turn_ui_1.setAiAgentStatus)("confirm");
+              batchOk = await (0, confirm_ui_1.askAiConfirmBatch)({
+                host: getAiUiHost(),
+                items: writeItems,
+                sessionId: session.id
+              });
+            }
+            const preconfirmed = writeItems.length > 1 && batchOk;
+            const answeredToolIds = /* @__PURE__ */ new Set();
+            for (let i = 0; i < prepared.length; i += 1) {
+              if (aiStopRequested)
+                break;
+              const { tc, args } = prepared[i];
+              (0, turn_ui_1.updateAiPlanStep)(`step_${rounds}_${i}`, "running");
+              (0, turn_ui_1.setAiAgentStatus)("tool", toolLabel(tc.function.name, args));
+              syncAiComposerBusyUi();
+              if (writeItems.length > 1 && AI_WRITE_TOOLS.has(tc.function.name) && !batchOk) {
+                (0, turn_ui_1.updateAiPlanStep)(`step_${rounds}_${i}`, "error");
+                appendAiToolStatus(tc.function.name, "error", { label: toolLabel(tc.function.name, args) });
+                session.messages.push({
+                  role: "tool",
+                  tool_call_id: tc.id,
+                  content: JSON.stringify({ error: "cancelled" })
+                });
+                answeredToolIds.add(tc.id);
+                continue;
+              }
+              const beforeBuild = tc.function.name === "update_build" && args.buildId ? savedBuilds.find((b2) => b2.id === args.buildId) || null : null;
+              const chip = appendAiToolStatus(tc.function.name, "running", {
+                label: toolLabel(tc.function.name, args)
+              });
+              const started = Date.now();
+              const exec = await runAiToolSafe(tc.function.name, args, {
+                preconfirmed: preconfirmed && AI_WRITE_TOOLS.has(tc.function.name),
+                sessionId: session.id
+              });
+              const durationMs = Date.now() - started;
+              setAiToolStatus(chip, exec?.ok ? "done" : "error", durationMs);
+              (0, turn_ui_1.updateAiPlanStep)(`step_${rounds}_${i}`, exec?.ok ? "done" : "error");
+              if (exec?.ok && tc.function.name === "select_build") {
+                const selectedId = asStringMaybe(args.buildId) || asStringMaybe(exec.result && typeof exec.result === "object" ? exec.result.id : null);
+                if (selectedId && savedBuilds.some((b2) => b2.id === selectedId)) {
+                  session.buildId = selectedId;
+                  session.updatedAt = Date.now();
+                  saveAiSessions();
+                  updateAiBuildChip(session);
+                  updateAiContextRing(session);
+                }
+              }
+              const payload = exec?.ok ? exec.result : { error: exec?.error || "tool_failed" };
+              if (chip) {
+                (0, turn_ui_1.wrapAiToolCollapsible)(chip, {
+                  label: toolLabel(tc.function.name, args),
+                  detail: JSON.stringify(payload).slice(0, 2500),
+                  status: exec?.ok ? "done" : "error"
+                });
+              }
+              session.messages.push({
+                role: "tool",
+                tool_call_id: tc.id,
+                content: compactAiToolContent(JSON.stringify(payload), AI_WIRE_TOOL_HOT_CHARS)
+              });
+              answeredToolIds.add(tc.id);
+              if (exec?.ok && AI_WRITE_TOOLS.has(tc.function.name)) {
+                const payloadObj = payload && typeof payload === "object" ? payload : null;
+                const touchedId = asStringMaybe(args.buildId) || asStringMaybe(payloadObj?.id) || asStringMaybe(payloadObj?.buildId);
+                if (touchedId && tc.function.name !== "delete_build") {
+                  (0, integrations_ui_1.markBuildTouchedByAgent)(touchedId);
+                }
+                if (tc.function.name === "toggle_mod" && args.filename && args.buildId) {
+                  const filename = String(args.filename);
+                  const buildId = String(args.buildId);
+                  const wasEnabled = args.enabled;
+                  (0, confirm_ui_1.pushAiUndo)({
+                    id: `undo_${Date.now()}`,
+                    label: `${t("ai.undo")}: ${filename}`,
+                    at: Date.now(),
+                    revert: async () => {
+                      await api?.aiToolsRun?.("toggle_mod", {
+                        buildId,
+                        filename,
+                        enabled: typeof wasEnabled === "boolean" ? !wasEnabled : void 0
+                      }, { confirmed: true });
+                    }
+                  });
+                  (0, confirm_ui_1.renderAiUndoChip)(getAiUiHost());
+                }
+                if (tc.function.name === "update_build" && beforeBuild) {
+                  const snap = {
+                    name: beforeBuild.name,
+                    gameVersion: beforeBuild.gameVersion,
+                    loader: beforeBuild.loader,
+                    loaderVersion: beforeBuild.loaderVersion,
+                    javaPath: beforeBuild.javaPath,
+                    memoryMin: beforeBuild.memory?.min,
+                    memoryMax: beforeBuild.memory?.max
+                  };
+                  (0, confirm_ui_1.pushAiUndo)({
+                    id: `undo_${Date.now()}`,
+                    label: `${t("ai.undo")}: ${beforeBuild.name}`,
+                    at: Date.now(),
+                    revert: async () => {
+                      await api?.aiToolsRun?.("update_build", { buildId: beforeBuild.id, ...snap }, { confirmed: true });
+                      await loadBuilds();
+                      renderBuilds();
+                    }
+                  });
+                  (0, confirm_ui_1.renderAiUndoChip)(getAiUiHost());
+                  const host = getAiUiHost();
+                  const diff = (0, confirm_ui_1.renderAiBuildDiff)(beforeBuild, { ...beforeBuild, ...args }, host);
+                  const root = host.getMessagesRoot();
+                  if (root) {
+                    const wrap = document.createElement("div");
+                    wrap.className = "ai-msg ai-msg--system";
+                    wrap.innerHTML = `<div class="ai-msg__bubble"></div>`;
+                    wrap.querySelector(".ai-msg__bubble")?.appendChild(diff);
+                    root.appendChild(wrap);
+                    host.scrollToEnd();
+                  }
+                }
+                if (tc.function.name === "create_build" || tc.function.name === "duplicate_build" || tc.function.name === "update_build" || tc.function.name === "install_mod" || tc.function.name === "delete_build") {
+                  await loadBuilds();
+                  const b2 = savedBuilds.find((x2) => x2.id === touchedId);
+                  if (b2 && (tc.function.name === "create_build" || tc.function.name === "duplicate_build")) {
+                    (0, integrations_ui_1.appendAiBuildPreview)(getAiUiHost(), {
+                      id: b2.id,
+                      name: b2.name,
+                      gameVersion: b2.gameVersion,
+                      loader: b2.loader,
+                      icon: b2.icon ? buildIconSrc(b2.icon) : void 0
+                    });
+                  } else {
+                    renderBuilds();
+                  }
+                } else {
+                  renderBuilds();
+                }
+              }
+              const mods = extractModsFromToolResult(payload);
+              if (mods.length)
+                appendAiModCards(mods);
+            }
+            for (const tc of toolCalls) {
+              if (answeredToolIds.has(tc.id))
+                continue;
+              session.messages.push({
+                role: "tool",
+                tool_call_id: tc.id,
+                content: JSON.stringify({ error: aiStopRequested ? "stopped" : "incomplete" })
+              });
+              answeredToolIds.add(tc.id);
+            }
+            session.messages = sanitizeAiWireMessages(session.messages);
+            if (round)
+              (0, turn_ui_1.endAiRound)(round);
+            aiActiveRound = null;
+            session.updatedAt = Date.now();
+            saveAiSessions();
+            updateAiContextRing(session);
+            continue;
+          }
+          if (!result.reply) {
+            if (round)
+              (0, turn_ui_1.endAiRound)(round);
+            aiActiveRound = null;
+            appendAiText("system", t("ai.error", { error: "empty" }));
+            break;
+          }
+          session.messages.push({ role: "assistant", content: result.reply });
+          (0, turn_ui_1.setAiAgentStatus)("streaming");
+          await streamAiAssistantText(result.reply);
+          if (round)
+            (0, turn_ui_1.endAiRound)(round);
+          aiActiveRound = null;
+          session.updatedAt = Date.now();
+          saveAiSessions();
+          renderAiSessionList();
+          updateAiContextRing(session);
+          (0, turn_ui_1.setAiAgentStatus)("idle");
+          syncAiComposerBusyUi();
+          return;
+        }
+        aiActiveRound = null;
+        if (rounds >= AI_MAX_TOOL_ROUNDS)
+          appendAiText("system", t("ai.toolLoopLimit"));
+        (0, turn_ui_1.setAiAgentStatus)("idle");
+        syncAiComposerBusyUi();
+      }
+      function requestAiStop() {
+        aiStopRequested = true;
+        aiStreamGen += 1;
+        (0, turn_ui_1.setAiAgentStatus)("idle");
+        syncAiComposerBusyUi();
+      }
+      async function sendAiMessage(text) {
+        const input = document.getElementById("ai-input");
+        const session = activeAiSession();
+        if (!session || aiBusy)
+          return;
+        const prompt = text.trim();
+        const attachments = [...(0, attach_ui_1.getAiAttachments)()];
+        if (!prompt && !attachments.length)
+          return;
+        if (aiConfigured === false) {
+          appendAiText("system", t("ai.unavailable"));
+          return;
+        }
+        if (!getAiTesterKey() || aiAccessOk === false) {
+          handleAiAccessDenied();
+          return;
+        }
+        const attachBlock = (0, attach_ui_1.formatAiAttachmentsPrompt)(attachments);
+        const userLine = prompt;
+        const wirePrompt = [attachBlock, userLine].filter(Boolean).join("\n\n") || t("ai.attach.title");
+        const titleSource = userLine || attachments.map((a) => a.label).join(", ") || t("ai.attach.title");
+        if (!session.messages.length)
+          session.title = titleFromPrompt(titleSource);
+        session.messages.push({ role: "user", content: wirePrompt });
+        session.updatedAt = Date.now();
+        saveAiSessions();
+        renderAiSessionList();
+        if (input) {
+          input.value = "";
+          autoResizeAiInput();
+        }
+        (0, attach_ui_1.clearAiAttachments)();
+        (0, attach_ui_1.closeAiAttachMenu)();
+        appendAiDayDivider();
+        appendAiText("user", userLine, { attachments });
+        updateAiContextRing(session);
+        aiBusy = true;
+        aiStopRequested = false;
+        setAiBusySession(session.id);
+        try {
+          session.messages = sanitizeAiWireMessages(session.messages);
+          saveAiSessions();
+          await ensureAiContextCapacity(session);
+          await runAiAgentTurn(session);
+        } catch (err) {
+          appendAiText("system", t("ai.error", { error: err?.message || "unknown" }));
+        } finally {
+          aiBusy = false;
+          aiStopRequested = false;
+          aiActiveRound = null;
+          setAiBusySession(null);
+          (0, turn_ui_1.setAiAgentStatus)("idle");
+          syncAiComposerBusyUi();
+          input?.focus();
+          const titleEl = document.getElementById("ai-stage-title");
+          if (titleEl)
+            titleEl.textContent = session.title;
+          updateAiContextRing(session);
+          saveAiSessions();
+          renderAiSessionList();
+          refreshAiShellUi(session);
+        }
+      }
+      function renderAiBuildMenu() {
+        const menu = document.getElementById("ai-build-menu");
+        const session = activeAiSession();
+        if (!menu)
+          return;
+        const items = [
+          `<button type="button" data-build="" class="${!session?.buildId ? "active" : ""}">${escapeAiHtml(t("ai.noBuild"))}</button>`,
+          ...savedBuilds.map((b2) => `<button type="button" data-build="${escapeAiHtml(b2.id)}" class="${session?.buildId === b2.id ? "active" : ""}">${escapeAiHtml(b2.name)}</button>`)
+        ];
+        menu.innerHTML = items.join("");
+      }
+      function ensureAiTab() {
+        if (!aiInited)
+          initAiAssistant();
+        renderAiSessionList();
+        renderAiConversation();
+      }
+      function bindAiActionBridge() {
+        if (!api?.onAiAction || !api.aiActionResult)
+          return;
+        api.onAiAction((msg) => {
+          void (async () => {
+            let result = { ok: false, error: "unknown_action" };
+            try {
+              const action = String(msg?.action || "");
+              const payload = msg?.payload && typeof msg.payload === "object" ? msg.payload : {};
+              if (action === "launch_build") {
+                const buildId = String(payload.buildId || "");
+                const build = savedBuilds.find((b2) => b2.id === buildId);
+                if (!build)
+                  result = { ok: false, error: "build_not_found" };
+                else {
+                  const ip = typeof payload.serverIp === "string" ? payload.serverIp.trim() : "";
+                  const port = Number(payload.serverPort);
+                  const server = ip ? { ip, port: Number.isFinite(port) && port > 0 ? port : 25565 } : void 0;
+                  await launchBuild(build, server);
+                  result = { ok: true, launched: true, buildId };
+                }
+              } else if (action === "install_java") {
+                const version = Number(payload.version);
+                result = api.installJava ? await api.installJava(version) : { success: false, error: "unavailable" };
+              } else if (action === "remove_java") {
+                const version = Number(payload.version);
+                result = api.removeJava ? await api.removeJava(version) : { success: false, error: "unavailable" };
+              } else if (action === "create_instance_share") {
+                const buildId = String(payload.buildId || "");
+                const authorName = typeof payload.authorName === "string" ? payload.authorName : void 0;
+                result = api.createInstanceShare ? await api.createInstanceShare(buildId, authorName ? { authorName } : void 0) : { ok: false, error: "unavailable" };
+              } else if (action === "import_instance_share") {
+                const shareId = String(payload.shareId || payload.id || "");
+                result = api.importInstanceShare ? await api.importInstanceShare(shareId) : { ok: false, error: "unavailable" };
+                if (result?.ok && result?.build) {
+                  const b2 = result.build;
+                  const idx = savedBuilds.findIndex((x2) => x2.id === b2.id);
+                  if (idx >= 0)
+                    savedBuilds[idx] = b2;
+                  else
+                    savedBuilds.push(b2);
+                  renderBuilds();
+                }
+              } else if (action === "list_server_catalog") {
+                const list = api.fetchServerCatalog ? await api.fetchServerCatalog() : [];
+                result = { ok: true, servers: Array.isArray(list) ? list.slice(0, 40) : [] };
+              } else if (action === "get_console_tail") {
+                const limit = Math.min(200, Math.max(1, Number(payload.limit) || 40));
+                const hist = api.getConsoleHistory ? await api.getConsoleHistory() : [];
+                result = { ok: true, events: Array.isArray(hist) ? hist.slice(-limit) : [] };
+              } else if (action === "open_console") {
+                await api.openConsole?.();
+                result = { ok: true };
+              } else if (action === "launch_updater") {
+                result = api.launchUpdater ? await api.launchUpdater() : { success: false, error: "unavailable" };
+              } else if (action === "switch_account") {
+                const uuid = String(payload.uuid || "").trim();
+                const username = String(payload.username || "").trim();
+                const accounts = api.loadAccounts ? await api.loadAccounts() : [];
+                const found = (accounts || []).find((a) => uuid && String(a.uuid || a.id || "") === uuid || username && String(a.name || a.username || "").toLowerCase() === username.toLowerCase());
+                if (!found)
+                  result = { ok: false, error: "account_not_found" };
+                else {
+                  applyAccount(found);
+                  result = {
+                    ok: true,
+                    uuid: found.uuid || found.id || null,
+                    username: found.name || found.username || null
+                  };
+                }
+              }
+            } catch (e) {
+              result = { ok: false, error: e?.message || "action_failed" };
+            }
+            api.aiActionResult?.({ id: msg.id, result });
+          })();
+        });
+      }
+      function initAiAssistant() {
+        if (aiInited)
+          return;
+        const form = document.getElementById("ai-form");
+        const input = document.getElementById("ai-input");
+        const newBtn = document.getElementById("ai-new-chat");
+        if (!form || !input)
+          return;
+        aiInited = true;
+        bindAiActionBridge();
+        loadAiSessions();
+        (0, shell_ui_1.renderAiEmptyScenarios)(getAiUiHost());
+        renderAiSessionList();
+        renderAiConversation();
+        refreshAiShellUi(activeAiSession());
+        (0, turn_ui_1.onAiStop)(() => requestAiStop());
+        document.getElementById("ai-send")?.addEventListener("click", (e) => {
+          const btn = e.currentTarget;
+          if (!btn.classList.contains("is-stop"))
+            return;
+          e.preventDefault();
+          e.stopPropagation();
+          requestAiStop();
+        });
+        const setAiRailVersion = (v2) => {
+          const el = document.getElementById("ai-agent-ver");
+          if (!el)
+            return;
+          const ver = String(v2 || appVersion || "").trim();
+          if (ver)
+            el.textContent = ver;
+        };
+        setAiRailVersion();
+        void api?.getAppVersion?.().then((v2) => {
+          if (!v2)
+            return;
+          appVersion = String(v2);
+          setAiRailVersion(appVersion);
+        });
+        newBtn?.addEventListener("click", () => {
+          createAiSession(true);
+          (0, attach_ui_1.clearAiAttachments)();
+          (0, attach_ui_1.closeAiAttachMenu)();
+          renderAiSessionList();
+          renderAiConversation();
+          refreshAiShellUi(activeAiSession());
+          input.focus();
+        });
+        (0, attach_ui_1.initAiAttachUi)({
+          ...getAiUiHost(),
+          getBuilds: () => savedBuilds.map((b2) => ({
+            id: b2.id,
+            name: b2.name,
+            gameVersion: b2.gameVersion || "",
+            loader: b2.loader || "",
+            iconSrc: b2.icon ? buildIconSrc(b2.icon).replace(/\\/g, "/") : DEFAULT_BUILD_ICON_SRC,
+            iconBg: b2.iconBg
+          })),
+          getSessionBuildId: () => activeAiSession()?.buildId || null,
+          scanBuildContent: async (buildId) => {
+            if (!api?.scanInstance)
+              return null;
+            try {
+              const data = await api.scanInstance(buildId);
+              return {
+                mods: (data?.mods || []).map((m2) => ({ filename: m2.filename || m2.file || m2.name, name: m2.name || m2.title })),
+                resourcepacks: (data?.resourcepacks || []).map((m2) => ({ filename: m2.filename || m2.file || m2.name, name: m2.name || m2.title })),
+                shaders: (data?.shaders || []).map((m2) => ({ filename: m2.filename || m2.file || m2.name, name: m2.name || m2.title })),
+                datapacks: (data?.datapacks || []).map((m2) => ({ filename: m2.filename || m2.file || m2.name, name: m2.name || m2.title }))
+              };
+            } catch {
+              return null;
+            }
+          },
+          pickFiles: async () => api?.pickFiles ? await api.pickFiles() : [],
+          readAttachFile: async (filePath) => api?.readAttachFile ? await api.readAttachFile(filePath) : null,
+          getCrashLog: async (buildId) => api?.getCrashReport ? await api.getCrashReport(buildId) : null,
+          getLatestLog: async (buildId) => {
+            if (!api?.getInstancePath || !api?.readAttachFile)
+              return null;
+            try {
+              const root = await api.getInstancePath(buildId);
+              if (!root)
+                return null;
+              const read = await api.readAttachFile(joinInstancePath(root, "logs", "latest.log"));
+              return read?.text || null;
+            } catch {
+              return null;
+            }
+          },
+          closeOtherPopovers: () => closeAiPopovers("ai-attach-menu"),
+          onAttachmentsChange: () => {
+          }
+        });
+        document.getElementById("ai-search-toggle")?.addEventListener("click", () => {
+          const search = document.getElementById("ai-search");
+          if (!search)
+            return;
+          search.classList.toggle("hidden");
+          if (!search.classList.contains("hidden"))
+            search.focus();
+          else {
+            aiSearchQuery = "";
+            search.value = "";
+            renderAiSessionList();
+          }
+        });
+        document.getElementById("ai-search")?.addEventListener("input", (e) => {
+          aiSearchQuery = e.target.value || "";
+          renderAiSessionList();
+        });
+        input.addEventListener("input", autoResizeAiInput);
+        autoResizeAiInput();
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            form.requestSubmit();
+          }
+        });
+        form.addEventListener("submit", (e) => {
+          e.preventDefault();
+          void sendAiMessage(input.value);
+        });
+        document.getElementById("ai-empty-prompts")?.addEventListener("click", (e) => {
+          const btn = e.target.closest(".ai-prompt");
+          if (!btn)
+            return;
+          const key = btn.dataset.promptKey;
+          void sendAiMessage(key ? t(key) : btn.textContent || "");
+        });
+        document.getElementById("ai-messages")?.addEventListener("click", (e) => {
+          const a = e.target.closest("a");
+          if (a) {
+            const href = a.getAttribute("href");
+            if (href) {
+              e.preventDefault();
+              api?.openExternal?.(href);
+            }
+            return;
+          }
+          const card = e.target.closest(".ai-mod-card");
+          if (card?.dataset.modId) {
+            const id = card.dataset.modSlug || card.dataset.modId;
+            void openModalDetails(id);
+          }
+        });
+        document.getElementById("ai-build-btn")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const menu = document.getElementById("ai-build-menu");
+          const willOpen = !menu?.classList.contains("is-open");
+          closeAiPopovers(willOpen ? "ai-build-menu" : void 0);
+          setAiBuildMenuOpen(!!willOpen);
+        });
+        document.getElementById("ai-build-menu")?.addEventListener("click", (e) => {
+          const btn = e.target.closest("button[data-build]");
+          if (!btn)
+            return;
+          const session = activeAiSession();
+          if (!session)
+            return;
+          session.buildId = btn.dataset.build || null;
+          saveAiSessions();
+          updateAiBuildChip(session);
+          updateAiContextRing(session);
+          setAiBuildMenuOpen(false);
+        });
+        document.getElementById("ai-context-ring")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleAiContextMenu();
+        });
+        document.getElementById("ai-context-menu")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
+        document.getElementById("ai-chat-menu")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const menu = document.getElementById("ai-chat-menu-pop");
+          const willOpen = !menu?.classList.contains("is-open");
+          closeAiPopovers(willOpen ? "ai-chat-menu-pop" : void 0);
+          setAiChatMenuOpen(willOpen);
+        });
+        document.getElementById("ai-chat-menu-pop")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
+        document.getElementById("ai-menu-delete")?.addEventListener("click", () => {
+          const session = activeAiSession();
+          if (session)
+            deleteAiSession(session.id);
+          closeAiPopovers();
+        });
+        document.getElementById("ai-menu-clear")?.addEventListener("click", () => {
+          const session = activeAiSession();
+          if (!session)
+            return;
+          session.messages = [];
+          session.title = t("ai.newChatTitle");
+          session.updatedAt = Date.now();
+          saveAiSessions();
+          renderAiSessionList();
+          renderAiConversation();
+          closeAiPopovers();
+        });
+        document.addEventListener("click", () => {
+          closeAiPopovers();
+        });
+        void api?.aiStatus?.({ testerKey: getAiTesterKey() }).then((status) => {
+          aiConfigured = status?.configured !== false;
+          aiAccessOk = Boolean(status?.access);
+          if (status?.reason === "access_denied") {
+            setAiTesterKey("");
+            syncAiSettingsKeyUi();
+          }
+        });
+      }
+      var aiAccessSettingsBound = false;
+      function bindAiAccessSettingsUi() {
+        if (aiAccessSettingsBound) {
+          syncAiSettingsKeyUi();
+          applyAiTabVisibility();
+          return;
+        }
+        aiAccessSettingsBound = true;
+        const toggle = document.getElementById("setting-ai-enabled");
+        if (toggle) {
+          settingLoad("setting-ai-enabled", "ai-enabled", true);
+          toggle.addEventListener("change", () => {
+            const on = toggle.checked;
+            localStorage.setItem(AI_ENABLED_LS_KEY, String(on));
+            if (on) {
+              openAiKeyModal({ required: true });
+              applyAiTabVisibility();
+            } else {
+              applyAiTabVisibility();
+            }
+          });
+        }
+        document.getElementById("setting-ai-key-btn")?.addEventListener("click", () => {
+          openAiKeyModal({ required: false });
+        });
+        document.getElementById("modal-ai-key-close")?.addEventListener("click", () => closeAiKeyModal(true));
+        document.getElementById("modal-ai-key-cancel")?.addEventListener("click", () => closeAiKeyModal(true));
+        document.getElementById("modal-ai-key-save")?.addEventListener("click", () => {
+          void saveAiTesterKeyFromModal();
+        });
+        document.getElementById("modal-ai-key")?.addEventListener("click", (e) => {
+          if (e.target === e.currentTarget)
+            closeAiKeyModal(true);
+        });
+        document.getElementById("modal-ai-key-input")?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void saveAiTesterKeyFromModal();
+          }
+        });
+        const closeAccess = () => closeModal("modal-ai-access");
+        document.getElementById("modal-ai-access-close")?.addEventListener("click", closeAccess);
+        document.getElementById("modal-ai-access-ok")?.addEventListener("click", closeAccess);
+        document.getElementById("modal-ai-access")?.addEventListener("click", (e) => {
+          if (e.target === e.currentTarget)
+            closeAccess();
+        });
+        document.getElementById("modal-ai-access-settings")?.addEventListener("click", () => {
+          closeAccess();
+          openModal("modal-settings");
+          const tab = document.querySelector('.stngs-sidebar [data-settings-tab="agent"]');
+          tab?.click();
+        });
+        applyAiTabVisibility();
+      }
+      void init();
     }
   });
   return require_app();

@@ -27,7 +27,10 @@
 
 ```text
 GitHub Releases (studioberry-hub/client)
-        │  latest → asset latest-windows-amd64.zip
+        │  sync на сайт (exe + latest-windows-amd64.zip)
+        ▼
+uprojects.site/client
+        │  /api/release/latest + /api/download/zip
         ▼
    UClientInstaller / updater
         │  скачать → распаковать → ярлыки → реестр → uclient://
@@ -39,7 +42,7 @@ GitHub Releases (studioberry-hub/client)
    └── version.txt
 ```
 
-1. **Релиз** — запрос к `GET /repos/studioberry-hub/client/releases/latest`, ищется ассет `latest-windows-amd64.zip` (иначе любой `.zip`).
+1. **Релиз** — сначала `GET https://uprojects.site/client/api/release/latest`; при `zipDirectAvailable` качается стабильный `…/api/download/zip` с зеркала сайта. Если сайт недоступен — fallback на `GET /repos/studioberry-hub/client/releases/latest` и ассет `latest-windows-amd64.zip`.
 2. **Загрузка** — во временный файл с прогрессом (скорость со сглаживанием).
 3. **Распаковка** — в `%APPDATA%\UndefinedClientApp` (per-user, **без прав администратора**).
 4. **Метаданные** — `version.txt`, ключ Uninstall в `HKCU`, App Paths для `uclient.exe`.
@@ -48,6 +51,8 @@ GitHub Releases (studioberry-hub/client)
 
 Обновление (`updater`): сравнивает установленную версию с тегом latest; если новее — ставит поверх.  
 Удаление (`unins000`): снимает ярлыки, ключи реестра, схему URL и каталог установки.
+
+Базу API можно переопределить переменной окружения `UC_API_BASE` (как у лаунчера).
 
 Все записи реестра — только **HKEY_CURRENT_USER**, чтобы не смешивать per-user установку с HKLM.
 

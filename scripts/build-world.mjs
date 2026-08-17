@@ -9,12 +9,13 @@
 //    (полный пакет статически тянет ~500 МБ JSON);
 //  - loader для .png (атласы mc-assets импортируются как модули).
 import * as esbuild from 'esbuild';
-import { writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { writeFileSync, mkdirSync, statSync, renameSync, unlinkSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = join(root, 'src', 'renderer', 'world', 'world.js');
+const outTmp = `${outFile}.tmp`;
 const rendererEntry = join(root, 'node_modules', 'minecraft-renderer', 'dist', 'minecraft-renderer.js');
 const mcDataShim = join(root, 'scripts', 'world-shims', 'minecraft-data.cjs');
 
@@ -41,7 +42,7 @@ const remapPlugin = {
 
 const result = await esbuild.build({
   entryPoints: [join(root, 'src', 'renderer', 'world.ts')],
-  outfile: outFile,
+  outfile: outTmp,
   bundle: true,
   format: 'iife',
   globalName: 'worldWin',
@@ -58,6 +59,22 @@ const result = await esbuild.build({
   logLevel: 'info',
   logOverride: { 'direct-eval': 'silent' },
 });
+
+// Атомарная замена: Electron часто держит world.js mapped — пишем во .tmp.
+try {
+  if (existsSync(outFile)) {
+    try { unlinkSync(outFile); } catch { /* файл занят — переименуем старый */ }
+  }
+  if (existsSync(outFile)) {
+    const bak = `${outFile}.old`;
+    try { unlinkSync(bak); } catch { /* */ }
+    renameSync(outFile, bak);
+  }
+  renameSync(outTmp, outFile);
+} catch (e) {
+  console.error('[build-world] не удалось заменить world.js (закройте окно предпросмотра мира):', e.message || e);
+  process.exit(1);
+}
 
 writeFileSync(join(root, '.spike2', 'world-meta.json'), JSON.stringify(result.metafile));
 
