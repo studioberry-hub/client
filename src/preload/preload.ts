@@ -50,7 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getModrinthProject: (projectId: string) => ipcRenderer.invoke('modrinth:project', projectId),
   getModrinthVersions: (projectId: string) => ipcRenderer.invoke('modrinth:versions', projectId),
   downloadMod: (projectId: string, versionId?: string) => ipcRenderer.invoke('modrinth:download', projectId, versionId),
-  installMod: (buildId: string, projectId: string, versionId?: string, contentType?: string) => ipcRenderer.invoke('launcher:install-mod', buildId, projectId, versionId, contentType),
+  installMod: (buildId: string, projectId: string, versionId?: string, contentType?: string, options?: { force?: boolean; skipDeps?: boolean; installOptional?: boolean }) => ipcRenderer.invoke('launcher:install-mod', buildId, projectId, versionId, contentType, options),
   resolveProjectByName: (name: string) => ipcRenderer.invoke('modrinth:resolve-project-by-name', name),
 
   getVersions: () => ipcRenderer.invoke('launcher:versions:list'),
@@ -71,6 +71,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   fetchNewsList: (lang?: string, limit?: number) => ipcRenderer.invoke('news:list', lang, limit),
   fetchNewsPost: (id: string, lang?: string) => ipcRenderer.invoke('news:get', id, lang),
+
+  // AI-агент: чат через сайт, MCP-tools исполняются локально в main
+  aiStatus: (opts?: { testerKey?: string }) => ipcRenderer.invoke('ai:status', opts || {}),
+  aiValidateKey: (testerKey: string) => ipcRenderer.invoke('ai:validateKey', testerKey),
+  aiChat: (payload: {
+    messages: Array<Record<string, unknown>>;
+    tools?: boolean;
+    context?: { buildId?: string; buildName?: string } | null;
+    testerKey?: string;
+  }) => ipcRenderer.invoke('ai:chat', payload),
+  aiToolsList: () => ipcRenderer.invoke('ai:tools:list'),
+  aiToolsRun: (
+    name: string,
+    args?: Record<string, unknown>,
+    opts?: { confirmed?: boolean },
+  ) => ipcRenderer.invoke('ai:tools:run', name, args || {}, opts || {}),
+  readAttachFile: (filePath: string) =>
+    ipcRenderer.invoke('ai:readAttachFile', filePath) as Promise<{
+      ok: boolean;
+      text?: string;
+      error?: string;
+      truncated?: boolean;
+      bytes?: number;
+    } | null>,
 
   // Deep link uclient://: consume забирает ссылку холодного старта, onDeepLink —
   // ссылки, пришедшие в уже запущенный лаунчер (install / import-instance).
@@ -125,9 +149,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('launcher:progress', handler);
   },
   openConsole: () => ipcRenderer.invoke('console:open'),
+  appendConsoleLog: (message: string) => ipcRenderer.invoke('console:append', message),
   // Просмотр мира Minecraft (окно открывается также флагом запуска --world[=путь])
-  openWorldViewer: (worldPath?: string) => ipcRenderer.invoke('world:open', worldPath ?? ''),
+  openWorldViewer: (worldPath?: string, profile?: { username?: string; uuid?: string; skinDataUrl?: string }, bounds?: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.invoke('world:open', worldPath ?? '', profile ?? null, bounds ?? null),
+  attachWorldViewer: (bounds: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.invoke('world:attach', bounds),
+  setWorldViewerBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
+    ipcRenderer.invoke('world:set-bounds', bounds),
+  closeWorldViewer: () => ipcRenderer.invoke('world:close'),
+  onWorldModalOpen: (callback: (data: { worldPath?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { worldPath?: string }) => callback(data || {});
+    ipcRenderer.on('world:modal-open', handler);
+    return () => ipcRenderer.removeListener('world:modal-open', handler);
+  },
+  onWorldModalClosed: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('world:modal-closed', handler);
+    return () => ipcRenderer.removeListener('world:modal-closed', handler);
+  },
+  onWorldBoundsSyncRequest: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('world:request-bounds-sync', handler);
+    return () => ipcRenderer.removeListener('world:request-bounds-sync', handler);
+  },
   listMinecraftWorlds: () => ipcRenderer.invoke('world:list'),
+  ensureWorldExporter: () => ipcRenderer.invoke('world:ensure-exporter'),
+  exportWorldPreview: (worldPath: string, minecraftVersion: string) =>
+    ipcRenderer.invoke('world:export', worldPath, minecraftVersion),
+  openWorldExport: (outDir: string) => ipcRenderer.invoke('world:open-export', outDir),
+  onWorldExportProgress: (callback: (msg: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, msg: string) => callback(msg);
+    ipcRenderer.on('world:export-progress', handler);
+    return () => ipcRenderer.removeListener('world:export-progress', handler);
+  },
   getConsoleHistory: () => ipcRenderer.invoke('console:history'),
   saveConsoleLog: (logContent: string) => ipcRenderer.invoke('console:save-log', logContent),
   onConsoleLog: (callback: (data: any) => void) => {
@@ -149,6 +204,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteInstanceFiles: (buildId: string, sub: string, names: string[]) => ipcRenderer.invoke('launcher:delete-instance-files', buildId, sub, names),
   saveInstanceFiles: (buildId: string, sub: string, names: string[]) => ipcRenderer.invoke('launcher:save-instance-files', buildId, sub, names),
   scanInstance: (buildId: string) => ipcRenderer.invoke('launcher:scan-instance', buildId),
+  pickModpack: () => ipcRenderer.invoke('launcher:pick-modpack') as Promise<string | null>,
+  inspectModpack: (archivePath: string) =>
+    ipcRenderer.invoke('launcher:inspect-modpack', archivePath) as Promise<{
+      success: boolean;
+      inspect?: {
+        format: string;
+        name: string;
+        gameVersion: string;
+        loader: string;
+        loaderVersion: string;
+        fileCount: number;
+        hasOverrides: boolean;
+        archiveName: string;
+      };
+      error?: string;
+    }>,
+  importModpack: (archivePath: string) =>
+    ipcRenderer.invoke('launcher:import-modpack', archivePath) as Promise<{
+      success: boolean;
+      build?: any;
+      error?: string;
+      downloaded?: number;
+      failed?: number;
+    }>,
   watchInstance: (buildId: string) => ipcRenderer.invoke('launcher:watch-instance', buildId),
   unwatchInstance: (buildId: string) => ipcRenderer.invoke('launcher:unwatch-instance', buildId),
   onInstanceChanged: (callback: (buildId: string, data: any) => void) => {
@@ -156,4 +235,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('launcher:instance-changed', handler);
     return () => ipcRenderer.removeListener('launcher:instance-changed', handler);
   },
+
+  // ===== AI action bridge (main → renderer) =====
+  onAiAction: (callback: (msg: { id: string; action: string; payload: Record<string, unknown> }) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      msg: { id: string; action: string; payload: Record<string, unknown> },
+    ) => callback(msg);
+    ipcRenderer.on('ai:action', handler);
+    return () => ipcRenderer.removeListener('ai:action', handler);
+  },
+  aiActionResult: (msg: { id: string; result: unknown }) => ipcRenderer.send('ai:action-result', msg),
 });

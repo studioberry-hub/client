@@ -11,7 +11,7 @@
 //
 // Здесь читается ровно то, что нужно рендереру, и отдаётся в компактном «проводном»
 // виде (WireColumn): палитры имён блоков/биомов + упакованные индексы + нибблы света.
-// Сопоставление имён блоков со state ID делает окно мира — там уже есть реестр 1.21.4.
+// Сопоставление имён блоков со state ID делает окно мира — там уже есть реестр 1.21.6.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -38,8 +38,8 @@ const EXTERNAL_FLAG = 128;
 
 /** DataVersion 1.13 — ниже неё блоки хранятся числовыми ID (pre-flattening), не поддерживаем. */
 export const MIN_DATA_VERSION = 1519;
-/** DataVersion 1.21.11 — последняя версия ветки 1.21 на момент реализации. */
-export const MAX_DATA_VERSION = 4671;
+/** DataVersion 26.2 — верхний предел чтения Anvil на момент внедрения. */
+export const MAX_DATA_VERSION = 4903;
 /** С этой DataVersion (20w17a, ветка 1.16) записи в long-массивах не пересекают границу long. */
 const NO_SPAN_SINCE = 2529;
 
@@ -539,8 +539,12 @@ function collectBlockEntities(list: any): Record<string, any> {
   return out;
 }
 
-/** Статусы генерации, при которых чанк можно показывать: рельеф и свет уже готовы. */
-const RENDERABLE_STATUSES = new Set(['full', 'fullchunk', 'postprocessed', 'mobs_spawned', 'spawn']);
+/** Статусы генерации, при которых чанк можно показывать. */
+const RENDERABLE_STATUSES = new Set([
+  'full', 'fullchunk', 'postprocessed', 'mobs_spawned', 'spawn',
+  // Почти готовые (есть рельеф) — иначе край прогрузки в сейве выглядит пустым.
+  'light', 'features', 'carvers', 'surface', 'noise',
+]);
 
 export function isRenderableStatus(status: string): boolean {
   return RENDERABLE_STATUSES.has(status);

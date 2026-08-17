@@ -1,0 +1,319 @@
+/* ===== Главная: герой, инсайты, пустые состояния ===== */
+
+#tab-home #quick-banner.home-hero,
+#quick-banner.home-hero {
+  height: min(280px, 36vh);
+  min-height: 220px;
+}
+
+#quick-banner-gradient {
+  height: 70%;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.35) 45%,
+    rgba(0, 0, 0, 0.72) 100%
+  );
+}
+
+.home-hero-status {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  max-width: min(520px, 70vw);
+  line-height: 1.35;
+}
+
+#quick-banner-actions {
+  gap: 10px;
+}
+
+.home-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.home-insight {
+  appearance: none;
+  position: relative;
+  isolation: isolate;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition: background 0.15s ease;
+}
+
+.home-insight:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.home-insight:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.home-insight__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  margin-bottom: 6px;
+}
+
+.home-insight__value {
+  font-size: 16px;
+  font-weight: 650;
+  color: #fff;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-insight__hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.35;
+  min-height: 1.2em;
+}
+
+.home-empty {
+  display: grid;
+  gap: 10px;
+  padding: 22px 18px;
+  text-align: center;
+  place-items: center;
+}
+
+.home-empty__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.home-empty__desc {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.4);
+  max-width: 260px;
+}
+
+.home-empty__btn {
+  appearance: none;
+  border: none;
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), 0.22);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: rgba(var(--accent-rgb), 0.34);
+}
+
+@media (max-width: 980px) {
+  .home-insights {
+    grid-template-columns: 1fr;
+  }
+
+  #quick-banner.home-hero {
+    height: 210px;
+    min-height: 190px;
+  }
+
+  #quick-banner-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 46%;
+  }
+}
+
+/* ===== Нижний отступ при прокрутке ===== */
+/* Только Главная: вложенный скролл у модов/серверов не должен оставлять полосу под списком */
+#tab-home.tab-view::after {
+  content: "";
+  display: block;
+  flex: 0 0 24px;
+  width: 100%;
+  pointer-events: none;
+}
+
+/* У вкладок со списком на всю высоту — без padding-bottom у .tab-view */
+#tab-mods.tab-view,
+#tab-servers.tab-view,
+#tab-builds.tab-view,
+#tab-news.tab-view {
+  padding-bottom: 0;
+}
+
+/* Новости: скролл только у ленты, без пустой полосы под карточками */
+#tab-news.tab-view {
+  overflow: hidden;
+}
+
+/* ===== Кнопка «Играть» в герое ===== */
+#quick-banner.home-hero #quick-banner-play {
+  background: var(--accent);
+  color: var(--on-accent);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+  box-shadow:
+    0 6px 22px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+#quick-banner.home-hero #quick-banner-play:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  filter: brightness(1.14);
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+#quick-banner.home-hero #quick-banner-play:active {
+  transform: translateY(0) scale(0.97);
+  filter: brightness(1.05);
+}
+
+/* Системный outline Chromium после старта (программный фокус) */
+#quick-banner.home-hero #quick-banner-play:focus {
+  outline: none;
+}
+#quick-banner.home-hero #quick-banner-play:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--on-accent) 75%, transparent);
+  outline-offset: 2px;
+}
+
+/* ===== Свежий пост на Главной (плоский) ===== */
+.home-news-attribution {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.home-news-attribution:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.home-news-attribution:active {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.home-news-attribution-media {
+  position: relative;
+  flex-shrink: 0;
+  width: 96px;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-news-attribution-cover {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-news-attribution-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.home-news-attribution-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.home-news-attribution-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-news-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.home-news-badge--brand {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.14);
+  border-color: rgba(var(--accent-rgb), 0.28);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.home-news-attribution-title {
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-news-attribution .news-home-row-summary {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.48);
+  margin-top: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-news-attribution.hidden {
+  display: none !important;
+}

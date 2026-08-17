@@ -10,6 +10,55 @@
 } from 'skinviewengine';
 import { marked } from 'marked';
 import { setApiBase, getApiBase, catalogImageUrl, skinImageUrl } from '../shared/apiBase';
+import { previewBadge, resolvePreviewStrategy } from '../shared/world-preview-matrix';
+import type { AiUiHost } from './ai/types';
+import {
+  askAiConfirmBatch,
+  askAiConfirmInChat,
+  parkAiConfirmsFromRoot,
+  pushAiUndo,
+  renderAiBuildDiff,
+  renderAiUndoChip,
+  restoreAiConfirmsForSession,
+} from './ai/confirm-ui';
+import {
+  appendAiBuildPreview,
+  appendAiCrashQuote,
+  askAgentAboutMod,
+  hideAiCrashBanner,
+  isBuildTouchedByAgent,
+  markBuildTouchedByAgent,
+  showAiCrashBanner,
+} from './ai/integrations-ui';
+import {
+  clearAiAttachments,
+  closeAiAttachMenu,
+  formatAiAttachmentsPrompt,
+  getAiAttachments,
+  initAiAttachUi,
+  parseAiAttachmentsPrompt,
+  renderAiAttachBadgesHtml,
+  type AiAttachment,
+} from './ai/attach-ui';
+import {
+  renderAiContextBar,
+  renderAiContextHints,
+  renderAiEmptyScenarios,
+  renderAiQuickChips,
+} from './ai/shell-ui';
+import {
+  attachAiMessageActions,
+  beginAiRound,
+  endAiRound,
+  hideAiSkeleton,
+  mountAiPlan,
+  onAiStop,
+  setAiAgentStatus,
+  setAiStopVisible,
+  showAiSkeleton,
+  updateAiPlanStep,
+  wrapAiToolCollapsible,
+} from './ai/turn-ui';
 
 interface NewsPostSummary {
   id: string;
@@ -149,8 +198,57 @@ interface ElectronAPI {
   getModrinthProject: (projectId: string) => Promise<any>;
   getModrinthVersions: (projectId: string) => Promise<any[]>;
   downloadMod: (projectId: string, versionId?: string) => Promise<{ success: boolean; filename?: string; error?: string; buildCreated?: boolean; build?: any }>;
-  installMod: (buildId: string, projectId: string, versionId?: string, contentType?: string) => Promise<{ success: boolean; name?: string; version?: string; filename?: string; projectId?: string; iconUrl?: string; description?: string; contentType?: string; error?: string }>;
+  installMod: (buildId: string, projectId: string, versionId?: string, contentType?: string, options?: { force?: boolean; skipDeps?: boolean; installOptional?: boolean }) => Promise<{
+    success: boolean;
+    name?: string;
+    version?: string;
+    filename?: string;
+    projectId?: string;
+    iconUrl?: string;
+    description?: string;
+    contentType?: string;
+    error?: string;
+    installed?: Array<{
+      name: string;
+      version: string;
+      filename: string;
+      projectId: string;
+      iconUrl: string;
+      description: string;
+      contentType: string;
+      isDependency: boolean;
+    }>;
+    dependenciesInstalled?: number;
+    alreadySatisfied?: Array<{ projectId: string; title: string }>;
+    optionalSuggested?: Array<{ projectId: string; title: string; versionId?: string }>;
+    conflicts?: Array<{ projectId: string; title: string; withProjectId: string; withTitle: string }>;
+    unresolved?: Array<{ projectId: string; reason: string }>;
+    pendingDeps?: number;
+  }>;
   resolveProjectByName: (name: string) => Promise<{ projectId: string; iconUrl: string; title: string; description: string } | null>;
+  pickModpack: () => Promise<string | null>;
+  inspectModpack: (archivePath: string) => Promise<{
+    success: boolean;
+    inspect?: {
+      format: string;
+      name: string;
+      gameVersion: string;
+      loader: string;
+      loaderVersion: string;
+      fileCount: number;
+      hasOverrides: boolean;
+      archiveName: string;
+    };
+    error?: string;
+  }>;
+  importModpack: (archivePath: string) => Promise<{
+    success: boolean;
+    error?: string;
+    build?: any;
+    inspect?: any;
+    downloaded?: number;
+    skipped?: number;
+  }>;
   getVersions: () => Promise<any[]>;
   getLoaderVersions: (loader: string, mcVersion: string) => Promise<string[]>;
   detectJava: () => Promise<{ name: string; path: string; version: number }[]>;
@@ -168,6 +266,47 @@ interface ElectronAPI {
   launchUpdater: () => Promise<{ success: boolean; error?: string }>;
   fetchNewsList: (lang?: string, limit?: number) => Promise<{ posts?: NewsPostSummary[]; error?: string }>;
   fetchNewsPost: (id: string, lang?: string) => Promise<{ post?: NewsPostFull | null; error?: string }>;
+  aiStatus: (opts?: { testerKey?: string }) => Promise<{
+    configured?: boolean;
+    access?: boolean;
+    reason?: string;
+    requiresKey?: boolean;
+    tools?: boolean;
+    toolNames?: string[];
+    error?: string;
+  }>;
+  aiValidateKey: (testerKey: string) => Promise<{
+    ok?: boolean;
+    label?: string;
+    prefix?: string;
+    reason?: string;
+    code?: string;
+  }>;
+  aiChat: (payload: {
+    messages: Array<Record<string, unknown>>;
+    tools?: boolean;
+    context?: { buildId?: string; buildName?: string } | null;
+    testerKey?: string;
+  }) => Promise<{
+    reply?: string;
+    model?: string | null;
+    toolsEnabled?: boolean;
+    toolCalls?: Array<{ id: string; type?: string; function: { name: string; arguments: string } }>;
+    error?: string;
+    code?: string;
+    reason?: string;
+  }>;
+  aiToolsList: () => Promise<{ tools?: unknown[]; names?: string[] }>;
+  aiToolsRun: (
+    name: string,
+    args?: Record<string, unknown>,
+    opts?: { confirmed?: boolean },
+  ) => Promise<{
+    ok: boolean;
+    risk?: 'read' | 'write';
+    result?: unknown;
+    error?: string;
+  }>;
   consumeDeepLink: () => Promise<DeepLinkPayload | null>;
   resolveDeepLink: (payload: DeepLinkInstall) => Promise<DeepLinkResolveResult>;
   onDeepLink: (callback: (payload: DeepLinkPayload) => void) => () => void;
@@ -188,21 +327,78 @@ interface ElectronAPI {
   onLauncherDownload: (callback: (data: any) => void) => () => void;
   onLaunchProgress: (callback: (data: any) => void) => () => void;
   openConsole: () => Promise<void>;
+  appendConsoleLog: (message: string) => Promise<{ ok?: boolean } | void>;
   getConsoleHistory: () => Promise<any[]>;
   saveConsoleLog: (logContent: string) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
   onConsoleLog: (callback: (data: any) => void) => () => void;
   openExternal: (url: string) => Promise<void>;
-  openPath: (dirPath: string) => Promise<void>;
+  openPath: (dirPath: string) => Promise<string | void>;
+  pickFiles: () => Promise<string[]>;
+  readAttachFile: (filePath: string) => Promise<{
+    name: string;
+    path: string;
+    text?: string;
+    error?: string;
+  } | null>;
   saveLogFile: (buildId: string, logContent: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  openWorldViewer: (worldPath?: string, profile?: {
+    username?: string;
+    uuid?: string;
+    skinDataUrl?: string;
+  }, bounds?: { x: number; y: number; width: number; height: number }) => Promise<{ ok?: boolean; embedded?: boolean; pending?: boolean } | void>;
+  attachWorldViewer: (bounds: { x: number; y: number; width: number; height: number }) => Promise<{ ok?: boolean }>;
+  setWorldViewerBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<{ ok?: boolean }>;
+  closeWorldViewer: () => Promise<{ ok?: boolean }>;
+  onWorldModalOpen: (callback: (data: { worldPath?: string }) => void) => () => void;
+  onWorldModalClosed: (callback: () => void) => () => void;
+  onWorldBoundsSyncRequest: (callback: () => void) => () => void;
+  ensureWorldExporter: () => Promise<{ ok: boolean; exe?: string; error?: string }>;
+  exportWorldPreview: (worldPath: string, minecraftVersion: string) => Promise<{
+    ok: boolean;
+    outDir?: string;
+    error?: string;
+    log?: string;
+  }>;
+  openWorldExport: (outDir: string) => Promise<{ ok: boolean; error?: string }>;
+  onWorldExportProgress: (callback: (msg: string) => void) => () => void;
+  listMinecraftWorlds: () => Promise<{ buildId: string; folder: string; worldPath: string }[]>;
   getInstancePath: (buildId: string) => Promise<string>;
   listScreenshots: (buildId: string) => Promise<{ name: string; size: number; modified: number; thumb: string }[]>;
-  listWorlds: (buildId: string) => Promise<{ name: string; folder: string; icon: string; lastPlayed: number; gameType: number; hardcore: boolean; difficulty: number; version: string; size: number }[]>;
+  listWorlds: (buildId: string) => Promise<{
+    name: string;
+    folder: string;
+    icon: string;
+    lastPlayed: number;
+    gameType: number;
+    hardcore: boolean;
+    difficulty: number;
+    version: string;
+    dataVersion: number;
+    size: number;
+  }[]>;
   deleteInstanceFiles: (buildId: string, sub: string, names: string[]) => Promise<{ success: boolean; deleted?: number; error?: string }>;
   saveInstanceFiles: (buildId: string, sub: string, names: string[]) => Promise<{ success: boolean; saved?: number; canceled?: boolean; error?: string }>;
+  importInstanceFiles: (
+    buildId: string,
+    sub: string,
+    sourcePaths?: string[],
+  ) => Promise<{
+    success: boolean;
+    imported?: string[];
+    targetDir?: string;
+    count?: number;
+    canceled?: boolean;
+    error?: string;
+  }>;
   scanInstance: (buildId: string) => Promise<{ mods: any[]; resourcepacks: any[]; shaders: any[]; datapacks: any[] }>;
   watchInstance: (buildId: string) => Promise<void>;
   unwatchInstance: (buildId: string) => Promise<void>;
   onInstanceChanged: (callback: (buildId: string, data: any) => void) => () => void;
+  onBuildsChanged: (callback: () => void) => () => void;
+  onAiAction: (
+    callback: (msg: { id: string; action: string; payload: Record<string, unknown> }) => void,
+  ) => () => void;
+  aiActionResult: (msg: { id: string; result: unknown }) => void;
   debugStall: (ms: number) => void;
   /** Базовый адрес нашего API; вычисляется в preload по переменным окружения. */
   apiBase?: string;
@@ -225,6 +421,23 @@ function buildIconSrc(icon: string): string {
   if (icon.startsWith('preset:')) return `../../assets/InstancesIcons/${icon.slice(7)}`;
   if (icon.startsWith('modrinth:')) return catalogImageUrl(icon.slice(9));
   return icon;
+}
+
+/** Иконка по умолчанию, если сборке не задали свою. */
+const DEFAULT_BUILD_ICON_SRC = '../../assets/InstancesIcons/newBuild.png';
+
+function defaultBuildIconHtml(extraStyle = ''): string {
+  const style = extraStyle
+    ? `width:100%;height:100%;object-fit:cover;${extraStyle}`
+    : 'width:100%;height:100%;object-fit:cover;';
+  return `<img src="${DEFAULT_BUILD_ICON_SRC}" style="${style}" alt="">`;
+}
+
+function buildCardIconHtml(build: { icon?: string }): string {
+  if (build.icon) {
+    return `<img src="${buildIconSrc(build.icon)}" style="width:100%;height:100%;object-fit:cover;" alt="">`;
+  }
+  return defaultBuildIconHtml();
 }
 
 // ===== Иконки сборок (сетка из assets/InstancesIcons) =====
@@ -328,12 +541,18 @@ function applyStaticI18n(): void {
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     if (!key) return;
+    const translated = tr(key);
+    const nested = el.querySelector<HTMLElement>('.ai-scenario__title, [data-i18n-target]');
+    if (nested) {
+      nested.textContent = translated;
+      return;
+    }
     if (el.querySelector('*')) {
       el.childNodes.forEach(node => {
-        if (node.nodeType === Node.TEXT_NODE) node.textContent = tr(key);
+        if (node.nodeType === Node.TEXT_NODE) node.textContent = translated;
       });
     } else {
-      el.textContent = tr(key);
+      el.textContent = translated;
     }
   });
   document.querySelectorAll<HTMLInputElement>('[data-i18n-ph]').forEach(el => {
@@ -399,6 +618,11 @@ function refreshAllDynamicText(): void {
   if (ramSlider && ramLabel) ramLabel.textContent = ramSlider.value + t('common.mb');
   const aboutVer = document.getElementById('about-version');
   if (aboutVer && appVersion) aboutVer.textContent = `${t('about.version')} ${appVersion}`;
+  if (aiInited) {
+    renderAiEmptyScenarios(getAiUiHost());
+    renderAiSessionList();
+    refreshAiShellUi(activeAiSession());
+  }
 }
 
 /* ===== TITLEBAR ===== */
@@ -411,6 +635,17 @@ document.getElementById('btn-close')?.addEventListener('click', () => api?.windo
 
 function switchTab(target: string): void {
   if (!target) return;
+  if (target === 'ai') {
+    if (!isAiFeatureEnabled()) {
+      showAiAccessDeniedModal();
+      return;
+    }
+    // Вкладка видна, но без валидного ключа — модалка доступа
+    if (!getAiTesterKey()) {
+      showAiAccessDeniedModal();
+      return;
+    }
+  }
   tabs.forEach(t => t.classList.remove('active'));
   tabViews.forEach(v => v.classList.remove('active'));
   const tabBtn = document.querySelector<HTMLElement>(`.tab-btn[data-tab="${target}"]`);
@@ -424,8 +659,17 @@ function switchTab(target: string): void {
   if (target === 'skins') void ensureSkinTab();
   if (target === 'mods') void ensureModsCatalog();
   if (target === 'servers') void loadServerCatalog();
-  if (target === 'home') renderHomeNews();
+  if (target === 'home') {
+    renderHomeNews();
+    refreshHomeDashboard();
+  }
   if (target === 'news') void loadNews(false);
+  if (target === 'ai') {
+    ensureAiTab();
+    void refreshAiAccessStatus().then(() => {
+      if (!getAiTesterKey() || aiAccessOk === false) showAiAccessDeniedModal();
+    });
+  }
 }
 
 /** requestIdleCallback с фолбэком: прогрев тяжёлых вкладок в простое после старта. */
@@ -1077,24 +1321,45 @@ function setupDownloadProgress(): void {
   const speedEl = document.getElementById('download-progress-speed');
   const percent = document.getElementById('download-progress-percent');
   const fill = document.getElementById('download-progress-fill');
-  const log = document.getElementById('download-progress-log');
-  if (!el || !label || !speedEl || !percent || !fill || !log) return;
+  if (!el || !label || !speedEl || !percent || !fill) return;
+
+  const applyCountProgress = (done: number, total: number, fileLabel?: string) => {
+    const safeTotal = Math.max(0, total);
+    const safeDone = Math.max(0, Math.min(done, safeTotal || done));
+    const pct = safeTotal > 0 ? Math.min(100, Math.round((safeDone / safeTotal) * 100)) : 0;
+    el.classList.remove('is-success', 'is-error');
+    fill.style.animation = 'none';
+    fill.style.width = `${pct}%`;
+    percent.textContent = safeTotal > 0 ? `${pct}%` : '';
+    speedEl.textContent = safeTotal > 0 ? `${safeDone}/${safeTotal}` : '';
+    if (fileLabel) label.textContent = fileLabel;
+    el.classList.remove('hidden');
+  };
+
+  const hideProgressLater = (ms: number) => {
+    setTimeout(() => {
+      el.classList.add('hidden');
+      el.classList.remove('is-success', 'is-error');
+    }, ms);
+  };
 
   if (api?.onDownloadProgress) {
     api.onDownloadProgress((data: any) => {
       if (data.type === 'start') {
-        el.classList.remove('hidden');
+        el.classList.remove('hidden', 'is-success', 'is-error');
         label.textContent = `${data.filename || '...'}`;
         speedEl.textContent = '';
         percent.textContent = '0%';
+        fill.style.animation = 'none';
         fill.style.width = '0%';
-        log.innerHTML = '';
         downloadStartTime = Date.now();
         downloadPrevReceived = 0;
         downloadPrevTime = downloadStartTime;
-        addLogToEl(log, t('log.downloadStart', { file: data.filename, size: formatSizeGlobal(data.size || 0) }));
+        pushConsoleLog(t('log.downloadStart', { file: data.filename, size: formatSizeGlobal(data.size || 0) }));
       } else if (data.type === 'progress') {
+        el.classList.remove('is-success', 'is-error');
         percent.textContent = `${data.percent}%`;
+        fill.style.animation = 'none';
         fill.style.width = `${data.percent}%`;
         label.textContent = `${data.filename || ''}`;
         const now = Date.now();
@@ -1107,48 +1372,71 @@ function setupDownloadProgress(): void {
         }
       } else if (data.type === 'done') {
         percent.textContent = '100%';
+        fill.style.animation = 'none';
         fill.style.width = '100%';
         speedEl.textContent = '';
+        el.classList.remove('is-error');
+        el.classList.add('is-success');
         if (data.buildCreated) {
           label.textContent = t('log.buildCreatedLabel', { name: data.build.name });
-          addLogToEl(log, t('log.buildCreated', { name: data.build.name }));
-          savedBuilds.push(data.build);
+          pushConsoleLog(t('log.buildCreated', { name: data.build.name }));
+          const idx = savedBuilds.findIndex((b) => b.id === data.build.id);
+          if (idx >= 0) savedBuilds[idx] = { ...savedBuilds[idx], ...data.build };
+          else savedBuilds.push(data.build);
           renderBuilds();
           updateBanner();
           updateSidebarCards();
         } else {
           label.textContent = t('log.done', { file: data.filename });
-          addLogToEl(log, t('log.savedTo', { path: data.filePath }));
+          pushConsoleLog(t('log.savedTo', { path: data.filePath }));
         }
-        setTimeout(() => el.classList.add('hidden'), 3000);
+        hideProgressLater(3000);
       } else if (data.type === 'error') {
+        el.classList.remove('is-success');
+        el.classList.add('is-error');
         label.textContent = t('log.error', { msg: data.message });
         speedEl.textContent = '';
-        addLogToEl(log, t('log.error', { msg: data.message }));
-        setTimeout(() => el.classList.add('hidden'), 4000);
+        if (!percent.textContent) percent.textContent = '—';
+        fill.style.animation = 'none';
+        if (!fill.style.width || fill.style.width === '0%') fill.style.width = '100%';
+        pushConsoleLog(t('log.error', { msg: data.message }));
+        hideProgressLater(4000);
       } else if (data.kind === 'status') {
-        const msg = data.key ? t(data.key, { ...data.params, unit: t('common.mb') }) : data.message;
-        addLogToEl(log, msg);
-        label.textContent = msg;
-        el.classList.remove('hidden');
+        const params = data.params || {};
+        const msg = data.key ? t(data.key, { ...params, unit: t('common.mb') }) : data.message;
+        pushConsoleLog(msg);
+
+        const total = Number(params.n);
+        const done = Number(params.i);
+        const hasTotal = Number.isFinite(total) && total > 0;
+        const hasDone = Number.isFinite(done) && done >= 0;
+        const isPackErr = data.key === 'smp.packFileErr';
+
+        if (hasTotal && hasDone) {
+          // Пакетная загрузка модов/файлов: 12/49 + процент
+          const fileName = params.file ? String(params.file) : '';
+          applyCountProgress(done, total, fileName || msg);
+          if (isPackErr) {
+            el.classList.remove('is-success');
+            el.classList.add('is-error');
+          }
+        } else if (hasTotal) {
+          // Старт пакета: «Скачивание N файлов…» → 0/N
+          applyCountProgress(0, total, msg);
+        } else {
+          el.classList.remove('is-success', 'is-error');
+          label.textContent = msg;
+          el.classList.remove('hidden');
+        }
       }
     });
   }
 }
 
-function addLogToEl(logEl: HTMLElement, message: string): void {
-  const time = new Date().toLocaleTimeString();
-  const entry = document.createElement('div');
-  entry.className = 'dp-log-entry';
-  entry.textContent = `[${time}] ${message}`;
-  logEl.appendChild(entry);
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-function classifyLogLine(line: string): string {
-  if (/(error|fail(ed)?|crash|exception|ошиб|упал|xatа|ҡата)/i.test(line)) return 'error';
-  if (/(warn(ing)?|предупрежд|аваз|ескерту)/i.test(line)) return 'warn';
-  return '';
+function pushConsoleLog(message: string): void {
+  const text = String(message || '').trim();
+  if (!text) return;
+  void api?.appendConsoleLog?.(text);
 }
 
 function openConsoleLog(): void {
@@ -1159,45 +1447,91 @@ document.getElementById('download-progress-log-btn')?.addEventListener('click', 
 
 /* ── Crash Modal ── */
 
-async function analyzeCrash(logText: string): Promise<string | null> {
-  if (!logText) return null;
-  let report = '';
-  if (runningBuild?.id && api?.getCrashReport) {
-    try {
-      report = (await api.getCrashReport(runningBuild.id)) || '';
-    } catch { /* ignore */ }
-  }
-  const text = (logText + '\n' + report).toLowerCase();
-  const rules: [RegExp, string][] = [
-    [/outofmemoryerror|could not reserve enough space for object heap|failed to allocate/i, 'oom'],
-    [/modloadingerror|modloadingexception|failed to load mods|found multiple mods|circular dependency/i, 'modconflict'],
-    [/nosuchmethoderror|nosuchfielderror|abstractmethoderror|noclassdeffounderror|linkageerror/i, 'conflict'],
-    [/unsupported class file major version|class file version/i, 'java'],
-    [/access_violation|sigsegv|hs_err|exit code: -805306369/i, 'native'],
-  ];
-  for (const [re, key] of rules) if (re.test(text)) return key;
-  return 'unknown';
+let lastCrashLogs: string[] = [];
+let lastCrashBuild: Build | null = null;
+
+function joinInstancePath(root: string, ...parts: string[]): string {
+  const sep = root.includes('/') && !root.includes('\\') ? '/' : '\\';
+  return [root.replace(/[\\/]+$/, ''), ...parts].join(sep);
 }
 
 async function showCrashModal(logs: string[]): Promise<void> {
-  const body = document.getElementById('modal-crash-body');
-  if (body) body.textContent = logs.join('\n');
+  lastCrashLogs = Array.isArray(logs) ? logs.slice() : [];
+  lastCrashBuild = runningBuild;
   const sub = document.getElementById('modal-crash-sub');
-  if (sub && runningBuild) sub.textContent = t('crash.subBuild', { name: runningBuild.name });
-  const diag = document.getElementById('modal-crash-diagnosis');
-  const diagTitle = document.getElementById('modal-crash-diag-title');
-  const diagTip = document.getElementById('modal-crash-diag-tip');
-  if (diag && diagTitle && diagTip) {
-    const key = logs.length > 0 ? await analyzeCrash(logs.join('\n')) : null;
-    if (key) {
-      diagTitle.textContent = t(`crash.diag.${key}.title`);
-      diagTip.textContent = t(`crash.diag.${key}.tip`);
-      diag.classList.remove('hidden');
-    } else {
-      diag.classList.add('hidden');
-    }
+  if (sub) {
+    sub.textContent = runningBuild
+      ? t('crash.subBuild', { name: runningBuild.name })
+      : t('crash.sub');
   }
+  const msg = document.getElementById('modal-crash-message');
+  if (msg) msg.textContent = t('crash.message');
   openModal('modal-crash');
+}
+
+async function openCrashLaunchLog(): Promise<void> {
+  const build = lastCrashBuild || runningBuild;
+  if (!build?.id || !api?.getInstancePath || !api?.openPath) return;
+
+  const instanceDir = await api.getInstancePath(build.id);
+  if (!instanceDir) return;
+
+  const latestLog = joinInstancePath(instanceDir, 'logs', 'latest.log');
+  // Пустая строка от shell.openPath = успех
+  const err = await api.openPath(latestLog);
+  if (!err) {
+    closeModal('modal-crash');
+    return;
+  }
+
+  // Fallback: сохранить буфер краша и открыть его
+  const buffer = lastCrashLogs.join('\n').trim();
+  if (buffer && api.saveLogFile) {
+    const result = await api.saveLogFile(build.id, buffer);
+    if (result?.success && result.path) await api.openPath(result.path);
+  } else {
+    // Открыть папку logs, если файла ещё нет
+    await api.openPath(joinInstancePath(instanceDir, 'logs'));
+  }
+  closeModal('modal-crash');
+}
+
+async function openCrashWithAgent(): Promise<void> {
+  const build = lastCrashBuild || runningBuild;
+  const logs = lastCrashLogs;
+  closeModal('modal-crash');
+
+  switchTab('ai');
+  ensureAiTab();
+  const session = createAiSession(true, {
+    buildId: build?.id || null,
+    title: t('crash.agentChatTitle'),
+  });
+  renderAiSessionList();
+  renderAiConversation();
+  updateAiBuildChip(session);
+
+  const host = getAiUiHost();
+  const excerpt = logs.join('\n').slice(-8000);
+  appendAiCrashQuote(host, {
+    buildName: build?.name || build?.id || 'build',
+    logExcerpt: excerpt || '(лог пуст — вызови get_crash_report / get_latest_log)',
+  });
+  if (build?.id) {
+    showAiCrashBanner(host, {
+      buildId: build.id,
+      buildName: build.name || build.id,
+    });
+  }
+
+  const prompt = [
+    t('crash.agentPrompt', { name: build?.name || build?.id || 'build' }),
+    '',
+    '```',
+    excerpt || '(лог пуст — вызови get_crash_report / get_latest_log)',
+    '```',
+  ].join('\n');
+  await sendAiMessage(prompt);
 }
 
 document.getElementById('modal-crash-close')?.addEventListener('click', () => closeModal('modal-crash'));
@@ -1206,36 +1540,21 @@ document.getElementById('modal-crash')?.addEventListener('click', (e) => {
 });
 
 document.getElementById('modal-crash-folder')?.addEventListener('click', async () => {
-  if (!runningBuild?.id) return;
+  const build = lastCrashBuild || runningBuild;
+  if (!build?.id) return;
   if (api?.getInstancePath && api?.openPath) {
-    const instanceDir = await api.getInstancePath(runningBuild.id);
+    const instanceDir = await api.getInstancePath(build.id);
     if (instanceDir) await api.openPath(instanceDir);
   }
   closeModal('modal-crash');
 });
 
-document.getElementById('modal-crash-log')?.addEventListener('click', async () => {
-  if (!runningBuild?.id) return;
-  const body = document.getElementById('modal-crash-body');
-  const logContent = body?.textContent || '';
-  if (api?.saveLogFile) {
-    const result = await api.saveLogFile(runningBuild.id, logContent);
-    if (result.success && result.path && api?.openPath) {
-      await api.openPath(result.path);
-    }
-  }
-  closeModal('modal-crash');
+document.getElementById('modal-crash-log')?.addEventListener('click', () => {
+  void openCrashLaunchLog();
 });
 
-document.getElementById('modal-crash-fix')?.addEventListener('click', async () => {
-  // Re-run the build - eml-lib will re-download missing/corrupted files
-  closeModal('modal-crash');
-  if (runningBuild) {
-    const build = runningBuild;
-    runningBuild = null;
-    updateStatus(t('status.fixingBuild', { name: build.name }));
-    await launchBuild(build);
-  }
+document.getElementById('modal-crash-agent')?.addEventListener('click', () => {
+  void openCrashWithAgent();
 });
 
 function formatSpeedGlobal(bytesPerSec: number): string {
@@ -1267,9 +1586,29 @@ let downloadPrevTime = 0;
 
 const SPLASH_MIN_MS = 600;
 const SPLASH_SAFETY_MS = 6000;
+/** Показ AI-анонса и welcome один раз для 1.0.4-beta */
+const STARTUP_AI_SEEN_KEY = 'Undefined Client-seen-startup-ai-1.0.4-beta';
 
 let initStartedAt = performance.now();
 let splashClosed = false;
+/** После видео ждём закрытия splash → welcome, а не сразу в UI */
+let splashAwaitingWelcome = false;
+let splashWelcomeShown = false;
+
+function needsStartupAiAnnounce(): boolean {
+  try {
+    return localStorage.getItem(STARTUP_AI_SEEN_KEY) !== 'true';
+  } catch {
+    return false;
+  }
+}
+
+function markStartupAiSeen(): void {
+  try {
+    localStorage.setItem(STARTUP_AI_SEEN_KEY, 'true');
+  } catch { /* ignore */ }
+  document.documentElement.classList.remove('splash-first-run', 'splash-announce-done');
+}
 
 function closeSplash(): void {
   if (splashClosed) return;
@@ -1283,10 +1622,194 @@ function closeSplash(): void {
   }, 500);
 }
 
+function showSplashWelcome(): void {
+  if (splashWelcomeShown || splashClosed) return;
+  splashWelcomeShown = true;
+  splashAwaitingWelcome = false;
+
+  const loader = document.getElementById('splash-loader');
+  if (loader) loader.classList.add('hidden');
+
+  const content = document.getElementById('splash-content');
+  if (content) {
+    content.style.opacity = '0';
+    content.style.pointerEvents = 'none';
+  }
+
+  const welcome = document.getElementById('splash-welcome');
+  if (welcome) {
+    welcome.hidden = false;
+    welcome.removeAttribute('hidden');
+  }
+
+  bindSplashWelcomeWizard();
+}
+
+/** Многостраничная welcome-модалка после AI-анонса */
+function bindSplashWelcomeWizard(): void {
+  type WelcomeStep = '1' | '2' | '3' | '4-on' | '4-off';
+  let step: WelcomeStep = '1';
+
+  const titleEl = document.getElementById('splash-welcome-title');
+  const subEl = document.getElementById('splash-welcome-sub');
+  const nextBtn = document.getElementById('splash-welcome-next') as HTMLButtonElement | null;
+  const toggle = document.getElementById('splash-welcome-ai-toggle') as HTMLInputElement | null;
+  const stepsEl = document.getElementById('splash-welcome-steps');
+
+  const headerFor = (s: WelcomeStep): { title: string; sub: string } => {
+    switch (s) {
+      case '1':
+        return { title: t('splash.welcomeTitle'), sub: t('splash.welcomeSub', { ver: '1.0.4-beta' }) };
+      case '2':
+        return { title: t('splash.welcome.p2.header'), sub: t('splash.welcome.p2.headerSub') };
+      case '3':
+        return { title: t('splash.welcome.p3.header'), sub: t('splash.welcome.p3.headerSub') };
+      case '4-on':
+        return { title: t('splash.welcome.p4on.header'), sub: t('splash.welcome.p4on.headerSub') };
+      case '4-off':
+        return { title: t('splash.welcome.p4off.header'), sub: t('splash.welcome.p4off.headerSub') };
+    }
+  };
+
+  const render = () => {
+    document.querySelectorAll<HTMLElement>('[data-welcome-page]').forEach((page) => {
+      const id = page.getAttribute('data-welcome-page');
+      const on = id === step;
+      page.classList.toggle('is-active', on);
+      page.hidden = !on;
+    });
+    const hdr = headerFor(step);
+    if (titleEl) titleEl.textContent = hdr.title;
+    if (subEl) subEl.textContent = hdr.sub;
+    if (nextBtn) {
+      const isFinal = step === '4-on' || step === '4-off';
+      nextBtn.textContent = isFinal ? t('splash.welcomeStart') : t('splash.welcomeNext');
+    }
+    if (stepsEl) {
+      const idx = step === '1' ? 0 : step === '2' ? 1 : 2;
+      const dots = stepsEl.querySelectorAll('.splash-welcome-step');
+      dots.forEach((dot, i) => dot.classList.toggle('is-on', i === idx || (step.startsWith('4') && i === 2)));
+      stepsEl.style.visibility = step.startsWith('4') ? 'hidden' : '';
+    }
+  };
+
+  const applyAgentChoice = (enabled: boolean) => {
+    localStorage.setItem(AI_ENABLED_LS_KEY, String(enabled));
+    const settingsToggle = document.getElementById('setting-ai-enabled') as HTMLInputElement | null;
+    if (settingsToggle) settingsToggle.checked = enabled;
+    applyAiTabVisibility();
+  };
+
+  const finish = () => {
+    markStartupAiSeen();
+    closeSplash();
+  };
+
+  nextBtn?.addEventListener('click', () => {
+    if (step === '1') {
+      step = '2';
+      render();
+      return;
+    }
+    if (step === '2') {
+      step = '3';
+      render();
+      return;
+    }
+    if (step === '3') {
+      const enabled = Boolean(toggle?.checked);
+      applyAgentChoice(enabled);
+      step = enabled ? '4-on' : '4-off';
+      render();
+      return;
+    }
+    finish();
+  });
+
+  render();
+}
+
+/** Закрытие splash с учётом first-run welcome */
+function requestCloseSplash(): void {
+  if (splashClosed) return;
+  if (splashAwaitingWelcome && !splashWelcomeShown) {
+    showSplashWelcome();
+    return;
+  }
+  if (splashWelcomeShown) return;
+  closeSplash();
+}
+
+/** Анонс-видео AI перед логотипом (только первый запуск версии) */
+function playStartupAnnounceVideo(): Promise<void> {
+  const wrap = document.getElementById('splash-announce');
+  const video = document.getElementById('splash-announce-video') as HTMLVideoElement | null;
+  if (!wrap || !video) return Promise.resolve();
+
+  wrap.hidden = false;
+  wrap.removeAttribute('hidden');
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      try { video.pause(); } catch { /* ignore */ }
+      wrap.classList.add('fade-out');
+      document.documentElement.classList.add('splash-announce-done');
+      setTimeout(() => {
+        wrap.hidden = true;
+        wrap.setAttribute('hidden', '');
+        wrap.classList.remove('fade-out');
+        // Показываем логотип на том же фоне
+        document.documentElement.classList.remove('splash-first-run');
+        const content = document.getElementById('splash-content');
+        if (content) {
+          content.style.opacity = '';
+          content.style.pointerEvents = '';
+        }
+        resolve();
+      }, 420);
+    };
+
+    video.addEventListener('ended', finish, { once: true });
+    video.addEventListener('error', finish, { once: true });
+
+    // В Electron обычно можно со звуком; если нет — mute и повтор
+    const tryPlay = () => {
+      const p = video.play();
+      if (p && typeof p.then === 'function') {
+        p.catch(() => {
+          video.muted = true;
+          video.play().catch(() => finish());
+        });
+      }
+    };
+    if (video.readyState >= 2) tryPlay();
+    else {
+      video.addEventListener('canplay', tryPlay, { once: true });
+      // На случай зависания загрузки
+      setTimeout(() => {
+        if (!finished && video.readyState < 2) finish();
+      }, 8000);
+    }
+  });
+}
+
 async function init(): Promise<void> {
   await setLang(localStorage.getItem('Undefined Client-language') || 'ru');
+  initCustomCarets();
+  applyAiTabVisibility();
+  initAiAssistant();
+
+  const firstAiRun = needsStartupAiAnnounce();
+  if (firstAiRun) {
+    splashAwaitingWelcome = true;
+    await playStartupAnnounceVideo();
+  }
+
   initStartedAt = performance.now();
-  setTimeout(closeSplash, SPLASH_SAFETY_MS);
+  setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
 
   // Random video wallpaper
   const videoEl = document.getElementById('quick-banner-bg') as HTMLVideoElement;
@@ -1351,7 +1874,6 @@ async function init(): Promise<void> {
     const speedEl = document.getElementById('download-progress-speed');
     const percent = document.getElementById('download-progress-percent');
     const fill = document.getElementById('download-progress-fill');
-    const log = document.getElementById('download-progress-log');
     let crashLogs: string[] = [];
 
     function pushCrashLog(line: string): void {
@@ -1365,22 +1887,12 @@ async function init(): Promise<void> {
       return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
     }
 
-function addLog(msg: string): void {
-  if (!log) return;
-  while (log.childElementCount > 200) log.removeChild(log.firstChild as ChildNode);
-  const line = document.createElement('div');
-  line.textContent = msg;
-  const cls = classifyLogLine(msg);
-  if (cls) line.classList.add('log-' + cls);
-  log.appendChild(line);
-  log.scrollTop = log.scrollHeight;
-}
-
     api.onLaunchProgress((data) => {
       if (!el) return;
       const msg = (d: any): string => (d.key ? t(d.key, d.params) : (d.message || ''));
       switch (data.kind) {
         case 'status':
+          el.classList.remove('is-success', 'is-error');
           if (label) label.textContent = msg(data);
           if (speedEl) speedEl.textContent = '';
           if (percent) percent.textContent = '';
@@ -1388,7 +1900,7 @@ function addLog(msg: string): void {
           el.classList.remove('hidden');
           break;
         case 'download':
-          if (el) el.classList.remove('hidden');
+          el.classList.remove('hidden', 'is-success', 'is-error');
           if (label) label.textContent = msg(data);
           if (fill) {
             const sTotal = data.total?.size || 0;
@@ -1424,11 +1936,11 @@ function addLog(msg: string): void {
         case 'info':
         case 'debug':
           pushCrashLog(msg(data));
-          addLog(msg(data));
+          // Текст уже уходит в Консоль разработчика через progress sink в main
           break;
         case 'launching':
           crashLogs = [];
-          addLog(t('status.minecraftStarted'));
+          el.classList.remove('is-success', 'is-error');
           if (runningBuild) {
             runningBuildStart = Date.now();
             startRunningTimer();
@@ -1441,16 +1953,15 @@ function addLog(msg: string): void {
           break;
         case 'log':
           pushCrashLog(msg(data));
-          addLog(msg(data));
           break;
         case 'close':
-          updateStatus(msg(data));
+          // Не пишем лог закрытия в quick-banner-sub — только в консоль (sink)
           if (label) label.textContent = t('status.minecraftClosed');
           if (speedEl) speedEl.textContent = '';
           if (percent) percent.textContent = '';
           if (fill) { fill.style.width = '0%'; fill.style.animation = 'none'; }
-          addLog(msg(data));
           stopRunningTimer();
+          updateBanner();
           // If process exited with non-zero code, show crash modal
           if (data.code && data.code !== 0) {
             showCrashModal(crashLogs);
@@ -1458,16 +1969,28 @@ function addLog(msg: string): void {
           setTimeout(() => el.classList.add('hidden'), 4000);
           break;
         case 'crash':
+          el.classList.remove('is-success');
+          el.classList.add('is-error');
           if (label) label.textContent = t('status.minecraftCrashed');
-          if (fill) fill.style.animation = 'none';
-          addLog(t('log.error', { msg: msg(data) }));
+          if (fill) {
+            fill.style.animation = 'none';
+            fill.style.width = '100%';
+          }
+          if (percent) percent.textContent = '—';
           stopRunningTimer();
+          updateBanner();
           // Show crash modal
           showCrashModal(crashLogs);
           break;
         case 'error':
+          el.classList.remove('hidden', 'is-success');
+          el.classList.add('is-error');
           if (label) label.textContent = msg(data);
-          addLog(msg(data));
+          if (fill) {
+            fill.style.animation = 'none';
+            if (!fill.style.width || fill.style.width === '0%') fill.style.width = '100%';
+          }
+          if (percent && !percent.textContent) percent.textContent = '—';
           updateStatus(msg(data));
           break;
       }
@@ -1497,6 +2020,9 @@ function addLog(msg: string): void {
   pushPresence('home');
 
   await loadBuilds();
+  api?.onBuildsChanged?.(() => {
+    void loadBuilds();
+  });
   await loadServers();
   renderSavedAccounts();
   loadTheme();
@@ -1514,6 +2040,8 @@ function addLog(msg: string): void {
     if (aboutVer && api?.getAppVersion) {
       api.getAppVersion().then(ver => {
         appVersion = ver;
+        const aiVer = document.getElementById('ai-agent-ver');
+        if (aiVer && ver) aiVer.textContent = ver;
         aboutVer.textContent = `${t('about.version')} ${ver}`;
       });
     }
@@ -1538,7 +2066,7 @@ function addLog(msg: string): void {
   }
 
   const remaining = SPLASH_MIN_MS - (performance.now() - initStartedAt);
-  setTimeout(closeSplash, Math.max(0, remaining));
+  setTimeout(requestCloseSplash, Math.max(0, remaining));
 
   // ===== Deep link uclient:// =====
   // Ссылки уже запущенного лаунчера приходят событием, ссылка холодного старта
@@ -1601,7 +2129,7 @@ function renderBuilds(): void {
   if (savedBuilds.length === 0) {
     list.innerHTML = `
       <div class="builds-empty">
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <img src="../../assets/icons/newBuild.svg" width="56" height="56" alt="" aria-hidden="true">
         <div>${t('builds.empty')}</div>
         <button class="action-btn" id="builds-empty-create"><span>${t('builds.add')}</span></button>
       </div>`;
@@ -1609,19 +2137,16 @@ function renderBuilds(): void {
     return;
   }
   list.innerHTML = savedBuilds.map(b => {
-    let iconHtml: string;
-    if (b.icon) {
-      iconHtml = `<img src="${buildIconSrc(b.icon)}" style="width:100%;height:100%;object-fit:cover;">`;
-    } else {
-      iconHtml = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M6 4L16 10L6 16V4Z" fill="#1a1a1a"/></svg>`;
-    }
+    const iconHtml = buildCardIconHtml(b);
     const isRunning = runningBuild?.id === b.id;
+    // Бейдж: сборка менялась агентом в этой сессии (sessionStorage)
+    const agentTouched = isBuildTouchedByAgent(b.id);
     const meta = [b.gameVersion, b.loader, b.loaderVersion].filter(Boolean).join(' • ');
     return `
-    <div class="build-card${isRunning ? ' running' : ''}" data-build-id="${b.id}">
+    <div class="build-card${isRunning ? ' running' : ''}${agentTouched ? ' build-card--agent-touched' : ''}" data-build-id="${b.id}">
       <div class="build-card-icon">${iconHtml}</div>
       <div class="build-card-info">
-        <div class="build-card-title">
+        <div class="build-card-title"${agentTouched ? ` data-agent-badge="${t('ai.build.touchedByAgent').replace(/"/g, '&quot;')}"` : ''}>
           ${isRunning ? '<span class="build-running-dot"></span>' : ''}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.name}</span>
         </div>
@@ -1691,18 +2216,21 @@ function renderHomeBuilds(): void {
   if (!container) return;
   const recent = savedBuilds.slice(-5).reverse();
   if (recent.length === 0) {
-    container.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.2);font-weight:300;">' + t('builds.none') + '</div>';
+    container.innerHTML = `<div class="home-empty">
+      <div class="home-empty__title">${escapeAiHtml(t('home.empty.buildsTitle'))}</div>
+      <div class="home-empty__desc">${escapeAiHtml(t('home.empty.buildsDesc'))}</div>
+      <button type="button" class="home-empty__btn" data-home-empty="add-build">${escapeAiHtml(t('home.empty.buildsCta'))}</button>
+    </div>`;
+    container.querySelector<HTMLElement>('[data-home-empty="add-build"]')?.addEventListener('click', () => {
+      switchTab('builds');
+      openModalBuild();
+    });
     return;
   }
   container.innerHTML = recent.map(b => {
-    let iconHtml: string;
-    if (b.icon) {
-      iconHtml = `<img src="${buildIconSrc(b.icon)}" style="width:100%;height:100%;object-fit:cover;">`;
-    } else {
-      iconHtml = `<svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M6 4L16 10L6 16V4Z" fill="#1a1a1a"/></svg>`;
-    }
+    const iconHtml = buildCardIconHtml(b);
     return `<div class="home-row${runningBuild?.id === b.id ? ' running' : ''}" data-build-id="${b.id}">
-      <div class="home-row-icon" style="background:rgba(255,255,255,0.1)">${iconHtml}</div>
+      <div class="home-row-icon" style="background:transparent">${iconHtml}</div>
       <div class="home-row-info">
         <div class="home-row-title">${b.name}</div>
         <div class="home-row-meta">${b.gameVersion} · ${b.loader}${b.playtime ? ' · ' + formatPlaytime(b.playtime) : ''}</div>
@@ -1726,6 +2254,7 @@ function renderHomeBuilds(): void {
 }
 
 document.getElementById('add-build-btn')?.addEventListener('click', () => openModalBuild());
+document.getElementById('import-build-btn')?.addEventListener('click', () => openModalImport());
 document.getElementById('build-form-cancel')?.addEventListener('click', () => closeModalBuildModal());
 document.getElementById('build-form-submit')?.addEventListener('click', () => submitModalBuild());
 
@@ -2239,13 +2768,22 @@ function pingServersUI(entries: CatalogServerEntry[]): void {
 function updateSrvCardStatus(e: CatalogServerEntry): void {
   const addr = srvAddr(e);
   const card = document.querySelector<HTMLElement>(`.srv-card[data-srv-ip="${CSS.escape(addr)}"]`);
-  if (!card) return;
+  if (!card) {
+    // Статус каталога всё равно полезен для сайдбара
+    if (e.status) srvStatusCache[addr] = e.status;
+    const last = savedServers[savedServers.length - 1];
+    if (last && savedServerAddr(last) === addr) updateSidebarLastServer();
+    return;
+  }
   const st = e.status || {};
+  if (st) srvStatusCache[addr] = st;
   const online = !!st.online;
   if (!online) {
     srvOfflineAddrs[addr] = true;
     card.remove();
     refreshServersGridAfterRemoval();
+    const lastOff = savedServers[savedServers.length - 1];
+    if (lastOff && savedServerAddr(lastOff) === addr) updateSidebarLastServer();
     return;
   }
   const players = st.players?.online != null ? st.players.online : null;
@@ -2275,6 +2813,8 @@ function updateSrvCardStatus(e: CatalogServerEntry): void {
     const iconEl = card.querySelector<HTMLElement>('.srv-icon');
     if (iconEl) iconEl.innerHTML = `<img src="${srvEsc(icon)}" alt="">`;
   }
+  const last = savedServers[savedServers.length - 1];
+  if (last && savedServerAddr(last) === addr) updateSidebarLastServer();
 }
 
 function srvServerFavicon(st: any): string {
@@ -2394,6 +2934,8 @@ async function pingSavedServerStatuses(): Promise<void> {
       try { srvStatusCache[addr] = (await api?.serverStatus?.(addr)) || { online: false }; }
       catch { srvStatusCache[addr] = { online: false }; }
       if (srvCategory === 'mine') renderSavedServersGrid();
+      const last = savedServers[savedServers.length - 1];
+      if (last && savedServerAddr(last) === addr) updateSidebarLastServer();
     }
   };
   await Promise.all(Array.from({ length: 6 }, () => worker()));
@@ -2761,39 +3303,114 @@ document.addEventListener('click', (e) => {
   }
 });
 
+let homeServersStatusPending = false;
+
+function homeServerRowHtml(s: Server): string {
+  const addr = savedServerAddr(s);
+  const st = resolveLastServerStatus(addr);
+  const online = !!st.online;
+  const players = st.players?.online != null ? st.players.online : null;
+  const max = st.players?.max != null ? st.players.max : null;
+  const version = String(st.version || s.version || '').split('\n')[0] || '';
+  const latency = st.latency != null && Number.isFinite(Number(st.latency))
+    ? `${Math.round(Number(st.latency))} ms`
+    : '';
+  const statusTxt = online
+    ? (players != null
+      ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}`
+      : t('servers.online'))
+    : (Object.keys(st).length ? t('servers.offline') : '…');
+  const fav = srvServerFavicon(st);
+  const icon = fav
+    ? `<img src="${srvEsc(fav)}" alt="">`
+    : `<img src="../../assets/icons/serverIcon.png" alt="">`;
+
+  return `
+    <div class="home-row" data-server-id="${escapeHtml(s.id)}" data-srv-ip="${srvEsc(addr)}">
+      <div class="home-row-icon">${icon}</div>
+      <div class="home-row-info">
+        <div class="home-row-title">${escapeHtml(s.name)}</div>
+        <div class="home-row-meta home-srv-meta">
+          <span class="srv-dot ${online ? 'srv-online' : 'srv-offline'}"></span>
+          <span class="home-srv-online">${escapeHtml(statusTxt)}</span>
+          ${version ? `<span class="srv-sep">·</span><span class="home-srv-ver">${escapeHtml(version)}</span>` : ''}
+          ${latency ? `<span class="srv-sep">·</span><span class="home-srv-ping">${escapeHtml(latency)}</span>` : ''}
+        </div>
+      </div>
+      <button class="home-row-btn">${t('btn.launch')}</button>
+    </div>
+  `;
+}
+
+async function refreshHomeServersStatus(servers: Server[]): Promise<void> {
+  if (homeServersStatusPending || !api?.serverStatus) return;
+  const need = servers.filter((s) => {
+    const addr = savedServerAddr(s);
+    return !addr || srvStatusCache[addr]?.online == null;
+  });
+  if (!need.length) return;
+
+  homeServersStatusPending = true;
+  try {
+    await Promise.all(need.map(async (s) => {
+      const addr = savedServerAddr(s);
+      if (!addr || srvStatusCache[addr]?.online != null) return;
+      try {
+        srvStatusCache[addr] = (await api!.serverStatus!(addr)) || { online: false };
+      } catch {
+        srvStatusCache[addr] = { online: false };
+      }
+      const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+      if (cat) cat.status = srvStatusCache[addr];
+    }));
+    renderHomeServers();
+  } finally {
+    homeServersStatusPending = false;
+  }
+}
+
 function renderHomeServers(): void {
   const list = document.getElementById('home-servers-list');
   if (!list) return;
   const recent = savedServers.slice(-5).reverse();
   if (recent.length === 0) {
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.2);font-weight:300;">' + t('servers.none') + '</div>';
+    list.innerHTML = `<div class="home-empty">
+      <div class="home-empty__title">${escapeAiHtml(t('home.empty.serversTitle'))}</div>
+      <div class="home-empty__desc">${escapeAiHtml(t('home.empty.serversDesc'))}</div>
+      <button type="button" class="home-empty__btn" data-home-empty="add-server">${escapeAiHtml(t('home.empty.serversCta'))}</button>
+    </div>`;
+    list.querySelector<HTMLElement>('[data-home-empty="add-server"]')?.addEventListener('click', () => {
+      switchTab('servers');
+      openModalServer();
+    });
     return;
   }
-  list.innerHTML = recent.map(s => `
-    <div class="home-row" data-server-id="${s.id}">
-      <div class="home-row-icon" style="background:${stringToColor(s.name)}">
-        <span style="color:#1a1a1a;font-size:13px;font-weight:700">${s.name.charAt(0).toUpperCase()}</span>
-      </div>
-      <div class="home-row-info">
-        <div class="home-row-title">${s.name}</div>
-        <div class="home-row-meta">${s.version || t('servers.anyVersion')} · ${s.ip}</div>
-      </div>
-      <button class="home-row-btn">${t('btn.launch')}</button>
-    </div>
-  `).join('');
+  list.innerHTML = recent.map(homeServerRowHtml).join('');
   list.querySelectorAll<HTMLElement>('.home-row-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const server = savedServers.find(s => s.id === (btn.closest('.home-row') as HTMLElement)?.getAttribute('data-server-id'));
-      if (server) joinServer(server.ip);
+      if (server) void openLastServerLaunch(server);
     });
   });
   list.querySelectorAll<HTMLElement>('.home-row').forEach(row => {
     row.addEventListener('click', () => {
       const server = savedServers.find(s => s.id === row.getAttribute('data-server-id'));
-      if (server) joinServer(server.ip);
+      if (server) void openLastServerLaunch(server);
     });
   });
+  void refreshHomeServersStatus(recent);
+}
+
+async function openLastServerLaunch(srv: Server): Promise<void> {
+  if (!(await requireAccount())) return;
+  const addr = savedServerAddr(srv);
+  const [host, portPart] = addr.split(':');
+  openServerLaunchPicker(
+    host,
+    parseInt(portPart, 10) || Number(srv.port) || 25565,
+    srv.name,
+  );
 }
 
 function stringToColor(str: string): string {
@@ -4603,13 +5220,30 @@ function darkenColor(hex: string, amount: number): string {
   return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
 }
 
+function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
 function applyAccent(accent: string): void {
   document.documentElement.style.setProperty('--accent', accent);
   document.documentElement.style.setProperty('--accent-hover', darkenColor(accent, 20));
-  const r = parseInt(accent.slice(1,3), 16);
-  const g = parseInt(accent.slice(3,5), 16);
-  const b = parseInt(accent.slice(5,7), 16);
+  const r = parseInt(accent.slice(1, 3), 16);
+  const g = parseInt(accent.slice(3, 5), 16);
+  const b = parseInt(accent.slice(5, 7), 16);
   document.documentElement.style.setProperty('--accent-rgb', `${r},${g},${b}`);
+
+  // Светлый акцент → тёмный текст/иконки на нём; тёмный → белые
+  const lum = relativeLuminance(r, g, b);
+  const onAccent = lum > 0.48 ? '#0d1421' : '#ffffff';
+  const onRgb = onAccent === '#ffffff' ? '255,255,255' : '13,20,33';
+  document.documentElement.style.setProperty('--on-accent', onAccent);
+  document.documentElement.style.setProperty('--on-accent-rgb', onRgb);
+  document.documentElement.setAttribute('data-accent-fg', lum > 0.48 ? 'dark' : 'light');
+
   const theme = THEME_ACCENTS[accent];
   if (theme) document.documentElement.setAttribute('data-theme', theme);
   else document.documentElement.removeAttribute('data-theme');
@@ -4641,19 +5275,222 @@ function setAccentColor(color: string): void {
 
 document.querySelectorAll<HTMLElement>('#settings-accent-picker .accent-swatch[data-accent]').forEach(swatch => {
   swatch.addEventListener('click', () => {
+    closeAccentColorPop();
     setAccentColor(swatch.getAttribute('data-accent')!);
   });
 });
 
-document.getElementById('settings-custom-accent')?.addEventListener('click', () => {
-  const input = document.createElement('input');
-  input.type = 'color';
-  input.value = localStorage.getItem('Undefined Client-accent') || '#70ADDF';
-  document.body.appendChild(input);
-  input.addEventListener('input', () => setAccentColor(input.value));
-  input.addEventListener('blur', () => input.remove());
-  input.click();
-});
+// ===== Кастомный color picker акцента =====
+type AccentHsv = { h: number; s: number; v: number };
+let accentPickerHsv: AccentHsv = { h: 210, s: 1, v: 1 };
+let accentPickerOpen = false;
+let accentPickerDragging: 'sv' | 'hue' | null = null;
+
+function clamp01(n: number): number {
+  return Math.min(1, Math.max(0, n));
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return null;
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const to = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+function rgbToHsv(r: number, g: number, b: number): AccentHsv {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  const s = max === 0 ? 0 : d / max;
+  return { h: h * 360, s, v: max };
+}
+
+function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: number } {
+  const hh = ((h % 360) + 360) % 360 / 60;
+  const c = v * s;
+  const x = c * (1 - Math.abs((hh % 2) - 1));
+  const m = v - c;
+  let rp = 0, gp = 0, bp = 0;
+  if (hh < 1) { rp = c; gp = x; }
+  else if (hh < 2) { rp = x; gp = c; }
+  else if (hh < 3) { gp = c; bp = x; }
+  else if (hh < 4) { gp = x; bp = c; }
+  else if (hh < 5) { rp = x; bp = c; }
+  else { rp = c; bp = x; }
+  return {
+    r: Math.round((rp + m) * 255),
+    g: Math.round((gp + m) * 255),
+    b: Math.round((bp + m) * 255),
+  };
+}
+
+function accentHsvToHex(hsv: AccentHsv): string {
+  const { r, g, b } = hsvToRgb(hsv.h, hsv.s, hsv.v);
+  return rgbToHex(r, g, b);
+}
+
+function syncAccentColorPopUi(opts?: { skipInputs?: boolean }): void {
+  const sv = document.getElementById('accent-sv');
+  const svCursor = document.getElementById('accent-sv-cursor');
+  const hueThumb = document.getElementById('accent-hue-thumb');
+  const preview = document.getElementById('accent-preview');
+  const hexInput = document.getElementById('accent-hex') as HTMLInputElement | null;
+  const rInput = document.getElementById('accent-r') as HTMLInputElement | null;
+  const gInput = document.getElementById('accent-g') as HTMLInputElement | null;
+  const bInput = document.getElementById('accent-b') as HTMLInputElement | null;
+  const hex = accentHsvToHex(accentPickerHsv);
+  const rgb = hsvToRgb(accentPickerHsv.h, accentPickerHsv.s, accentPickerHsv.v);
+
+  if (sv) sv.style.backgroundColor = `hsl(${accentPickerHsv.h}, 100%, 50%)`;
+  if (svCursor) {
+    svCursor.style.left = `${accentPickerHsv.s * 100}%`;
+    svCursor.style.top = `${(1 - accentPickerHsv.v) * 100}%`;
+  }
+  if (hueThumb) {
+    hueThumb.style.left = `${(accentPickerHsv.h / 360) * 100}%`;
+    hueThumb.style.background = `hsl(${accentPickerHsv.h}, 100%, 50%)`;
+  }
+  if (preview) preview.style.background = hex;
+  if (!opts?.skipInputs) {
+    if (hexInput && document.activeElement !== hexInput) hexInput.value = hex.toUpperCase();
+    if (rInput && document.activeElement !== rInput) rInput.value = String(rgb.r);
+    if (gInput && document.activeElement !== gInput) gInput.value = String(rgb.g);
+    if (bInput && document.activeElement !== bInput) bInput.value = String(rgb.b);
+  }
+}
+
+function applyAccentFromPicker(): void {
+  setAccentColor(accentHsvToHex(accentPickerHsv));
+}
+
+function setAccentColorPopOpen(open: boolean): void {
+  const pop = document.getElementById('settings-accent-color-pop');
+  const btn = document.getElementById('settings-custom-accent');
+  if (!pop || !btn) return;
+  accentPickerOpen = open;
+  if (open) {
+    const current = localStorage.getItem('Undefined Client-accent') || '#70ADDF';
+    const rgb = hexToRgb(current);
+    if (rgb) accentPickerHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    syncAccentColorPopUi();
+    pop.classList.remove('hidden');
+    requestAnimationFrame(() => pop.classList.add('is-open'));
+    btn.setAttribute('aria-expanded', 'true');
+  } else if (pop.classList.contains('is-open') || !pop.classList.contains('hidden')) {
+    pop.classList.remove('is-open');
+    btn.setAttribute('aria-expanded', 'false');
+    window.setTimeout(() => {
+      if (!pop.classList.contains('is-open')) pop.classList.add('hidden');
+    }, 180);
+  }
+}
+
+function closeAccentColorPop(): void {
+  if (accentPickerOpen) setAccentColorPopOpen(false);
+}
+
+function pickAccentSvFromEvent(e: PointerEvent): void {
+  const sv = document.getElementById('accent-sv');
+  if (!sv) return;
+  const rect = sv.getBoundingClientRect();
+  accentPickerHsv.s = clamp01((e.clientX - rect.left) / rect.width);
+  accentPickerHsv.v = clamp01(1 - (e.clientY - rect.top) / rect.height);
+  syncAccentColorPopUi();
+  applyAccentFromPicker();
+}
+
+function pickAccentHueFromEvent(e: PointerEvent): void {
+  const hue = document.getElementById('accent-hue');
+  if (!hue) return;
+  const rect = hue.getBoundingClientRect();
+  accentPickerHsv.h = clamp01((e.clientX - rect.left) / rect.width) * 360;
+  syncAccentColorPopUi();
+  applyAccentFromPicker();
+}
+
+function initAccentColorPicker(): void {
+  const btn = document.getElementById('settings-custom-accent');
+  const pop = document.getElementById('settings-accent-color-pop');
+  const sv = document.getElementById('accent-sv');
+  const hue = document.getElementById('accent-hue');
+  const hexInput = document.getElementById('accent-hex') as HTMLInputElement | null;
+  const rInput = document.getElementById('accent-r') as HTMLInputElement | null;
+  const gInput = document.getElementById('accent-g') as HTMLInputElement | null;
+  const bInput = document.getElementById('accent-b') as HTMLInputElement | null;
+  if (!btn || !pop) return;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setAccentColorPopOpen(!accentPickerOpen);
+  });
+  pop.addEventListener('click', (e) => e.stopPropagation());
+
+  const bindDrag = (el: HTMLElement | null, kind: 'sv' | 'hue') => {
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      accentPickerDragging = kind;
+      el.setPointerCapture?.(e.pointerId);
+      if (kind === 'sv') pickAccentSvFromEvent(e);
+      else pickAccentHueFromEvent(e);
+    });
+  };
+  bindDrag(sv, 'sv');
+  bindDrag(hue, 'hue');
+
+  window.addEventListener('pointermove', (e) => {
+    if (!accentPickerDragging) return;
+    if (accentPickerDragging === 'sv') pickAccentSvFromEvent(e);
+    else pickAccentHueFromEvent(e);
+  });
+  window.addEventListener('pointerup', () => {
+    accentPickerDragging = null;
+  });
+
+  hexInput?.addEventListener('input', () => {
+    const raw = hexInput.value.trim();
+    const rgb = hexToRgb(raw.startsWith('#') ? raw : `#${raw}`);
+    if (!rgb) return;
+    accentPickerHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    syncAccentColorPopUi({ skipInputs: true });
+    applyAccentFromPicker();
+  });
+  hexInput?.addEventListener('change', () => {
+    const rgb = hexToRgb(hexInput.value);
+    if (rgb) hexInput.value = rgbToHex(rgb.r, rgb.g, rgb.b).toUpperCase();
+    else syncAccentColorPopUi();
+  });
+
+  const onRgbInput = () => {
+    const r = Math.max(0, Math.min(255, Number(rInput?.value) || 0));
+    const g = Math.max(0, Math.min(255, Number(gInput?.value) || 0));
+    const b = Math.max(0, Math.min(255, Number(bInput?.value) || 0));
+    accentPickerHsv = rgbToHsv(r, g, b);
+    syncAccentColorPopUi({ skipInputs: true });
+    applyAccentFromPicker();
+  };
+  rInput?.addEventListener('input', onRgbInput);
+  gInput?.addEventListener('input', onRgbInput);
+  bInput?.addEventListener('input', onRgbInput);
+
+  document.addEventListener('click', () => closeAccentColorPop());
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAccentColorPop();
+  });
+}
+
+initAccentColorPicker();
 
 // Generic setting load/save helpers
 function settingSave(id: string, key: string): void {
@@ -4686,6 +5523,21 @@ settingSave('setting-discord-rpc', 'discord-rpc');
 settingSave('setting-check-updates-start', 'check-updates-start');
 settingSave('setting-mods-page-size', 'mods-page-size');
 settingSave('setting-skin-viewer-debug', 'skin-viewer-debug');
+
+// «Сворачивать» и «Оставлять открытым» — взаимоисключающие; держим в инверсии
+(() => {
+  const minEl = document.getElementById('setting-minimize-on-launch') as HTMLInputElement | null;
+  const keepEl = document.getElementById('setting-keep-open') as HTMLInputElement | null;
+  if (!minEl || !keepEl) return;
+  minEl.addEventListener('change', () => {
+    keepEl.checked = !minEl.checked;
+    localStorage.setItem('Undefined Client-keep-open', String(keepEl.checked));
+  });
+  keepEl.addEventListener('change', () => {
+    minEl.checked = !keepEl.checked;
+    localStorage.setItem('Undefined Client-minimize-on-launch', String(minEl.checked));
+  });
+})();
 document.getElementById('setting-skin-viewer-debug')?.addEventListener('change', () => {
   applySkinViewerDebugSetting();
 });
@@ -4693,6 +5545,30 @@ document.getElementById('setting-skin-viewer-debug-reset')?.addEventListener('cl
   resetSkinViewerDebugDefaults();
 });
 ensureSkinDebugOptionsUi();
+
+// ===== Имена языков в селекте (нативные названия, не зависят от текущей локали) =====
+const LANGUAGE_NATIVE_NAMES: Record<string, string> = {
+  ru: 'Русский',
+  en: 'English',
+  tt: 'Татар',
+  kk: 'Қазақша',
+  uk: 'Украинский',
+  kbd: 'Къэбэрдейбзэ',
+};
+
+function applyLanguageSelectLabels(): void {
+  const select = document.getElementById('setting-language') as HTMLSelectElement | null;
+  if (!select) return;
+  const wrap = select.closest<HTMLElement>('.stngs-select-wrap');
+  for (const opt of Array.from(select.options)) {
+    const name = LANGUAGE_NATIVE_NAMES[opt.value];
+    if (name) opt.textContent = name;
+  }
+  wrap?.querySelectorAll<HTMLElement>('.stngs-select-opt[data-value]').forEach(el => {
+    const name = LANGUAGE_NATIVE_NAMES[el.dataset.value || ''];
+    if (name) el.textContent = name;
+  });
+}
 
 // Custom dropdowns (native select hidden, .stngs-select-btn/.stngs-select-menu shown)
 let customSelectsInit = false;
@@ -4764,7 +5640,15 @@ if (animationsToggle) {
   });
 }
 
-// RAM slider
+// ===== Слайдеры настроек (RAM / масштаб) =====
+function syncRangeProgress(el: HTMLInputElement): void {
+  const min = Number(el.min) || 0;
+  const max = Number(el.max) || 100;
+  const val = Number(el.value);
+  const pct = max === min ? 0 : ((val - min) / (max - min)) * 100;
+  el.style.setProperty('--range-progress', `${pct}%`);
+}
+
 const ramSlider = document.getElementById('setting-ram') as HTMLInputElement | null;
 const ramLabel = document.getElementById('setting-ram-label');
 if (ramSlider && ramLabel) {
@@ -4772,30 +5656,77 @@ if (ramSlider && ramLabel) {
   const stored = localStorage.getItem(ramKey);
   ramSlider.value = stored || '2048';
   ramLabel.textContent = ramSlider.value + t('common.mb');
+  syncRangeProgress(ramSlider);
   ramSlider.addEventListener('input', () => {
     ramLabel.textContent = ramSlider.value + t('common.mb');
     localStorage.setItem(ramKey, ramSlider.value);
+    syncRangeProgress(ramSlider);
   });
 }
 
-// UI scale (zoom)
-const uiScaleSlider = document.getElementById('setting-ui-scale') as HTMLInputElement | null;
+// UI scale — сегментированный выбор (90–125%, шаг 5)
+const UI_SCALE_STEPS: number[] = [90, 95, 100, 105, 110, 115, 120, 125];
+const uiScaleSegments = document.getElementById('setting-ui-scale-segments');
 const uiScaleLabel = document.getElementById('setting-ui-scale-label');
-if (uiScaleSlider && uiScaleLabel) {
+if (uiScaleSegments && uiScaleLabel) {
   const scaleKey = 'Undefined Client-ui-scale';
-  const storedScale = localStorage.getItem(scaleKey);
-  uiScaleSlider.value = storedScale || '100';
-  uiScaleLabel.textContent = uiScaleSlider.value + '%';
-  const applyScale = (v: string): void => {
-    const zoom = Number(v) / 100;
-    document.body.style.zoom = String(zoom);
+  const applyScale = (v: number): void => {
+    document.body.style.zoom = String(v / 100);
   };
-  applyScale(uiScaleSlider.value);
-  uiScaleSlider.addEventListener('input', () => {
-    uiScaleLabel.textContent = uiScaleSlider.value + '%';
-    localStorage.setItem(scaleKey, uiScaleSlider.value);
-    applyScale(uiScaleSlider.value);
+
+  const snapScale = (raw: number): number => {
+    let best: number = UI_SCALE_STEPS[0];
+    let bestDist = Math.abs(raw - best);
+    for (const step of UI_SCALE_STEPS) {
+      const d = Math.abs(raw - step);
+      if (d < bestDist) {
+        best = step;
+        bestDist = d;
+      }
+    }
+    return best;
+  };
+
+  let currentScale: number = snapScale(Number(localStorage.getItem(scaleKey) || '100') || 100);
+
+  const renderScaleSegments = (): void => {
+    uiScaleSegments.innerHTML = '';
+    for (const step of UI_SCALE_STEPS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'stngs-scale-seg';
+      btn.dataset.scale = String(step);
+      btn.setAttribute('aria-label', `${step}%`);
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', step === currentScale ? 'true' : 'false');
+      if (step <= currentScale) btn.classList.add('is-filled');
+      if (step === currentScale) btn.classList.add('is-active');
+      btn.addEventListener('click', () => setUiScale(step));
+      uiScaleSegments.appendChild(btn);
+    }
+    uiScaleLabel.textContent = `${currentScale}%`;
+  };
+
+  const setUiScale = (value: number): void => {
+    currentScale = snapScale(value);
+    localStorage.setItem(scaleKey, String(currentScale));
+    applyScale(currentScale);
+    renderScaleSegments();
+  };
+
+  uiScaleSegments.addEventListener('keydown', (e) => {
+    const idx = UI_SCALE_STEPS.indexOf(currentScale);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setUiScale(UI_SCALE_STEPS[Math.min(UI_SCALE_STEPS.length - 1, Math.max(0, idx) + 1)]);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setUiScale(UI_SCALE_STEPS[Math.max(0, (idx < 0 ? 0 : idx) - 1)]);
+    }
   });
+
+  applyScale(currentScale);
+  renderScaleSegments();
 }
 
 function loadTheme(): void {
@@ -4819,13 +5750,24 @@ function loadTheme(): void {
   settingLoad('setting-language', 'language', 'ru');
   void setLang(localStorage.getItem('Undefined Client-language') || 'ru');
   settingLoad('setting-minimize-on-launch', 'minimize-on-launch', false);
+  // Сводим конфликтующие значения: приоритет у «Сворачивать»
+  {
+    const minEl = document.getElementById('setting-minimize-on-launch') as HTMLInputElement | null;
+    const keepEl = document.getElementById('setting-keep-open') as HTMLInputElement | null;
+    if (minEl && keepEl) {
+      keepEl.checked = !minEl.checked;
+      localStorage.setItem('Undefined Client-keep-open', String(keepEl.checked));
+    }
+  }
   settingLoad('setting-discord-rpc', 'discord-rpc', true);
   settingLoad('setting-check-updates-start', 'check-updates-start', true);
   settingLoad('setting-mods-page-size', 'mods-page-size', '20');
   settingLoad('setting-skin-viewer-debug', 'skin-viewer-debug', false);
   ensureSkinDebugOptionsUi();
   applySkinViewerDebugSetting();
+  applyLanguageSelectLabels();
   initCustomSelects();
+  bindAiAccessSettingsUi();
 }
 
 document.getElementById('quick-launch')?.addEventListener('click', async () => {
@@ -4836,8 +5778,13 @@ document.getElementById('quick-launch')?.addEventListener('click', async () => {
   } else updateStatus(t('status.noBuilds'));
 });
 document.getElementById('last-server')?.addEventListener('click', () => {
-  if (savedServers.length > 0) joinServer(savedServers[savedServers.length - 1].ip);
-  else updateStatus(t('status.noServers'));
+  void (async () => {
+    if (savedServers.length === 0) {
+      updateStatus(t('status.noServers'));
+      return;
+    }
+    await openLastServerLaunch(savedServers[savedServers.length - 1]);
+  })();
 });
 
 /* ===== LAUNCH / JOIN ===== */
@@ -4852,11 +5799,13 @@ function applyLaunchBehavior(): void {
   const showConsole = localStorage.getItem('Undefined Client-show-console') === 'true';
   const closeAfterLaunch = localStorage.getItem('Undefined Client-close-after-launch') === 'true';
   const minimizeOnLaunch = localStorage.getItem('Undefined Client-minimize-on-launch') === 'true';
-  const keepOpen = localStorage.getItem('Undefined Client-keep-open') !== 'false';
   if (showConsole) openConsoleLog();
   if (closeAfterLaunch) {
     api?.windowClose();
-  } else if (!keepOpen || minimizeOnLaunch) {
+  } else if (minimizeOnLaunch) {
+    // Только явный пункт «Сворачивать лаунчер при запуске».
+    // Раньше сюда же попадало выключенное «Оставлять открытым» (!keepOpen) —
+    // из‑за этого окно сворачивалось даже при выключенном minimize.
     api?.windowMinimize();
   }
 }
@@ -4935,6 +5884,7 @@ async function launchBuild(build: Build, server?: { ip: string; port: number; na
   });
   if (result.success) {
     localStorage.setItem('last-launch-id', build.id);
+    localStorage.setItem('last-launch-at', String(Date.now()));
     applyLaunchBehavior();
   } else {
     runningBuild = null;
@@ -5282,6 +6232,7 @@ function renderMods(append: boolean = false): void {
       </div>
       <div class="mod-card-actions">
         <button class="details-btn" data-modrinth-id="${p.slug || p.id}">${t('btn.details')}</button>
+        <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${p.slug || p.id}" data-modrinth-title="${String(p.title || '').replace(/"/g, '&quot;')}">${t('ai.askAboutMod')}</button>
         <button class="list-row-btn download-btn" data-modrinth-id="${p.slug || p.id}">${t('btn.download')}</button>
       </div>
     </div>
@@ -5302,6 +6253,15 @@ function renderMods(append: boolean = false): void {
       e.stopPropagation();
       const id = btn.getAttribute('data-modrinth-id');
       if (id) openModalDetails(id);
+    });
+  });
+
+  grid.querySelectorAll<HTMLElement>('.ai-ask-mod-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-modrinth-id') || '';
+      const title = btn.getAttribute('data-modrinth-title') || id;
+      askAgentAboutMod(getAiUiHost(), title, id);
     });
   });
 
@@ -5425,14 +6385,14 @@ function openModalTargetBuildForDownload(projectId: string): void {
     list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('mods.noBuildsForInstall') + '</div>';
   } else {
     list.innerHTML = savedBuilds.map(b => {
-      const iconSrc = b.icon ? buildIconSrc(b.icon) : '';
+      const iconSrc = b.icon ? buildIconSrc(b.icon) : DEFAULT_BUILD_ICON_SRC;
       const compatible = pendingDownloadGameVersions.length === 0 ||
         b.gameVersion === 'latest_release' || b.gameVersion === 'latest_snapshot' ||
         pendingDownloadGameVersions.includes(b.gameVersion);
       const compatCls = compatible ? '' : ' incompatible';
       const compatAttr = compatible ? '' : ` title="${t('mods.incompatibleBuild')}"`;
       return `<div class="build-option-item${compatCls}" data-build-id="${b.id}"${compatAttr}>
-        <div class="build-option-icon" style="background:rgba(255,255,255,0.1)">${iconSrc ? `<img src="${iconSrc}">` : ''}</div>
+        <div class="build-option-icon" style="background:transparent"><img src="${iconSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
         <div class="build-option-info">
           <div class="build-option-name">${b.name}</div>
           <div class="build-option-meta">${b.gameVersion} · ${b.loader}</div>
@@ -5467,35 +6427,137 @@ async function downloadModToBuild(
   buildId: string,
   versionId?: string,
   contentTypeHint?: string,
+  options?: { force?: boolean; skipDeps?: boolean; installOptional?: boolean },
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const result = await api?.installMod(buildId, projectId, versionId, contentTypeHint);
+    const result = await api?.installMod(buildId, projectId, versionId, contentTypeHint, options);
+    if (result?.error === 'mod_conflicts' && !options?.force) {
+      const lines = (result.conflicts || [])
+        .map((c) => `• ${c.title} ↔ ${c.withTitle}`)
+        .slice(0, 8);
+      const depsNote =
+        result.pendingDeps && result.pendingDeps > 0
+          ? `\n\n${t('mods.depsWillInstall', { n: result.pendingDeps })}`
+          : '';
+      const msgEl = document.getElementById('confirm-message');
+      if (msgEl) msgEl.style.whiteSpace = 'pre-wrap';
+      const ok = await confirmAction(
+        `${t('mods.depsConflictConfirm')}\n\n${lines.join('\n')}${depsNote}`,
+      );
+      if (msgEl) msgEl.style.whiteSpace = '';
+      if (!ok) {
+        updateStatus(t('mods.depsInstallCancelled'));
+        return { success: false, error: 'cancelled' };
+      }
+      return downloadModToBuild(projectId, buildId, versionId, contentTypeHint, {
+        ...options,
+        force: true,
+      });
+    }
+
     if (result?.success) {
       const contentType = result.contentType || 'mod';
-      const typeLabel: Record<string, string> = { mod: t('type.mod'), resourcepack: t('type.resourcepack'), shader: t('type.shader') };
-      updateStatus(t('status.typeInstalled', { type: typeLabel[contentType] || t('type.file') }));
-      const build = savedBuilds.find(b => b.id === buildId);
-      if (build && result.name && result.filename) {
+      const typeLabel: Record<string, string> = {
+        mod: t('type.mod'),
+        resourcepack: t('type.resourcepack'),
+        shader: t('type.shader'),
+        datapack: t('type.datapack'),
+      };
+      const depCount = result.dependenciesInstalled || 0;
+      if (depCount > 0) {
+        updateStatus(
+          t('status.typeInstalledWithDeps', {
+            type: typeLabel[contentType] || t('type.file'),
+            n: depCount,
+          }),
+        );
+      } else {
+        updateStatus(t('status.typeInstalled', { type: typeLabel[contentType] || t('type.file') }));
+      }
+
+      const build = savedBuilds.find((b) => b.id === buildId);
+      if (build) {
         const buildMap: Record<string, string> = {
-          mod: 'mods', resourcepack: 'resourcePacks', shader: 'shaders', datapack: 'dataPacks',
+          mod: 'mods',
+          resourcepack: 'resourcePacks',
+          shader: 'shaders',
+          datapack: 'dataPacks',
         };
-        const buildKey = buildMap[contentType] || 'mods';
-        if (!(build as any)[buildKey]) (build as any)[buildKey] = [];
-        (build as any)[buildKey].push({
-          name: result.name,
-          enabled: true,
-          filename: result.filename,
-          version: result.version || '',
-          description: result.description || '',
-          projectId: result.projectId || projectId,
-          iconUrl: result.iconUrl || '',
-        });
+        const items =
+          result.installed && result.installed.length
+            ? result.installed
+            : result.name && result.filename
+              ? [
+                  {
+                    name: result.name,
+                    version: result.version || '',
+                    filename: result.filename,
+                    projectId: result.projectId || projectId,
+                    iconUrl: result.iconUrl || '',
+                    description: result.description || '',
+                    contentType,
+                    isDependency: false,
+                  },
+                ]
+              : [];
+
+        for (const item of items) {
+          const buildKey = buildMap[item.contentType || contentType] || 'mods';
+          if (!(build as any)[buildKey]) (build as any)[buildKey] = [];
+          const arr = (build as any)[buildKey] as BeFileItem[];
+          const existingIdx = arr.findIndex(
+            (m) =>
+              (item.projectId && m.projectId === item.projectId) ||
+              (item.filename && m.filename === item.filename),
+          );
+          const entry: BeFileItem = {
+            name: item.name,
+            enabled: true,
+            filename: item.filename,
+            version: item.version || '',
+            description: item.description || '',
+            projectId: item.projectId || '',
+            iconUrl: item.iconUrl || '',
+          };
+          if (existingIdx >= 0) arr[existingIdx] = { ...arr[existingIdx], ...entry };
+          else arr.push(entry);
+        }
         if (api?.saveBuild) await api.saveBuild(build);
       }
+
+      if (result.conflicts?.length) {
+        pushConsoleLog(
+          t('mods.depsConflictLog', {
+            list: result.conflicts.map((c) => `${c.title} ↔ ${c.withTitle}`).join(', '),
+          }),
+        );
+      }
+      if (result.optionalSuggested?.length) {
+        pushConsoleLog(
+          t('mods.depsOptionalLog', {
+            list: result.optionalSuggested.map((o) => o.title).join(', '),
+          }),
+        );
+      }
+      if (result.unresolved?.length) {
+        pushConsoleLog(
+          t('mods.depsUnresolvedLog', {
+            list: result.unresolved.map((u) => u.projectId).join(', '),
+          }),
+        );
+      }
+
       await loadBuilds();
       return { success: true };
     }
-    updateStatus(t('status.error', { msg: result?.error || t('common.unknown') }));
+
+    const errKey =
+      result?.error === 'no_compatible_version'
+        ? 'mods.depsNoCompatible'
+        : result?.error === 'project_not_found'
+          ? 'mods.depsProjectMissing'
+          : null;
+    updateStatus(t('status.error', { msg: errKey ? t(errKey) : result?.error || t('common.unknown') }));
     return { success: false, error: result?.error };
   } catch (e) {
     updateStatus(t('status.downloadError'));
@@ -5723,7 +6785,7 @@ function renderDeepLinkConfirm(): void {
 
   let compatibleCount = 0;
   list.innerHTML = savedBuilds.map(b => {
-    const iconSrc = b.icon ? buildIconSrc(b.icon) : '';
+    const iconSrc = b.icon ? buildIconSrc(b.icon) : DEFAULT_BUILD_ICON_SRC;
     const compatible = deepLinkFixedVersion
       ? dlVersionFitsBuild(deepLinkFixedVersion, b, payload.type)
       : resolved.versions.some(v => dlVersionFitsBuild(v, b, payload.type));
@@ -5731,7 +6793,7 @@ function renderDeepLinkConfirm(): void {
     const compatCls = compatible ? '' : ' incompatible';
     const compatAttr = compatible ? '' : ` title="${t('mods.incompatibleBuild')}"`;
     return `<div class="build-option-item${compatCls}" data-build-id="${srvEsc(b.id)}"${compatAttr}>
-      <div class="build-option-icon" style="background:rgba(255,255,255,0.1)">${iconSrc ? `<img src="${srvEsc(iconSrc)}">` : ''}</div>
+      <div class="build-option-icon" style="background:transparent"><img src="${srvEsc(iconSrc)}" style="width:100%;height:100%;object-fit:cover;"></div>
       <div class="build-option-info">
         <div class="build-option-name">${srvEsc(b.name)}</div>
         <div class="build-option-meta">${srvEsc(b.gameVersion)} · ${srvEsc(b.loader)}</div>
@@ -5963,10 +7025,7 @@ function shareErrorText(code?: string): string {
 }
 
 function shareBuildIconHtml(build: { icon?: string; iconBg?: string }): string {
-  if (build.icon) {
-    return `<img src="${buildIconSrc(build.icon)}" style="width:100%;height:100%;object-fit:cover;">`;
-  }
-  return `<img src="../../assets/InstancesIcons/emptyIcon.png" style="width:100%;height:100%;object-fit:cover;">`;
+  return buildCardIconHtml(build);
 }
 
 async function openShareModal(build: Build): Promise<void> {
@@ -6401,13 +7460,124 @@ document.getElementById('mods-filters-clear')?.addEventListener('click', () => {
 
 /* ===== STATS ===== */
 
+function formatRelativeLaunch(ts: number): string {
+  if (!ts || !Number.isFinite(ts)) return '';
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 60) return t('home.relative.justNow');
+  if (diffSec < 3600) return t('home.relative.minutes', { n: Math.floor(diffSec / 60) });
+  if (diffSec < 86400) return t('home.relative.hours', { n: Math.floor(diffSec / 3600) });
+  const days = Math.floor(diffSec / 86400);
+  if (days === 1) return t('home.relative.yesterday');
+  return t('home.relative.days', { n: days });
+}
+
+function getHomeFeaturedBuild(): Build | null {
+  const lastId = localStorage.getItem('last-launch-id');
+  if (lastId) {
+    const found = savedBuilds.find((b) => b.id === lastId);
+    if (found) return found;
+  }
+  return savedBuilds[0] || null;
+}
+
+function countInstalledMods(): number {
+  return savedBuilds.reduce((sum, b) => sum + (Array.isArray(b.mods) ? b.mods.length : 0), 0);
+}
+
+function getLastPlayedBuild(): Build | null {
+  const lastId = localStorage.getItem('last-launch-id');
+  if (!lastId) return null;
+  return savedBuilds.find((b) => b.id === lastId) || null;
+}
+
+function updateHomeWelcomeSub(): void {
+  const el = document.getElementById('home-welcome-sub');
+  if (!el) return;
+  if (savedBuilds.length === 0) {
+    el.textContent = t('home.welcomeEmpty');
+    return;
+  }
+  if (getLastPlayedBuild()) {
+    el.textContent = t('home.welcome');
+    return;
+  }
+  el.textContent = t('home.welcomePick');
+}
+
+function updateHomeInsights(): void {
+  const featured = getHomeFeaturedBuild();
+  const lastPlayed = getLastPlayedBuild();
+  const sessionValue = document.getElementById('home-insight-session-value');
+  const sessionHint = document.getElementById('home-insight-session-hint');
+  const libraryValue = document.getElementById('home-insight-library-value');
+  const libraryHint = document.getElementById('home-insight-library-hint');
+  const playtimeValue = document.getElementById('home-insight-playtime-value');
+  const playtimeHint = document.getElementById('home-insight-playtime-hint');
+  const heroStatus = document.getElementById('quick-banner-status');
+
+  updateHomeWelcomeSub();
+
+  if (featured) {
+    if (sessionValue) sessionValue.textContent = featured.name;
+    const lastAt = Number(localStorage.getItem('last-launch-at') || 0);
+    const rel = lastPlayed ? formatRelativeLaunch(lastAt) : '';
+    const played = featured.playtime ? formatPlaytime(featured.playtime) : '';
+    if (sessionHint) {
+      sessionHint.textContent = [rel, played ? t('home.insight.sessionPlayed', { time: played }) : '']
+        .filter(Boolean)
+        .join(' · ') || t('home.insight.sessionReady');
+    }
+    if (heroStatus) {
+      heroStatus.textContent = rel
+        ? t('home.hero.statusPlayed', { when: rel })
+        : t('home.hero.statusReady');
+    }
+  } else {
+    if (sessionValue) sessionValue.textContent = t('home.insight.sessionEmpty');
+    if (sessionHint) sessionHint.textContent = t('home.insight.sessionEmptyHint');
+    if (heroStatus) heroStatus.textContent = t('home.hero.statusEmpty');
+  }
+
+  const modsN = countInstalledMods();
+  if (savedBuilds.length === 0) {
+    if (libraryValue) libraryValue.textContent = t('home.insight.libraryEmpty');
+    if (libraryHint) libraryHint.textContent = t('home.insight.libraryEmptyHint');
+  } else {
+    if (libraryValue) {
+      libraryValue.textContent = t('home.insight.libraryValue', {
+        builds: savedBuilds.length,
+        servers: savedServers.length,
+      });
+    }
+    if (libraryHint) {
+      libraryHint.textContent = modsN > 0
+        ? t('home.insight.libraryMods', { n: modsN })
+        : t('home.insight.libraryHint');
+    }
+  }
+
+  const totalPlay = savedBuilds.reduce((sum, b) => sum + (b.playtime || 0), 0);
+  if (playtimeValue) playtimeValue.textContent = formatPlaytime(totalPlay);
+  if (playtimeHint) {
+    playtimeHint.textContent = totalPlay > 0
+      ? t('home.insight.playtimeHint')
+      : t('home.insight.playtimeEmpty');
+  }
+}
+
+function refreshHomeDashboard(): void {
+  updateBanner();
+  updateHomeInsights();
+}
+
 function updateStats(): void {
+  // Legacy ids могут отсутствовать после редизайна Главной
   const statBuilds = document.getElementById('stat-builds');
   if (statBuilds) statBuilds.textContent = String(savedBuilds.length);
   const statServers = document.getElementById('stat-servers');
   if (statServers) statServers.textContent = String(savedServers.length);
   const statMods = document.getElementById('stat-mods');
-  if (statMods) statMods.textContent = String(savedMods?.length || 0);
+  if (statMods) statMods.textContent = String(countInstalledMods() || savedMods?.length || 0);
   const statSkins = document.getElementById('stat-skins');
   if (statSkins) statSkins.textContent = String(savedSkins.length);
   const statPlaytime = document.getElementById('stat-playtime');
@@ -6415,6 +7585,7 @@ function updateStats(): void {
     const total = savedBuilds.reduce((sum, b) => sum + (b.playtime || 0), 0);
     statPlaytime.textContent = formatPlaytime(total);
   }
+  updateHomeInsights();
 }
 
 /* ===== STATS MODAL ===== */
@@ -6493,10 +7664,104 @@ function renderStatsModal(): void {
 }
 
 document.getElementById('stat-card-playtime')?.addEventListener('click', openStatsModal);
+
+document.getElementById('home-insights')?.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-home-action]');
+  if (!btn) return;
+  const action = btn.getAttribute('data-home-action');
+  if (action === 'play') {
+    void document.getElementById('quick-banner-play')?.click();
+  } else if (action === 'builds') {
+    switchTab('builds');
+  } else if (action === 'stats') {
+    openStatsModal();
+  }
+});
+
 document.getElementById('modal-stats-close')?.addEventListener('click', () => closeModal('modal-stats'));
 document.getElementById('modal-stats')?.addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeModal('modal-stats');
 });
+
+function resolveLastServerStatus(addr: string): any {
+  if (srvStatusCache[addr]) return srvStatusCache[addr];
+  const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+  if (cat?.status) {
+    srvStatusCache[addr] = cat.status;
+    return cat.status;
+  }
+  return {};
+}
+
+function updateSidebarLastServer(): void {
+  const lsCard = document.getElementById('last-server');
+  const lsName = document.getElementById('last-server-name');
+  const lsVer = document.getElementById('last-server-version');
+  const lsIcon = document.getElementById('last-server-icon');
+
+  if (savedServers.length === 0) {
+    if (lsCard) lsCard.classList.add('hidden-card');
+    return;
+  }
+
+  const srv = savedServers[savedServers.length - 1];
+  const addr = savedServerAddr(srv);
+  const st = resolveLastServerStatus(addr);
+  const online = !!st.online;
+  const players = st.players?.online != null ? st.players.online : null;
+  const max = st.players?.max != null ? st.players.max : null;
+  const version = String(st.version || srv.version || '').split('\n')[0] || '';
+  const statusTxt = online
+    ? (players != null
+      ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}`
+      : t('servers.online'))
+    : (Object.keys(st).length ? t('servers.offline') : '…');
+  const fav = srvServerFavicon(st);
+
+  if (lsName) lsName.textContent = srv.name;
+  if (lsCard) lsCard.classList.remove('hidden-card');
+
+  if (lsIcon) {
+    lsIcon.innerHTML = fav
+      ? `<img src="${srvEsc(fav)}" alt="">`
+      : `<img src="../../assets/icons/serverIcon.png" alt="">`;
+  }
+
+  if (lsVer) {
+    const verPart = version || addr;
+    lsVer.innerHTML = `
+      <span class="srv-dot ${online ? 'srv-online' : 'srv-offline'}"></span>
+      <span class="sidebar-srv-online">${escapeHtml(statusTxt)}</span>
+      ${verPart ? `<span class="srv-sep">·</span><span class="sidebar-srv-ver">${escapeHtml(verPart)}</span>` : ''}
+    `;
+  }
+}
+
+/** Пинг последнего сервера для иконки/онлайна в сайдбаре. */
+async function ensureLastServerStatus(): Promise<void> {
+  if (!savedServers.length || !api?.serverStatus) return;
+  const srv = savedServers[savedServers.length - 1];
+  const addr = savedServerAddr(srv);
+  if (!addr) return;
+  if (srvStatusCache[addr]?.online != null || srvServerFavicon(srvStatusCache[addr] || {})) {
+    return;
+  }
+  const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+  if (cat?.status && (cat.status.online != null || srvServerFavicon(cat.status))) {
+    srvStatusCache[addr] = cat.status;
+    updateSidebarLastServer();
+    return;
+  }
+  try {
+    const st = (await api.serverStatus(addr)) || { online: false };
+    srvStatusCache[addr] = st;
+    if (cat) cat.status = st;
+    updateSidebarLastServer();
+  } catch {
+    srvStatusCache[addr] = { online: false };
+    updateSidebarLastServer();
+  }
+}
 
 function updateSidebarCards(): void {
   const qlIcon = document.getElementById('quick-launch-icon');
@@ -6508,65 +7773,45 @@ function updateSidebarCards(): void {
     if (qlName) qlName.textContent = build.name;
     if (qlVer) qlVer.textContent = `${build.gameVersion} · ${build.loader}`;
     if (qlIcon) {
-      qlIcon.style.background = 'rgba(255, 255, 255, 0)';
+      qlIcon.style.background = 'transparent';
       if (build.icon) {
         qlIcon.innerHTML = `<img src="${buildIconSrc(build.icon)}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;">`;
       } else {
-        qlIcon.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="4" fill="rgba(255,255,255,0.1)"/><path d="M12 10L22 16L12 22V10Z" fill="#2A2A2A"/></svg>`;
+        qlIcon.innerHTML = defaultBuildIconHtml('border-radius:4px;');
       }
     }
   } else {
     if (qlName) qlName.textContent = t('sidebar.noBuilds');
     if (qlVer) qlVer.textContent = '';
     if (qlIcon) {
-      qlIcon.innerHTML = `<svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="4" fill="#7BD4B7"/><path d="M12 10L22 16L12 22V10Z" fill="#2A2A2A"/></svg>`;
+      qlIcon.style.background = 'transparent';
+      qlIcon.innerHTML = defaultBuildIconHtml('border-radius:4px;');
     }
   }
 
-  const lsCard = document.getElementById('last-server');
-  const lsName = document.getElementById('last-server-name');
-  const lsVer = document.getElementById('last-server-version');
-  const lsIcon = document.getElementById('last-server-icon');
-  if (savedServers.length > 0) {
-    const srv = savedServers[savedServers.length - 1];
-    if (lsName) lsName.textContent = srv.name;
-    if (lsVer) lsVer.textContent = srv.version || srv.ip;
-    if (lsCard) lsCard.classList.remove('hidden-card');
-    if (lsIcon) {
-      lsIcon.innerHTML = `<div style="width:100%;height:100%;border-radius:4px;background:${stringToColor(srv.name)};display:flex;align-items:center;justify-content:center;overflow:hidden;"><span style="color:#1a1a1a;font-size:15px;font-weight:700;font-family:'Nekst',Arial,sans-serif">${escapeHtml(String(srv.name).charAt(0).toUpperCase())}</span></div>`;
-    }
-  } else {
-    if (lsCard) lsCard.classList.add('hidden-card');
-  }
+  updateSidebarLastServer();
+  void ensureLastServerStatus();
 }
 
 function updateBanner(): void {
-  const lastId = localStorage.getItem('last-launch-id');
-  if (lastId) {
-    const build = savedBuilds.find(b => b.id === lastId);
-    if (build) {
-      const title = document.getElementById('quick-banner-title');
-      if (title) title.textContent = build.name;
-      const meta = document.getElementById('quick-banner-meta');
-      if (meta) meta.textContent = `${build.gameVersion} · ${build.loader}${build.loaderVersion ? ' · ' + build.loaderVersion : ''}`;
-      updateStatus(t('home.continueGame'));
-      return;
+  const featured = getHomeFeaturedBuild();
+  const title = document.getElementById('quick-banner-title');
+  const meta = document.getElementById('quick-banner-meta');
+  const sub = document.getElementById('quick-banner-sub');
+  if (featured) {
+    if (title) title.textContent = featured.name;
+    if (meta) {
+      meta.textContent = `${featured.gameVersion} · ${featured.loader}${featured.loaderVersion ? ' · ' + featured.loaderVersion : ''}`;
     }
-  }
-  if (savedBuilds.length > 0) {
-    const build = savedBuilds[0];
-    const title = document.getElementById('quick-banner-title');
-    if (title) title.textContent = build.name;
-    const meta = document.getElementById('quick-banner-meta');
-    if (meta) meta.textContent = `${build.gameVersion} · ${build.loader}${build.loaderVersion ? ' · ' + build.loaderVersion : ''}`;
-    updateStatus(t('sidebar.quickLaunch'));
+    if (sub) sub.textContent = t('home.continueGame');
+    updateStatus(t('home.continueGame'));
   } else {
-    const title = document.getElementById('quick-banner-title');
     if (title) title.textContent = t('sidebar.noBuilds');
-    const meta = document.getElementById('quick-banner-meta');
     if (meta) meta.textContent = t('home.noBuildsHint');
+    if (sub) sub.textContent = t('home.welcome');
     updateStatus(t('home.welcomeStatus'));
   }
+  updateHomeInsights();
 }
 
 /* ===== MODAL FUNCTIONS ===== */
@@ -6594,6 +7839,90 @@ function onOverlayClick(e: MouseEvent, id: string): void {
   if (e.target === e.currentTarget) closeModal(id);
 }
 
+/* ── Модалка предпросмотра мира (WebContentsView в #world-preview-host) ── */
+
+let worldPreviewBoundsObserver: ResizeObserver | null = null;
+let worldPreviewResizeHandler: (() => void) | null = null;
+
+function getWorldPreviewHostBounds(): { x: number; y: number; width: number; height: number } | null {
+  // Вся карточка модалки — без внутренних отступов под header (chrome внутри world.html).
+  const host = document.getElementById('world-preview-host')
+    || document.querySelector('#modal-world-preview .world-preview-window');
+  if (!host) return null;
+  const r = host.getBoundingClientRect();
+  if (r.width < 2 || r.height < 2) return null;
+  return {
+    x: Math.max(0, Math.round(r.left)),
+    y: Math.max(0, Math.round(r.top)),
+    width: Math.max(1, Math.round(r.width)),
+    height: Math.max(1, Math.round(r.height)),
+  };
+}
+
+function syncWorldPreviewBounds(): void {
+  const bounds = getWorldPreviewHostBounds();
+  if (!bounds || !api?.setWorldViewerBounds) return;
+  void api.setWorldViewerBounds(bounds);
+}
+
+function stopWorldPreviewBoundsSync(): void {
+  worldPreviewBoundsObserver?.disconnect();
+  worldPreviewBoundsObserver = null;
+  if (worldPreviewResizeHandler) {
+    window.removeEventListener('resize', worldPreviewResizeHandler);
+    worldPreviewResizeHandler = null;
+  }
+}
+
+function startWorldPreviewBoundsSync(): void {
+  stopWorldPreviewBoundsSync();
+  const host = document.getElementById('world-preview-host');
+  const win = document.querySelector('#modal-world-preview .world-preview-window');
+  if (!host) return;
+  worldPreviewBoundsObserver = new ResizeObserver(() => syncWorldPreviewBounds());
+  worldPreviewBoundsObserver.observe(host);
+  if (win) worldPreviewBoundsObserver.observe(win);
+  worldPreviewResizeHandler = () => syncWorldPreviewBounds();
+  window.addEventListener('resize', worldPreviewResizeHandler);
+  // После шрифтов/layout ещё раз подогнать view под host.
+  requestAnimationFrame(() => syncWorldPreviewBounds());
+}
+
+async function closeWorldPreviewModal(): Promise<void> {
+  stopWorldPreviewBoundsSync();
+  try { await api?.closeWorldViewer?.(); } catch { /* */ }
+  closeModal('modal-world-preview');
+}
+
+async function openWorldPreviewModalChrome(): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  openModal('modal-world-preview');
+  // Два кадра: layout модалки + flex host.
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  startWorldPreviewBoundsSync();
+  return getWorldPreviewHostBounds();
+}
+
+document.getElementById('modal-world-preview')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) void closeWorldPreviewModal();
+});
+
+api?.onWorldModalOpen?.((data) => {
+  void (async () => {
+    const bounds = await openWorldPreviewModalChrome();
+    if (!bounds) return;
+    if (api?.attachWorldViewer) await api.attachWorldViewer(bounds);
+    else if (api?.openWorldViewer) await api.openWorldViewer(data?.worldPath || '', undefined, bounds);
+  })();
+});
+api?.onWorldModalClosed?.(() => {
+  stopWorldPreviewBoundsSync();
+  const el = document.getElementById('modal-world-preview');
+  if (el && !el.classList.contains('hidden')) closeModal('modal-world-preview');
+});
+api?.onWorldBoundsSyncRequest?.(() => {
+  syncWorldPreviewBounds();
+});
+
 /* ── Esc-to-close ── */
 
 const ESC_CLOSEABLE_MODALS: { id: string; close: () => void }[] = [
@@ -6612,8 +7941,11 @@ const ESC_CLOSEABLE_MODALS: { id: string; close: () => void }[] = [
   { id: 'modal-deeplink', close: closeDeepLinkModal },
   { id: 'modal-share', close: closeShareModal },
   { id: 'modal-share-import', close: closeShareImportModal },
+  { id: 'modal-server-build', close: () => closeModal('modal-server-build') },
   { id: 'modal-srv-info', close: () => closeModal('modal-srv-info') },
   { id: 'modal-crash', close: () => closeModal('modal-crash') },
+  // Последним: поверх остальных (в т.ч. редактора сборки).
+  { id: 'modal-world-preview', close: () => { void closeWorldPreviewModal(); } },
 ];
 
 document.addEventListener('keydown', (e) => {
@@ -6889,6 +8221,13 @@ const LIST_ID_TO_BUILD_KEY: Record<string, keyof Build> = {
   'be-rp-list': 'resourcePacks',
   'be-shaders-list': 'shaders',
   'be-dp-list': 'dataPacks',
+};
+/** Папка внутри .uclient/<buildId>/ для импорта локальных файлов */
+const LIST_ID_TO_INSTANCE_SUB: Record<string, string> = {
+  'be-mods-list': 'mods',
+  'be-rp-list': 'resourcepacks',
+  'be-shaders-list': 'shaderpacks',
+  'be-dp-list': 'datapacks',
 };
 function listIdToBuildKey(listId: string): keyof Build | undefined {
   return LIST_ID_TO_BUILD_KEY[listId];
@@ -7356,8 +8695,7 @@ function renderHomeNews(): void {
   const coverEl = document.getElementById('home-news-cover');
   const titleEl = document.getElementById('home-news-title');
   const summaryEl = document.getElementById('home-news-summary');
-  const openBtn = document.getElementById('home-news-open-btn');
-  if (!block || !coverEl || !titleEl || !summaryEl || !openBtn) return;
+  if (!block || !coverEl || !titleEl || !summaryEl) return;
 
   const hide = (): void => block.classList.add('hidden');
 
@@ -7387,9 +8725,15 @@ function renderHomeNews(): void {
     summaryEl.classList.add('hidden');
   }
 
-  openBtn.onclick = (e) => {
-    e.stopPropagation();
+  const openPost = (): void => {
     void openModalNews(post.id);
+  };
+  block.onclick = openPost;
+  block.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openPost();
+    }
   };
 
   block.classList.remove('hidden');
@@ -7558,47 +8902,198 @@ document.getElementById('modal-mod-versions')?.addEventListener('click', () => {
   if (detailsProjectId) openModalVersionsForDownload(detailsProjectId);
 });
 
-/* ── Modal: Import ── */
+/* ── Modal: Import (.mrpack / .zip / ссылка шара) ── */
+let pendingImportPath: string | null = null;
+
+const SHARE_IMPORT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
+/** Достаёт id шара из ссылки экспорта / deep link / сырого id. */
+function parseShareImportRef(raw: string): string | null {
+  const text = String(raw || '').trim().replace(/^["']+|["']+$/g, '').trim();
+  if (!text) return null;
+  if (SHARE_IMPORT_ID_RE.test(text)) return text;
+
+  try {
+    if (/^uclient:\/\//i.test(text)) {
+      const u = new URL(text);
+      if (u.hostname.toLowerCase() === 'import-instance') {
+        const id = String(u.searchParams.get('id') || '').trim();
+        return SHARE_IMPORT_ID_RE.test(id) ? id : null;
+      }
+      return null;
+    }
+
+    const u = new URL(text);
+    const pathMatch = u.pathname.match(/\/instanceShare\/([A-Za-z0-9_-]{8,64})\/?$/i);
+    if (pathMatch?.[1]) return pathMatch[1];
+    const qId = String(u.searchParams.get('id') || '').trim();
+    if (SHARE_IMPORT_ID_RE.test(qId)) return qId;
+  } catch {
+    /* не URL */
+  }
+  return null;
+}
+
+function setImportLinkError(message: string): void {
+  const err = document.getElementById('import-link-error');
+  if (!err) return;
+  err.textContent = message;
+  err.classList.toggle('hidden', !message);
+}
+
+function getImportLinkValue(): string {
+  const input = document.getElementById('import-link-input') as HTMLInputElement | null;
+  return String(input?.value || '').trim();
+}
+
+function syncImportConfirmEnabled(): void {
+  const confirmBtn = document.getElementById('modal-import-confirm') as HTMLButtonElement | null;
+  if (!confirmBtn) return;
+  confirmBtn.disabled = !pendingImportPath && !getImportLinkValue();
+}
+
 function openModalImport(): void {
+  pendingImportPath = null;
   const info = document.getElementById('import-info');
   const infoText = document.getElementById('import-info-text');
-  const confirmBtn = document.getElementById('modal-import-confirm') as HTMLButtonElement;
-  const fileInput = document.getElementById('import-file-input') as HTMLInputElement;
-  if (info) info.classList.add('hidden');
-  if (confirmBtn) confirmBtn.disabled = true;
-  if (fileInput) fileInput.value = '';
+  const zone = document.getElementById('import-dropzone');
+  const linkInput = document.getElementById('import-link-input') as HTMLInputElement | null;
+  if (info) {
+    info.classList.add('hidden');
+    info.classList.remove('is-loading');
+  }
+  zone?.classList.remove('is-busy');
+  if (infoText) infoText.textContent = '';
+  if (linkInput) linkInput.value = '';
+  setImportLinkError('');
+  syncImportConfirmEnabled();
   openModal('modal-import');
 }
 
-document.getElementById('import-dropzone')?.addEventListener('click', () => {
-  document.getElementById('import-file-input')?.click();
-});
-
-document.getElementById('import-file-input')?.addEventListener('change', function () {
-  const file = (this as HTMLInputElement).files?.[0];
+async function selectImportModpackFile(): Promise<void> {
+  if (!api?.pickModpack) return;
+  const filePath = await api.pickModpack();
+  if (!filePath) return;
+  pendingImportPath = filePath;
   const info = document.getElementById('import-info');
   const infoText = document.getElementById('import-info-text');
   const confirmBtn = document.getElementById('modal-import-confirm') as HTMLButtonElement;
-  if (file) {
-    if (info) info.classList.remove('hidden');
-    if (infoText) infoText.textContent = t('import.selected', { name: file.name });
-    if (confirmBtn) confirmBtn.disabled = false;
+  const zone = document.getElementById('import-dropzone');
+  const name = filePath.replace(/^.*[\\/]/, '');
+  if (info) {
+    info.classList.remove('hidden');
+    info.classList.add('is-loading');
+  }
+  zone?.classList.add('is-busy');
+  if (infoText) infoText.textContent = t('import.detecting');
+  if (confirmBtn) confirmBtn.disabled = true;
+
+  try {
+    if (api.inspectModpack) {
+      const res = await api.inspectModpack(filePath);
+      if (res.success && res.inspect && infoText) {
+        const i = res.inspect;
+        const formatKey = `import.format.${i.format}`;
+        const formatLabel = t(formatKey) !== formatKey ? t(formatKey) : i.format;
+        const loaderVer = i.loaderVersion ? ` ${i.loaderVersion}` : '';
+        infoText.textContent = `${formatLabel} · ${t('import.preview', {
+          name: i.name || name,
+          version: i.gameVersion || '—',
+          loader: i.loader || 'vanilla',
+          loaderVer,
+          n: String(i.fileCount ?? 0),
+        })}`;
+      } else if (infoText) {
+        infoText.textContent = t('import.selected', { name });
+      }
+    } else if (infoText) {
+      infoText.textContent = t('import.selected', { name });
+    }
+  } catch {
+    if (infoText) infoText.textContent = t('import.selected', { name });
+  } finally {
+    info?.classList.remove('is-loading');
+    zone?.classList.remove('is-busy');
+    syncImportConfirmEnabled();
+  }
+}
+
+document.getElementById('import-link-input')?.addEventListener('input', () => {
+  setImportLinkError('');
+  syncImportConfirmEnabled();
+});
+
+document.getElementById('import-link-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void document.getElementById('modal-import-confirm')?.click();
   }
 });
 
+document.getElementById('import-dropzone')?.addEventListener('click', () => {
+  void selectImportModpackFile();
+});
+
 document.getElementById('modal-import-confirm')?.addEventListener('click', async () => {
-  const fileInput = document.getElementById('import-file-input') as HTMLInputElement;
-  const file = fileInput?.files?.[0];
-  if (!file) return;
-  updateStatus(t('status.importing'));
+  const linkRaw = getImportLinkValue();
+
+  // Файл приоритетнее, если выбран; иначе — импорт по ссылке
+  if (!pendingImportPath && linkRaw) {
+    const id = parseShareImportRef(linkRaw);
+    if (!id) {
+      setImportLinkError(t('import.linkInvalid'));
+      return;
+    }
+    closeModal('modal-import');
+    await openShareImportModal(id);
+    return;
+  }
+
+  if (!pendingImportPath || !api?.importModpack) return;
+  const archivePath = pendingImportPath;
   closeModal('modal-import');
-  // For now, read .mrpack as modpack download (simplified)
-  if (file.name.endsWith('.mrpack')) {
-    updateStatus(t('status.mrpackNotImplemented'));
-  } else if (file.name.endsWith('.zip')) {
-    updateStatus(t('status.cfNotImplemented'));
-  } else {
-    updateStatus(t('status.unsupportedFormat'));
+  updateStatus(t('status.importing'));
+  const progressEl = document.getElementById('download-progress');
+  progressEl?.classList.remove('hidden');
+  try {
+    const res = await api.importModpack(archivePath);
+    if (!res.success || !res.build) {
+      updateStatus(t('import.failed', { error: res.error || 'unknown' }));
+      return;
+    }
+    // Обогащаем метаданные через scan; если scan пуст — оставляем inventory из импорта
+    let enriched = { ...res.build };
+    if (api.scanInstance) {
+      try {
+        const scan = await api.scanInstance(res.build.id);
+        const mapItems = (list: any[]) => (list || []).map((m: any) => ({
+          name: m.name || m.filename,
+          enabled: m.enabled !== false,
+          filename: m.filename,
+          version: m.version,
+          description: m.description,
+          projectId: m.projectId,
+          iconUrl: m.iconUrl,
+        }));
+        const mods = mapItems(scan.mods);
+        const resourcePacks = mapItems(scan.resourcepacks);
+        const shaders = mapItems(scan.shaders);
+        const dataPacks = mapItems(scan.datapacks);
+        enriched = {
+          ...res.build,
+          mods: mods.length ? mods : (res.build.mods || []),
+          resourcePacks: resourcePacks.length ? resourcePacks : (res.build.resourcePacks || []),
+          shaders: shaders.length ? shaders : (res.build.shaders || []),
+          dataPacks: dataPacks.length ? dataPacks : (res.build.dataPacks || []),
+        };
+        await api.saveBuild?.(enriched);
+      } catch { /* сканирование не критично */ }
+    }
+    await loadBuilds();
+    const modsN = enriched.mods?.length || 0;
+    updateStatus(t('import.done', { name: res.build.name }) + (modsN ? ` · ${modsN}` : ''));
+  } catch (e: any) {
+    updateStatus(t('import.failed', { error: e?.message || 'unknown' }));
   }
 });
 
@@ -7609,7 +9104,7 @@ let beWorlds: any[] = [];
 let beSelScreenshots = new Set<string>();
 let beSelWorlds = new Set<string>();
 
-const BE_MEDIA_CHECK_SVG = '<span class="be-media-check"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="#0d1421" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+const BE_MEDIA_CHECK_SVG = '<span class="be-media-check"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 
 function formatBeSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(2) + t('common.mb');
@@ -7661,6 +9156,70 @@ function renderBeScreenshots(): void {
   });
 }
 
+function trParams(key: string, params?: Record<string, string>): string {
+  let s = t(key);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) s = s.replace(`{${k}}`, v);
+  }
+  return s;
+}
+
+async function runBeWorldExport(worldPath: string, mcVersion: string): Promise<void> {
+  if (!api?.exportWorldPreview || !api?.openWorldExport) {
+    updateStatus(t('be.worldExportUnavailable'));
+    return;
+  }
+  updateStatus(t('be.worldExportStarting'));
+  const off = api.onWorldExportProgress?.((msg) => updateStatus(msg));
+  try {
+    const res = await api.exportWorldPreview(worldPath, mcVersion || '1.21.6');
+    if (!res?.ok || !res.outDir) {
+      updateStatus(res?.error || t('be.worldExportFail'));
+      return;
+    }
+    updateStatus(t('be.worldExportDone'));
+    await api.openWorldExport(res.outDir);
+  } catch (e: any) {
+    updateStatus(e?.message || t('be.worldExportFail'));
+  } finally {
+    off?.();
+  }
+}
+
+async function openBeWorldPreview(folder: string): Promise<void> {
+  if (!editingBuildId || !folder || !api?.getInstancePath || !api?.openWorldViewer) return;
+  try {
+    const root = await api.getInstancePath(editingBuildId);
+    if (!root) {
+      updateStatus(t('be.worldPreviewFail'));
+      return;
+    }
+    const worldPath = joinInstancePath(root, 'saves', folder);
+    const world = beWorlds.find((w) => w.folder === folder);
+    const dataVersion = Number(world?.dataVersion || 0);
+    const gate = resolvePreviewStrategy(dataVersion, false);
+
+    if (gate.strategy === 'unsupported' || !gate.liveAvailable) {
+      window.alert(trParams(gate.messageKey, gate.messageParams));
+      return;
+    }
+
+    // Live / degraded — сразу открываем модалку, без modal-confirm.
+    const skinId = getActiveSkinId();
+    const skin = (skinId && savedSkins.find((s) => s.id === skinId && s.dataUrl))
+      || savedSkins.find((s) => s.dataUrl && !isCapeId(s.id));
+    const bounds = await openWorldPreviewModalChrome();
+    await api.openWorldViewer(worldPath, {
+      username: currentAccount?.username || 'Player',
+      uuid: currentAccount?.uuid || undefined,
+      skinDataUrl: skin?.dataUrl,
+    }, bounds || undefined);
+  } catch {
+    await closeWorldPreviewModal();
+    updateStatus(t('be.worldPreviewFail'));
+  }
+}
+
 function renderBeWorlds(): void {
   const grid = document.getElementById('be-worlds-grid');
   const countEl = document.getElementById('be-worlds-count');
@@ -7681,13 +9240,19 @@ function renderBeWorlds(): void {
     if (w.version) info.push(t('be.worldVersion').replace('{v}', w.version));
     if (w.lastPlayed > 0) info.push(t('be.worldLastPlayed').replace('{d}', new Date(w.lastPlayed).toLocaleString(dateLocale)));
     info.push(t('be.worldSize').replace('{s}', (w.size / (1024 * 1024)).toFixed(1)));
+    const folderAttr = escapeHtml(w.folder);
+    const badge = previewBadge(Number(w.dataVersion || 0));
     return `
-    <div class="be-media-card${beSelWorlds.has(w.folder) ? ' selected' : ''}" data-name="${w.folder}">
+    <div class="be-media-card${beSelWorlds.has(w.folder) ? ' selected' : ''}" data-name="${folderAttr}">
       ${w.icon ? `<img class="be-media-thumb world" src="${w.icon}" loading="lazy">` : '<div class="be-media-thumb world"></div>'}
       <div class="be-media-text">
-        <div class="be-media-name">${w.name}</div>
+        <div class="be-media-name">
+          <span class="be-world-badge be-world-badge-${badge.kind}">${escapeHtml(t(badge.labelKey))}</span>
+          ${escapeHtml(w.name)}
+        </div>
         <div class="be-media-info">${info.join(' • ')}</div>
       </div>
+      <button type="button" class="be-world-preview-btn" data-folder="${folderAttr}" title="${escapeHtml(t('be.worldPreview'))}">${escapeHtml(t('be.worldPreview'))}</button>
       ${BE_MEDIA_CHECK_SVG}
     </div>
   `;
@@ -7700,6 +9265,13 @@ function renderBeWorlds(): void {
       if (beSelWorlds.has(name)) beSelWorlds.delete(name);
       else beSelWorlds.add(name);
       renderBeWorlds();
+    });
+  });
+  grid.querySelectorAll<HTMLButtonElement>('.be-world-preview-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const folder = btn.getAttribute('data-folder');
+      if (folder) void openBeWorldPreview(folder);
     });
   });
 }
@@ -7794,27 +9366,33 @@ document.getElementById('modal-build-open-folder')?.addEventListener('click', as
 });
 document.getElementById('modal-build')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModalBuildModal(); });
 
-// Build add file buttons
-document.querySelectorAll('.be-add-btn:not(.be-scan-btn):not(.be-media-btn)').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.jar,.zip,.litemod,.disabled,.mcpack,.mcaddon';
-    input.multiple = true;
-    input.onchange = () => {
-      const files = input.files;
-      if (!files) return;
-      const listId = (btn as HTMLElement).closest('.be-panel')?.querySelector('.be-file-list')?.id;
-      if (!listId) return;
-      const buildKey = listIdToBuildKey(listId);
-      const arr = buildKey && editingBuild ? (editingBuild[buildKey] as BeFileItem[]) : null;
-      if (!arr) return;
-      for (const file of Array.from(files)) {
-        arr.push({ name: file.name.replace(/\.[^.]+$/, ''), enabled: true, filename: file.name });
+// ===== Импорт локальных файлов прямо в папку инстанса (.uclient/<id>/mods и т.п.) =====
+document.querySelectorAll('.be-add-btn:not(.be-scan-btn):not(.be-media-btn)').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const listId = (btn as HTMLElement).closest('.be-panel')?.querySelector('.be-file-list')?.id;
+    if (!listId) return;
+    const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+    if (!sub) return;
+
+    if (!editingBuildId) {
+      // Новая сборка ещё без id — папки инстанса нет
+      window.alert(t('be.importNeedSave'));
+      return;
+    }
+    if (!api?.importInstanceFiles) return;
+
+    try {
+      const result = await api.importInstanceFiles(editingBuildId, sub);
+      if (!result || result.canceled) return;
+      if (!result.success) {
+        console.error('[be-import] failed', result.error);
+        return;
       }
-      renderBeFileList(listId, arr);
-    };
-    input.click();
+      // Список обновляем сканом диска — источник правды папка инстанса
+      await autoScanBuildInstance();
+    } catch (e) {
+      console.error('[be-import] error', e);
+    }
   });
 });
 
@@ -7891,9 +9469,9 @@ function openServerLaunchPicker(ip: string, port: number, name?: string): void {
     list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('servers.noBuildsForLaunch') + '</div>';
   } else {
     list.innerHTML = savedBuilds.map(b => {
-      const iconSrc = b.icon ? buildIconSrc(b.icon) : '';
+      const iconSrc = b.icon ? buildIconSrc(b.icon) : DEFAULT_BUILD_ICON_SRC;
       return `<div class="build-option-item" data-build-id="${srvEsc(b.id)}">
-        <div class="build-option-icon" style="background:rgba(255,255,255,0.1)">${iconSrc ? `<img src="${iconSrc}">` : ''}</div>
+        <div class="build-option-icon" style="background:transparent"><img src="${iconSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
         <div class="build-option-info">
           <div class="build-option-name">${srvEsc(b.name)}</div>
           <div class="build-option-meta">${srvEsc(b.gameVersion)} · ${srvEsc(b.loader)}</div>
@@ -7942,12 +9520,2342 @@ document.getElementById('modal-news-details')?.addEventListener('click', (e) => 
 document.getElementById('modal-mod-close')?.addEventListener('click', () => closeModal('modal-mod-details'));
 document.getElementById('modal-mod-close2')?.addEventListener('click', () => closeModal('modal-mod-details'));
 document.getElementById('modal-mod-details')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal('modal-mod-details'); });
+// Каталог → агент: кнопка в футере модалки деталей мода
+document.getElementById('modal-mod-ask-agent')?.addEventListener('click', () => {
+  const title = document.getElementById('modal-mod-title')?.textContent?.trim() || detailsProjectId || '';
+  if (!detailsProjectId) return;
+  closeModal('modal-mod-details');
+  askAgentAboutMod(getAiUiHost(), title, detailsProjectId);
+});
 
 // Import
 document.getElementById('modal-import-close')?.addEventListener('click', () => closeModal('modal-import'));
 document.getElementById('modal-import-cancel')?.addEventListener('click', () => closeModal('modal-import'));
 document.getElementById('modal-import')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal('modal-import'); });
 
+// ===== AI-агент (AgentChatUI + MCP tools + контекст сборки) =====
+
+type AiToolCall = { id: string; type?: string; function: { name: string; arguments: string } };
+type AiWireMessage =
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls?: AiToolCall[] }
+  | { role: 'tool'; tool_call_id: string; content: string };
+
+type AiModCard = {
+  id: string;
+  slug?: string;
+  title: string;
+  description?: string;
+  iconUrl?: string | null;
+  downloads?: number;
+  updatedAt?: string | null;
+};
+
+type AiSession = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  messages: AiWireMessage[];
+  buildId?: string | null;
+};
+
+const AI_STORE_KEY = 'Undefined Client-ai-sessions';
+const AI_MAX_TOOL_ROUNDS = 5;
+/** Бюджет контекста агента (токены) */
+const AI_CONTEXT_BUDGET_TOKENS = 65_000;
+/** Порог, после которого запускаем компакт истории */
+const AI_CONTEXT_COMPACT_AT = 0.88;
+const AI_CONTEXT_KEEP_RECENT = 6;
+
+const AI_TOOL_LABELS: Record<string, string> = {
+  list_builds: 'Список сборок',
+  get_build: 'Детали сборки',
+  select_build: 'Переключение сборки',
+  get_instance_path: 'Путь инстанса',
+  create_build: 'Создание сборки',
+  update_build: 'Обновление сборки',
+  delete_build: 'Удаление сборки',
+  duplicate_build: 'Дублирование сборки',
+  list_java: 'Проверка Java',
+  list_mc_versions: 'Версии Minecraft',
+  list_loader_versions: 'Версии loader',
+  search_mods: 'Поиск модов',
+  search_modpacks: 'Поиск модпаков',
+  search_resourcepacks: 'Поиск ресурспаков',
+  search_shaders: 'Поиск шейдеров',
+  get_mod: 'Карточка проекта',
+  list_build_mods: 'Моды сборки',
+  list_build_content: 'Содержимое сборки',
+  toggle_mod: 'Переключение мода',
+  remove_build_file: 'Удаление файла',
+  get_crash_report: 'Crash-лог',
+  get_latest_log: 'Игровой лог',
+  clear_logs: 'Очистка логов',
+  open_build_folder: 'Папка сборки',
+  open_build_subfolder: 'Папка инстанса',
+  open_launcher_data_folder: 'Данные лаунчера',
+  ensure_instance_dirs: 'Папки инстанса',
+  install_mod: 'Установка мода',
+  list_worlds: 'Список миров',
+  delete_world: 'Удаление мира',
+  list_screenshots: 'Скриншоты',
+  delete_screenshot: 'Удаление скриншота',
+  list_configs: 'Конфиги',
+  list_accounts: 'Аккаунты',
+  list_servers: 'Серверы',
+  get_launcher_info: 'Сводка лаунчера',
+  web_search: 'Инструмент поиска',
+  fetch_url: 'Чтение страницы',
+};
+
+let aiSessions: AiSession[] = [];
+let aiActiveId = '';
+let aiBusy = false;
+let aiBusySessionId: string | null = null;
+let aiInited = false;
+let aiConfigured: boolean | null = null;
+let aiAccessOk: boolean | null = null;
+let aiSearchQuery = '';
+/** Поколение стрима — сбрасывается при смене чата / очистке */
+let aiStreamGen = 0;
+/** Запрос остановки текущего хода агента */
+let aiStopRequested = false;
+/** Активный контейнер раунда (план + tools) */
+let aiActiveRound: HTMLElement | null = null;
+/** Ключ дня для разделителя в ленте */
+let aiLastDividerDay = '';
+
+const AI_ENABLED_LS_KEY = 'Undefined Client-ai-enabled';
+const AI_TESTER_LS_KEY = 'Undefined Client-ai-tester-key';
+
+function isAiFeatureEnabled(): boolean {
+  // По умолчанию включено
+  return localStorage.getItem(AI_ENABLED_LS_KEY) !== 'false';
+}
+
+function getAiTesterKey(): string {
+  return String(localStorage.getItem(AI_TESTER_LS_KEY) || '').trim();
+}
+
+function setAiTesterKey(raw: string): void {
+  const key = String(raw || '').trim();
+  if (key) localStorage.setItem(AI_TESTER_LS_KEY, key);
+  else localStorage.removeItem(AI_TESTER_LS_KEY);
+}
+
+function applyAiTabVisibility(): void {
+  const enabled = isAiFeatureEnabled();
+  document.querySelectorAll<HTMLElement>('.tab-btn[data-tab="ai"]').forEach((el) => {
+    el.style.display = enabled ? '' : 'none';
+  });
+  if (!enabled && presenceTab === 'ai') switchTab('home');
+  syncAiSettingsKeyUi();
+}
+
+function syncAiSettingsKeyUi(): void {
+  const hint = document.getElementById('setting-ai-key-hint');
+  const btn = document.getElementById('setting-ai-key-btn');
+  const key = getAiTesterKey();
+  if (btn) btn.textContent = key ? t('stngs.agentKeyChange') : t('stngs.agentKeyEnter');
+  if (hint) {
+    if (key) {
+      const prefix = key.slice(0, 12);
+      hint.textContent = t('stngs.agentKeyHintSet', { prefix });
+    } else {
+      hint.textContent = t('stngs.agentKeyHint');
+    }
+  }
+}
+
+function showAiAccessDeniedModal(): void {
+  openModal('modal-ai-access');
+}
+
+function openAiKeyModal(opts?: { required?: boolean }): void {
+  const input = document.getElementById('modal-ai-key-input') as HTMLInputElement | null;
+  const status = document.getElementById('modal-ai-key-status');
+  if (input) input.value = getAiTesterKey();
+  if (status) {
+    status.textContent = '';
+    status.className = 'modal-ai-key-status';
+  }
+  (window as any).__aiKeyModalRequired = Boolean(opts?.required);
+  openModal('modal-ai-key');
+  setTimeout(() => input?.focus(), 30);
+}
+
+function closeAiKeyModal(cancelled = false): void {
+  const required = Boolean((window as any).__aiKeyModalRequired);
+  closeModal('modal-ai-key');
+  if (cancelled && required) {
+    // Включение без кода откатываем
+    const toggle = document.getElementById('setting-ai-enabled') as HTMLInputElement | null;
+    if (toggle) toggle.checked = false;
+    localStorage.setItem(AI_ENABLED_LS_KEY, 'false');
+    applyAiTabVisibility();
+  }
+  (window as any).__aiKeyModalRequired = false;
+}
+
+async function saveAiTesterKeyFromModal(): Promise<void> {
+  const input = document.getElementById('modal-ai-key-input') as HTMLInputElement | null;
+  const status = document.getElementById('modal-ai-key-status');
+  const raw = String(input?.value || '').trim();
+  if (!raw) {
+    if (status) {
+      status.textContent = t('ai.keyModal.empty');
+      status.className = 'modal-ai-key-status is-error';
+    }
+    return;
+  }
+  if (status) {
+    status.textContent = t('common.loading');
+    status.className = 'modal-ai-key-status';
+  }
+  const result = await api?.aiValidateKey?.(raw);
+  if (!result?.ok) {
+    if (status) {
+      status.textContent = t('ai.keyModal.invalid');
+      status.className = 'modal-ai-key-status is-error';
+    }
+    aiAccessOk = false;
+    return;
+  }
+  setAiTesterKey(raw);
+  aiAccessOk = true;
+  aiConfigured = true;
+  if (status) {
+    status.textContent = t('ai.keyModal.ok');
+    status.className = 'modal-ai-key-status is-ok';
+  }
+  syncAiSettingsKeyUi();
+  (window as any).__aiKeyModalRequired = false;
+  closeModal('modal-ai-key');
+}
+
+function isAiAccessDeniedResult(result: { error?: string; code?: string; reason?: string } | null | undefined): boolean {
+  if (!result) return false;
+  const code = String(result.code || result.reason || result.error || '').toLowerCase();
+  return code.includes('access_denied') || code === 'missing_key';
+}
+
+function handleAiAccessDenied(): void {
+  aiAccessOk = false;
+  showAiAccessDeniedModal();
+}
+
+async function refreshAiAccessStatus(): Promise<void> {
+  if (!isAiFeatureEnabled()) {
+    aiConfigured = false;
+    aiAccessOk = false;
+    return;
+  }
+  const key = getAiTesterKey();
+  if (!key) {
+    aiConfigured = true;
+    aiAccessOk = false;
+    return;
+  }
+  try {
+    const status = await api?.aiStatus?.({ testerKey: key });
+    aiConfigured = status?.configured !== false;
+    aiAccessOk = Boolean(status?.access);
+    if (status && status.access === false && (status.reason === 'access_denied' || status.reason === 'missing_key')) {
+      // Ключ отозван — чистим локально, чтобы не слать мёртвый секрет
+      if (status.reason === 'access_denied') setAiTesterKey('');
+      syncAiSettingsKeyUi();
+    }
+  } catch {
+    aiConfigured = false;
+    aiAccessOk = false;
+  }
+}
+
+function withAiTesterKey<T extends Record<string, unknown>>(payload: T): T & { testerKey?: string } {
+  const key = getAiTesterKey();
+  return key ? { ...payload, testerKey: key } : { ...payload };
+}
+
+const AI_WRITE_TOOLS = new Set([
+  'create_build',
+  'update_build',
+  'delete_build',
+  'duplicate_build',
+  'toggle_mod',
+  'remove_build_file',
+  'install_mod',
+  'open_build_folder',
+  'open_build_subfolder',
+  'open_launcher_data_folder',
+  'ensure_instance_dirs',
+  'clear_logs',
+  'delete_world',
+  'delete_screenshot',
+  'launch_build',
+  'install_java',
+  'remove_java',
+  'set_build_memory',
+  'set_jvm_args',
+  'set_build_window',
+  'write_config',
+  'write_options',
+  'set_options_value',
+  'import_modpack',
+  'backup_build',
+  'create_instance_share',
+  'import_instance_share',
+  'install_mod_bulk',
+  'update_outdated_mods',
+  'add_server',
+  'remove_server',
+  'edit_server',
+  'switch_account',
+  'open_console',
+  'launch_updater',
+  'disable_all_mods',
+  'enable_all_mods',
+  'copy_mods_to_build',
+  'open_modrinth_project',
+  'clear_instance_cache',
+  'set_java_for_build',
+  'rename_build',
+]);
+
+function escapeAiHtml(text: string): string {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function aiUid(): string {
+  return `ai_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function loadAiSessions(): void {
+  try {
+    const raw = localStorage.getItem(AI_STORE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed?.sessions)) {
+      aiSessions = parsed.sessions;
+      aiActiveId = String(parsed.activeId || aiSessions[0]?.id || '');
+    }
+  } catch {
+    aiSessions = [];
+    aiActiveId = '';
+  }
+  if (!aiSessions.length) {
+    const created = createAiSession(false);
+    aiActiveId = created.id;
+  } else if (!aiSessions.some((s) => s.id === aiActiveId)) {
+    aiActiveId = aiSessions[0].id;
+  }
+}
+
+function saveAiSessions(): void {
+  try {
+    localStorage.setItem(
+      AI_STORE_KEY,
+      JSON.stringify({ activeId: aiActiveId, sessions: aiSessions.slice(0, 40) }),
+    );
+  } catch {
+    /* quota */
+  }
+}
+
+function activeAiSession(): AiSession | null {
+  return aiSessions.find((s) => s.id === aiActiveId) || null;
+}
+
+function createAiSession(
+  persist = true,
+  opts?: { buildId?: string | null; title?: string },
+): AiSession {
+  const lastId = localStorage.getItem('Undefined Client-last-build') || '';
+  const fallback = savedBuilds.find((b) => b.id === lastId) || savedBuilds[0];
+  const session: AiSession = {
+    id: aiUid(),
+    title: opts?.title || t('ai.newChatTitle'),
+    updatedAt: Date.now(),
+    messages: [],
+    buildId: opts?.buildId !== undefined ? opts.buildId : fallback?.id || null,
+  };
+  aiSessions.unshift(session);
+  aiActiveId = session.id;
+  if (persist) saveAiSessions();
+  return session;
+}
+
+function formatAiRelative(ts: number): string {
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (sec < 60) return `${Math.max(1, sec)}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
+}
+
+function titleFromPrompt(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return t('ai.newChatTitle');
+  return clean.length > 34 ? `${clean.slice(0, 34)}…` : clean;
+}
+
+function formatAiDownloads(n?: number): string {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`;
+  if (v >= 1000) return `${Math.round(v / 1000)}K`;
+  return String(v);
+}
+
+function formatAiDate(raw?: string | null): string {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+function sessionBuild(session: AiSession | null): Build | null {
+  if (!session?.buildId) return null;
+  return savedBuilds.find((b) => b.id === session.buildId) || null;
+}
+
+function aiContextPayload(session: AiSession | null): { buildId?: string; buildName?: string } | null {
+  const build = sessionBuild(session);
+  if (!build) return null;
+  return { buildId: build.id, buildName: build.name };
+}
+
+type AiContextBucket = {
+  id: string;
+  label: string;
+  hint: string;
+  tokens: number;
+  color: string;
+};
+
+function charsToTokens(chars: number): number {
+  return Math.max(0, Math.ceil(chars / 4));
+}
+
+function estimateAiContextBreakdown(session: AiSession | null): {
+  buckets: AiContextBucket[];
+  total: number;
+  budget: number;
+  usage: number;
+} {
+  const budget = AI_CONTEXT_BUDGET_TOKENS;
+
+  // Системный preamble агента (оценка)
+  const systemTokens = 280;
+  // Схемы MCP tools (brief) — уходят в каждый запрос
+  const mcpTokens = 1_800;
+  const build = sessionBuild(session);
+  const buildTokens = build
+    ? charsToTokens(`build:${build.id}:${build.name}:${build.gameVersion}:${build.loader}`.length) + 40
+    : 0;
+
+  let conversationChars = 0;
+  if (session) {
+    for (const m of session.messages) {
+      conversationChars += String((m as any).content || '').length;
+      if ((m as any).tool_calls) conversationChars += JSON.stringify((m as any).tool_calls).length;
+    }
+  }
+  const conversationTokens = charsToTokens(conversationChars);
+
+  const buckets: AiContextBucket[] = [
+    {
+      id: 'system',
+      label: t('ai.ctx.system'),
+      hint: t('ai.ctx.systemHint'),
+      tokens: systemTokens,
+      color: 'rgba(255,255,255,0.35)',
+    },
+    {
+      id: 'mcp',
+      label: t('ai.ctx.mcp'),
+      hint: t('ai.ctx.mcpHint'),
+      tokens: mcpTokens,
+      color: 'var(--accent)',
+    },
+    {
+      id: 'build',
+      label: t('ai.ctx.build'),
+      hint: build ? build.name : t('ai.noBuild'),
+      tokens: buildTokens,
+      color: '#7dd3a7',
+    },
+    {
+      id: 'conversation',
+      label: t('ai.ctx.conversation'),
+      hint: t('ai.ctx.conversationHint'),
+      tokens: conversationTokens,
+      color: '#e2b86b',
+    },
+  ].filter((b) => b.tokens > 0 || b.id === 'conversation' || b.id === 'mcp' || b.id === 'system');
+
+  const total = buckets.reduce((s, b) => s + b.tokens, 0);
+  return {
+    buckets,
+    total,
+    budget,
+    usage: Math.min(1, total / budget),
+  };
+}
+
+function estimateAiContextUsage(session: AiSession | null): number {
+  return estimateAiContextBreakdown(session).usage;
+}
+
+function formatAiTokens(n: number): string {
+  if (n >= 1000) {
+    const k = n / 1000;
+    const text = (n >= 10_000 ? k.toFixed(0) : k.toFixed(1)).replace(/\.0$/, '');
+    return `${text}K`;
+  }
+  return String(n);
+}
+
+function updateAiContextRing(session: AiSession | null): void {
+  const ring = document.getElementById('ai-context-ring-value') as SVGCircleElement | null;
+  const wrap = document.getElementById('ai-context-ring');
+  if (!ring) return;
+  const { usage, total, budget } = estimateAiContextBreakdown(session);
+  const C = 2 * Math.PI * 6;
+  ring.style.strokeDasharray = String(C);
+  ring.style.strokeDashoffset = String(C * (1 - usage));
+  if (wrap) {
+    wrap.title = `${t('ai.contextUsage')}: ${Math.round(usage * 100)}% · ${formatAiTokens(total)} / ${formatAiTokens(budget)}`;
+  }
+  // Если меню открыто — обновляем разбивку на лету
+  const menu = document.getElementById('ai-context-menu');
+  if (menu?.classList.contains('is-open')) renderAiContextMenu();
+}
+
+function renderAiContextMenu(): void {
+  const menu = document.getElementById('ai-context-menu');
+  if (!menu) return;
+  const session = activeAiSession();
+  const { buckets, total, budget, usage } = estimateAiContextBreakdown(session);
+  const pct = Math.round(usage * 100);
+  const free = Math.max(0, budget - total);
+
+  // Доли относительно бюджета 256K — в баре виден и запас
+  const barUsed = buckets
+    .map((b) => {
+      const w = Math.max(b.tokens > 0 ? 0.4 : 0, (b.tokens / budget) * 100);
+      return `<span class="ai-context-menu__bar-seg" style="width:${w}%;background:${b.color}" title="${escapeAiHtml(b.label)}: ${formatAiTokens(b.tokens)}"></span>`;
+    })
+    .join('');
+  const barFree = `<span class="ai-context-menu__bar-seg ai-context-menu__bar-seg--free" style="width:${(free / budget) * 100}%" title="${escapeAiHtml(t('ai.ctx.free'))}: ${formatAiTokens(free)}"></span>`;
+
+  const rows = [
+    ...buckets.map(
+      (b) => `
+      <div class="ai-context-menu__row">
+        <span class="ai-context-menu__dot" style="background:${b.color}"></span>
+        <span class="ai-context-menu__name">
+          ${escapeAiHtml(b.label)}
+          <span class="ai-context-menu__hint">${escapeAiHtml(b.hint)}</span>
+        </span>
+        <span class="ai-context-menu__tokens">${escapeAiHtml(formatAiTokens(b.tokens))}</span>
+      </div>`,
+    ),
+    `<div class="ai-context-menu__row">
+      <span class="ai-context-menu__dot ai-context-menu__dot--free"></span>
+      <span class="ai-context-menu__name">
+        ${escapeAiHtml(t('ai.ctx.free'))}
+        <span class="ai-context-menu__hint">${escapeAiHtml(t('ai.ctx.freeHint'))}</span>
+      </span>
+      <span class="ai-context-menu__tokens">${escapeAiHtml(formatAiTokens(free))}</span>
+    </div>`,
+  ].join('');
+
+  menu.innerHTML = `
+    <div class="ai-context-menu__head">
+      <div class="ai-context-menu__title">${escapeAiHtml(t('ai.contextUsage'))}</div>
+      <div class="ai-context-menu__pct">${pct}% · ${escapeAiHtml(formatAiTokens(total))} / ${escapeAiHtml(formatAiTokens(budget))}</div>
+    </div>
+    <div class="ai-context-menu__bar">${barUsed}${barFree}</div>
+    <div class="ai-context-menu__list">${rows}</div>
+    <div class="ai-context-menu__foot">${escapeAiHtml(t('ai.ctx.foot'))}</div>
+  `;
+}
+
+function setAiContextMenuOpen(open: boolean): void {
+  const menu = document.getElementById('ai-context-menu');
+  const ring = document.getElementById('ai-context-ring');
+  if (!menu || !ring) return;
+  if (open) {
+    renderAiContextMenu();
+    menu.classList.remove('hidden');
+    // следующий кадр — чтобы сыграла CSS-анимация
+    requestAnimationFrame(() => menu.classList.add('is-open'));
+    ring.setAttribute('aria-expanded', 'true');
+  } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
+    menu.classList.remove('is-open');
+    ring.setAttribute('aria-expanded', 'false');
+    window.setTimeout(() => {
+      if (!menu.classList.contains('is-open')) menu.classList.add('hidden');
+    }, 160);
+  }
+}
+
+function setAiChatMenuOpen(open: boolean): void {
+  const menu = document.getElementById('ai-chat-menu-pop');
+  const btn = document.getElementById('ai-chat-menu');
+  if (!menu || !btn) return;
+  if (open) {
+    menu.classList.remove('hidden');
+    requestAnimationFrame(() => menu.classList.add('is-open'));
+    btn.setAttribute('aria-expanded', 'true');
+  } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
+    menu.classList.remove('is-open');
+    btn.setAttribute('aria-expanded', 'false');
+    window.setTimeout(() => {
+      if (!menu.classList.contains('is-open')) menu.classList.add('hidden');
+    }, 160);
+  }
+}
+
+function setAiBuildMenuOpen(open: boolean): void {
+  const menu = document.getElementById('ai-build-menu');
+  const btn = document.getElementById('ai-build-btn');
+  if (!menu || !btn) return;
+  if (open) {
+    renderAiBuildMenu();
+    menu.classList.remove('hidden');
+    requestAnimationFrame(() => menu.classList.add('is-open'));
+    btn.setAttribute('aria-expanded', 'true');
+  } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
+    menu.classList.remove('is-open');
+    btn.setAttribute('aria-expanded', 'false');
+    window.setTimeout(() => {
+      if (!menu.classList.contains('is-open')) menu.classList.add('hidden');
+    }, 180);
+  }
+}
+
+function closeAiPopovers(except?: string): void {
+  if (except !== 'ai-build-menu') setAiBuildMenuOpen(false);
+  if (except !== 'ai-context-menu') setAiContextMenuOpen(false);
+  if (except !== 'ai-attach-menu') closeAiAttachMenu();
+  if (except !== 'ai-chat-menu-pop') setAiChatMenuOpen(false);
+}
+
+function toggleAiContextMenu(): void {
+  const menu = document.getElementById('ai-context-menu');
+  if (!menu) return;
+  const willOpen = !menu.classList.contains('is-open');
+  closeAiPopovers(willOpen ? 'ai-context-menu' : undefined);
+  setAiContextMenuOpen(willOpen);
+}
+
+async function compactAiSession(session: AiSession): Promise<boolean> {
+  if (session.messages.length <= AI_CONTEXT_KEEP_RECENT + 2) return false;
+
+  // Режем по границе user-сообщения, чтобы не разорвать tool_calls / tool
+  let cut = Math.max(1, session.messages.length - AI_CONTEXT_KEEP_RECENT);
+  while (cut > 0 && session.messages[cut]?.role !== 'user') cut -= 1;
+  if (cut <= 0) return false;
+
+  const older = session.messages.slice(0, cut);
+  const keep = session.messages.slice(cut);
+  if (!older.length || !keep.length) return false;
+
+  const digest = older
+    .map((m) => {
+      if (m.role === 'user') return `User: ${String(m.content || '').slice(0, 400)}`;
+      if (m.role === 'assistant') return `Assistant: ${String(m.content || '').slice(0, 400)}`;
+      if (m.role === 'tool') return `Tool: ${String(m.content || '').slice(0, 180)}`;
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 14000);
+
+  const status = appendAiToolStatus('compact', 'running', { label: t('ai.compacting') });
+  const started = Date.now();
+  try {
+    const result = await api?.aiChat?.(withAiTesterKey({
+      tools: false,
+      context: aiContextPayload(session),
+      messages: [
+        {
+          role: 'user',
+          content: [
+            'Сделай компакт (краткое резюме) истории диалога для продолжения работы агента лаунчера.',
+            'Сохрани: цель пользователя, выбранную сборку, найденные моды/id, уже выполненные действия, важные факты.',
+            'Ответь одним связным текстом без markdown-таблиц, до 1400 символов.',
+            '',
+            'История:',
+            digest,
+          ].join('\n'),
+        },
+      ],
+    }));
+    const summary = String(result?.reply || '').trim();
+    if (!summary || result?.error) {
+      if (isAiAccessDeniedResult(result)) handleAiAccessDenied();
+      setAiToolStatus(status, 'error', Date.now() - started);
+      return false;
+    }
+    session.messages = sanitizeAiWireMessages([
+      {
+        role: 'assistant',
+        content: `${t('ai.compactPrefix')}\n${summary}`,
+      },
+      ...keep,
+    ]);
+    session.updatedAt = Date.now();
+    saveAiSessions();
+    setAiToolStatus(status, 'done', Date.now() - started);
+    updateAiContextRing(session);
+    return true;
+  } catch {
+    setAiToolStatus(status, 'error', Date.now() - started);
+    return false;
+  }
+}
+
+async function ensureAiContextCapacity(session: AiSession): Promise<void> {
+  let guard = 0;
+  let compacted = false;
+  while (guard < 3) {
+    guard += 1;
+    const { usage } = estimateAiContextBreakdown(session);
+    if (usage < AI_CONTEXT_COMPACT_AT) break;
+    const ok = await compactAiSession(session);
+    if (!ok) break;
+    compacted = true;
+  }
+  if (compacted) renderAiConversation();
+}
+
+function getAiUiHost(): AiUiHost {
+  return {
+    t,
+    escapeHtml: escapeAiHtml,
+    getMessagesRoot: () => document.getElementById('ai-messages'),
+    scrollToEnd: scrollAiMessagesToEnd,
+    getBuild: (id) => {
+      const b = savedBuilds.find((x) => x.id === id) || null;
+      if (!b) return null;
+      return {
+        id: b.id,
+        name: b.name,
+        gameVersion: b.gameVersion,
+        loader: b.loader,
+        icon: b.icon,
+      };
+    },
+    openBuildSettings: (buildId) => {
+      const b = savedBuilds.find((x) => x.id === buildId);
+      if (b) void openModalBuild(b);
+    },
+    sendPrompt: (text) => {
+      void sendAiMessage(text);
+    },
+    switchToAiTab: () => {
+      switchTab('ai');
+      ensureAiTab();
+    },
+  };
+}
+
+function refreshAiShellUi(session: AiSession | null): void {
+  const host = getAiUiHost();
+  const build = sessionBuild(session);
+  renderAiContextBar(host, build);
+  renderAiQuickChips(host, { buildId: session?.buildId || build?.id || null });
+  renderAiContextHints(host, build);
+}
+
+function updateAiBuildChip(session: AiSession | null): void {
+  const nameEl = document.getElementById('ai-build-name');
+  const iconEl = document.querySelector('.ai-build-chip__icon') as HTMLElement | null;
+  const build = sessionBuild(session);
+  if (nameEl) nameEl.textContent = build?.name || t('ai.noBuild');
+  if (iconEl) {
+    // Без своей иконки — newBuild.png (цвет iconBg больше не подставляем)
+    if (build?.icon) {
+      const src = buildIconSrc(build.icon).replace(/\\/g, '/').replace(/"/g, '');
+      iconEl.style.backgroundImage = `url("${src}")`;
+      iconEl.style.backgroundColor = 'transparent';
+    } else if (build) {
+      iconEl.style.backgroundImage = `url("${DEFAULT_BUILD_ICON_SRC}")`;
+      iconEl.style.backgroundColor = 'transparent';
+    } else {
+      iconEl.style.backgroundImage = '';
+      iconEl.style.backgroundColor = '#666';
+    }
+  }
+  refreshAiShellUi(session);
+}
+
+function autoResizeAiInput(): void {
+  const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
+  if (!input) return;
+  const minH = 24;
+  const maxH = 160;
+  // Сброс высоты, чтобы scrollHeight отражал реальный объём текста
+  input.style.height = `${minH}px`;
+  const next = Math.min(Math.max(input.scrollHeight, minH), maxH);
+  input.style.height = `${next}px`;
+  input.style.overflowY = next >= maxH ? 'auto' : 'hidden';
+  syncCustomCaret();
+}
+
+/** Подходит ли элемент под кастомный caret */
+function isCustomCaretField(el: Element | null): el is HTMLInputElement | HTMLTextAreaElement {
+  if (!el) return false;
+  if (el instanceof HTMLTextAreaElement) return !el.disabled && !el.readOnly;
+  if (!(el instanceof HTMLInputElement)) return false;
+  if (el.disabled || el.readOnly) return false;
+  const type = (el.getAttribute('type') || el.type || 'text').toLowerCase();
+  return ['text', 'password', 'search', 'email', 'url', 'tel', 'number'].includes(type);
+}
+
+function ensureUcCaretEl(): HTMLElement {
+  let caret = document.getElementById('uc-caret');
+  if (!caret) {
+    caret = document.createElement('span');
+    caret.id = 'uc-caret';
+    caret.className = 'uc-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.hidden = true;
+    document.body.appendChild(caret);
+  }
+  return caret;
+}
+
+/** Смещение каретки внутри input/textarea (зеркало стилей) */
+function getTextFieldCaretOffset(el: HTMLInputElement | HTMLTextAreaElement): { top: number; left: number; height: number } {
+  const style = window.getComputedStyle(el);
+  const isTextarea = el instanceof HTMLTextAreaElement;
+  const mirror = document.createElement('div');
+  const copyProps = [
+    'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
+    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+    'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
+    'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent',
+    'textDecoration', 'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace',
+    'wordWrap', 'wordBreak',
+  ] as const;
+  mirror.style.position = 'absolute';
+  mirror.style.visibility = 'hidden';
+  mirror.style.pointerEvents = 'none';
+  mirror.style.top = '0';
+  mirror.style.left = '-9999px';
+  if (isTextarea) {
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.overflowWrap = 'break-word';
+  } else {
+    mirror.style.whiteSpace = 'pre';
+    mirror.style.height = 'auto';
+    mirror.style.width = `${el.clientWidth}px`;
+    mirror.style.overflow = 'hidden';
+  }
+  for (const prop of copyProps) {
+    mirror.style[prop] = style[prop];
+  }
+  if (!isTextarea) {
+    // Ширина контента без вертикального скролла; горизонтальный scroll учитываем отдельно
+    mirror.style.width = `${Math.max(el.clientWidth, el.scrollWidth)}px`;
+  }
+
+  const pos = el.selectionEnd ?? 0;
+  const isPassword = el instanceof HTMLInputElement && el.type === 'password';
+  const before = isPassword ? '\u2022'.repeat(pos) : el.value.slice(0, pos);
+  mirror.textContent = before;
+  const marker = document.createElement('span');
+  marker.textContent = '\u200b';
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+
+  const lineH = (() => {
+    const lh = style.lineHeight;
+    if (lh && lh !== 'normal') {
+      const n = parseFloat(lh);
+      if (Number.isFinite(n)) return n;
+    }
+    return parseFloat(style.fontSize) * 1.2 || 16;
+  })();
+
+  let top: number;
+  let left: number;
+  let height: number;
+  if (isTextarea) {
+    left = marker.offsetLeft - el.scrollLeft;
+    // AI-композер: фиксированные 2×16; +1 как у старого margin-top (не центр line-height —
+    // иначе caret визуально проседает относительно глифов)
+    if (el.id === 'ai-input') {
+      height = 16;
+      top = marker.offsetTop - el.scrollTop + 1;
+    } else {
+      height = Math.max(12, Math.min(lineH, el.clientHeight - 2));
+      top = marker.offsetTop - el.scrollTop;
+    }
+  } else {
+    const padTop = parseFloat(style.paddingTop) || 0;
+    const padBot = parseFloat(style.paddingBottom) || 0;
+    const borderTop = parseFloat(style.borderTopWidth) || 0;
+    const contentH = el.clientHeight - padTop - padBot;
+    height = Math.max(12, Math.min(16, contentH - 2));
+    top = borderTop + padTop + Math.max(0, (contentH - height) / 2);
+    left = marker.offsetLeft - el.scrollLeft;
+  }
+  mirror.remove();
+  return { top, left, height };
+}
+
+function syncCustomCaret(): void {
+  const caret = ensureUcCaretEl();
+  const el = document.activeElement;
+  if (!isCustomCaretField(el)) {
+    caret.hidden = true;
+    return;
+  }
+
+  let start = 0;
+  let end = 0;
+  try {
+    start = el.selectionStart ?? 0;
+    end = el.selectionEnd ?? 0;
+  } catch {
+    caret.hidden = true;
+    return;
+  }
+  if (start !== end) {
+    caret.hidden = true;
+    return;
+  }
+
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) {
+    caret.hidden = true;
+    return;
+  }
+
+  const { top, left, height } = getTextFieldCaretOffset(el);
+  // Прячем, если ушло за края поля (горизонтальный/вертикальный скролл)
+  if (left < -1 || left > el.clientWidth + 1 || top < -2 || top > el.clientHeight + 2) {
+    caret.hidden = true;
+    return;
+  }
+
+  caret.hidden = false;
+  caret.style.height = `${height}px`;
+  caret.style.transform = `translate(${Math.round(rect.left + left)}px, ${Math.round(rect.top + top)}px)`;
+  caret.style.animation = 'none';
+  void caret.offsetWidth;
+  caret.style.animation = '';
+}
+
+let customCaretBound = false;
+function initCustomCarets(): void {
+  if (customCaretBound) return;
+  customCaretBound = true;
+  ensureUcCaretEl();
+
+  const sync = () => syncCustomCaret();
+  document.addEventListener('focusin', (e) => {
+    if (isCustomCaretField(e.target as Element)) sync();
+  });
+  document.addEventListener('focusout', () => {
+    // Даём следующему focusin сработать в том же тике
+    requestAnimationFrame(() => {
+      if (!isCustomCaretField(document.activeElement)) {
+        ensureUcCaretEl().hidden = true;
+      }
+    });
+  });
+  document.addEventListener('selectionchange', () => {
+    if (isCustomCaretField(document.activeElement)) sync();
+  });
+  document.addEventListener('input', (e) => {
+    if (isCustomCaretField(e.target as Element)) sync();
+  }, true);
+  document.addEventListener('keyup', (e) => {
+    if (isCustomCaretField(e.target as Element)) sync();
+  }, true);
+  document.addEventListener('pointerup', (e) => {
+    if (isCustomCaretField(e.target as Element)) sync();
+  }, true);
+  document.addEventListener('scroll', (e) => {
+    if (isCustomCaretField(e.target as Element) || isCustomCaretField(document.activeElement)) sync();
+  }, true);
+  window.addEventListener('resize', sync);
+}
+
+function setAiEmptyVisible(show: boolean): void {
+  document.getElementById('ai-empty')?.classList.toggle('hidden', !show);
+}
+
+function clearAiMessages(keepEmpty = true): void {
+  aiStreamGen += 1;
+  aiLastDividerDay = '';
+  aiActiveRound = null;
+  hideAiCrashBanner();
+  hideAiSkeleton();
+  const root = document.getElementById('ai-messages');
+  if (!root) return;
+  // Pending confirm паркуем по sessionId — иначе теряются при смене чата
+  parkAiConfirmsFromRoot(root);
+  // Убираем всё, кроме empty-state (иначе планы/разделители «липнут» к новому чату)
+  root.querySelectorAll('.ai-msg, .ai-day-divider, .ai-round, .ai-skeleton').forEach((n) => n.remove());
+  if (keepEmpty) setAiEmptyVisible(true);
+}
+
+const AI_SEND_ICON =
+  '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 10V2M6 2L2.5 5.5M6 2L9.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const AI_STOP_ICON =
+  '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><rect x="1" y="1" width="8" height="8" rx="1.5" fill="currentColor"/></svg>';
+
+/** Send ↔ Stop в композере: квадрат, пока агент работает в активном чате. */
+function syncAiComposerBusyUi(): void {
+  const sendBtn = document.getElementById('ai-send') as HTMLButtonElement | null;
+  if (!sendBtn) return;
+  const busyHere = Boolean(aiBusy && aiBusySessionId && aiBusySessionId === aiActiveId);
+  sendBtn.classList.toggle('is-stop', busyHere);
+  sendBtn.disabled = false;
+  sendBtn.type = busyHere ? 'button' : 'submit';
+  sendBtn.innerHTML = busyHere ? AI_STOP_ICON : AI_SEND_ICON;
+  sendBtn.title = busyHere ? t('ai.stop') : t('ai.send');
+  sendBtn.setAttribute('aria-label', busyHere ? t('ai.stop') : t('ai.send'));
+  // Titlebar-stop скрываем — управление только из композера
+  setAiStopVisible(false);
+}
+
+function scrollAiMessagesToEnd(): void {
+  const root = document.getElementById('ai-messages');
+  if (root) root.scrollTop = root.scrollHeight;
+}
+
+function appendAiDayDivider(ts = Date.now()): void {
+  const dayKey = new Date(ts).toDateString();
+  if (aiLastDividerDay === dayKey) return;
+  aiLastDividerDay = dayKey;
+  const root = document.getElementById('ai-messages');
+  if (!root) return;
+  const el = document.createElement('div');
+  el.className = 'ai-day-divider';
+  el.setAttribute('role', 'separator');
+  el.innerHTML = `<span>${escapeAiHtml(formatAiDate(new Date(ts).toISOString()))}</span>`;
+  root.appendChild(el);
+}
+
+function appendAiNode(role: string, html: string): HTMLElement | null {
+  const root = aiActiveRound?.isConnected
+    ? aiActiveRound
+    : document.getElementById('ai-messages');
+  if (!root) return null;
+  setAiEmptyVisible(false);
+  const el = document.createElement('div');
+  el.className = `ai-msg ai-msg--${role}`;
+  el.innerHTML = `<div class="ai-msg__bubble">${html}</div>`;
+  root.appendChild(el);
+  scrollAiMessagesToEnd();
+  return el;
+}
+
+function appendAiText(
+  role: 'user' | 'assistant' | 'system',
+  content: string,
+  opts?: { retryPrompt?: string | null; attachments?: readonly AiAttachment[] },
+): void {
+  if (role === 'assistant') {
+    const el = appendAiNode(role, `<div class="ai-md">${sanitizeHtml(markedParse(content || ''))}</div>`);
+    if (el) {
+      const retryPrompt =
+        opts?.retryPrompt !== undefined
+          ? opts.retryPrompt
+          : [...(activeAiSession()?.messages || [])].reverse().find((m) => m.role === 'user')?.content;
+      attachAiMessageActions(el, {
+        copyLabel: t('ai.copy'),
+        retryLabel: t('ai.retry'),
+        onRetry: retryPrompt?.trim()
+          ? () => {
+              void sendAiMessage(retryPrompt.trim());
+            }
+          : undefined,
+      });
+    }
+    return;
+  }
+  if (role === 'user') {
+    // Живая отправка передаёт attachments явно; история — wire-промпт с блоком вложений
+    const parsed =
+      opts?.attachments?.length
+        ? { text: content, attachments: opts.attachments }
+        : parseAiAttachmentsPrompt(content);
+    if (parsed.attachments.length) {
+      const badges = renderAiAttachBadgesHtml(parsed.attachments);
+      const body = parsed.text.trim()
+        ? `<div class="ai-msg__text">${escapeAiHtml(parsed.text).replace(/\n/g, '<br>')}</div>`
+        : '';
+      appendAiNode(role, `${badges}${body}`);
+      return;
+    }
+  }
+  appendAiNode(role, escapeAiHtml(content).replace(/\n/g, '<br>'));
+}
+
+/** Пустой пузырь ответа с курсором (ожидание / стрим) */
+function appendAiStreamBubble(): HTMLElement | null {
+  return appendAiNode(
+    'assistant',
+    `<div class="ai-stream" aria-live="polite" aria-busy="true"><div class="ai-md ai-stream__md"></div><span class="ai-stream__caret" aria-hidden="true"></span></div>`,
+  );
+}
+
+function sleepAi(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+/** Стрим ответа сразу как markdown (без сырого «|» / «**» до финального рендера). */
+async function streamAiAssistantText(
+  content: string,
+  into?: HTMLElement | null,
+): Promise<HTMLElement | null> {
+  const full = String(content || '');
+  const el = into && into.isConnected ? into : appendAiStreamBubble();
+  if (!el) return null;
+
+  const gen = aiStreamGen;
+  const mdEl = el.querySelector('.ai-stream__md') as HTMLElement | null;
+  const bubble = el.querySelector('.ai-msg__bubble') as HTMLElement | null;
+  if (!mdEl || !bubble) {
+    appendAiText('assistant', full);
+    el.remove();
+    return null;
+  }
+
+  if (!full) {
+    bubble.innerHTML = `<div class="ai-md"></div>`;
+    return el;
+  }
+
+  // Скорость зависит от длины: короткие — медленнее, длинные — быстрее
+  const chunk = full.length > 1200 ? 10 : full.length > 400 ? 5 : 3;
+  const delay = full.length > 1200 ? 8 : 14;
+  let i = 0;
+  let lastRenderAt = 0;
+  while (i < full.length) {
+    if (gen !== aiStreamGen || !el.isConnected) return el;
+    i = Math.min(full.length, i + chunk);
+    const now = Date.now();
+    // Markdown пересобираем ~30fps — иначе marked на каждом тике тормозит
+    if (now - lastRenderAt >= 32 || i >= full.length) {
+      lastRenderAt = now;
+      mdEl.innerHTML = sanitizeHtml(markedParse(full.slice(0, i)));
+      scrollAiMessagesToEnd();
+    }
+    await sleepAi(delay);
+  }
+
+  if (gen !== aiStreamGen || !el.isConnected) return el;
+  bubble.innerHTML = `<div class="ai-md">${sanitizeHtml(markedParse(full))}</div>`;
+  scrollAiMessagesToEnd();
+  const session = activeAiSession();
+  const lastUser = [...(session?.messages || [])].reverse().find((m) => m.role === 'user');
+  attachAiMessageActions(el, {
+    copyLabel: t('ai.copy'),
+    retryLabel: t('ai.retry'),
+    onRetry: () => {
+      const prompt = lastUser?.content?.trim();
+      if (prompt) void sendAiMessage(prompt);
+    },
+  });
+  return el;
+}
+
+function toolLabel(name: string, args?: Record<string, unknown>): string {
+  if (name === 'install_mod') {
+    const title = asStringMaybe(args?.title) || asStringMaybe(args?.projectId);
+    const base = dict['ai.tool.install_mod'] || AI_TOOL_LABELS.install_mod;
+    return title ? `${base} ${title}…` : ensureToolEllipsis(base);
+  }
+  const localized = dict[`ai.tool.${name}`];
+  if (localized) return ensureToolEllipsis(localized);
+  const fallback = AI_TOOL_LABELS[name];
+  if (fallback) return ensureToolEllipsis(fallback);
+  return `${t('ai.toolUsing')}…`;
+}
+
+function ensureToolEllipsis(label: string): string {
+  const s = label.trim();
+  if (!s) return t('ai.toolUsing') + '…';
+  return /…|\.\.\.$/.test(s) ? s : `${s}…`;
+}
+
+function asStringMaybe(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function appendAiToolStatus(
+  name: string,
+  status: 'running' | 'done' | 'error',
+  opts?: { label?: string; durationMs?: number },
+): HTMLElement | null {
+  const label = opts?.label || toolLabel(name);
+  const time =
+    status !== 'running' && opts?.durationMs != null
+      ? `${Math.max(1, Math.round(opts.durationMs / 1000))}sec`
+      : '';
+  // Пиксель только пока tool выполняется; после — только текст статуса
+  const pixel =
+    status === 'running'
+      ? '<span class="ai-pixel is-running" aria-hidden="true"></span>'
+      : '';
+  return appendAiNode(
+    'tool',
+    `<div class="ai-tool is-${status}" data-tool="${escapeAiHtml(name)}">
+      ${pixel}
+      <span class="ai-tool__label">${escapeAiHtml(label)}</span>
+      ${time ? `<span class="ai-tool__time">${escapeAiHtml(time)}</span>` : ''}
+    </div>`,
+  );
+}
+
+function setAiToolStatus(
+  el: HTMLElement | null,
+  status: 'running' | 'done' | 'error',
+  durationMs?: number,
+): void {
+  const row = el?.querySelector('.ai-tool');
+  if (!row) return;
+  row.classList.remove('is-running', 'is-done', 'is-error');
+  row.classList.add(`is-${status}`);
+  // После выполнения пиксель скрываем
+  row.querySelector('.ai-pixel')?.remove();
+  if (status !== 'running' && durationMs != null) {
+    let time = row.querySelector('.ai-tool__time');
+    if (!time) {
+      time = document.createElement('span');
+      time.className = 'ai-tool__time';
+      row.appendChild(time);
+    }
+    time.textContent = `${Math.max(1, Math.round(durationMs / 1000))}sec`;
+  }
+}
+
+function setAiBusySession(sessionId: string | null): void {
+  aiBusySessionId = sessionId;
+  renderAiSessionList();
+  const titlePixel = document.getElementById('ai-title-pixel');
+  const activeBusy = Boolean(sessionId && sessionId === aiActiveId);
+  if (titlePixel) {
+    titlePixel.classList.toggle('hidden', !activeBusy);
+    titlePixel.classList.toggle('is-running', activeBusy);
+  }
+  syncAiComposerBusyUi();
+}
+
+function appendAiModCards(mods: AiModCard[]): void {
+  if (!mods.length) return;
+  const cards = mods
+    .slice(0, 6)
+    .map((m) => {
+      const icon = m.iconUrl
+        ? `<img class="ai-mod-card__icon" src="${escapeAiHtml(m.iconUrl)}" alt="">`
+        : `<div class="ai-mod-card__icon"></div>`;
+      return `<button type="button" class="ai-mod-card" data-mod-id="${escapeAiHtml(m.id)}" data-mod-slug="${escapeAiHtml(m.slug || '')}">
+        ${icon}
+        <div class="ai-mod-card__body">
+          <div class="ai-mod-card__title">${escapeAiHtml(m.title)}</div>
+          <div class="ai-mod-card__meta">
+            <span class="ai-mod-card__meta-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5V9M7 9L3.5 5.5M7 9L10.5 5.5M2 11.5H12" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              ${escapeAiHtml(formatAiDownloads(m.downloads))} ${escapeAiHtml(t('ai.downloads'))}
+            </span>
+            <span class="ai-mod-card__meta-item">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.25" stroke="white" stroke-width="1.4"/><path d="M7 3.8V7L9.2 8.3" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+              ${escapeAiHtml(t('ai.updated'))} ${escapeAiHtml(formatAiDate(m.updatedAt))}
+            </span>
+          </div>
+        </div>
+      </button>`;
+    })
+    .join('');
+  appendAiNode('mods', `<div class="ai-mod-cards">${cards}</div>`);
+}
+
+function extractModsFromToolResult(result: unknown): AiModCard[] {
+  if (!result || typeof result !== 'object') return [];
+  const obj = result as any;
+  const list = Array.isArray(obj.mods) ? obj.mods : obj.mod ? [obj.mod] : [];
+  return list
+    .filter((m: any) => m && (m.id || m.slug) && m.title)
+    .map((m: any) => ({
+      id: String(m.id || m.slug),
+      slug: m.slug,
+      title: String(m.title),
+      description: m.description,
+      iconUrl: m.iconUrl || m.icon_url || null,
+      downloads: Number(m.downloads) || 0,
+      updatedAt: m.updatedAt || m.date_modified || null,
+    }));
+}
+
+function renderAiSessionList(): void {
+  const list = document.getElementById('ai-chat-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const q = aiSearchQuery.trim().toLowerCase();
+  for (const session of aiSessions) {
+    if (q && !session.title.toLowerCase().includes(q)) continue;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `ai-session${session.id === aiActiveId ? ' active' : ''}`;
+    row.dataset.id = session.id;
+    const busy = session.id === aiBusySessionId;
+    row.innerHTML = `
+      ${busy
+        ? '<span class="ai-pixel is-running" aria-hidden="true"></span>'
+        : `<img class="ai-session__ico" src="../../assets/icons/aiPanel/chat.svg" width="14" height="14" alt="" aria-hidden="true">`}
+      <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
+      <span class="ai-session__time">${escapeAiHtml(formatAiRelative(session.updatedAt))}</span>
+    `;
+    row.addEventListener('click', () => selectAiSession(session.id));
+    list.appendChild(row);
+  }
+}
+
+function renderAiConversation(): void {
+  clearAiMessages(true);
+  aiLastDividerDay = '';
+  aiActiveRound = null;
+  const session = activeAiSession();
+  const titleEl = document.getElementById('ai-stage-title');
+  if (titleEl) {
+    titleEl.textContent = session?.messages.length ? session.title : t('ai.title');
+    if (!session?.messages.length) titleEl.setAttribute('data-i18n', 'ai.title');
+    else titleEl.removeAttribute('data-i18n');
+  }
+  updateAiBuildChip(session);
+  updateAiContextRing(session);
+  refreshAiShellUi(session);
+  renderAiUndoChip(getAiUiHost());
+
+  if (!session || !session.messages.length) {
+    setAiEmptyVisible(true);
+    restoreAiConfirmsForSession(session?.id || '', getAiUiHost());
+    syncAiComposerBusyUi();
+    return;
+  }
+
+  appendAiDayDivider(session.updatedAt);
+
+  const toolResults = new Map<string, any>();
+  for (const msg of session.messages) {
+    if (msg.role === 'tool') {
+      try {
+        toolResults.set(msg.tool_call_id, JSON.parse(msg.content));
+      } catch {
+        toolResults.set(msg.tool_call_id, null);
+      }
+    }
+  }
+
+  let lastUserPrompt = '';
+  for (const msg of session.messages) {
+    if (msg.role === 'user') {
+      lastUserPrompt = msg.content;
+      appendAiText('user', msg.content);
+    } else if (msg.role === 'assistant') {
+      if (msg.content) appendAiText('assistant', msg.content, { retryPrompt: lastUserPrompt });
+      if (msg.tool_calls?.length) {
+        for (const tc of msg.tool_calls) {
+          const result = toolResults.get(tc.id);
+          // В истории пиксель не показываем — только завершённый статус
+          appendAiToolStatus(tc.function.name, result?.error ? 'error' : 'done', {
+            label: toolLabel(tc.function.name, parseToolArgs(tc.function.arguments)),
+            durationMs: undefined,
+          });
+          const mods = extractModsFromToolResult(result);
+          if (mods.length) appendAiModCards(mods);
+        }
+      }
+    }
+  }
+
+  restoreAiConfirmsForSession(session.id, getAiUiHost());
+  syncAiComposerBusyUi();
+}
+
+function selectAiSession(id: string): void {
+  if (!aiSessions.some((s) => s.id === id)) return;
+  aiActiveId = id;
+  saveAiSessions();
+  clearAiAttachments();
+  closeAiAttachMenu();
+  renderAiSessionList();
+  renderAiConversation();
+  syncAiComposerBusyUi();
+  document.getElementById('ai-input')?.focus();
+}
+
+function deleteAiSession(id: string): void {
+  aiSessions = aiSessions.filter((s) => s.id !== id);
+  if (!aiSessions.length) createAiSession(false);
+  if (aiActiveId === id) aiActiveId = aiSessions[0].id;
+  saveAiSessions();
+  renderAiSessionList();
+  renderAiConversation();
+}
+
+function parseToolArgs(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Сколько последних user-ходов держим «горячими» (полные tool-результаты). */
+const AI_WIRE_HOT_USER_TURNS = 3;
+const AI_WIRE_TOOL_HOT_CHARS = 3500;
+const AI_WIRE_TOOL_COLD_CHARS = 400;
+const AI_WIRE_USER_HOT_CHARS = 6000;
+const AI_WIRE_USER_COLD_CHARS = 1200;
+
+/** Ужимает JSON tool-результата: режет excerpt/логи и длинные массивы. */
+function slimAiToolPayload(value: unknown, depth = 0): unknown {
+  if (depth > 4) return null;
+  if (typeof value === 'string') {
+    if (value.length > 500) return value.slice(0, 400) + '…';
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const sliced = value.slice(0, 10).map((x) => slimAiToolPayload(x, depth + 1));
+    return value.length > 10 ? [...sliced, { _truncated: value.length }] : sliced;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (
+        typeof v === 'string' &&
+        v.length > 400 &&
+        /excerpt|text|content|log|html|body|raw/i.test(k)
+      ) {
+        out[k] = v.slice(0, 350) + '…';
+        continue;
+      }
+      out[k] = slimAiToolPayload(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
+function compactAiToolContent(raw: string, maxChars: number): string {
+  const text = String(raw || '');
+  if (!text) return JSON.stringify({ error: 'empty' });
+  try {
+    const parsed = JSON.parse(text);
+    const slim = slimAiToolPayload(parsed);
+    const out = JSON.stringify(slim);
+    if (out.length <= maxChars) return out;
+    return out.slice(0, maxChars) + '…';
+  } catch {
+    return text.length <= maxChars ? text : text.slice(0, maxChars) + '…';
+  }
+}
+
+/** Старые user-сообщения: убираем код-блоки вложений/логов. */
+function compactAiUserContent(raw: string, maxChars: number, stripBlocks: boolean): string {
+  let s = String(raw || '');
+  if (stripBlocks) {
+    s = s.replace(/```[\s\S]*?```/g, '[…файл/лог…]');
+  }
+  if (s.length > maxChars) s = s.slice(0, maxChars) + '\n…';
+  return s;
+}
+
+/**
+ * Готовит историю к отправке в API (не мутирует session):
+ * — горячие последние user-ходы почти целиком;
+ * — старые tool-результаты и code-блоки сильно ужимаются.
+ */
+function prepareAiWireMessages(messages: AiWireMessage[]): AiWireMessage[] {
+  const clean = sanitizeAiWireMessages(messages);
+  let userTurns = 0;
+  const hotFlags: boolean[] = new Array(clean.length).fill(false);
+  for (let i = clean.length - 1; i >= 0; i -= 1) {
+    if (clean[i].role === 'user') {
+      userTurns += 1;
+    }
+    hotFlags[i] = userTurns <= AI_WIRE_HOT_USER_TURNS;
+  }
+
+  return clean.map((m, i) => {
+    const hot = hotFlags[i];
+    if (m.role === 'tool') {
+      return {
+        ...m,
+        content: compactAiToolContent(String(m.content || ''), hot ? AI_WIRE_TOOL_HOT_CHARS : AI_WIRE_TOOL_COLD_CHARS),
+      };
+    }
+    if (m.role === 'user') {
+      return {
+        ...m,
+        content: compactAiUserContent(String(m.content || ''), hot ? AI_WIRE_USER_HOT_CHARS : AI_WIRE_USER_COLD_CHARS, !hot),
+      };
+    }
+    if (m.role === 'assistant' && m.content) {
+      const text = String(m.content);
+      const max = hot ? 4000 : 1200;
+      return { ...m, content: text.length > max ? text.slice(0, max) + '…' : text };
+    }
+    return m;
+  });
+}
+
+/** Чинит историю для API: tool только после assistant.tool_calls, без «осиротевших» tool. */
+function sanitizeAiWireMessages(messages: AiWireMessage[]): AiWireMessage[] {
+  const out: AiWireMessage[] = [];
+  let pending = new Set<string>();
+
+  const flushPending = (reason: string) => {
+    for (const id of pending) {
+      out.push({
+        role: 'tool',
+        tool_call_id: id,
+        content: JSON.stringify({ error: reason }),
+      });
+    }
+    pending = new Set();
+  };
+
+  for (const m of messages) {
+    if (m.role === 'user') {
+      flushPending('interrupted');
+      const content = String(m.content || '').trim();
+      if (content) out.push({ role: 'user', content: m.content });
+      continue;
+    }
+    if (m.role === 'assistant') {
+      flushPending('interrupted');
+      const tcs = Array.isArray(m.tool_calls) ? m.tool_calls.filter((tc) => tc?.id && tc?.function?.name) : [];
+      if (tcs.length) {
+        out.push({
+          role: 'assistant',
+          content: m.content == null || m.content === '' ? null : m.content,
+          tool_calls: tcs,
+        });
+        pending = new Set(tcs.map((tc) => String(tc.id)));
+      } else if (String(m.content || '').trim()) {
+        out.push({ role: 'assistant', content: String(m.content) });
+      }
+      continue;
+    }
+    if (m.role === 'tool') {
+      const id = String(m.tool_call_id || '');
+      if (!id || !pending.has(id)) continue;
+      pending.delete(id);
+      out.push({
+        role: 'tool',
+        tool_call_id: id,
+        content: compactAiToolContent(String(m.content || ''), AI_WIRE_TOOL_HOT_CHARS),
+      });
+    }
+  }
+  flushPending('incomplete');
+  return out;
+}
+
+async function runAiToolSafe(
+  name: string,
+  args: Record<string, unknown>,
+  opts?: { preconfirmed?: boolean; sessionId?: string | null },
+): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+  let exec = await api?.aiToolsRun?.(
+    name,
+    args,
+    opts?.preconfirmed ? { confirmed: true } : undefined,
+  );
+  if (exec && !exec.ok && exec.error === 'confirm_required') {
+    setAiAgentStatus('confirm');
+    const ok = await askAiConfirmInChat({
+      host: getAiUiHost(),
+      tool: name,
+      args,
+      risk: 'write',
+      sessionId: opts?.sessionId || activeAiSession()?.id,
+    });
+    if (!ok) return { ok: false, error: 'cancelled' };
+    exec = await api?.aiToolsRun?.(name, args, { confirmed: true });
+  }
+  return exec || { ok: false, error: 'no_api' };
+}
+
+async function runAiAgentTurn(session: AiSession): Promise<void> {
+  let rounds = 0;
+  const messagesRoot = document.getElementById('ai-messages');
+  while (rounds < AI_MAX_TOOL_ROUNDS) {
+    if (aiStopRequested) break;
+    rounds += 1;
+    setAiAgentStatus('thinking');
+    syncAiComposerBusyUi();
+    showAiSkeleton(messagesRoot);
+    const result = await api?.aiChat?.(withAiTesterKey({
+      messages: prepareAiWireMessages(session.messages) as any,
+      tools: true,
+      context: aiContextPayload(session),
+    }));
+    hideAiSkeleton();
+
+    if (aiStopRequested) break;
+
+    if (!result || result.error) {
+      if (isAiAccessDeniedResult(result)) {
+        handleAiAccessDenied();
+        break;
+      }
+      appendAiText('system', t('ai.error', { error: result?.error || 'unknown' }));
+      break;
+    }
+
+    const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
+    const round = messagesRoot ? beginAiRound(messagesRoot) : null;
+    aiActiveRound = round;
+
+    if (toolCalls.length) {
+      if (round) {
+        mountAiPlan(
+          round,
+          toolCalls.map((tc: any, i: number) => ({
+            id: `step_${rounds}_${i}`,
+            label: toolLabel(tc.function.name, parseToolArgs(tc.function.arguments)),
+            status: 'pending' as const,
+          })),
+        );
+      }
+
+      if (result.reply) {
+        session.messages.push({
+          role: 'assistant',
+          content: result.reply,
+          tool_calls: toolCalls,
+        });
+        setAiAgentStatus('streaming');
+        await streamAiAssistantText(result.reply);
+      } else {
+        session.messages.push({
+          role: 'assistant',
+          content: null,
+          tool_calls: toolCalls,
+        });
+      }
+
+      const prepared = toolCalls.map((tc: any) => {
+        const args = parseToolArgs(tc.function.arguments);
+        if (!args.buildId && session.buildId) args.buildId = session.buildId;
+        return { tc, args };
+      });
+      const writeItems = prepared
+        .filter((x) => AI_WRITE_TOOLS.has(x.tc.function.name))
+        .map((x) => ({ tool: x.tc.function.name as string, args: x.args }));
+      let batchOk = true;
+      if (writeItems.length > 1) {
+        setAiAgentStatus('confirm');
+        batchOk = await askAiConfirmBatch({
+          host: getAiUiHost(),
+          items: writeItems,
+          sessionId: session.id,
+        });
+      }
+      const preconfirmed = writeItems.length > 1 && batchOk;
+
+      const answeredToolIds = new Set<string>();
+      for (let i = 0; i < prepared.length; i += 1) {
+        if (aiStopRequested) break;
+        const { tc, args } = prepared[i];
+        updateAiPlanStep(`step_${rounds}_${i}`, 'running');
+        setAiAgentStatus('tool', toolLabel(tc.function.name, args));
+        syncAiComposerBusyUi();
+
+        if (writeItems.length > 1 && AI_WRITE_TOOLS.has(tc.function.name) && !batchOk) {
+          updateAiPlanStep(`step_${rounds}_${i}`, 'error');
+          appendAiToolStatus(tc.function.name, 'error', { label: toolLabel(tc.function.name, args) });
+          session.messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify({ error: 'cancelled' }),
+          });
+          answeredToolIds.add(tc.id);
+          continue;
+        }
+
+        const beforeBuild =
+          tc.function.name === 'update_build' && args.buildId
+            ? savedBuilds.find((b) => b.id === args.buildId) || null
+            : null;
+
+        const chip = appendAiToolStatus(tc.function.name, 'running', {
+          label: toolLabel(tc.function.name, args),
+        });
+        const started = Date.now();
+        const exec = await runAiToolSafe(tc.function.name, args, {
+          preconfirmed: preconfirmed && AI_WRITE_TOOLS.has(tc.function.name),
+          sessionId: session.id,
+        });
+        const durationMs = Date.now() - started;
+        setAiToolStatus(chip, exec?.ok ? 'done' : 'error', durationMs);
+        updateAiPlanStep(`step_${rounds}_${i}`, exec?.ok ? 'done' : 'error');
+
+        // Контекст чата: select_build обновляет чип UI
+        if (exec?.ok && tc.function.name === 'select_build') {
+          const selectedId =
+            asStringMaybe(args.buildId) ||
+            asStringMaybe(
+              exec.result && typeof exec.result === 'object'
+                ? (exec.result as Record<string, unknown>).id
+                : null,
+            );
+          if (selectedId && savedBuilds.some((b) => b.id === selectedId)) {
+            session.buildId = selectedId;
+            session.updatedAt = Date.now();
+            saveAiSessions();
+            updateAiBuildChip(session);
+            updateAiContextRing(session);
+          }
+        }
+
+        const payload = exec?.ok ? exec.result : { error: exec?.error || 'tool_failed' };
+        if (chip) {
+          wrapAiToolCollapsible(chip, {
+            label: toolLabel(tc.function.name, args),
+            detail: JSON.stringify(payload).slice(0, 2500),
+            status: exec?.ok ? 'done' : 'error',
+          });
+        }
+
+        session.messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: compactAiToolContent(JSON.stringify(payload), AI_WIRE_TOOL_HOT_CHARS),
+        });
+        answeredToolIds.add(tc.id);
+
+        if (exec?.ok && AI_WRITE_TOOLS.has(tc.function.name)) {
+          const payloadObj =
+            payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+          const touchedId =
+            asStringMaybe(args.buildId) ||
+            asStringMaybe(payloadObj?.id) ||
+            asStringMaybe(payloadObj?.buildId);
+          if (touchedId && tc.function.name !== 'delete_build') {
+            markBuildTouchedByAgent(touchedId);
+          }
+          if (tc.function.name === 'toggle_mod' && args.filename && args.buildId) {
+            const filename = String(args.filename);
+            const buildId = String(args.buildId);
+            const wasEnabled = args.enabled;
+            pushAiUndo({
+              id: `undo_${Date.now()}`,
+              label: `${t('ai.undo')}: ${filename}`,
+              at: Date.now(),
+              revert: async () => {
+                await api?.aiToolsRun?.(
+                  'toggle_mod',
+                  {
+                    buildId,
+                    filename,
+                    enabled: typeof wasEnabled === 'boolean' ? !wasEnabled : undefined,
+                  },
+                  { confirmed: true },
+                );
+              },
+            });
+            renderAiUndoChip(getAiUiHost());
+          }
+          if (tc.function.name === 'update_build' && beforeBuild) {
+            const snap = {
+              name: beforeBuild.name,
+              gameVersion: beforeBuild.gameVersion,
+              loader: beforeBuild.loader,
+              loaderVersion: beforeBuild.loaderVersion,
+              javaPath: beforeBuild.javaPath,
+              memoryMin: beforeBuild.memory?.min,
+              memoryMax: beforeBuild.memory?.max,
+            };
+            pushAiUndo({
+              id: `undo_${Date.now()}`,
+              label: `${t('ai.undo')}: ${beforeBuild.name}`,
+              at: Date.now(),
+              revert: async () => {
+                await api?.aiToolsRun?.(
+                  'update_build',
+                  { buildId: beforeBuild.id, ...snap },
+                  { confirmed: true },
+                );
+                await loadBuilds();
+                renderBuilds();
+              },
+            });
+            renderAiUndoChip(getAiUiHost());
+            const host = getAiUiHost();
+            const diff = renderAiBuildDiff(beforeBuild, { ...beforeBuild, ...args }, host);
+            const root = host.getMessagesRoot();
+            if (root) {
+              const wrap = document.createElement('div');
+              wrap.className = 'ai-msg ai-msg--system';
+              wrap.innerHTML = `<div class="ai-msg__bubble"></div>`;
+              wrap.querySelector('.ai-msg__bubble')?.appendChild(diff);
+              root.appendChild(wrap);
+              host.scrollToEnd();
+            }
+          }
+          if (
+            tc.function.name === 'create_build' ||
+            tc.function.name === 'duplicate_build' ||
+            tc.function.name === 'update_build' ||
+            tc.function.name === 'install_mod' ||
+            tc.function.name === 'delete_build'
+          ) {
+            await loadBuilds();
+            const b = savedBuilds.find((x) => x.id === touchedId);
+            if (b && (tc.function.name === 'create_build' || tc.function.name === 'duplicate_build')) {
+              appendAiBuildPreview(getAiUiHost(), {
+                id: b.id,
+                name: b.name,
+                gameVersion: b.gameVersion,
+                loader: b.loader,
+                icon: b.icon ? buildIconSrc(b.icon) : undefined,
+              });
+            } else {
+              renderBuilds();
+            }
+          } else {
+            renderBuilds();
+          }
+        }
+
+        const mods = extractModsFromToolResult(payload);
+        if (mods.length) appendAiModCards(mods);
+      }
+      // Stop / обрыв: закрываем незакрытые tool_calls, иначе следующий запрос падает 400
+      for (const tc of toolCalls) {
+        if (answeredToolIds.has(tc.id)) continue;
+        session.messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify({ error: aiStopRequested ? 'stopped' : 'incomplete' }),
+        });
+        answeredToolIds.add(tc.id);
+      }
+      session.messages = sanitizeAiWireMessages(session.messages);
+      if (round) endAiRound(round);
+      aiActiveRound = null;
+      session.updatedAt = Date.now();
+      saveAiSessions();
+      updateAiContextRing(session);
+      continue;
+    }
+
+    if (!result.reply) {
+      if (round) endAiRound(round);
+      aiActiveRound = null;
+      appendAiText('system', t('ai.error', { error: 'empty' }));
+      break;
+    }
+    session.messages.push({ role: 'assistant', content: result.reply });
+    setAiAgentStatus('streaming');
+    await streamAiAssistantText(result.reply);
+    if (round) endAiRound(round);
+    aiActiveRound = null;
+    session.updatedAt = Date.now();
+    saveAiSessions();
+    renderAiSessionList();
+    updateAiContextRing(session);
+    setAiAgentStatus('idle');
+    syncAiComposerBusyUi();
+    return;
+  }
+  aiActiveRound = null;
+  if (rounds >= AI_MAX_TOOL_ROUNDS) appendAiText('system', t('ai.toolLoopLimit'));
+  setAiAgentStatus('idle');
+  syncAiComposerBusyUi();
+}
+
+function requestAiStop(): void {
+  aiStopRequested = true;
+  aiStreamGen += 1;
+  setAiAgentStatus('idle');
+  syncAiComposerBusyUi();
+}
+
+async function sendAiMessage(text: string): Promise<void> {
+  const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
+  const session = activeAiSession();
+  if (!session || aiBusy) return;
+  const prompt = text.trim();
+  const attachments = [...getAiAttachments()];
+  if (!prompt && !attachments.length) return;
+
+  if (aiConfigured === false) {
+    appendAiText('system', t('ai.unavailable'));
+    return;
+  }
+  if (!getAiTesterKey() || aiAccessOk === false) {
+    handleAiAccessDenied();
+    return;
+  }
+
+  // Вложения: в чат — badge-ряд, в API — полный блок с текстом логов/файлов
+  const attachBlock = formatAiAttachmentsPrompt(attachments);
+  const userLine = prompt;
+  const wirePrompt = [attachBlock, userLine].filter(Boolean).join('\n\n') || t('ai.attach.title');
+  const titleSource = userLine || attachments.map((a) => a.label).join(', ') || t('ai.attach.title');
+
+  if (!session.messages.length) session.title = titleFromPrompt(titleSource);
+  session.messages.push({ role: 'user', content: wirePrompt });
+  session.updatedAt = Date.now();
+  saveAiSessions();
+  renderAiSessionList();
+
+  if (input) {
+    input.value = '';
+    autoResizeAiInput();
+  }
+  clearAiAttachments();
+  closeAiAttachMenu();
+  appendAiDayDivider();
+  appendAiText('user', userLine, { attachments });
+  updateAiContextRing(session);
+
+  aiBusy = true;
+  aiStopRequested = false;
+  setAiBusySession(session.id);
+  try {
+    // Лечим уже сохранённую битую историю (Stop / slice / reject)
+    session.messages = sanitizeAiWireMessages(session.messages);
+    saveAiSessions();
+    await ensureAiContextCapacity(session);
+    await runAiAgentTurn(session);
+  } catch (err: any) {
+    appendAiText('system', t('ai.error', { error: err?.message || 'unknown' }));
+  } finally {
+    aiBusy = false;
+    aiStopRequested = false;
+    aiActiveRound = null;
+    setAiBusySession(null);
+    setAiAgentStatus('idle');
+    syncAiComposerBusyUi();
+    input?.focus();
+    const titleEl = document.getElementById('ai-stage-title');
+    if (titleEl) titleEl.textContent = session.title;
+    updateAiContextRing(session);
+    saveAiSessions();
+    renderAiSessionList();
+    refreshAiShellUi(session);
+  }
+}
+
+function renderAiBuildMenu(): void {
+  const menu = document.getElementById('ai-build-menu');
+  const session = activeAiSession();
+  if (!menu) return;
+  const items = [
+    `<button type="button" data-build="" class="${!session?.buildId ? 'active' : ''}">${escapeAiHtml(t('ai.noBuild'))}</button>`,
+    ...savedBuilds.map(
+      (b) =>
+        `<button type="button" data-build="${escapeAiHtml(b.id)}" class="${session?.buildId === b.id ? 'active' : ''}">${escapeAiHtml(b.name)}</button>`,
+    ),
+  ];
+  menu.innerHTML = items.join('');
+}
+
+function ensureAiTab(): void {
+  if (!aiInited) initAiAssistant();
+  renderAiSessionList();
+  renderAiConversation();
+}
+
+function bindAiActionBridge(): void {
+  if (!api?.onAiAction || !api.aiActionResult) return;
+  api.onAiAction((msg) => {
+    void (async () => {
+      let result: unknown = { ok: false, error: 'unknown_action' };
+      try {
+        const action = String(msg?.action || '');
+        const payload = (msg?.payload && typeof msg.payload === 'object' ? msg.payload : {}) as Record<
+          string,
+          unknown
+        >;
+        if (action === 'launch_build') {
+          const buildId = String(payload.buildId || '');
+          const build = savedBuilds.find((b) => b.id === buildId);
+          if (!build) result = { ok: false, error: 'build_not_found' };
+          else {
+            const ip = typeof payload.serverIp === 'string' ? payload.serverIp.trim() : '';
+            const port = Number(payload.serverPort);
+            const server =
+              ip
+                ? { ip, port: Number.isFinite(port) && port > 0 ? port : 25565 }
+                : undefined;
+            await launchBuild(build, server);
+            result = { ok: true, launched: true, buildId };
+          }
+        } else if (action === 'install_java') {
+          const version = Number(payload.version);
+          result = api.installJava ? await api.installJava(version) : { success: false, error: 'unavailable' };
+        } else if (action === 'remove_java') {
+          const version = Number(payload.version);
+          result = api.removeJava ? await api.removeJava(version) : { success: false, error: 'unavailable' };
+        } else if (action === 'create_instance_share') {
+          const buildId = String(payload.buildId || '');
+          const authorName = typeof payload.authorName === 'string' ? payload.authorName : undefined;
+          result = api.createInstanceShare
+            ? await api.createInstanceShare(buildId, authorName ? { authorName } : undefined)
+            : { ok: false, error: 'unavailable' };
+        } else if (action === 'import_instance_share') {
+          const shareId = String(payload.shareId || payload.id || '');
+          result = api.importInstanceShare
+            ? await api.importInstanceShare(shareId)
+            : { ok: false, error: 'unavailable' };
+          if ((result as any)?.ok && (result as any)?.build) {
+            const b = (result as any).build;
+            const idx = savedBuilds.findIndex((x) => x.id === b.id);
+            if (idx >= 0) savedBuilds[idx] = b;
+            else savedBuilds.push(b);
+            renderBuilds();
+          }
+        } else if (action === 'list_server_catalog') {
+          const list = api.fetchServerCatalog ? await api.fetchServerCatalog() : [];
+          result = { ok: true, servers: Array.isArray(list) ? list.slice(0, 40) : [] };
+        } else if (action === 'get_console_tail') {
+          const limit = Math.min(200, Math.max(1, Number(payload.limit) || 40));
+          const hist = api.getConsoleHistory ? await api.getConsoleHistory() : [];
+          result = { ok: true, events: Array.isArray(hist) ? hist.slice(-limit) : [] };
+        } else if (action === 'open_console') {
+          await api.openConsole?.();
+          result = { ok: true };
+        } else if (action === 'launch_updater') {
+          result = api.launchUpdater ? await api.launchUpdater() : { success: false, error: 'unavailable' };
+        } else if (action === 'switch_account') {
+          const uuid = String(payload.uuid || '').trim();
+          const username = String(payload.username || '').trim();
+          const accounts = api.loadAccounts ? await api.loadAccounts() : [];
+          const found = (accounts || []).find(
+            (a: any) =>
+              (uuid && String(a.uuid || a.id || '') === uuid) ||
+              (username && String(a.name || a.username || '').toLowerCase() === username.toLowerCase()),
+          );
+          if (!found) result = { ok: false, error: 'account_not_found' };
+          else {
+            applyAccount(found);
+            result = {
+              ok: true,
+              uuid: found.uuid || found.id || null,
+              username: found.name || found.username || null,
+            };
+          }
+        }
+      } catch (e: any) {
+        result = { ok: false, error: e?.message || 'action_failed' };
+      }
+      api.aiActionResult?.({ id: msg.id, result });
+    })();
+  });
+}
+
+function initAiAssistant(): void {
+  if (aiInited) return;
+  const form = document.getElementById('ai-form') as HTMLFormElement | null;
+  const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
+  const newBtn = document.getElementById('ai-new-chat');
+  if (!form || !input) return;
+  aiInited = true;
+
+  bindAiActionBridge();
+
+  loadAiSessions();
+  renderAiEmptyScenarios(getAiUiHost());
+  renderAiSessionList();
+  renderAiConversation();
+  refreshAiShellUi(activeAiSession());
+
+  onAiStop(() => requestAiStop());
+
+  document.getElementById('ai-send')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    if (!btn.classList.contains('is-stop')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    requestAiStop();
+  });
+
+  // Версия клиента в pill рядом с брендом агента
+  const setAiRailVersion = (v?: string): void => {
+    const el = document.getElementById('ai-agent-ver');
+    if (!el) return;
+    const ver = String(v || appVersion || '').trim();
+    if (ver) el.textContent = ver;
+  };
+  setAiRailVersion();
+  void api?.getAppVersion?.().then((v) => {
+    if (!v) return;
+    appVersion = String(v);
+    setAiRailVersion(appVersion);
+  });
+
+  newBtn?.addEventListener('click', () => {
+    createAiSession(true);
+    clearAiAttachments();
+    closeAiAttachMenu();
+    renderAiSessionList();
+    renderAiConversation();
+    refreshAiShellUi(activeAiSession());
+    input.focus();
+  });
+
+  // ===== Меню вложений (@) — сборки, моды, паки, файлы, логи =====
+  initAiAttachUi({
+    ...getAiUiHost(),
+    getBuilds: () =>
+      savedBuilds.map((b) => ({
+        id: b.id,
+        name: b.name,
+        gameVersion: b.gameVersion || '',
+        loader: b.loader || '',
+        iconSrc: b.icon
+          ? buildIconSrc(b.icon).replace(/\\/g, '/')
+          : DEFAULT_BUILD_ICON_SRC,
+        iconBg: b.iconBg,
+      })),
+    getSessionBuildId: () => activeAiSession()?.buildId || null,
+    scanBuildContent: async (buildId) => {
+      if (!api?.scanInstance) return null;
+      try {
+        const data = await api.scanInstance(buildId);
+        return {
+          mods: (data?.mods || []).map((m: any) => ({ filename: m.filename || m.file || m.name, name: m.name || m.title })),
+          resourcepacks: (data?.resourcepacks || []).map((m: any) => ({ filename: m.filename || m.file || m.name, name: m.name || m.title })),
+          shaders: (data?.shaders || []).map((m: any) => ({ filename: m.filename || m.file || m.name, name: m.name || m.title })),
+          datapacks: (data?.datapacks || []).map((m: any) => ({ filename: m.filename || m.file || m.name, name: m.name || m.title })),
+        };
+      } catch {
+        return null;
+      }
+    },
+    pickFiles: async () => (api?.pickFiles ? await api.pickFiles() : []),
+    readAttachFile: async (filePath) => (api?.readAttachFile ? await api.readAttachFile(filePath) : null),
+    getCrashLog: async (buildId) => (api?.getCrashReport ? await api.getCrashReport(buildId) : null),
+    getLatestLog: async (buildId) => {
+      if (!api?.getInstancePath || !api?.readAttachFile) return null;
+      try {
+        const root = await api.getInstancePath(buildId);
+        if (!root) return null;
+        const read = await api.readAttachFile(joinInstancePath(root, 'logs', 'latest.log'));
+        return read?.text || null;
+      } catch {
+        return null;
+      }
+    },
+    closeOtherPopovers: () => closeAiPopovers('ai-attach-menu'),
+    onAttachmentsChange: () => {
+      /* чипы рисует attach-ui */
+    },
+  });
+
+  document.getElementById('ai-search-toggle')?.addEventListener('click', () => {
+    const search = document.getElementById('ai-search') as HTMLInputElement | null;
+    if (!search) return;
+    search.classList.toggle('hidden');
+    if (!search.classList.contains('hidden')) search.focus();
+    else {
+      aiSearchQuery = '';
+      search.value = '';
+      renderAiSessionList();
+    }
+  });
+
+  document.getElementById('ai-search')?.addEventListener('input', (e) => {
+    aiSearchQuery = (e.target as HTMLInputElement).value || '';
+    renderAiSessionList();
+  });
+
+  input.addEventListener('input', autoResizeAiInput);
+  autoResizeAiInput();
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void sendAiMessage(input.value);
+  });
+
+  document.getElementById('ai-empty-prompts')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.ai-prompt');
+    if (!btn) return;
+    const key = btn.dataset.promptKey;
+    void sendAiMessage(key ? t(key) : btn.textContent || '');
+  });
+
+  document.getElementById('ai-messages')?.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement).closest('a');
+    if (a) {
+      const href = a.getAttribute('href');
+      if (href) {
+        e.preventDefault();
+        api?.openExternal?.(href);
+      }
+      return;
+    }
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.ai-mod-card');
+    if (card?.dataset.modId) {
+      const id = card.dataset.modSlug || card.dataset.modId;
+      void openModalDetails(id);
+    }
+  });
+
+  document.getElementById('ai-build-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = document.getElementById('ai-build-menu');
+    const willOpen = !menu?.classList.contains('is-open');
+    closeAiPopovers(willOpen ? 'ai-build-menu' : undefined);
+    setAiBuildMenuOpen(!!willOpen);
+  });
+
+  document.getElementById('ai-build-menu')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-build]');
+    if (!btn) return;
+    const session = activeAiSession();
+    if (!session) return;
+    session.buildId = btn.dataset.build || null;
+    saveAiSessions();
+    updateAiBuildChip(session);
+    updateAiContextRing(session);
+    setAiBuildMenuOpen(false);
+  });
+
+  document.getElementById('ai-context-ring')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleAiContextMenu();
+  });
+
+  document.getElementById('ai-context-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  document.getElementById('ai-chat-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = document.getElementById('ai-chat-menu-pop');
+    const willOpen = !menu?.classList.contains('is-open');
+    closeAiPopovers(willOpen ? 'ai-chat-menu-pop' : undefined);
+    setAiChatMenuOpen(willOpen);
+  });
+
+  document.getElementById('ai-chat-menu-pop')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  document.getElementById('ai-menu-delete')?.addEventListener('click', () => {
+    const session = activeAiSession();
+    if (session) deleteAiSession(session.id);
+    closeAiPopovers();
+  });
+
+  document.getElementById('ai-menu-clear')?.addEventListener('click', () => {
+    const session = activeAiSession();
+    if (!session) return;
+    session.messages = [];
+    session.title = t('ai.newChatTitle');
+    session.updatedAt = Date.now();
+    saveAiSessions();
+    renderAiSessionList();
+    renderAiConversation();
+    closeAiPopovers();
+  });
+
+  document.addEventListener('click', () => {
+    closeAiPopovers();
+  });
+
+  void api?.aiStatus?.({ testerKey: getAiTesterKey() }).then((status) => {
+    aiConfigured = status?.configured !== false;
+    aiAccessOk = Boolean(status?.access);
+    if (status?.reason === 'access_denied') {
+      setAiTesterKey('');
+      syncAiSettingsKeyUi();
+    }
+  });
+}
+
+let aiAccessSettingsBound = false;
+
+function bindAiAccessSettingsUi(): void {
+  if (aiAccessSettingsBound) {
+    syncAiSettingsKeyUi();
+    applyAiTabVisibility();
+    return;
+  }
+  aiAccessSettingsBound = true;
+  const toggle = document.getElementById('setting-ai-enabled') as HTMLInputElement | null;
+  if (toggle) {
+    settingLoad('setting-ai-enabled', 'ai-enabled', true);
+    toggle.addEventListener('change', () => {
+      const on = toggle.checked;
+      localStorage.setItem(AI_ENABLED_LS_KEY, String(on));
+      if (on) {
+        // При включении всегда запрашиваем/подтверждаем код
+        openAiKeyModal({ required: true });
+        applyAiTabVisibility();
+      } else {
+        applyAiTabVisibility();
+      }
+    });
+  }
+
+  document.getElementById('setting-ai-key-btn')?.addEventListener('click', () => {
+    openAiKeyModal({ required: false });
+  });
+
+  document.getElementById('modal-ai-key-close')?.addEventListener('click', () => closeAiKeyModal(true));
+  document.getElementById('modal-ai-key-cancel')?.addEventListener('click', () => closeAiKeyModal(true));
+  document.getElementById('modal-ai-key-save')?.addEventListener('click', () => {
+    void saveAiTesterKeyFromModal();
+  });
+  document.getElementById('modal-ai-key')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeAiKeyModal(true);
+  });
+  document.getElementById('modal-ai-key-input')?.addEventListener('keydown', (e) => {
+    if ((e as KeyboardEvent).key === 'Enter') {
+      e.preventDefault();
+      void saveAiTesterKeyFromModal();
+    }
+  });
+
+  const closeAccess = () => closeModal('modal-ai-access');
+  document.getElementById('modal-ai-access-close')?.addEventListener('click', closeAccess);
+  document.getElementById('modal-ai-access-ok')?.addEventListener('click', closeAccess);
+  document.getElementById('modal-ai-access')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeAccess();
+  });
+  document.getElementById('modal-ai-access-settings')?.addEventListener('click', () => {
+    closeAccess();
+    openModal('modal-settings');
+    const tab = document.querySelector<HTMLElement>('.stngs-sidebar [data-settings-tab="agent"]');
+    tab?.click();
+  });
+
+  applyAiTabVisibility();
+}
+
 /* ===== START ===== */
 
-init();
+// AI инициализируем после локалей (см. init → setLang), иначе empty-сценарии получают сырые ключи
+void init();

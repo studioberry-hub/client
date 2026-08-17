@@ -4,7 +4,7 @@
 // wasm-модуль в dist пакета отсутствует, он лежит в src/wasm-mesher/runtime-build/
 // и грузится мешером по АБСОЛЮТНОМУ пути '/wasm_mesher_bg.wasm' — поэтому он должен
 // оказаться в корне кастомного протокола app://local/.
-import { mkdirSync, copyFileSync, statSync, existsSync } from 'node:fs';
+import { mkdirSync, copyFileSync, readFileSync, writeFileSync, statSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,3 +34,18 @@ for (const [from, name] of files) {
 }
 
 if (failed) process.exit(1);
+
+// wasm-bindgen ждёт init({ module_or_path }), а mesherWasm вызывает default("/path") —
+// из‑за этого в консоли сыпятся deprecation warnings на каждый воркер.
+const mesherWasmPath = join(outDir, 'mesherWasm.js');
+if (existsSync(mesherWasmPath)) {
+  const src = readFileSync(mesherWasmPath, 'utf8');
+  const oldCall = 'await nt.default("/wasm_mesher_bg.wasm")';
+  const newCall = 'await nt.default({module_or_path:"/wasm_mesher_bg.wasm"})';
+  if (src.includes(oldCall)) {
+    writeFileSync(mesherWasmPath, src.replaceAll(oldCall, newCall));
+    console.log('[copy-world-assets] mesherWasm.js — патч init({module_or_path})');
+  } else if (!src.includes('module_or_path:"/wasm_mesher_bg.wasm"')) {
+    console.warn('[copy-world-assets] патч WASM init не применён: сигнатура вызова изменилась');
+  }
+}

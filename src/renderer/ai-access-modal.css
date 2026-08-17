@@ -1,0 +1,46 @@
+/* ===== Стили модалок доступа UAgent ===== */
+
+.modal-window.modal-ai-access,
+.modal-window.modal-ai-key {
+  width: min(460px, calc(100vw - 32px));
+}
+
+#modal-ai-access .modal-header,
+#modal-ai-key .modal-header {
+  align-items: flex-start;
+  padding-right: 44px;
+}
+
+#modal-ai-access .modal-header-title,
+#modal-ai-key .modal-header-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+  padding-right: 4px;
+}
+
+#modal-ai-access .modal-ai-access__message {
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+#modal-ai-access .modal-footer {
+  flex-wrap: wrap;
+}
+
+#modal-ai-access .stngs-btn.ghost {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ===== Плашка-информер в модалке ключа ===== */
+.modal-ai-key__informer {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--accent-rgb), 0.28);
+  background: rgba(var(--accent-rgb), 0.1);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.78);
+}

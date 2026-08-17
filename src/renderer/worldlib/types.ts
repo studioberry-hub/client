@@ -43,9 +43,13 @@ export interface WorldInfo {
   minY: number;
   worldHeight: number;
   start: { x: number; y: number; z: number };
+  /** Градусы Rotation из NBT, если есть. */
+  yaw?: number;
+  pitch?: number;
   chunkCount: number;
   regionCount: number;
   startSource: string;
+  dimension?: string;
 }
 
 export interface WorldEntry {
@@ -57,13 +61,33 @@ export interface WorldEntry {
 export interface WorldApi {
   worldPath: string;
   shotPath: string;
+  /** true — view внутри модалки лаунчера. */
+  embedded?: boolean;
+  closeEmbed?(): Promise<{ ok?: boolean }>;
   describe(path: string): Promise<WorldInfo>;
   listWorlds(): Promise<WorldEntry[]>;
   column(path: string, x: number, z: number): Promise<WireColumn | null>;
   columns(path: string, coords: Array<[number, number]>): Promise<WireColumn[]>;
+  columnsRing?(path: string, centerX: number, centerZ: number, radius: number): Promise<{
+    columns: WireColumn[];
+    missing: Array<[number, number]>;
+  }>;
+  columnsRadius?(path: string, centerX: number, centerZ: number, radius: number): Promise<{
+    columns: WireColumn[];
+    missing: Array<[number, number]>;
+  }>;
+  previewProfile?(): Promise<{ username: string; uuid?: string; skinDataUrl?: string }>;
   stats(path: string): Promise<any>;
   screenshot(filePath: string): Promise<{ ok: boolean; path?: string; bytes?: number; error?: string }>;
   finish(): Promise<void>;
+  findClientJar?(gameVersion: string): Promise<string | null>;
+  blockTextures?(gameVersion: string, jarPath?: string): Promise<{
+    ok: boolean;
+    jarPath?: string;
+    textures: Record<string, string>;
+    count: number;
+    error?: string;
+  }>;
 }
 
 declare global {

@@ -24,6 +24,10 @@ GITHUB_REPO = "client"
 APP_NAME = "Undefined Client"
 CLIENT_EXE = "uclient.exe"
 ASSET_NAME = "latest-windows-amd64.zip"
+# База сайта лаунчера: отсюда инсталлер/updater берут zip (зеркало GitHub).
+SITE_API_BASE = os.environ.get(
+    "UC_API_BASE", "https://uprojects.site/client"
+).rstrip("/")
 INSTALL_DIR = os.path.join(
     os.environ.get("APPDATA", os.path.expanduser("~")),
     "UndefinedClientApp",
@@ -1193,11 +1197,11 @@ class InstallerApp:
                 self.download_status(total - done_bytes, speed),
             ))
         if self.preview_skin == "uninstall":
-            summary = self.uninstall_summary("1.0.3-beta", 186 * 1024 ** 2)
+            summary = self.uninstall_summary("1.0.4-beta", 186 * 1024 ** 2)
         else:
             summary = self.install_summary(
-                "1.0.3-beta", 186 * 1024 ** 2, 42.0, None,
-                previous="1.0.2-beta" if self.preview_skin == "updater" else None,
+                "1.0.4-beta", 186 * 1024 ** 2, 42.0, None,
+                previous="1.0.3-beta" if self.preview_skin == "updater" else None,
             )
         self.emit(("done", summary))
 
@@ -1332,6 +1336,58 @@ class InstallerApp:
     def fetch_latest_zip(self):
         self.emit(("indeterminate",))
         self.emit(("status", STATUS_FETCH))
+        site = self.fetch_latest_zip_from_site()
+        if site is not None:
+            return site
+        return self.fetch_latest_zip_from_github()
+
+    def fetch_latest_zip_from_site(self):
+        """Зеркало на сайте: мета + стабильный /api/download/zip."""
+        api_url = f"{SITE_API_BASE}/api/release/latest"
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                "User-Agent": f"{APP_NAME}-installer",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                info = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            print("Site release meta failed:", exc, file=sys.stderr)
+            return None
+
+        tag = str(info.get("tag") or info.get("version") or "").strip()
+        name = str(info.get("zipFilename") or ASSET_NAME)
+        size = info.get("zipSize")
+        if size is not None:
+            try:
+                size = int(size)
+            except (TypeError, ValueError):
+                size = None
+
+        if info.get("zipDirectAvailable"):
+            return (name, f"{SITE_API_BASE}/api/download/zip", size, tag)
+
+        zip_github = str(info.get("zipGithubUrl") or "").strip()
+        if zip_github:
+            return (name, zip_github, size, tag)
+
+        mirror = str(info.get("zipMirrorUrl") or "").strip()
+        if mirror:
+            if mirror.startswith("/"):
+                # Относительный путь от корня сайта (/client/...)
+                base = SITE_API_BASE.rsplit("/client", 1)[0] or SITE_API_BASE
+                mirror = base.rstrip("/") + mirror
+            elif not mirror.startswith("http"):
+                mirror = f"{SITE_API_BASE.rstrip('/')}/{mirror.lstrip('/')}"
+            return (name, mirror, size, tag)
+
+        return None
+
+    def fetch_latest_zip_from_github(self):
+        """Fallback: напрямую GitHub Releases."""
         api_url = (
             f"https://api.github.com/repos/{self.owner}/{self.repo}"
             "/releases/latest"
