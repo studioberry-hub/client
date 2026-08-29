@@ -14,6 +14,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowClose: () => ipcRenderer.send('window:close'),
 
   launch: (config: any) => ipcRenderer.invoke('launcher:launch', config),
+  detectRunningGame: () =>
+    ipcRenderer.invoke('launcher:detect-running-game') as Promise<{
+      ok: boolean;
+      running: boolean;
+      buildId?: string;
+      name?: string;
+      gameVersion?: string;
+      loader?: string;
+      pid?: number;
+      startedAt?: number;
+    }>,
 
   authOffline: (username: string) => ipcRenderer.invoke('launcher:auth:offline', username),
   authMicrosoft: () => ipcRenderer.invoke('launcher:auth:microsoft'),
@@ -23,6 +34,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveAccount: (account: any) => ipcRenderer.invoke('launcher:account:save', account),
   loadAccounts: () => ipcRenderer.invoke('launcher:account:load'),
   removeAccount: (uuid: string) => ipcRenderer.invoke('launcher:account:remove', uuid),
+  setActiveAccount: (uuid: string) => ipcRenderer.invoke('launcher:account:setActive', uuid),
+  getActiveAccount: () => ipcRenderer.invoke('launcher:account:getActive') as Promise<string | null>,
 
   saveBuild: (build: any) => ipcRenderer.invoke('launcher:build:save', build),
   loadBuilds: () => ipcRenderer.invoke('launcher:build:load'),
@@ -46,7 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   switchAccountCape: (account: any, capeId: string | null) =>
     ipcRenderer.invoke('launcher:cosmetics:switchCape', account, capeId),
 
-  getModrinthProjects: (query: string, type: string, offset?: number, limit?: number, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string }) => ipcRenderer.invoke('modrinth:search', query, type, offset, limit, opts),
+  getModrinthProjects: (query: string, type: string, offset?: number, limit?: number, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string; source?: string }) => ipcRenderer.invoke('modrinth:search', query, type, offset, limit, opts),
   getModrinthProject: (projectId: string) => ipcRenderer.invoke('modrinth:project', projectId),
   getModrinthVersions: (projectId: string) => ipcRenderer.invoke('modrinth:versions', projectId),
   downloadMod: (projectId: string, versionId?: string) => ipcRenderer.invoke('modrinth:download', projectId, versionId),
@@ -71,6 +84,69 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   fetchNewsList: (lang?: string, limit?: number) => ipcRenderer.invoke('news:list', lang, limit),
   fetchNewsPost: (id: string, lang?: string) => ipcRenderer.invoke('news:get', id, lang),
+
+  // MC Messenger: сессия MSA/Ely + REST через сайт
+  messengerSession: (account: any) => ipcRenderer.invoke('messenger:session', account),
+  messengerLogout: () => ipcRenderer.invoke('messenger:logout'),
+  messengerRequest: (payload: {
+    method?: string;
+    path: string;
+    body?: unknown;
+    query?: Record<string, string | number | undefined>;
+  }) => ipcRenderer.invoke('messenger:request', payload),
+  messengerPickFiles: (opts?: { media?: boolean }) =>
+    ipcRenderer.invoke('messenger:pickFiles', opts || {}) as Promise<string[]>,
+  messengerReadFile: (filePath: string) =>
+    ipcRenderer.invoke('messenger:readFile', filePath) as Promise<{
+      ok: boolean;
+      name?: string;
+      path?: string;
+      size?: number;
+      mime?: string;
+      dataBase64?: string;
+      error?: string;
+    }>,
+  messengerDownloadAttachment: (payload: { messageId: string; fileName?: string }) =>
+    ipcRenderer.invoke('messenger:downloadAttachment', payload) as Promise<{
+      ok: boolean;
+      path?: string;
+      error?: string;
+    }>,
+  messengerOpenLocalFile: (filePath: string) =>
+    ipcRenderer.invoke('messenger:openLocalFile', filePath) as Promise<{
+      ok: boolean;
+      error?: string;
+    }>,
+
+  // Join с друзьями: LAN-порт + relay-туннель
+  gameRelayWatchLan: (buildId: string) => ipcRenderer.invoke('game-relay:watch-lan', buildId),
+  gameRelayStopWatch: () => ipcRenderer.invoke('game-relay:stop-watch'),
+  gameRelayGetLanPort: (buildId?: string) =>
+    ipcRenderer.invoke('game-relay:get-lan-port', buildId) as Promise<{ port: number | null }>,
+  gameRelayStart: (
+    localPort: number,
+    meta?: {
+      buildId?: string;
+      buildName?: string;
+      gameVersion?: string;
+      loader?: string;
+      serverName?: string;
+    } | null,
+  ) => ipcRenderer.invoke('game-relay:start', localPort, meta || null),
+  gameRelayStop: () => ipcRenderer.invoke('game-relay:stop'),
+  gameRelayRestore: () => ipcRenderer.invoke('game-relay:restore'),
+  gameRelayStatus: () => ipcRenderer.invoke('game-relay:status'),
+  gameRelayJoinSession: (sessionId: string) => ipcRenderer.invoke('game-relay:join-session', sessionId),
+  onGameRelayLanPort: (cb: (data: { buildId: string; port: number | null }) => void) => {
+    const handler = (_e: unknown, data: { buildId: string; port: number | null }) => cb(data);
+    ipcRenderer.on('game-relay:lan-port', handler);
+    return () => ipcRenderer.removeListener('game-relay:lan-port', handler);
+  },
+  onGameRelayTunnel: (cb: (data: Record<string, unknown>) => void) => {
+    const handler = (_e: unknown, data: Record<string, unknown>) => cb(data);
+    ipcRenderer.on('game-relay:tunnel', handler);
+    return () => ipcRenderer.removeListener('game-relay:tunnel', handler);
+  },
 
   // AI-агент: чат через сайт, MCP-tools исполняются локально в main
   aiStatus: (opts?: { testerKey?: string }) => ipcRenderer.invoke('ai:status', opts || {}),
@@ -116,6 +192,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('instance-share:create', buildId, opts),
   getInstanceShare: (id: string) => ipcRenderer.invoke('instance-share:get', id),
   importInstanceShare: (id: string) => ipcRenderer.invoke('instance-share:import', id),
+  exportInstanceZip: (buildId: string) =>
+    ipcRenderer.invoke('instance-export:zip', buildId) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  exportInstanceMrpack: (buildId: string) =>
+    ipcRenderer.invoke('instance-export:mrpack', buildId) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  onInstanceExportProgress: (callback: (data: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('instance-export:progress', handler);
+    return () => ipcRenderer.removeListener('instance-export:progress', handler);
+  },
   onInstanceShareProgress: (callback: (data: any) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
     ipcRenderer.on('instance-share:progress', handler);
@@ -150,6 +235,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openConsole: () => ipcRenderer.invoke('console:open'),
   appendConsoleLog: (message: string) => ipcRenderer.invoke('console:append', message),
+  /** Синхронизация акцента с окном консоли */
+  notifyThemeChanged: (accent: string) => ipcRenderer.send('theme:changed', accent),
+  onThemeChanged: (callback: (accent: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, accent: string) => callback(String(accent || ''));
+    ipcRenderer.on('theme:changed', handler);
+    return () => ipcRenderer.removeListener('theme:changed', handler);
+  },
   // Просмотр мира Minecraft (окно открывается также флагом запуска --world[=путь])
   openWorldViewer: (worldPath?: string, profile?: { username?: string; uuid?: string; skinDataUrl?: string }, bounds?: { x: number; y: number; width: number; height: number }) =>
     ipcRenderer.invoke('world:open', worldPath ?? '', profile ?? null, bounds ?? null),
@@ -203,6 +295,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listWorlds: (buildId: string) => ipcRenderer.invoke('launcher:list-worlds', buildId),
   deleteInstanceFiles: (buildId: string, sub: string, names: string[]) => ipcRenderer.invoke('launcher:delete-instance-files', buildId, sub, names),
   saveInstanceFiles: (buildId: string, sub: string, names: string[]) => ipcRenderer.invoke('launcher:save-instance-files', buildId, sub, names),
+  toggleInstanceFile: (buildId: string, sub: string, filename: string, enabled?: boolean) =>
+    ipcRenderer.invoke('launcher:toggle-instance-file', buildId, sub, filename, enabled),
+  getScreenshot: (buildId: string, name: string) =>
+    ipcRenderer.invoke('launcher:get-screenshot', buildId, name) as Promise<{ success: boolean; dataUrl?: string; size?: number; error?: string }>,
+  copyScreenshot: (buildId: string, name: string) =>
+    ipcRenderer.invoke('launcher:copy-screenshot', buildId, name) as Promise<{ success: boolean; error?: string }>,
+  importInstanceFiles: (buildId: string, sub: string, sourcePaths?: string[]) =>
+    ipcRenderer.invoke('launcher:import-instance-files', buildId, sub, sourcePaths),
   scanInstance: (buildId: string) => ipcRenderer.invoke('launcher:scan-instance', buildId),
   pickModpack: () => ipcRenderer.invoke('launcher:pick-modpack') as Promise<string | null>,
   inspectModpack: (archivePath: string) =>

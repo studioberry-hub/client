@@ -13,9 +13,9 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
-const BLOOM_BASE = 0.14;
-const BLOOM_RADIUS = 0.45;
-const BLOOM_THRESHOLD = 0.92;
+const BLOOM_BASE = 0.06;
+const BLOOM_RADIUS = 0.48;
+const BLOOM_THRESHOLD = 0.88;
 
 /**
  * Bloom + SMAA.
@@ -37,8 +37,10 @@ export class StudioPostFx {
     const renderTarget = new WebGLRenderTarget(
       Math.max(1, Math.floor(size.width * pixelRatio)),
       Math.max(1, Math.floor(size.height * pixelRatio)),
-      { type: UnsignedByteType, samples: 0 },
-    );
+    {
+      type: UnsignedByteType,
+      samples: 0,
+    });
     renderTarget.texture.name = "StudioPostFx.rt";
 
     this._composer = new EffectComposer(renderer, renderTarget);
@@ -50,6 +52,7 @@ export class StudioPostFx {
       BLOOM_RADIUS,
       BLOOM_THRESHOLD,
     );
+    this._bloom.enabled = BLOOM_BASE > 0;
     this._composer.addPass(this._bloom);
 
     // three@0.156: SMAAPass(width, height); типы @types/three новее — без аргументов
@@ -77,6 +80,19 @@ export class StudioPostFx {
   setBloomBoost(amount: number): void {
     const t = Math.max(0, Math.min(1, amount));
     this._bloom.strength = BLOOM_BASE + t * 0.35;
+    this._bloom.enabled = this._bloom.strength > 0.001;
+  }
+
+  /** Прямая сила bloom (модалка профиля — без bloom) */
+  setBloomStrength(strength: number): void {
+    this._bloom.strength = Math.max(0, strength);
+    this._bloom.enabled = this._bloom.strength > 0.001;
+  }
+
+  /** Вернуть базовую силу bloom */
+  resetBloomStrength(): void {
+    this._bloom.strength = BLOOM_BASE;
+    this._bloom.enabled = BLOOM_BASE > 0;
   }
 
   render(): void {

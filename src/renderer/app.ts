@@ -12,6 +12,7 @@ import { marked } from 'marked';
 import { setApiBase, getApiBase, catalogImageUrl, skinImageUrl } from '../shared/apiBase';
 import { previewBadge, resolvePreviewStrategy } from '../shared/world-preview-matrix';
 import type { AiUiHost } from './ai/types';
+import { initMessenger, ensureMessengerTab, notifyMessengerAccountChanged, notifyMessengerGameRunning, notifyMessengerGameStopped, openGroupInviteModal } from './messenger/ui';
 import {
   askAiConfirmBatch,
   askAiConfirmInChat,
@@ -98,7 +99,12 @@ interface DeepLinkImportInstance {
   id: string;
 }
 
-type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance;
+interface DeepLinkJoinGroup {
+  action: 'join-group';
+  token: string;
+}
+
+type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup;
 
 interface InstanceShareCounts {
   mods: number;
@@ -152,6 +158,16 @@ interface ElectronAPI {
   windowClose: () => void;
   getPlatformInfo: () => { platform: string; nodeVersion: string };
   launch: (config: any) => Promise<{ success: boolean; error?: string; errorKey?: string }>;
+  detectRunningGame?: () => Promise<{
+    ok: boolean;
+    running: boolean;
+    buildId?: string;
+    name?: string;
+    gameVersion?: string;
+    loader?: string;
+    pid?: number;
+    startedAt?: number;
+  }>;
   authOffline: (username: string) => Promise<{ name: string; uuid: string; type: string }>;
   authMicrosoft: () => Promise<{ name: string; uuid: string; type: string }>;
   authEly: () => Promise<any>;
@@ -159,6 +175,8 @@ interface ElectronAPI {
   saveAccount: (account: any) => Promise<any>;
   loadAccounts: () => Promise<any[]>;
   removeAccount: (uuid: string) => Promise<any>;
+  setActiveAccount: (uuid: string) => Promise<{ ok?: boolean } | any>;
+  getActiveAccount: () => Promise<string | null>;
   saveBuild: (build: any) => Promise<any>;
   loadBuilds: () => Promise<any[]>;
   removeBuild: (id: string) => Promise<any>;
@@ -194,7 +212,7 @@ interface ElectronAPI {
   }>;
   listProfileCosmetics: (account: any) => Promise<{ success: boolean; skins?: any[]; capes?: any[]; account?: any; error?: string }>;
   switchAccountCape: (account: any, capeId: string | null) => Promise<{ success: boolean; capes?: any[]; error?: string }>;
-  getModrinthProjects: (query: string, type: string, offset?: number, limit?: number, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string }) => Promise<{ hits?: any[]; total_hits?: number; error?: string }>;
+  getModrinthProjects: (query: string, type: string, offset?: number, limit?: number, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string; source?: string }) => Promise<{ hits?: any[]; total_hits?: number; error?: string }>;
   getModrinthProject: (projectId: string) => Promise<any>;
   getModrinthVersions: (projectId: string) => Promise<any[]>;
   downloadMod: (projectId: string, versionId?: string) => Promise<{ success: boolean; filename?: string; error?: string; buildCreated?: boolean; build?: any }>;
@@ -248,6 +266,8 @@ interface ElectronAPI {
     inspect?: any;
     downloaded?: number;
     skipped?: number;
+    extractSkipped?: string[];
+    incomplete?: boolean;
   }>;
   getVersions: () => Promise<any[]>;
   getLoaderVersions: (loader: string, mcVersion: string) => Promise<string[]>;
@@ -266,6 +286,14 @@ interface ElectronAPI {
   launchUpdater: () => Promise<{ success: boolean; error?: string }>;
   fetchNewsList: (lang?: string, limit?: number) => Promise<{ posts?: NewsPostSummary[]; error?: string }>;
   fetchNewsPost: (id: string, lang?: string) => Promise<{ post?: NewsPostFull | null; error?: string }>;
+  messengerSession: (account: any) => Promise<{ ok: boolean; user?: any; token?: string; cached?: boolean; code?: string; error?: string }>;
+  messengerLogout: () => Promise<{ ok: boolean }>;
+  messengerRequest: (payload: {
+    method?: string;
+    path: string;
+    body?: unknown;
+    query?: Record<string, string | number | undefined>;
+  }) => Promise<{ ok: boolean; data?: any; code?: string; error?: string; status?: number }>;
   aiStatus: (opts?: { testerKey?: string }) => Promise<{
     configured?: boolean;
     access?: boolean;
@@ -321,6 +349,9 @@ interface ElectronAPI {
   getInstanceShare: (id: string) => Promise<{ ok: boolean; manifest?: InstanceShareManifest; error?: string }>;
   importInstanceShare: (id: string) => Promise<{ ok: boolean; build?: any; error?: string }>;
   onInstanceShareProgress: (callback: (data: any) => void) => () => void;
+  exportInstanceZip: (buildId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  exportInstanceMrpack: (buildId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  onInstanceExportProgress: (callback: (data: any) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
   onLauncherStatus: (callback: (data: any) => void) => () => void;
   onLauncherLog: (callback: (data: string) => void) => () => void;
@@ -328,6 +359,8 @@ interface ElectronAPI {
   onLaunchProgress: (callback: (data: any) => void) => () => void;
   openConsole: () => Promise<void>;
   appendConsoleLog: (message: string) => Promise<{ ok?: boolean } | void>;
+  notifyThemeChanged?: (accent: string) => void;
+  onThemeChanged?: (callback: (accent: string) => void) => () => void;
   getConsoleHistory: () => Promise<any[]>;
   saveConsoleLog: (logContent: string) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
   onConsoleLog: (callback: (data: any) => void) => () => void;
@@ -378,6 +411,14 @@ interface ElectronAPI {
   }[]>;
   deleteInstanceFiles: (buildId: string, sub: string, names: string[]) => Promise<{ success: boolean; deleted?: number; error?: string }>;
   saveInstanceFiles: (buildId: string, sub: string, names: string[]) => Promise<{ success: boolean; saved?: number; canceled?: boolean; error?: string }>;
+  toggleInstanceFile: (
+    buildId: string,
+    sub: string,
+    filename: string,
+    enabled?: boolean,
+  ) => Promise<{ success: boolean; filename?: string; enabled?: boolean; error?: string }>;
+  getScreenshot: (buildId: string, name: string) => Promise<{ success: boolean; dataUrl?: string; size?: number; error?: string }>;
+  copyScreenshot: (buildId: string, name: string) => Promise<{ success: boolean; error?: string }>;
   importInstanceFiles: (
     buildId: string,
     sub: string,
@@ -646,6 +687,18 @@ function switchTab(target: string): void {
       return;
     }
   }
+  if (target === 'messenger') {
+    if (isOfflineAccount()) {
+      showMessengerOfflineModal();
+      return;
+    }
+  }
+  if (target === 'skins') {
+    if (isOfflineAccount()) {
+      showSkinsOfflineModal();
+      return;
+    }
+  }
   tabs.forEach(t => t.classList.remove('active'));
   tabViews.forEach(v => v.classList.remove('active'));
   const tabBtn = document.querySelector<HTMLElement>(`.tab-btn[data-tab="${target}"]`);
@@ -669,6 +722,9 @@ function switchTab(target: string): void {
     void refreshAiAccessStatus().then(() => {
       if (!getAiTesterKey() || aiAccessOk === false) showAiAccessDeniedModal();
     });
+  }
+  if (target === 'messenger') {
+    void ensureMessengerTab();
   }
 }
 
@@ -1012,6 +1068,8 @@ accNextBtn?.addEventListener('click', async () => {
       applyAccount(account);
       closeModal('modal-account');
       await api?.saveAccount?.(account);
+      if (account?.uuid) await api?.setActiveAccount?.(account.uuid);
+      void notifyMessengerAccountChanged();
       renderSavedAccounts();
     } catch {
       updateStatus(t('status.microsoftError'));
@@ -1027,6 +1085,8 @@ accNextBtn?.addEventListener('click', async () => {
       applyAccount(account);
       closeModal('modal-account');
       await api?.saveAccount?.(account);
+      if (account?.uuid) await api?.setActiveAccount?.(account.uuid);
+      void notifyMessengerAccountChanged();
       renderSavedAccounts();
     } catch {
       updateStatus(t('status.elyError'));
@@ -1047,6 +1107,8 @@ async function submitAccOffline(): Promise<void> {
     applyAccount(account);
     closeModal('modal-account');
     await api?.saveAccount?.(account);
+    if (account?.uuid) await api?.setActiveAccount?.(account.uuid);
+    void notifyMessengerAccountChanged();
     renderSavedAccounts();
   }
 }
@@ -1103,6 +1165,7 @@ function applyAccount(account: any): void {
   const nicknameEl = document.querySelector('.account-nickname');
   if (nicknameEl) nicknameEl.textContent = account.name;
   applyAccountTypeLabel();
+  applyOnlineOnlyTabsVisibility();
   const popupNicknameEl = document.querySelector('.account-popup-current-name');
   if (popupNicknameEl) popupNicknameEl.textContent = account.name;
 
@@ -1181,20 +1244,44 @@ function applyAccount(account: any): void {
 let accountRefreshPromise: Promise<void> | null = null;
 
 async function refreshAccountInBackground(account: any): Promise<void> {
+  const startedUuid = String(account?.uuid || '');
   try {
     const refreshed = await api?.refreshAccount?.(account);
     if (!refreshed) return;
+    // Токены сохраняем всегда; UI обновляем только если аккаунт всё ещё выбран
+    await api?.saveAccount?.(refreshed);
+    if (startedUuid && currentAccount?.uuid && currentAccount.uuid !== startedUuid) return;
     if (refreshed.name !== account.name || refreshed.uuid !== account.uuid) {
-      // Сменились имя/uuid — перерисовываем аккаунт целиком (тянет скин и капу).
       applyAccount(refreshed);
     } else {
-      // Обычный случай: поменялись только токены, скин и подписи те же —
-      // повторный applyAccount заново качал бы скин с капой, это лишняя работа.
       currentAccount = { ...currentAccount, ...refreshed, username: refreshed.name };
     }
-    await api?.saveAccount?.(refreshed);
-  } catch { /* оффлайн — остаётся аккаунт из кэша */ }
-  finally { accountRefreshPromise = null; }
+  } catch {
+    /* оффлайн — остаётся аккаунт из кэша */
+  } finally {
+    accountRefreshPromise = null;
+  }
+}
+
+/** Выбор аккаунта: UI сразу, refresh в фоне, запоминаем как активный */
+async function selectAccount(account: any, opts?: { refresh?: boolean }): Promise<void> {
+  if (!account) return;
+  const prevUuid = currentAccount?.uuid || '';
+  applyAccount(account);
+  if (account.uuid) {
+    try {
+      await api?.setActiveAccount?.(account.uuid);
+    } catch {
+      /* ignore */
+    }
+  }
+  const type = account.meta?.type || account.type;
+  if (opts?.refresh !== false && (type === 'msa' || type === 'yggdrasil') && api?.refreshAccount) {
+    accountRefreshPromise = refreshAccountInBackground(account);
+  }
+  if (account.uuid && account.uuid !== prevUuid) {
+    void notifyMessengerAccountChanged();
+  }
 }
 
 function showNoAccountState(): void {
@@ -1203,6 +1290,7 @@ function showNoAccountState(): void {
   const typeEl = document.querySelector('.account-type');
   if (typeEl) typeEl.textContent = t('acc.addHint');
   currentAccount = { uuid: '', username: '', type: 'offline' };
+  applyOnlineOnlyTabsVisibility();
   void refreshSkinsUiForAccount();
   void applyOfflineSteveSkin();
   pushPresence();
@@ -1455,26 +1543,44 @@ function joinInstancePath(root: string, ...parts: string[]): string {
   return [root.replace(/[\\/]+$/, ''), ...parts].join(sep);
 }
 
-async function showCrashModal(logs: string[]): Promise<void> {
+async function showCrashModal(logs: string[], build?: Build | null): Promise<void> {
   lastCrashLogs = Array.isArray(logs) ? logs.slice() : [];
-  lastCrashBuild = runningBuild;
+  // Важно: к моменту close/crash runningBuild уже может быть сброшен
+  lastCrashBuild = build || runningBuild || lastCrashBuild;
+
   const sub = document.getElementById('modal-crash-sub');
   if (sub) {
-    sub.textContent = runningBuild
-      ? t('crash.subBuild', { name: runningBuild.name })
+    sub.textContent = lastCrashBuild
+      ? t('crash.subBuild', { name: lastCrashBuild.name })
       : t('crash.sub');
   }
-  const msg = document.getElementById('modal-crash-message');
-  if (msg) msg.textContent = t('crash.message');
+
+  const logWrap = document.getElementById('modal-crash-log-wrap');
+  const logPre = document.getElementById('modal-crash-log-preview');
+  const excerpt = lastCrashLogs.join('\n').trim().slice(-2400);
+  if (logPre) {
+    logPre.textContent = excerpt || t('crash.logEmpty');
+    requestAnimationFrame(() => {
+      logPre.scrollTop = logPre.scrollHeight;
+    });
+  }
+  if (logWrap) logWrap.hidden = false;
+
   openModal('modal-crash');
 }
 
 async function openCrashLaunchLog(): Promise<void> {
   const build = lastCrashBuild || runningBuild;
-  if (!build?.id || !api?.getInstancePath || !api?.openPath) return;
+  if (!build?.id || !api?.getInstancePath || !api?.openPath) {
+    updateStatus(t('crash.noBuild'));
+    return;
+  }
 
   const instanceDir = await api.getInstancePath(build.id);
-  if (!instanceDir) return;
+  if (!instanceDir) {
+    updateStatus(t('crash.openFailed'));
+    return;
+  }
 
   const latestLog = joinInstancePath(instanceDir, 'logs', 'latest.log');
   // Пустая строка от shell.openPath = успех
@@ -1488,12 +1594,16 @@ async function openCrashLaunchLog(): Promise<void> {
   const buffer = lastCrashLogs.join('\n').trim();
   if (buffer && api.saveLogFile) {
     const result = await api.saveLogFile(build.id, buffer);
-    if (result?.success && result.path) await api.openPath(result.path);
-  } else {
-    // Открыть папку logs, если файла ещё нет
-    await api.openPath(joinInstancePath(instanceDir, 'logs'));
+    if (result?.success && result.path) {
+      await api.openPath(result.path);
+      closeModal('modal-crash');
+      return;
+    }
   }
-  closeModal('modal-crash');
+  // Открыть папку logs, если файла ещё нет
+  const logsErr = await api.openPath(joinInstancePath(instanceDir, 'logs'));
+  if (logsErr) updateStatus(t('crash.openFailed'));
+  else closeModal('modal-crash');
 }
 
 async function openCrashWithAgent(): Promise<void> {
@@ -1541,12 +1651,26 @@ document.getElementById('modal-crash')?.addEventListener('click', (e) => {
 
 document.getElementById('modal-crash-folder')?.addEventListener('click', async () => {
   const build = lastCrashBuild || runningBuild;
-  if (!build?.id) return;
-  if (api?.getInstancePath && api?.openPath) {
-    const instanceDir = await api.getInstancePath(build.id);
-    if (instanceDir) await api.openPath(instanceDir);
+  if (!build?.id) {
+    updateStatus(t('crash.noBuild'));
+    return;
   }
-  closeModal('modal-crash');
+  if (!api?.getInstancePath || !api?.openPath) {
+    updateStatus(t('crash.openFailed'));
+    return;
+  }
+  try {
+    const instanceDir = await api.getInstancePath(build.id);
+    if (!instanceDir) {
+      updateStatus(t('crash.openFailed'));
+      return;
+    }
+    const err = await api.openPath(instanceDir);
+    if (err) updateStatus(t('crash.openFailed'));
+    else closeModal('modal-crash');
+  } catch {
+    updateStatus(t('crash.openFailed'));
+  }
 });
 
 document.getElementById('modal-crash-log')?.addEventListener('click', () => {
@@ -1586,8 +1710,8 @@ let downloadPrevTime = 0;
 
 const SPLASH_MIN_MS = 600;
 const SPLASH_SAFETY_MS = 6000;
-/** Показ AI-анонса и welcome один раз для 1.0.4-beta */
-const STARTUP_AI_SEEN_KEY = 'Undefined Client-seen-startup-ai-1.0.4-beta';
+/** Показ AI-анонса и welcome один раз для 1.0.5-beta */
+const STARTUP_AI_SEEN_KEY = 'Undefined Client-seen-startup-ai-1.0.5-beta';
 
 let initStartedAt = performance.now();
 let splashClosed = false;
@@ -1659,7 +1783,7 @@ function bindSplashWelcomeWizard(): void {
   const headerFor = (s: WelcomeStep): { title: string; sub: string } => {
     switch (s) {
       case '1':
-        return { title: t('splash.welcomeTitle'), sub: t('splash.welcomeSub', { ver: '1.0.4-beta' }) };
+        return { title: t('splash.welcomeTitle'), sub: t('splash.welcomeSub', { ver: '1.0.5-beta' }) };
       case '2':
         return { title: t('splash.welcome.p2.header'), sub: t('splash.welcome.p2.headerSub') };
       case '3':
@@ -1801,6 +1925,125 @@ async function init(): Promise<void> {
   initCustomCarets();
   applyAiTabVisibility();
   initAiAssistant();
+  initMessenger({
+    t,
+    escapeHtml,
+    getAccount: () => currentAccount,
+    openModal,
+    closeModal,
+    updateStatus,
+    showToast: showAppToast,
+    getLauncherStats: () => {
+      const played = savedBuilds
+        .map((b) => ({ build: b, time: b.playtime || 0 }))
+        .filter((x) => x.time > 0)
+        .sort((a, b) => b.time - a.time);
+      const fav = played[0]?.build || null;
+      const last = getLastPlayedBuild();
+      const srv = savedServers.length ? savedServers[savedServers.length - 1] : null;
+      return {
+        favoriteBuild: fav?.name || null,
+        // Секунды наигранного → «вес» для отображения
+        favoriteBuildCount: fav ? Math.max(1, Math.round((played[0].time || 0) / 60)) : null,
+        lastBuild: last?.name || null,
+        lastBuildMeta: last
+          ? [last.gameVersion, last.loader].filter(Boolean).join(' · ')
+          : null,
+        lastServer: srv ? srv.name || srv.ip : null,
+        lastServerMeta: srv?.version || (srv ? srv.ip : null),
+      };
+    },
+    resolveBuildIcon: (name) => {
+      if (!name) return null;
+      const build = savedBuilds.find((b) => b.name === name);
+      if (!build) return DEFAULT_BUILD_ICON_SRC;
+      return build.icon ? buildIconSrc(build.icon) : DEFAULT_BUILD_ICON_SRC;
+    },
+    resolveServerIcon: (name) => {
+      if (!name) return null;
+      const q = name.toLowerCase();
+      const saved = savedServers.find(
+        (s) =>
+          String(s.name || '').toLowerCase() === q ||
+          String(s.ip || '').toLowerCase() === q ||
+          savedServerAddr(s).toLowerCase() === q,
+      );
+      if (saved) {
+        const addr = savedServerAddr(saved);
+        const fav = srvServerFavicon(srvStatusCache[addr] || {});
+        if (fav) return fav;
+      }
+      const cat = serverCatalog.find(
+        (c) =>
+          String(c.name || '').toLowerCase() === q ||
+          String(srvAddr(c) || '').toLowerCase() === q,
+      );
+      if (cat) {
+        const fav = srvServerFavicon(cat.status || srvStatusCache[srvAddr(cat)] || {});
+        if (fav) return fav;
+      }
+      return '../../assets/icons/serverIcon.png';
+    },
+    listLocalBuilds: () =>
+      savedBuilds.map((b) => ({
+        id: b.id,
+        name: b.name,
+        meta: [b.gameVersion, b.loader, b.loaderVersion].filter(Boolean).join(' · '),
+      })),
+    openInstanceShare: (shareId) => {
+      void openShareImportModal(String(shareId || ''));
+    },
+    createInstanceShare: async (buildId) => {
+      const authorName =
+        currentAccount?.username && currentAccount.username !== t('common.loading')
+          ? currentAccount.username
+          : 'Undefined Client';
+      const result = await api?.createInstanceShare?.(buildId, { authorName });
+      if (!result?.ok) return { ok: false, error: String(result?.error || 'error') };
+      return { ok: true, id: result.id, url: result.url };
+    },
+    focusBuildByName: (name) => {
+      const build = savedBuilds.find((b) => b.name === name);
+      if (!build) {
+        updateStatus(t('msgr.groupBuildOpenFailed'));
+        return;
+      }
+      switchTab('builds');
+      const safeId = build.id.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const card = document.querySelector(`.build-card[data-build-id="${safeId}"]`) as HTMLElement | null;
+      card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card?.classList.add('is-highlight');
+      window.setTimeout(() => card?.classList.remove('is-highlight'), 1600);
+    },
+    getRunningBuild: () => {
+      if (!runningBuild) return null;
+      return {
+        id: runningBuild.id,
+        name: runningBuild.name,
+        gameVersion: runningBuild.gameVersion,
+        loader: runningBuild.loader,
+      };
+    },
+    launchJoinServer: async (server, hint) => {
+      // Предпочитаем сборку с совпадающим именем из activity друга
+      if (hint?.buildName) {
+        const byName = savedBuilds.find((b) => b.name === hint.buildName);
+        if (byName) {
+          await launchBuild(byName, {
+            ip: server.ip,
+            port: server.port,
+            name: server.name,
+          });
+          return;
+        }
+      }
+      openServerLaunchPicker(server.ip, server.port, server.name || server.ip);
+    },
+    api: api || {},
+    refreshAccount: async () => {
+      if (currentAccount?.uuid) await refreshAccountInBackground(currentAccount);
+    },
+  });
 
   const firstAiRun = needsStartupAiAnnounce();
   if (firstAiRun) {
@@ -1941,12 +2184,21 @@ async function init(): Promise<void> {
         case 'launching':
           crashLogs = [];
           el.classList.remove('is-success', 'is-error');
-          if (runningBuild) {
+          if (data?.adopted && data.buildId) {
+            applyAdoptedRunningGame({
+              buildId: String(data.buildId),
+              name: data.name ? String(data.name) : undefined,
+              gameVersion: data.gameVersion ? String(data.gameVersion) : undefined,
+              loader: data.loader ? String(data.loader) : undefined,
+              startedAt: data.startedAt != null ? Number(data.startedAt) : undefined,
+            });
+          } else if (runningBuild) {
             runningBuildStart = Date.now();
             startRunningTimer();
             updateStatus(t('status.playing', { name: runningBuild.name }));
             updateBanner();
             updateSidebarCards();
+            void notifyMessengerGameRunning();
           }
           if (el) el.classList.add('hidden');
           if (fill) fill.style.animation = 'none';
@@ -1960,11 +2212,15 @@ async function init(): Promise<void> {
           if (speedEl) speedEl.textContent = '';
           if (percent) percent.textContent = '';
           if (fill) { fill.style.width = '0%'; fill.style.animation = 'none'; }
-          stopRunningTimer();
-          updateBanner();
-          // If process exited with non-zero code, show crash modal
-          if (data.code && data.code !== 0) {
-            showCrashModal(crashLogs);
+          {
+            const crashedBuild = runningBuild;
+            stopRunningTimer();
+            notifyMessengerGameStopped();
+            updateBanner();
+            // If process exited with non-zero code, show crash modal
+            if (data.code && data.code !== 0) {
+              void showCrashModal(crashLogs, crashedBuild);
+            }
           }
           setTimeout(() => el.classList.add('hidden'), 4000);
           break;
@@ -1977,10 +2233,13 @@ async function init(): Promise<void> {
             fill.style.width = '100%';
           }
           if (percent) percent.textContent = '—';
-          stopRunningTimer();
-          updateBanner();
-          // Show crash modal
-          showCrashModal(crashLogs);
+          {
+            const crashedBuild = runningBuild;
+            stopRunningTimer();
+            notifyMessengerGameStopped();
+            updateBanner();
+            void showCrashModal(crashLogs, crashedBuild);
+          }
           break;
         case 'error':
           el.classList.remove('hidden', 'is-success');
@@ -2003,13 +2262,22 @@ async function init(): Promise<void> {
   if (api?.loadAccounts) {
     const saved = await api.loadAccounts();
     if (saved.length > 0) {
-      const last = saved[saved.length - 1];
+      const activeUuid = api.getActiveAccount ? await api.getActiveAccount() : null;
+      const preferred =
+        (activeUuid && saved.find((a: any) => a.uuid === activeUuid)) || saved[saved.length - 1];
       // Аккаунт из кэша показываем сразу: обновление токена — это сетевая цепочка
       // (для MSA — несколько запросов подряд, порядка 3 с), держать на ней весь
       // старт UI нельзя. Обновление уходит в фон, запуск игры его дожидается.
-      applyAccount(last);
-      if (last.meta?.type === 'msa' || last.meta?.type === 'yggdrasil') {
-        accountRefreshPromise = refreshAccountInBackground(last);
+      applyAccount(preferred);
+      if (preferred.uuid) {
+        try {
+          await api.setActiveAccount?.(preferred.uuid);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (preferred.meta?.type === 'msa' || preferred.meta?.type === 'yggdrasil') {
+        accountRefreshPromise = refreshAccountInBackground(preferred);
       }
     } else {
       showNoAccountState();
@@ -2023,6 +2291,7 @@ async function init(): Promise<void> {
   api?.onBuildsChanged?.(() => {
     void loadBuilds();
   });
+  void adoptRunningGameFromMain();
   await loadServers();
   renderSavedAccounts();
   loadTheme();
@@ -2147,7 +2416,7 @@ function renderBuilds(): void {
       <div class="build-card-icon">${iconHtml}</div>
       <div class="build-card-info">
         <div class="build-card-title"${agentTouched ? ` data-agent-badge="${t('ai.build.touchedByAgent').replace(/"/g, '&quot;')}"` : ''}>
-          ${isRunning ? '<span class="build-running-dot"></span>' : ''}
+          ${isRunning ? `<span class="build-running-badge">${t('btn.playing')}</span>` : ''}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.name}</span>
         </div>
         <div class="build-card-meta">${meta}</div>
@@ -2157,7 +2426,7 @@ function renderBuilds(): void {
         </div>` : ''}
       </div>
       <div class="build-card-actions">
-        <button class="list-row-btn launch-btn" data-build-id="${b.id}"${runningBuild ? ' disabled' : ''}>
+        <button class="list-row-btn launch-btn${isRunning ? ' is-running' : ''}" data-build-id="${b.id}"${runningBuild ? ' disabled' : ''}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 1.61803C0 0.724419 0.724419 0 1.61803 0C1.86923 0 2.11697 0.058484 2.34164 0.17082L13.1056 5.55279C13.6537 5.82687 14 6.38713 14 7C14 7.61287 13.6537 8.17313 13.1056 8.44721L2.34164 13.8292C2.11697 13.9415 1.86923 14 1.61803 14C0.724419 14 0 13.2756 0 12.382V1.61803Z" fill="currentColor"/></svg>
           ${isRunning ? t('btn.playing') : t('btn.launch')}
         </button>
@@ -2186,9 +2455,10 @@ function renderBuilds(): void {
     });
   });
   list.querySelectorAll<HTMLElement>('.build-share-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const build = savedBuilds.find(b => b.id === btn.getAttribute('data-build-id'));
-      if (build) void openShareModal(build);
+      if (build) openBuildShareMenu(btn, build);
     });
   });
   list.querySelectorAll<HTMLElement>('.build-manage-btn').forEach(btn => {
@@ -2261,25 +2531,34 @@ document.getElementById('build-form-submit')?.addEventListener('click', () => su
 const colors = ['#7BD4B7', '#FF6B6B', '#4ECDC4', '#FFD93D', '#70ADDF', '#C084FC', '#FB923C', '#F472B6'];
 
 function populateLoaderVersions(loader: string, mcVersion: string): void {
-  const verInput = document.getElementById('modal-build-loader-ver') as HTMLInputElement;
-  const datalist = document.getElementById('modal-loader-versions') as HTMLDataListElement;
+  const verSelect = document.getElementById('modal-build-loader-ver') as HTMLSelectElement | null;
+  const verMenu = document.getElementById('modal-build-loader-ver-menu');
+  const verField = document.getElementById('modal-build-loader-ver-field');
   const isVanilla = loader === 'vanilla';
-  if (verInput) verInput.disabled = isVanilla;
+  if (verField) verField.style.display = isVanilla ? 'none' : '';
   if (isVanilla) {
-    if (datalist) datalist.innerHTML = '';
-    if (verInput) verInput.value = '';
+    if (verSelect) {
+      verSelect.innerHTML = '';
+      verSelect.value = '';
+    }
+    if (verMenu) verMenu.innerHTML = '';
+    const wrap = verSelect?.closest('.stngs-select-wrap') as HTMLElement | null;
+    if (wrap) syncSelectUI(wrap);
     return;
   }
-  if (api?.getLoaderVersions) {
-    api.getLoaderVersions(loader, mcVersion).then(versions => {
-      const currentLoader = (document.getElementById('modal-build-loader') as HTMLSelectElement)?.value;
-      if (currentLoader !== loader) return;
-      if (datalist) datalist.innerHTML = (versions || []).map(v => `<option value="${v}">`).join('');
-      if (verInput && !verInput.value && versions && versions.length > 0) {
-        verInput.value = versions[0];
-      }
-    }).catch(() => {});
-  }
+  if (!api?.getLoaderVersions || !verSelect || !verMenu) return;
+  api.getLoaderVersions(loader, mcVersion).then(versions => {
+    const currentLoader = (document.getElementById('modal-build-loader') as HTMLSelectElement)?.value;
+    if (currentLoader !== loader) return;
+    const list = versions || [];
+    const prev = verSelect.value;
+    verSelect.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
+    verMenu.innerHTML = list.map(v => `<div class="stngs-select-opt" data-value="${v}">${v}</div>`).join('');
+    if (prev && list.includes(prev)) verSelect.value = prev;
+    else if (list.length > 0) verSelect.value = list[0];
+    const wrap = verSelect.closest('.stngs-select-wrap') as HTMLElement | null;
+    if (wrap) syncSelectUI(wrap);
+  }).catch(() => {});
 }
 
 let detectedJava: { name: string; path: string; version: number }[] = [];
@@ -2699,7 +2978,7 @@ async function loadServerCatalog(force = false): Promise<void> {
   srvLoading = true;
   const grid = document.getElementById('servers-grid');
   if (grid && srvCategory !== 'mine') {
-    grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('common.loading') + '</div>';
+    grid.innerHTML = catalogStateHtml('servers.loadingTitle');
   }
   const scraped: any[] = (await api?.fetchServerCatalog?.()) || [];
   console.log('[SRV] scraped rows:', scraped.length);
@@ -2892,13 +3171,19 @@ function renderServersGrid(append = false): void {
   if (!grid) return;
   if (srvCategory === 'mine') { renderSavedServersGrid(); return; }
   if (!srvLoaded) {
-    if (!append && !srvLoading) grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('common.loading') + '</div>';
+    if (!append && !srvLoading) grid.innerHTML = catalogStateHtml('servers.loadingTitle');
     return;
   }
   const list = serverCatalog.filter(srvMatchesFilters).sort(srvSorted);
   if (list.length === 0) {
     srvRenderedCount = 0;
-    grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('servers.notFound') + '</div>';
+    const hasQuery = Boolean(srvQuery.trim()) || srvCategory !== 'all' || srvRegion !== 'all' || srvOnlineOnly || srvVersionFilter;
+    grid.innerHTML = hasQuery
+      ? catalogStateHtml('servers.notFoundTitle', 'servers.notFoundDesc')
+      : catalogStateHtml('servers.emptyTitle', 'servers.emptyDesc', { labelKey: 'servers.add', id: 'servers-empty-add' });
+    document.getElementById('servers-empty-add')?.addEventListener('click', () => {
+      document.getElementById('add-server-btn')?.click();
+    });
     return;
   }
   const slice = append ? list.slice(srvRenderedCount, srvRenderedCount + SRV_PAGE_SIZE) : list.slice(0, SRV_PAGE_SIZE);
@@ -2906,7 +3191,7 @@ function renderServersGrid(append = false): void {
   srvRenderedCount += slice.length;
   const cards = slice.map(srvCardHtml).join('');
   const more = srvRenderedCount < list.length
-    ? `<div class="load-more-wrap"><button class="load-more-btn">${t('mods.showMore')}</button></div>`
+    ? `<div class="load-more-wrap"><button class="load-more-btn">${t('servers.showMore')}</button></div>`
     : '';
   if (append) {
     const old = grid.querySelector('.load-more-wrap');
@@ -2945,18 +3230,33 @@ function renderSavedServersGrid(): void {
   const grid = document.getElementById('servers-grid');
   if (!grid) return;
   void pingSavedServerStatuses();
-  if (savedServers.length === 0) {
-    grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('servers.empty') + '</div>';
+  const q = srvQuery.trim().toLowerCase();
+  const list = q
+    ? savedServers.filter((s) => {
+        const addr = savedServerAddr(s);
+        return (
+          String(s.name || '').toLowerCase().includes(q) ||
+          addr.toLowerCase().includes(q) ||
+          String(s.ip || '').toLowerCase().includes(q)
+        );
+      })
+    : savedServers;
+  if (list.length === 0) {
+    grid.innerHTML = savedServers.length === 0
+      ? catalogStateHtml('servers.emptyTitle', 'servers.emptyDesc', { labelKey: 'servers.add', id: 'servers-empty-add' })
+      : catalogStateHtml('servers.notFoundTitle', 'servers.notFoundDesc');
+    document.getElementById('servers-empty-add')?.addEventListener('click', () => {
+      document.getElementById('add-server-btn')?.click();
+    });
     return;
   }
-  grid.innerHTML = savedServers.map(s => {
+  grid.innerHTML = list.map(s => {
     const addr = savedServerAddr(s);
     const st = srvStatus(addr) || {};
     const online = !!st.online;
     const players = st.players?.online != null ? st.players.online : null;
     const max = st.players?.max != null ? st.players.max : null;
     const version = String(st.version || s.version || '').split('\n')[0] || '';
-    const cat = serverCatalog.find(c => srvAddr(c) === addr);
     let icon = srvServerFavicon(st);
     const iconHtml = icon
       ? `<img src="${icon}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`
@@ -3732,7 +4032,11 @@ function applySkinViewerDebugSetting(): void {
   }
 
   if (skinViewer && !skinViewer.disposed) {
-    skinViewer.setDebugOptions(opts);
+    // Вне панели отладки всегда продуктовые дефолты — иначе postFx=false из
+    // localStorage навсегда отключал SMAA («пропало сглаживание»).
+    skinViewer.setDebugOptions(
+      enabled ? opts : { ...DEFAULT_SKIN_DEBUG_OPTIONS },
+    );
     skinViewer.setDebugEnabled(enabled);
   }
   if (enabled) startSkinDebugHud();
@@ -4024,16 +4328,40 @@ function ensureSkinTab(): Promise<void> {
         } catch (e) {
           console.warn('auto sync cosmetics on skins tab failed', e);
           await loadSkinsList();
+          if (auth === 'yggdrasil') await ensureElySkinFallback();
         }
       } else {
         await loadSkinsList();
       }
       if (isOfflineAccount()) {
         await applyOfflineSteveSkin();
-      } else if (pendingViewerSkin) {
-        const url = pendingViewerSkin;
-        pendingViewerSkin = null;
-        await loadSkinToViewer(url);
+      } else {
+        // Догрузить вьювер, если sync/list не вызвали setSkin
+        if (pendingViewerSkin) {
+          const url = pendingViewerSkin;
+          pendingViewerSkin = null;
+          await loadSkinToViewer(url);
+        }
+        if (!viewerSkinUrl) {
+          const mine = cosmeticsForCurrentAccount().filter((s) => !isCapeId(s.id) && s.dataUrl);
+          const activeId = getActiveSkinId();
+          const pick =
+            (activeId && mine.find((s) => s.id === activeId))
+            || mine[0];
+          if (pick?.dataUrl) {
+            setActiveSkinId(pick.id);
+            await loadSkinToViewer(pick.dataUrl);
+            const typeLabel = pick.id.startsWith('ely-skin-')
+              ? t('acc.ely')
+              : pick.id.startsWith('license-skin-')
+                ? t('acc.license')
+                : t('acc.local');
+            updateNameType(pick.name, typeLabel);
+          } else if (auth === 'yggdrasil') {
+            await ensureElySkinFallback();
+            await loadSkinsList();
+          }
+        }
       }
       if (presenceTab === 'skins' && !document.hidden) setSkinViewerPaused(false);
     })();
@@ -4161,6 +4489,48 @@ async function saveAccountSkin(skin: {
     ...skin,
     accountId: accountCosmeticsKey(),
   });
+}
+
+/**
+ * Fallback для Ely: Profile API часто без url — тянем текстуру как при логине.
+ * Возвращает true, если скин сохранён и показан.
+ */
+async function ensureElySkinFallback(): Promise<boolean> {
+  if (accountAuthType() !== 'yggdrasil') return false;
+  if (!api?.fetchSkinImage) return false;
+
+  const accKey = accountCosmeticsKey();
+  if (!accKey || accKey === 'offline') return false;
+
+  const nick = String(currentAccount?.username || '').trim();
+  let skinUrl =
+    String(currentAccount?.skinUrl || '').trim()
+    || (nick ? `https://skinsystem.ely.by/skins/${encodeURIComponent(nick)}.png` : '');
+
+  if (api.getSkinData && currentAccount?.uuid) {
+    try {
+      const data = await api.getSkinData(
+        String(currentAccount.uuid).replace(/-/g, ''),
+        ELY_AUTH_SERVER,
+      );
+      if (data?.skinUrl) skinUrl = data.skinUrl;
+    } catch (e) {
+      console.warn('[skins] ely getSkinData fallback failed', e);
+    }
+  }
+
+  if (!skinUrl) return false;
+  const b64 = await api.fetchSkinImage(skinUrl);
+  if (!b64) return false;
+
+  const dataUrl = `data:image/png;base64,${b64}`;
+  const id = `ely-skin-${accKey}`;
+  await saveAccountSkin({ id, name: t('skins.elySkin'), dataUrl });
+  setActiveSkinId(id);
+  await loadSkinToViewer(dataUrl);
+  await refreshAccountUiAvatar(dataUrl);
+  await bumpAccountAvatarRev(skinUrl);
+  return true;
 }
 
 /** Локальный Steve из ассетов лаунчера — для оффлайн-аккаунтов */
@@ -4625,6 +4995,8 @@ async function syncLicenseCosmeticsFromProfile(opts?: { quiet?: boolean }): Prom
   }
   if (!api?.listProfileCosmetics || !api?.fetchSkinImage || !api?.saveSkin) {
     if (!opts?.quiet) updateStatus(t('skins.fetchFailed'));
+    // Всё равно показать локально сохранённые скины
+    await loadSkinsList();
     return 0;
   }
 
@@ -4634,6 +5006,9 @@ async function syncLicenseCosmeticsFromProfile(opts?: { quiet?: boolean }): Prom
     if (!opts?.quiet) {
       updateStatus(t('skins.applyFailed', { msg: profile.error || t('common.error') }));
     }
+    // Раньше здесь был return без loadSkinsList → пустой список и чёрный вьювер
+    await loadSkinsList();
+    if (auth === 'yggdrasil') await ensureElySkinFallback();
     return 0;
   }
 
@@ -4680,8 +5055,14 @@ async function syncLicenseCosmeticsFromProfile(opts?: { quiet?: boolean }): Prom
     && prevActiveId.startsWith('skin-')
     && savedSkins.some((s) => s.id === prevActiveId && ownsCosmetic(s));
 
-  if (activeSkin?.url && !keepLocalProfileCard) {
-    const b64 = await api.fetchSkinImage(activeSkin.url);
+  const skinUrl =
+    activeSkin?.url
+    || activeSkin?.texture
+    || activeSkin?.skinUrl
+    || null;
+
+  if (skinUrl && !keepLocalProfileCard) {
+    const b64 = await api.fetchSkinImage(skinUrl);
     if (b64) {
       const dataUrl = `data:image/png;base64,${b64}`;
       const id = (auth === 'yggdrasil' ? 'ely-skin-' : 'license-skin-') + accKey;
@@ -4697,10 +5078,15 @@ async function syncLicenseCosmeticsFromProfile(opts?: { quiet?: boolean }): Prom
         setActiveSkinId(id);
         await loadSkinToViewer(dataUrl);
         await refreshAccountUiAvatar(dataUrl);
-        await bumpAccountAvatarRev(activeSkin.url);
+        await bumpAccountAvatarRev(skinUrl);
       }
       hadSkin = true;
     }
+  }
+
+  // Ely API часто отдаёт пустой getSkins — добираем текстуру как при логине
+  if (!hadSkin && auth === 'yggdrasil' && !keepLocalProfileCard) {
+    hadSkin = await ensureElySkinFallback();
   }
 
   // Плащи — только Microsoft; id = cape-msa-{mojangCapeId}, mojangCapeId в метаданных
@@ -5040,7 +5426,9 @@ function renderCapesList(): void {
 /* ===== QUICK ACTIONS ===== */
 
 document.getElementById('quick-banner-play')?.addEventListener('click', async () => {
-  if (savedBuilds.length > 0) await launchBuild(savedBuilds[0]);
+  if (runningBuild) return;
+  const build = getHomeFeaturedBuild();
+  if (build) await launchBuild(build);
   else updateStatus(t('status.noBuilds'));
 });
 
@@ -5195,6 +5583,23 @@ document.getElementById('btn-menu')?.addEventListener('click', (e) => {
 document.addEventListener('click', () => ctxMenu.classList.remove('open'));
 ctxMenu.addEventListener('click', (e) => e.stopPropagation());
 
+document.getElementById('build-share-menu')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const btn = (e.target as HTMLElement).closest('[data-share-action]') as HTMLElement | null;
+  if (!btn || !shareMenuBuild) return;
+  const action = btn.getAttribute('data-share-action');
+  const build = shareMenuBuild;
+  hideBuildShareMenu();
+  if (action === 'link') void openShareModal(build);
+  else if (action === 'zip') void runInstanceExport('zip', build);
+  else if (action === 'mrpack') void runInstanceExport('mrpack', build);
+});
+
+document.addEventListener('click', () => hideBuildShareMenu());
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideBuildShareMenu();
+});
+
 document.getElementById('ctx-settings')?.addEventListener('click', () => {
   ctxMenu.classList.remove('open');
   openModal('modal-settings');
@@ -5271,6 +5676,7 @@ function setAccentColor(color: string): void {
   localStorage.setItem('Undefined Client-theme', 'custom');
   applyAccent(color);
   updateAccentUI(color);
+  api?.notifyThemeChanged?.(color);
 }
 
 document.querySelectorAll<HTMLElement>('#settings-accent-picker .accent-swatch[data-accent]').forEach(swatch => {
@@ -5737,8 +6143,10 @@ function loadTheme(): void {
     const defAccent = themeAccents[theme] || '#70ADDF';
     localStorage.setItem('Undefined Client-accent', defAccent);
     applyAccent(defAccent);
+    api?.notifyThemeChanged?.(defAccent);
   } else {
     applyAccent(accent);
+    api?.notifyThemeChanged?.(accent);
   }
   const currentAccent = localStorage.getItem('Undefined Client-accent') || '#70ADDF';
   updateAccentUI(currentAccent);
@@ -5771,11 +6179,13 @@ function loadTheme(): void {
 }
 
 document.getElementById('quick-launch')?.addEventListener('click', async () => {
-  if (savedBuilds.length > 0) {
-    const lastId = localStorage.getItem('last-launch-id');
-    const build = savedBuilds.find(b => b.id === lastId) || savedBuilds[0];
-    await launchBuild(build);
-  } else updateStatus(t('status.noBuilds'));
+  if (runningBuild) {
+    updateStatus(t('status.closeFirst', { name: runningBuild.name }));
+    return;
+  }
+  const build = getHomeFeaturedBuild();
+  if (build) await launchBuild(build);
+  else updateStatus(t('status.noBuilds'));
 });
 document.getElementById('last-server')?.addEventListener('click', () => {
   void (async () => {
@@ -5839,6 +6249,7 @@ async function launchBuild(build: Build, server?: { ip: string; port: number; na
     return;
   }
   runningBuild = build;
+  syncRunningLaunchUi();
   const slugBuildId = build.id.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
   const globalRam = Number(localStorage.getItem('Undefined Client-ram') || '2048') || 2048;
   const mem = build.memory;
@@ -5888,8 +6299,89 @@ async function launchBuild(build: Build, server?: { ip: string; port: number; na
     applyLaunchBehavior();
   } else {
     runningBuild = null;
+    syncRunningLaunchUi();
     updateStatus(t('status.error', { msg: result.errorKey ? t(result.errorKey) : (result.error || t('common.error')) }));
   }
+}
+
+function sanitizeBuildIdClient(id: string): string {
+  return String(id || '')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9\-]/g, '');
+}
+
+/** Подхватить Minecraft, оставшийся запущенным после закрытия лаунчера */
+function applyAdoptedRunningGame(info: {
+  buildId: string;
+  name?: string;
+  gameVersion?: string;
+  loader?: string;
+  startedAt?: number;
+}): void {
+  const slug = sanitizeBuildIdClient(info.buildId);
+  const build =
+    savedBuilds.find((b) => sanitizeBuildIdClient(b.id) === slug || b.id === info.buildId) ||
+    null;
+  if (build) {
+    runningBuild = build;
+  } else {
+    runningBuild = {
+      id: info.buildId,
+      name: info.name || info.buildId,
+      gameVersion: info.gameVersion || '?',
+      loader: info.loader || 'vanilla',
+      loaderVersion: '',
+      iconBg: '#3a3a3a',
+      playtime: 0,
+    };
+  }
+  runningBuildStart = info.startedAt && info.startedAt > 0 ? info.startedAt : Date.now();
+  startRunningTimer();
+  updateStatus(t('status.playing', { name: runningBuild.name }));
+  updateBanner();
+  updateSidebarCards();
+  renderBuilds();
+  void notifyMessengerGameRunning();
+}
+
+async function adoptRunningGameFromMain(): Promise<void> {
+  if (!api?.detectRunningGame || runningBuild) return;
+  try {
+    const res = await api.detectRunningGame();
+    if (!res?.ok || !res.running || !res.buildId) return;
+    applyAdoptedRunningGame({
+      buildId: res.buildId,
+      name: res.name,
+      gameVersion: res.gameVersion,
+      loader: res.loader,
+      startedAt: res.startedAt,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function syncHomePlayButton(): void {
+  const btn = document.getElementById('quick-banner-play') as HTMLButtonElement | null;
+  if (!btn) return;
+  const label = btn.querySelector('span');
+  if (runningBuild) {
+    btn.disabled = true;
+    btn.classList.add('is-running');
+    if (label) label.textContent = t('btn.playing');
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('is-running');
+    if (label) label.textContent = t('btn.play');
+  }
+}
+
+/** Обновить UI «игра запущена»: главная + список сборок */
+function syncRunningLaunchUi(): void {
+  syncHomePlayButton();
+  renderBuilds();
+  updateSidebarCards();
 }
 
 let runningTimerTick = false;
@@ -5898,6 +6390,7 @@ let runningTimerId: any = null;
 function startRunningTimer(): void {
   if (runningTimerTick) return;
   runningTimerTick = true;
+  syncRunningLaunchUi();
   const tick = (): void => {
     if (!runningBuild) { runningTimerTick = false; return; }
     const elapsed = Math.floor((Date.now() - runningBuildStart) / 1000);
@@ -5910,8 +6403,7 @@ function startRunningTimer(): void {
     if (title) title.textContent = t('sidebar.inGame');
     const sub = document.getElementById('quick-banner-sub');
     if (sub) sub.textContent = t('status.timeInBuild');
-    const btn = document.getElementById('quick-banner-play') as HTMLButtonElement;
-    if (btn) btn.disabled = true;
+    syncHomePlayButton();
     // Sidebar indicator
     const ind = document.getElementById('running-indicator');
     if (ind) ind.classList.remove('hidden');
@@ -5942,11 +6434,8 @@ function stopRunningTimer(): void {
   if (runningTimerId) { clearInterval(runningTimerId); runningTimerId = null; }
   const ind = document.getElementById('running-indicator');
   if (ind) ind.classList.add('hidden');
-  const btn = document.getElementById('quick-banner-play') as HTMLButtonElement;
-  if (btn) btn.disabled = false;
-  renderBuilds();
+  syncRunningLaunchUi();
   updateBanner();
-  updateSidebarCards();
   updateStats();
 }
 
@@ -5974,6 +6463,47 @@ async function joinServer(ip: string): Promise<void> {
 function updateStatus(message: string): void {
   const bannerSub = document.getElementById('quick-banner-sub');
   if (bannerSub) bannerSub.textContent = message;
+}
+
+let appToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Плавающий тост (мессенджер, скриншоты) — не трогает баннер главной */
+function showAppToast(message: string, ms = 4200): void {
+  const el = document.getElementById('app-toast');
+  if (!el) {
+    updateStatus(message);
+    return;
+  }
+  el.hidden = false;
+  el.textContent = message;
+  el.classList.add('is-visible');
+  if (appToastTimer) clearTimeout(appToastTimer);
+  appToastTimer = setTimeout(() => {
+    el.classList.remove('is-visible');
+    appToastTimer = setTimeout(() => {
+      el.hidden = true;
+      appToastTimer = null;
+    }, 200);
+  }, ms);
+}
+
+/** Empty/loading для каталогов модов и серверов */
+function catalogStateHtml(
+  titleKey: string,
+  descKey?: string,
+  cta?: { labelKey: string; id: string },
+): string {
+  const desc = descKey
+    ? `<div class="catalog-state__desc">${escapeAiHtml(t(descKey))}</div>`
+    : '';
+  const btn = cta
+    ? `<button type="button" class="action-btn catalog-state__cta" id="${cta.id}"><span>${escapeAiHtml(t(cta.labelKey))}</span></button>`
+    : '';
+  return `<div class="catalog-state">
+    <div class="catalog-state__title">${escapeAiHtml(t(titleKey))}</div>
+    ${desc}
+    ${btn}
+  </div>`;
 }
 
 /* ===== SAVED ACCOUNTS ===== */
@@ -6036,20 +6566,10 @@ async function renderSavedAccounts(): Promise<void> {
       const uuid = el.getAttribute('data-uuid');
       const account = accounts.find((a: any) => a.uuid === uuid);
       if (!account) return;
-      if ((account.meta?.type === 'msa' || account.meta?.type === 'yggdrasil') && api?.refreshAccount) {
-        try {
-          const refreshed = await api.refreshAccount(account);
-          if (refreshed) {
-            applyAccount(refreshed);
-            closeAccountPopup();
-            await api?.saveAccount?.(refreshed);
-            renderSavedAccounts();
-            return;
-          }
-        } catch {}
-      }
-      applyAccount(account);
+      // Сразу переключаем UI; refresh MSA/Ely уходит в фон (как при старте)
       closeAccountPopup();
+      await selectAccount(account);
+      renderSavedAccounts();
     });
   });
   list.querySelectorAll<HTMLElement>('.acc-popup-row-del').forEach(btn => {
@@ -6057,7 +6577,16 @@ async function renderSavedAccounts(): Promise<void> {
       e.stopPropagation();
       const uuid = btn.getAttribute('data-uuid');
       if (uuid && api?.removeAccount) {
+        const wasCurrent = currentAccount?.uuid === uuid;
         await api.removeAccount(uuid);
+        if (wasCurrent) {
+          const remaining = api.loadAccounts ? await api.loadAccounts() : [];
+          if (remaining.length) {
+            await selectAccount(remaining[remaining.length - 1]);
+          } else {
+            showNoAccountState();
+          }
+        }
         renderSavedAccounts();
       }
     });
@@ -6096,6 +6625,8 @@ let modsOffset = 0;
 let modsTotal = 0;
 let modsQuery = '';
 let modsSort = 'relevance';
+let modsSource: 'both' | 'modrinth' | 'curseforge' = (localStorage.getItem('Undefined Client-mods-source') as any) || 'both';
+if (modsSource !== 'both' && modsSource !== 'modrinth' && modsSource !== 'curseforge') modsSource = 'both';
 let modsVersion = '';
 const modsLoaders = new Set<string>();
 const modsTags = new Set<string>();
@@ -6103,6 +6634,277 @@ const modsKnownVersions = new Set<string>();
 function modsPageSize(): number {
   const v = Number(localStorage.getItem('Undefined Client-mods-page-size') || '20');
   return [10, 20, 50].includes(v) ? v : 20;
+}
+
+type ModsViewMode = 'list' | 'cards';
+
+function getModsViewMode(): ModsViewMode {
+  return localStorage.getItem('Undefined Client-mods-view-mode') === 'cards' ? 'cards' : 'list';
+}
+
+function applyModsViewModeUi(mode: ModsViewMode = getModsViewMode()): void {
+  const grid = document.getElementById('mods-grid');
+  const btn = document.getElementById('mods-view-toggle');
+  grid?.classList.toggle('is-cards', mode === 'cards');
+  if (btn) {
+    btn.setAttribute('aria-pressed', mode === 'cards' ? 'true' : 'false');
+    btn.dataset.mode = mode;
+    const titleKey = mode === 'cards' ? 'mods.view.toggleToList' : 'mods.view.toggleToCards';
+    btn.setAttribute('title', t(titleKey));
+    btn.setAttribute('aria-label', t(titleKey));
+  }
+}
+
+function setModsViewMode(mode: ModsViewMode): void {
+  localStorage.setItem('Undefined Client-mods-view-mode', mode);
+  applyModsViewModeUi(mode);
+  modsRenderedCount = 0;
+  renderMods(false);
+}
+
+function modAccentColor(p: any): string {
+  if (p?.color == null) return 'rgba(255,255,255,0.05)';
+  const n = Number(p.color);
+  if (!Number.isFinite(n)) return 'rgba(255,255,255,0.05)';
+  return `#${Math.max(0, Math.floor(n)).toString(16).padStart(6, '0')}`;
+}
+
+function modGalleryUrl(p: any): string | null {
+  if (typeof p?.featured_gallery === 'string' && p.featured_gallery.trim()) {
+    return p.featured_gallery.trim();
+  }
+  if (Array.isArray(p?.gallery) && p.gallery.length) {
+    const first = p.gallery.find((u: unknown) => typeof u === 'string' && String(u).trim());
+    return first ? String(first).trim() : null;
+  }
+  if (typeof p?.gallery === 'string' && p.gallery.trim()) return p.gallery.trim();
+  return null;
+}
+
+const MOD_GALLERY_PLACEHOLDER = `<div class="mod-tile__hero-ph" aria-hidden="true">
+  <img class="mod-tile__hero-ph-img" src="../../assets/images/modPlaceholder.png" alt="">
+</div>`;
+
+const MOD_CF_GALLERY_PLACEHOLDER = `<div class="mod-tile__hero-ph" aria-hidden="true">
+  <img class="mod-tile__hero-ph-img" src="../../assets/images/modCFPlaceholder.png" alt="">
+</div>`;
+
+function modSourceOf(p: any): 'curseforge' | 'modrinth' {
+  const raw = String(p?.source || '').toLowerCase();
+  if (raw === 'curseforge' || raw === 'cf') return 'curseforge';
+  if (String(p?.project_id || p?.id || '').startsWith('cf:')) return 'curseforge';
+  return 'modrinth';
+}
+
+function modSourceBadge(source: 'curseforge' | 'modrinth'): string {
+  return source === 'curseforge'
+    ? `<span class="mod-source-badge mod-source-badge--cf">CurseForge</span>`
+    : `<span class="mod-source-badge mod-source-badge--mr">Modrinth</span>`;
+}
+
+/** Относительные /client/api/catalog/image → абсолютные (в Electron иначе картинки ломаются). */
+function absolutizeCatalogHtml(html: string): string {
+  return String(html || '').replace(
+    /(<img\b[^>]*?\bsrc=(["']))([^"']+)(\2)/gi,
+    (_m, pre: string, _q: string, src: string, post: string) => {
+      const abs = catalogImageUrl(src) || absoluteApiUrl(src) || src;
+      return `${pre}${abs}${post}`;
+    },
+  );
+}
+
+function formatModsRelativeDate(raw?: string | null): string {
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return `${Math.max(1, sec)}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
+}
+
+function renderModListRow(p: any): string {
+  const id = escapeHtml(String(p.project_id || p.slug || p.id || ''));
+  const title = escapeHtml(String(p.title || 'Unknown'));
+  const desc = escapeHtml(String(p.description || '').substring(0, 100));
+  const accent = modAccentColor(p);
+  const source = modSourceOf(p);
+  const sourceBadge = modSourceBadge(source);
+  const icon = p.icon_url
+    ? `<img src="${escapeHtml(catalogImageUrl(p.icon_url))}" alt="">`
+    : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
+  return `<div class="mod-card" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || 'mod'))}" data-mod-source="${escapeHtml(source)}">
+      <div class="mod-card-icon" style="background:${accent}">${icon}</div>
+      <div class="mod-card-info">
+        <div class="mod-card-name">${title} ${sourceBadge}</div>
+        <div class="mod-card-desc">${desc}</div>
+      </div>
+      <div class="mod-card-actions">
+        <button class="details-btn" data-modrinth-id="${id}">${t('btn.details')}</button>
+        <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${id}" data-modrinth-title="${title}">${t('ai.askAboutMod')}</button>
+        <button class="list-row-btn download-btn" data-modrinth-id="${id}">${t('btn.download')}</button>
+      </div>
+    </div>`;
+}
+
+function renderModTile(p: any): string {
+  const id = escapeHtml(String(p.project_id || p.slug || p.id || ''));
+  const title = escapeHtml(String(p.title || 'Unknown'));
+  const desc = escapeHtml(String(p.description || '').substring(0, 120));
+  const authorRaw = String(p.author || '').trim();
+  const accent = modAccentColor(p);
+  const gallery = modGalleryUrl(p);
+  const source = modSourceOf(p);
+  const sourceBadge = modSourceBadge(source);
+  const icon = p.icon_url
+    ? `<img src="${escapeHtml(catalogImageUrl(p.icon_url))}" alt="">`
+    : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
+  const placeholder = source === 'curseforge' ? MOD_CF_GALLERY_PLACEHOLDER : MOD_GALLERY_PLACEHOLDER;
+  const hero = gallery
+    ? `<img class="mod-tile__hero-img" src="${escapeHtml(catalogImageUrl(gallery))}" alt="" loading="lazy">`
+    : placeholder;
+  const downloads = formatAiDownloads(p.downloads);
+  const follows = formatAiDownloads(p.follows);
+  const updated = formatModsRelativeDate(p.date_modified);
+  return `<article class="mod-tile" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || 'mod'))}" data-mod-source="${escapeHtml(source)}">
+      <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
+      <div class="mod-tile__body">
+        <div class="mod-tile__head">
+          <div class="mod-tile__icon" style="background:${accent}">${icon}</div>
+          <div class="mod-tile__titles">
+            <div class="mod-tile__name">${title} ${sourceBadge}</div>
+            ${authorRaw ? `<div class="mod-tile__author">${escapeHtml(t('mods.byAuthor', { author: authorRaw }))}</div>` : ''}
+          </div>
+        </div>
+        <p class="mod-tile__desc">${desc}</p>
+        <div class="mod-tile__stats">
+          <span title="${escapeHtml(t('mods.stat.downloads'))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6.5M3.5 5.5L6 8l2.5-2.5M2 10.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            ${escapeHtml(downloads)}
+          </span>
+          <span title="${escapeHtml(t('mods.stat.follows'))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 10.2l-4.1-3.7A2.6 2.6 0 016 2.7a2.6 2.6 0 014.1 3.8L6 10.2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            ${escapeHtml(follows)}
+          </span>
+          ${updated ? `<span title="${escapeHtml(t('mods.stat.updated'))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5V6l1.8 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            ${escapeHtml(updated)}
+          </span>` : ''}
+        </div>
+        <div class="mod-card-actions mod-tile__actions">
+          <button class="details-btn" data-modrinth-id="${id}">${t('btn.details')}</button>
+          <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${id}" data-modrinth-title="${title}">${t('ai.askAboutMod')}</button>
+          <button class="list-row-btn download-btn" data-modrinth-id="${id}">${t('btn.download')}</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+let modsRenderedCount = 0;
+let modsLoadingMore = false;
+let modsSentinelObserver: IntersectionObserver | null = null;
+
+function modsHasMore(): boolean {
+  return modsOffset < modsTotal;
+}
+
+function disconnectModsInfiniteScroll(): void {
+  modsSentinelObserver?.disconnect();
+  modsSentinelObserver = null;
+}
+
+function bindModsInfiniteScroll(grid: HTMLElement): void {
+  disconnectModsInfiniteScroll();
+  const sentinel = grid.querySelector<HTMLElement>('.mods-scroll-sentinel');
+  if (!sentinel || !modsHasMore()) return;
+
+  // root: null — скролл может быть и у #mods-grid, и у #tab-mods
+  modsSentinelObserver = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      void loadMoreModsOnScroll();
+    },
+    { root: null, rootMargin: '200px 0px', threshold: 0 },
+  );
+  modsSentinelObserver.observe(sentinel);
+}
+
+async function loadMoreModsOnScroll(): Promise<void> {
+  if (modsLoadingMore || !modsHasMore()) return;
+  modsLoadingMore = true;
+  const grid = document.getElementById('mods-grid');
+  const status = grid?.querySelector<HTMLElement>('.mods-loading-more');
+  if (status) status.hidden = false;
+  try {
+    await searchMods(modsQuery, currentCategory, true);
+  } finally {
+    modsLoadingMore = false;
+    const g = document.getElementById('mods-grid');
+    const s = g?.querySelector<HTMLElement>('.mods-loading-more');
+    if (s) s.hidden = !modsLoadingMore;
+  }
+}
+
+function renderMods(append: boolean = false): void {
+  const grid = document.getElementById('mods-grid');
+  if (!grid) return;
+  applyModsViewModeUi();
+  if (!modsData || modsData.length === 0) {
+    disconnectModsInfiniteScroll();
+    if (!append) grid.innerHTML = catalogStateHtml('mods.notFoundTitle', 'mods.notFoundDesc');
+    return;
+  }
+
+  const mode = getModsViewMode();
+  const newItems = append ? modsData.slice(modsRenderedCount) : modsData;
+  modsRenderedCount = modsData.length;
+
+  const cardsHtml = newItems
+    .map((p) => (mode === 'cards' ? renderModTile(p) : renderModListRow(p)))
+    .join('');
+  const footerHtml = modsHasMore()
+    ? `<div class="mods-scroll-sentinel" aria-hidden="true"></div>
+       <div class="mods-loading-more"${modsLoadingMore ? '' : ' hidden'}>${t('common.loading')}</div>`
+    : '';
+
+  if (append) {
+    grid.querySelector('.mods-scroll-sentinel')?.remove();
+    grid.querySelector('.mods-loading-more')?.remove();
+    grid.insertAdjacentHTML('beforeend', cardsHtml + footerHtml);
+  } else {
+    grid.innerHTML = cardsHtml + footerHtml;
+  }
+
+  // Details button
+  grid.querySelectorAll<HTMLElement>('.details-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-modrinth-id');
+      if (id) openModalDetails(id);
+    });
+  });
+
+  grid.querySelectorAll<HTMLElement>('.ai-ask-mod-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-modrinth-id') || '';
+      const title = btn.getAttribute('data-modrinth-title') || id;
+      askAgentAboutMod(getAiUiHost(), title, id);
+    });
+  });
+
+  // Download button → version picker → target build → download
+  grid.querySelectorAll<HTMLElement>('.download-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-modrinth-id');
+      if (!id) return;
+      openModalVersionsForDownload(id);
+    });
+  });
+
+  bindModsInfiniteScroll(grid);
 }
 
 function versionKey(v: string): number[] {
@@ -6148,6 +6950,12 @@ function loadMods(): void {
   modsOffset = 0;
   modsRenderedCount = 0;
   modsData = [];
+  const sourceSel = document.getElementById('mods-source-select') as HTMLSelectElement | null;
+  if (sourceSel) {
+    sourceSel.value = modsSource;
+    const wrap = sourceSel.closest('.stngs-select-wrap');
+    if (wrap) syncSelectUI(wrap as HTMLElement);
+  }
   refreshModsClearBtn();
   searchMods('', 'all');
 }
@@ -6167,17 +6975,22 @@ function ensureModsCatalog(): void {
 async function searchMods(query: string, category: string, append: boolean = false): Promise<void> {
   const grid = document.getElementById('mods-grid');
   if (!grid) return;
-  if (!append) modsOffset = 0;
+  if (!append) {
+    modsOffset = 0;
+    modsLoadingMore = false;
+    disconnectModsInfiniteScroll();
+  }
   modsQuery = query;
   currentCategory = category;
   if (api?.getModrinthProjects) {
-    if (!append) { grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('common.loading') + '</div>'; modsRenderedCount = 0; }
+    if (!append) { grid.innerHTML = catalogStateHtml('mods.loadingTitle'); modsRenderedCount = 0; }
     try {
       const result = await api.getModrinthProjects(query || '', category === 'all' ? '' : category, modsOffset, modsPageSize(), {
         categories: [...modsTags],
         loaders: [...modsLoaders],
         version: modsVersion || undefined,
         index: modsSort,
+        source: modsSource,
       });
       if (result.error) {
         if (!append) {
@@ -6201,6 +7014,8 @@ async function searchMods(query: string, category: string, append: boolean = fal
         modsData = hits;
       }
       modsOffset += hits.length;
+      // Пустая страница при append — дальше грузить нечего
+      if (append && hits.length === 0) modsTotal = modsOffset;
       renderMods(append);
     } catch {
       if (!append) grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('mods.loadError') + '</div>';
@@ -6208,159 +7023,132 @@ async function searchMods(query: string, category: string, append: boolean = fal
   }
 }
 
-let modsRenderedCount = 0;
-
-function renderMods(append: boolean = false): void {
-  const grid = document.getElementById('mods-grid');
-  if (!grid) return;
-  if (!modsData || modsData.length === 0) {
-    if (!append) grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t('mods.notFound') + '</div>';
-    return;
-  }
-
-  const newItems = append ? modsData.slice(modsRenderedCount) : modsData;
-  modsRenderedCount = modsData.length;
-
-  const cardsHtml = newItems.map(p => `
-    <div class="mod-card" data-modrinth-id="${p.slug || p.id}" data-modrinth-type="${p.project_type || 'mod'}">
-      <div class="mod-card-icon" style="background:${p.color ? '#' + p.color.toString(16).padStart(6,'0') : 'rgba(255,255,255,0.05)'}">
-        ${p.icon_url ? `<img src="${catalogImageUrl(p.icon_url)}" alt="">` : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>'}
-      </div>
-      <div class="mod-card-info">
-        <div class="mod-card-name">${p.title || 'Unknown'}</div>
-        <div class="mod-card-desc">${(p.description || '').substring(0, 100)}</div>
-      </div>
-      <div class="mod-card-actions">
-        <button class="details-btn" data-modrinth-id="${p.slug || p.id}">${t('btn.details')}</button>
-        <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${p.slug || p.id}" data-modrinth-title="${String(p.title || '').replace(/"/g, '&quot;')}">${t('ai.askAboutMod')}</button>
-        <button class="list-row-btn download-btn" data-modrinth-id="${p.slug || p.id}">${t('btn.download')}</button>
-      </div>
-    </div>
-  `).join('');
-  const loadMoreHtml = `<div class="load-more-wrap"><button class="load-more-btn" ${modsOffset >= modsTotal ? 'disabled' : ''}>${modsOffset >= modsTotal ? t('mods.allLoaded') : t('mods.showMore')}</button></div>`;
-
-  if (append) {
-    const oldWrap = grid.querySelector('.load-more-wrap');
-    if (oldWrap) oldWrap.remove();
-    grid.insertAdjacentHTML('beforeend', cardsHtml + loadMoreHtml);
-  } else {
-    grid.innerHTML = cardsHtml + loadMoreHtml;
-  }
-
-  // Details button
-  grid.querySelectorAll<HTMLElement>('.details-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute('data-modrinth-id');
-      if (id) openModalDetails(id);
-    });
-  });
-
-  grid.querySelectorAll<HTMLElement>('.ai-ask-mod-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute('data-modrinth-id') || '';
-      const title = btn.getAttribute('data-modrinth-title') || id;
-      askAgentAboutMod(getAiUiHost(), title, id);
-    });
-  });
-
-  // Download button → version picker → target build → download
-  grid.querySelectorAll<HTMLElement>('.download-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute('data-modrinth-id');
-      if (!id) return;
-      openModalVersionsForDownload(id);
-    });
-  });
-
-  // Load more button
-  const loadMoreBtn = grid.querySelector<HTMLButtonElement>('.load-more-btn');
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener('click', async () => {
-      loadMoreBtn.disabled = true;
-      await searchMods(modsQuery, currentCategory, true);
-    });
-  }
-}
-
-// New flow: version picker → target build → download
+// ===== Установка контента: быстрый подбор версии (как Modrinth) =====
 let pendingDownloadVersionId: string = '';
 let pendingDownloadGameVersions: string[] = [];
+let pendingVersionsAll: any[] = [];
+let pendingProjectType = 'mod';
+let versionsUiMode: 'quick' | 'list' = 'quick';
+let versionsPickGame = '';
+let versionsPickLoader = '';
+let versionsShowAll = false;
+let versionsOpenDd: 'game' | 'loader' | null = null;
 
-function openModalVersionsForDownload(projectId: string): void {
-  pendingDownloadVersionId = '';
-  pendingDownloadGameVersions = [];
-  pendingTargetProjectId = projectId;
-  const titleEl = document.getElementById('modal-versions-title');
-  const subEl = document.getElementById('modal-versions-sub');
-  const list = document.getElementById('versions-list');
-  const confirmBtn = document.getElementById('modal-versions-confirm') as HTMLButtonElement;
-  if (titleEl) titleEl.textContent = t('mods.versionsTitle');
-  if (subEl) subEl.textContent = t('mods.versionsLoading');
-  if (!list) return;
-  if (confirmBtn) confirmBtn.disabled = true;
-  list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('common.loading') + '</div>';
-  openModal('modal-versions');
-
-  (async () => {
-    let versions = await api?.getModrinthVersions(projectId) || [];
-    if (versions.length === 0) {
-      list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('mods.versionsNone') + '</div>';
-      if (subEl) subEl.textContent = t('mods.versionsNoneShort');
-      return;
-    }
-    const versionFilter = modsVersion || '';
-    const loaderFilter = [...modsLoaders];
-    if (versionFilter || loaderFilter.length) {
-      const filtered = versions.filter(v => {
-        if (versionFilter && !(v.game_versions || []).includes(versionFilter)) return false;
-        if (loaderFilter.length && !(v.loaders || []).some((l: string) => loaderFilter.includes(l))) return false;
-        return true;
-      });
-      if (filtered.length === 0) {
-        list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('mods.versionsFilterEmpty') + '</div>';
-        if (subEl) subEl.textContent = t('mods.versionsFilterEmpty');
-        return;
-      }
-      if (subEl) subEl.textContent = t('mods.versionsFilteredCount', { n: filtered.length });
-      versions = filtered;
-    } else {
-      if (subEl) subEl.textContent = t('mods.versionsCount', { n: versions.length });
-    }
-    list.innerHTML = versions.map((v: any) => {
-      const loaders = (v.loaders || []).map((l: string) => `<span class="version-loader-tag">${l}</span>`).join('');
-      const gv = versionFilter && (v.game_versions || []).includes(versionFilter) ? versionFilter : (v.game_versions?.[0] || '');
-      return `<div class="version-item" data-version-id="${v.id}">
-        <div class="version-item-name">${v.name || v.version_number || '—'}</div>
-        <div class="version-item-loaders">${loaders}</div>
-        <div class="version-item-meta">${gv}</div>
-      </div>`;
-    }).join('');
-    list.querySelectorAll('.version-item').forEach(el => {
-      el.addEventListener('click', () => {
-        list.querySelectorAll('.version-item.selected').forEach(e => e.classList.remove('selected'));
-        el.classList.add('selected');
-        if (confirmBtn) confirmBtn.disabled = false;
-        const vid = el.getAttribute('data-version-id');
-        const vobj = versions.find(v => v.id === vid);
-        pendingDownloadGameVersions = vobj?.game_versions || [];
-      });
-    });
-  })();
+function isReleaseGameVersion(v: string): boolean {
+  return /^\d+\.\d+(\.\d+)?$/.test(String(v || ''));
 }
 
-// Override version confirm to go to target build selector (or install modpack directly)
-document.getElementById('modal-versions-confirm')?.addEventListener('click', async () => {
-  const selected = document.querySelector('#versions-list .version-item.selected');
-  if (!selected || !pendingTargetProjectId) return;
-  pendingDownloadVersionId = selected.getAttribute('data-version-id') || '';
+function collectVersionFacets(versions: any[]): { gameVersions: string[]; loaders: string[] } {
+  const games = new Set<string>();
+  const loaders = new Set<string>();
+  for (const v of versions) {
+    for (const g of v.game_versions || []) games.add(String(g));
+    for (const l of v.loaders || []) {
+      const id = String(l).toLowerCase();
+      if (id && id !== 'minecraft') loaders.add(id);
+    }
+  }
+  return {
+    gameVersions: [...games].sort((a, b) => b.localeCompare(a, undefined, { numeric: true })),
+    loaders: [...loaders],
+  };
+}
+
+function versionsSelectorConfig(projectType: string, loaders: string[]) {
+  const type = String(projectType || 'mod');
+  if (type === 'shader') {
+    return { showGame: true, showLoader: loaders.length > 0, loaderKind: 'platform' as const, loaders };
+  }
+  if (type === 'mod') {
+    return { showGame: true, showLoader: loaders.length > 1, loaderKind: 'loader' as const, loaders };
+  }
+  return { showGame: true, showLoader: false, loaderKind: 'loader' as const, loaders: [] as string[] };
+}
+
+function preferredContentLoader(loaders: string[]): string {
+  for (const id of ['fabric', 'neoforge', 'forge', 'quilt', 'iris', 'optifine']) {
+    if (loaders.includes(id)) return id;
+  }
+  return loaders[0] || '';
+}
+
+function filterGameVersionsList(all: string[], showAll: boolean): string[] {
+  if (showAll) return all;
+  const releases = all.filter(isReleaseGameVersion);
+  return releases.length ? releases : all;
+}
+
+function findMatchingVersion(
+  versions: any[],
+  gameVersion: string,
+  loader: string,
+  needLoader: boolean,
+): any | null {
+  return (
+    versions.find((v) => {
+      if (gameVersion && !(v.game_versions || []).includes(gameVersion)) return false;
+      if (needLoader && loader && !(v.loaders || []).map((x: string) => String(x).toLowerCase()).includes(loader)) {
+        return false;
+      }
+      return true;
+    }) || null
+  );
+}
+
+function formatBytesShort(n: number): string {
+  if (!n) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  let value = n;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value.toFixed(value < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function formatRelativeIso(iso: string): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffSec = Math.round((then - Date.now()) / 1000);
+  const abs = Math.abs(diffSec);
+  if (abs < 3600) return t('mods.dl.justNow');
+  if (abs < 86400) return t('mods.dl.hoursAgo', { n: Math.round(abs / 3600) });
+  if (abs < 86400 * 7) return t('mods.dl.daysAgo', { n: Math.round(abs / 86400) });
+  if (abs < 86400 * 30) return t('mods.dl.weeksAgo', { n: Math.round(abs / (86400 * 7)) });
+  return new Date(iso).toLocaleDateString();
+}
+
+function versionTypeLabel(type: string): string {
+  const key = `mods.versionType.${type}`;
+  const translated = t(key);
+  return translated === key ? type : translated;
+}
+
+function setVersionsMode(mode: 'quick' | 'list'): void {
+  versionsUiMode = mode;
+  if (mode !== 'quick') closeVersionsDropdown(false);
+  const quick = document.getElementById('versions-quick');
+  const list = document.getElementById('versions-list');
+  const confirmBtn = document.getElementById('modal-versions-confirm') as HTMLButtonElement | null;
+  const backBtn = document.getElementById('modal-versions-back') as HTMLButtonElement | null;
+  const subEl = document.getElementById('modal-versions-sub');
+  if (quick) quick.hidden = mode !== 'quick';
+  if (list) list.hidden = mode !== 'list';
+  if (confirmBtn) confirmBtn.hidden = mode !== 'list';
+  if (backBtn) backBtn.hidden = mode !== 'list';
+  if (subEl) {
+    subEl.textContent = mode === 'list' ? t('mods.versionsSub') : t('mods.dl.title');
+  }
+}
+
+async function confirmPendingVersionInstall(): Promise<void> {
+  if (!pendingTargetProjectId || !pendingDownloadVersionId) return;
+  closeVersionsDropdown(false);
   closeModal('modal-versions');
-  // Fetch project to determine if it's a modpack
   const projectInfo = await api?.getModrinthProject(pendingTargetProjectId);
   if (projectInfo?.project_type === 'modpack') {
-    // Install modpack directly as a new build
     updateStatus(t('status.downloadingPack'));
     const result = await api?.downloadMod(pendingTargetProjectId, pendingDownloadVersionId);
     if (result?.success) {
@@ -6370,9 +7158,362 @@ document.getElementById('modal-versions-confirm')?.addEventListener('click', asy
       updateStatus(t('status.error', { msg: result?.error || t('common.unknown') }));
     }
   } else {
-    // Step 2: open target build selector for regular mods
     openModalTargetBuildForDownload(pendingTargetProjectId);
   }
+}
+
+const VERSIONS_SELECT_CHEVRON =
+  '<svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+let versionsPortalMenu: HTMLElement | null = null;
+let versionsPortalHost: HTMLElement | null = null;
+let versionsCloseAnimTimer: ReturnType<typeof setTimeout> | null = null;
+
+function restoreVersionsPortalMenu(): void {
+  if (versionsCloseAnimTimer) {
+    clearTimeout(versionsCloseAnimTimer);
+    versionsCloseAnimTimer = null;
+  }
+  if (versionsPortalMenu && versionsPortalHost && versionsPortalMenu.isConnected) {
+    versionsPortalMenu.classList.remove('is-portal', 'open', 'closing');
+    versionsPortalMenu.style.cssText = '';
+    versionsPortalHost.appendChild(versionsPortalMenu);
+  } else if (versionsPortalMenu?.isConnected && versionsPortalMenu.parentElement === document.body) {
+    versionsPortalMenu.remove();
+  }
+  versionsPortalMenu = null;
+  versionsPortalHost = null;
+  document.querySelectorAll('#versions-quick .stngs-select-wrap.open').forEach((w) => w.classList.remove('open'));
+  versionsOpenDd = null;
+}
+
+function closeVersionsDropdown(animated = true): void {
+  if (!versionsPortalMenu) {
+    document.querySelectorAll('#versions-quick .stngs-select-wrap.open').forEach((w) => w.classList.remove('open'));
+    versionsOpenDd = null;
+    return;
+  }
+  if (!animated) {
+    restoreVersionsPortalMenu();
+    return;
+  }
+  const menu = versionsPortalMenu;
+  menu.classList.remove('open');
+  menu.classList.add('closing');
+  if (versionsCloseAnimTimer) clearTimeout(versionsCloseAnimTimer);
+  versionsCloseAnimTimer = setTimeout(() => {
+    restoreVersionsPortalMenu();
+  }, 130);
+}
+
+function openVersionsDropdown(kind: 'game' | 'loader'): void {
+  if (versionsOpenDd === kind) {
+    closeVersionsDropdown(true);
+    return;
+  }
+  closeVersionsDropdown(false);
+  const wrap = document.querySelector(`#versions-quick [data-vdd="${kind}"]`) as HTMLElement | null;
+  if (!wrap) return;
+  const btn = wrap.querySelector('.stngs-select-btn') as HTMLElement | null;
+  const menu = wrap.querySelector('.stngs-select-menu') as HTMLElement | null;
+  if (!btn || !menu) return;
+
+  versionsOpenDd = kind;
+  versionsPortalHost = wrap;
+  versionsPortalMenu = menu;
+  wrap.classList.add('open');
+
+  const rect = btn.getBoundingClientRect();
+  const width = Math.max(rect.width, 170);
+  let left = rect.left;
+  if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8;
+  left = Math.max(8, left);
+
+  document.body.appendChild(menu);
+  menu.classList.add('is-portal');
+  menu.style.position = 'fixed';
+  menu.style.left = `${left}px`;
+  menu.style.top = `${rect.bottom + 6}px`;
+  menu.style.minWidth = `${width}px`;
+  menu.style.right = 'auto';
+  menu.style.zIndex = '20000';
+  menu.classList.remove('closing');
+  void menu.offsetWidth;
+  menu.classList.add('open');
+}
+
+function renderVersionsQuickPanel(): void {
+  closeVersionsDropdown(false);
+  const root = document.getElementById('versions-quick');
+  if (!root) return;
+  const facets = collectVersionFacets(pendingVersionsAll);
+  const cfg = versionsSelectorConfig(pendingProjectType, facets.loaders);
+  const games = filterGameVersionsList(facets.gameVersions, versionsShowAll);
+  const matching = findMatchingVersion(
+    pendingVersionsAll,
+    versionsPickGame,
+    versionsPickLoader,
+    Boolean(versionsPickLoader),
+  );
+
+  const dd = (kind: 'game' | 'loader', placeholder: string, value: string, options: string[], withShowAll: boolean) => {
+    const label = value
+      ? kind === 'game'
+        ? value
+        : value.charAt(0).toUpperCase() + value.slice(1)
+      : placeholder;
+    const items = options
+      .map((opt) => {
+        const text = kind === 'game' ? opt : opt.charAt(0).toUpperCase() + opt.slice(1);
+        return `<div class="stngs-select-opt${opt === value ? ' selected' : ''}" data-vdd-opt="${opt}" data-vdd-kind="${kind}">${text}</div>`;
+      })
+      .join('');
+    const footer = withShowAll
+      ? `<label class="versions-showall">
+           <input type="checkbox" id="versions-show-all"${versionsShowAll ? ' checked' : ''} />
+           <span>${t('mods.dl.showAllVersions')}</span>
+         </label>`
+      : '';
+    return `
+      <div class="stngs-select-wrap mods-select-wrap versions-select-wrap" data-vdd="${kind}">
+        <button type="button" class="stngs-select-btn${value ? '' : ' is-placeholder'}" data-vdd-toggle="${kind}">
+          <span class="stngs-select-value">${label}</span>
+          ${VERSIONS_SELECT_CHEVRON}
+        </button>
+        <div class="stngs-select-menu select-scroll-menu">
+          ${items || `<div class="stngs-select-opt" style="opacity:.5;cursor:default">${t('mods.dl.noOptions')}</div>`}
+          ${footer}
+        </div>
+      </div>`;
+  };
+
+  let resultHtml = '';
+  if (!versionsPickGame && cfg.showGame) {
+    resultHtml = `<div class="dl-manual__status">${t('mods.dl.pickGame')}</div>`;
+  } else if (cfg.showLoader && !versionsPickLoader) {
+    resultHtml = `<div class="dl-manual__status">${
+      cfg.loaderKind === 'platform' ? t('mods.dl.pickPlatform') : t('mods.dl.pickLoader')
+    }</div>`;
+  } else if (!matching) {
+    resultHtml = `<div class="dl-manual__status">${t('mods.dl.noMatch')}</div>`;
+  } else {
+    const title = matching.version_number || matching.name || '—';
+    const type = matching.version_type || 'release';
+    const size = matching.file?.size || matching.files?.[0]?.size || 0;
+    const meta = [formatRelativeIso(matching.date_published || ''), formatBytesShort(Number(size) || 0)]
+      .filter(Boolean)
+      .join(' · ');
+    resultHtml = `
+      <div class="dl-manual__card">
+        <div class="dl-manual__card-main">
+          <div class="dl-manual__card-title">
+            <strong>${title}</strong>
+            <span class="dl-manual__type dl-manual__type--${type}">${versionTypeLabel(type)}</span>
+          </div>
+          <div class="dl-manual__card-meta">${meta}</div>
+        </div>
+        <button type="button" class="stngs-btn primary dl-manual__install" data-vdd-install="${matching.id}">
+          ${t('btn.install')}
+        </button>
+      </div>`;
+  }
+
+  root.innerHTML = `
+    <div class="dl-manual__label">${t('mods.dl.title')}</div>
+    <div class="dl-manual__row${cfg.showLoader ? ' has-two' : ''}">
+      ${cfg.showGame ? dd('game', t('mods.dl.selectGame'), versionsPickGame, games, true) : ''}
+      ${
+        cfg.showLoader
+          ? dd(
+              'loader',
+              cfg.loaderKind === 'platform' ? t('mods.dl.selectPlatform') : t('mods.dl.selectLoader'),
+              versionsPickLoader,
+              cfg.loaders,
+              false,
+            )
+          : ''
+      }
+    </div>
+    <div class="dl-manual__result">${resultHtml}</div>
+    <button type="button" class="dl-manual__specific" data-vdd-specific>${t('mods.dl.specificVersion')}</button>`;
+}
+
+function renderVersionsListPanel(versions: any[]): void {
+  const list = document.getElementById('versions-list');
+  const confirmBtn = document.getElementById('modal-versions-confirm') as HTMLButtonElement | null;
+  const subEl = document.getElementById('modal-versions-sub');
+  if (!list) return;
+  if (confirmBtn) confirmBtn.disabled = true;
+  if (!versions.length) {
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">${t('mods.versionsNone')}</div>`;
+    if (subEl) subEl.textContent = t('mods.versionsNoneShort');
+    return;
+  }
+  if (subEl) subEl.textContent = t('mods.versionsCount', { n: versions.length });
+  list.innerHTML = versions
+    .map((v: any) => {
+      const loaders = (v.loaders || [])
+        .map((l: string) => `<span class="version-loader-tag">${l}</span>`)
+        .join('');
+      const gv = (v.game_versions || []).slice(0, 3).join(', ');
+      const type = v.version_type || 'release';
+      return `<div class="version-item" data-version-id="${v.id}">
+        <div class="version-item-name">${v.name || v.version_number || '—'}
+          <span class="dl-manual__type dl-manual__type--${type}">${versionTypeLabel(type)}</span>
+        </div>
+        <div class="version-item-loaders">${loaders}</div>
+        <div class="version-item-meta">${gv}</div>
+      </div>`;
+    })
+    .join('');
+  list.querySelectorAll('.version-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      list.querySelectorAll('.version-item.selected').forEach((e) => e.classList.remove('selected'));
+      el.classList.add('selected');
+      if (confirmBtn) confirmBtn.disabled = false;
+      const vid = el.getAttribute('data-version-id');
+      const vobj = versions.find((v) => v.id === vid);
+      pendingDownloadGameVersions = vobj?.game_versions || [];
+    });
+  });
+}
+
+function openModalVersionsForDownload(projectId: string): void {
+  pendingDownloadVersionId = '';
+  pendingDownloadGameVersions = [];
+  pendingTargetProjectId = projectId;
+  pendingVersionsAll = [];
+  pendingProjectType = 'mod';
+  versionsUiMode = 'quick';
+  versionsPickGame = modsVersion || '';
+  versionsPickLoader = modsLoaders.size === 1 ? [...modsLoaders][0] : '';
+  versionsShowAll = false;
+  versionsOpenDd = null;
+
+  const titleEl = document.getElementById('modal-versions-title');
+  const subEl = document.getElementById('modal-versions-sub');
+  const quick = document.getElementById('versions-quick');
+  const list = document.getElementById('versions-list');
+  const confirmBtn = document.getElementById('modal-versions-confirm') as HTMLButtonElement | null;
+  if (titleEl) titleEl.textContent = t('mods.versionsTitle');
+  if (subEl) subEl.textContent = t('mods.dl.title');
+  if (quick) quick.innerHTML = `<div class="dl-manual__status">${t('common.loading')}</div>`;
+  if (list) list.innerHTML = '';
+  if (confirmBtn) confirmBtn.disabled = true;
+  setVersionsMode('quick');
+  openModal('modal-versions');
+
+  void (async () => {
+    const [versions, projectInfo] = await Promise.all([
+      api?.getModrinthVersions(projectId) || Promise.resolve([]),
+      api?.getModrinthProject(projectId),
+    ]);
+    pendingVersionsAll = Array.isArray(versions) ? versions : [];
+    pendingProjectType = String(projectInfo?.project_type || 'mod');
+
+    if (!pendingVersionsAll.length) {
+      if (quick) quick.innerHTML = `<div class="dl-manual__status">${t('mods.versionsNone')}</div>`;
+      if (subEl) subEl.textContent = t('mods.versionsNoneShort');
+      return;
+    }
+
+    const facets = collectVersionFacets(pendingVersionsAll);
+    const cfg = versionsSelectorConfig(pendingProjectType, facets.loaders);
+    const games = filterGameVersionsList(facets.gameVersions, versionsShowAll);
+
+    // Каталог-фильтры, если ещё подходят
+    if (versionsPickGame && !games.includes(versionsPickGame)) versionsPickGame = '';
+    if (!versionsPickGame) versionsPickGame = games[0] || '';
+    if (cfg.showLoader) {
+      if (versionsPickLoader && !cfg.loaders.includes(versionsPickLoader)) versionsPickLoader = '';
+      if (!versionsPickLoader) versionsPickLoader = preferredContentLoader(cfg.loaders);
+    } else if (
+      (pendingProjectType === 'mod' || pendingProjectType === 'shader') &&
+      facets.loaders.length === 1
+    ) {
+      versionsPickLoader = facets.loaders[0];
+    } else {
+      versionsPickLoader = '';
+    }
+
+    renderVersionsQuickPanel();
+  })();
+}
+
+document.getElementById('versions-quick')?.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  const toggle = target.closest('[data-vdd-toggle]') as HTMLElement | null;
+  if (toggle) {
+    e.stopPropagation();
+    const kind = toggle.getAttribute('data-vdd-toggle') as 'game' | 'loader';
+    openVersionsDropdown(kind);
+    return;
+  }
+  if (target.closest('[data-vdd-specific]')) {
+    closeVersionsDropdown(false);
+    setVersionsMode('list');
+    renderVersionsListPanel(pendingVersionsAll);
+    return;
+  }
+  const installBtn = target.closest('[data-vdd-install]') as HTMLElement | null;
+  if (installBtn) {
+    closeVersionsDropdown(false);
+    pendingDownloadVersionId = installBtn.getAttribute('data-vdd-install') || '';
+    const vobj = pendingVersionsAll.find((v) => v.id === pendingDownloadVersionId);
+    pendingDownloadGameVersions = vobj?.game_versions || [];
+    void confirmPendingVersionInstall();
+  }
+});
+
+// Меню селектора вынесено в body — обрабатываем клики отдельно
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  const opt = target.closest('.stngs-select-menu.is-portal [data-vdd-opt]') as HTMLElement | null;
+  if (opt) {
+    e.stopPropagation();
+    const kind = opt.getAttribute('data-vdd-kind');
+    const value = opt.getAttribute('data-vdd-opt') || '';
+    if (kind === 'game') versionsPickGame = value;
+    if (kind === 'loader') versionsPickLoader = value;
+    closeVersionsDropdown(true);
+    // После анимации закрытия перерисуем карточку
+    setTimeout(() => renderVersionsQuickPanel(), 140);
+    return;
+  }
+  if (versionsOpenDd && !target.closest('#versions-quick [data-vdd-toggle]') && !target.closest('.stngs-select-menu.is-portal')) {
+    closeVersionsDropdown(true);
+  }
+});
+
+document.addEventListener('change', (e) => {
+  const input = e.target as HTMLInputElement;
+  if (input?.id !== 'versions-show-all') return;
+  versionsShowAll = !!input.checked;
+  const facets = collectVersionFacets(pendingVersionsAll);
+  const games = filterGameVersionsList(facets.gameVersions, versionsShowAll);
+  if (versionsPickGame && !games.includes(versionsPickGame)) {
+    versionsPickGame = games[0] || '';
+  }
+  // Обновляем список опций, оставляя меню открытым
+  const wasOpen = versionsOpenDd;
+  renderVersionsQuickPanel();
+  if (wasOpen === 'game') openVersionsDropdown('game');
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && versionsOpenDd) closeVersionsDropdown(true);
+});
+
+document.getElementById('modal-versions-back')?.addEventListener('click', () => {
+  setVersionsMode('quick');
+  renderVersionsQuickPanel();
+});
+
+document.getElementById('modal-versions-confirm')?.addEventListener('click', async () => {
+  const selected = document.querySelector('#versions-list .version-item.selected');
+  if (!selected || !pendingTargetProjectId) return;
+  pendingDownloadVersionId = selected.getAttribute('data-version-id') || '';
+  await confirmPendingVersionInstall();
 });
 
 function openModalTargetBuildForDownload(projectId: string): void {
@@ -6929,12 +8070,19 @@ async function handleDeepLinkPayload(payload: DeepLinkPayload | null): Promise<v
     await openShareImportModal(payload.id);
     return;
   }
+  if (payload.action === 'join-group') {
+    switchTab('messenger');
+    await ensureMessengerTab(true);
+    await openGroupInviteModal(payload.token);
+    return;
+  }
   await handleDeepLinkInstall(payload);
 }
 
 /** Точка входа: сюда попадают ссылки и холодного старта, и запущенного лаунчера. */
 async function handleDeepLinkInstall(payload: DeepLinkInstall | null): Promise<void> {
-  if (!payload || payload.action !== 'install' || payload.source !== 'modrinth') return;
+  if (!payload || payload.action !== 'install') return;
+  if (payload.source !== 'modrinth' && payload.source !== 'curseforge') return;
   if (deepLinkStage === 'installing') {
     updateStatus(t('deeplink.busy'));
     return;
@@ -7026,6 +8174,110 @@ function shareErrorText(code?: string): string {
 
 function shareBuildIconHtml(build: { icon?: string; iconBg?: string }): string {
   return buildCardIconHtml(build);
+}
+
+let shareMenuBuild: Build | null = null;
+let exportBusy = false;
+let shareMenuCloseTimer: ReturnType<typeof setTimeout> | null = null;
+
+function hideBuildShareMenu(): void {
+  const menu = document.getElementById('build-share-menu');
+  shareMenuBuild = null;
+  if (!menu || menu.hidden) return;
+  if (menu.classList.contains('closing')) return;
+
+  if (shareMenuCloseTimer) {
+    clearTimeout(shareMenuCloseTimer);
+    shareMenuCloseTimer = null;
+  }
+
+  menu.classList.remove('open');
+  menu.classList.add('closing');
+  const finish = () => {
+    menu.classList.remove('closing');
+    menu.hidden = true;
+    shareMenuCloseTimer = null;
+  };
+  const onEnd = (e: AnimationEvent) => {
+    if (e.target !== menu) return;
+    menu.removeEventListener('animationend', onEnd);
+    finish();
+  };
+  menu.addEventListener('animationend', onEnd);
+  // Запасной таймер, если animationend не пришёл
+  shareMenuCloseTimer = setTimeout(() => {
+    menu.removeEventListener('animationend', onEnd);
+    finish();
+  }, 200);
+}
+
+function openBuildShareMenu(anchor: HTMLElement, build: Build): void {
+  const menu = document.getElementById('build-share-menu');
+  if (!menu) {
+    void openShareModal(build);
+    return;
+  }
+
+  if (shareMenuCloseTimer) {
+    clearTimeout(shareMenuCloseTimer);
+    shareMenuCloseTimer = null;
+  }
+
+  shareMenuBuild = build;
+  menu.classList.remove('closing', 'open');
+  menu.hidden = false;
+
+  const rect = anchor.getBoundingClientRect();
+  const menuW = Math.max(220, menu.offsetWidth || 220);
+  const menuH = menu.offsetHeight || 160;
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  let placement: 'above' | 'below' = 'below';
+  if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+  if (top + menuH > window.innerHeight - 8) {
+    top = rect.top - menuH - 6;
+    placement = 'above';
+  }
+  menu.dataset.placement = placement;
+  menu.style.left = `${Math.max(8, left)}px`;
+  menu.style.top = `${Math.max(8, top)}px`;
+
+  // Перезапуск анимации после позиционирования
+  void menu.offsetWidth;
+  menu.classList.add('open');
+}
+
+async function runInstanceExport(kind: 'zip' | 'mrpack', build: Build): Promise<void> {
+  if (exportBusy) {
+    updateStatus(t('share.exportBusy'));
+    return;
+  }
+  exportBusy = true;
+  updateStatus(t('share.exportPreparing'));
+  const off = api?.onInstanceExportProgress?.((data) => {
+    const phase = String(data?.phase || '');
+    const file = String(data?.filename || '');
+    if (phase === 'pack' && file) updateStatus(t('share.exportPacking', { file }));
+    else if (phase === 'resolve' && file) updateStatus(t('share.exportResolving', { file }));
+    else if (phase === 'prepare') updateStatus(t('share.exportPreparing'));
+  }) || null;
+
+  try {
+    const result = kind === 'zip'
+      ? await api?.exportInstanceZip?.(build.id)
+      : await api?.exportInstanceMrpack?.(build.id);
+    if (!result?.ok) {
+      if (result?.error === 'cancelled') updateStatus(t('share.exportCancelled'));
+      else updateStatus(t('share.exportFailed'));
+      return;
+    }
+    updateStatus(t('share.exportDone', { path: result.path || '' }));
+  } catch {
+    updateStatus(t('share.exportFailed'));
+  } finally {
+    off?.();
+    exportBusy = false;
+  }
 }
 
 async function openShareModal(build: Build): Promise<void> {
@@ -7401,6 +8653,31 @@ document.getElementById('mods-filters-toggle')?.addEventListener('click', (e) =>
   }
 });
 
+document.getElementById('mods-view-toggle')?.addEventListener('click', () => {
+  setModsViewMode(getModsViewMode() === 'cards' ? 'list' : 'cards');
+});
+applyModsViewModeUi();
+
+// ===== Sticky-панель поиска каталога / серверов =====
+function initToolbarSticky(tabId: string, toolbarId: string, sentinelId: string): void {
+  const tab = document.getElementById(tabId);
+  const toolbar = document.getElementById(toolbarId);
+  const sentinel = document.getElementById(sentinelId);
+  if (!tab || !toolbar || !sentinel) return;
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      toolbar.classList.toggle('is-stuck', !entry.isIntersecting);
+    },
+    { root: tab, threshold: 0, rootMargin: '0px' },
+  );
+  observer.observe(sentinel);
+}
+initToolbarSticky('tab-mods', 'mods-search-bar', 'mods-toolbar-sentinel');
+initToolbarSticky('tab-servers', 'servers-search-bar', 'servers-toolbar-sentinel');
+
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('mods-filters-toggle')?.parentElement;
   if (!wrap || !modsFiltersPopup?.classList.contains('open')) return;
@@ -7413,6 +8690,14 @@ document.addEventListener('keydown', (e) => {
 
 document.getElementById('mods-sort-select')?.addEventListener('change', (e) => {
   modsSort = (e.target as HTMLSelectElement).value || 'relevance';
+  refreshModsClearBtn();
+  modsSearchWithFilters();
+});
+
+document.getElementById('mods-source-select')?.addEventListener('change', (e) => {
+  const val = (e.target as HTMLSelectElement).value || 'both';
+  modsSource = val === 'modrinth' || val === 'curseforge' ? val : 'both';
+  localStorage.setItem('Undefined Client-mods-source', modsSource);
   refreshModsClearBtn();
   modsSearchWithFilters();
 });
@@ -7445,11 +8730,15 @@ document.querySelectorAll<HTMLButtonElement>('#mods-tag-chips .mods-chip').forEa
 
 document.getElementById('mods-filters-clear')?.addEventListener('click', () => {
   modsSort = 'relevance';
+  modsSource = 'both';
+  localStorage.setItem('Undefined Client-mods-source', modsSource);
   modsVersion = '';
   modsLoaders.clear();
   modsTags.clear();
   const sortSel = document.getElementById('mods-sort-select') as HTMLSelectElement;
   if (sortSel) sortSel.value = 'relevance';
+  const sourceSel = document.getElementById('mods-source-select') as HTMLSelectElement;
+  if (sourceSel) sourceSel.value = 'both';
   const verSel = document.getElementById('mods-version-select') as HTMLSelectElement;
   if (verSel) verSel.value = '';
   document.querySelectorAll('#mods-loader-chips .mods-chip, #mods-tag-chips .mods-chip').forEach(c => c.classList.remove('active'));
@@ -7471,13 +8760,26 @@ function formatRelativeLaunch(ts: number): string {
   return t('home.relative.days', { n: days });
 }
 
+/** Сборка по last-launch-id (прямое совпадение или slug, как у instance root) */
+function findBuildByLaunchId(lastId: string | null | undefined): Build | null {
+  const id = String(lastId || '').trim();
+  if (!id) return null;
+  const direct = savedBuilds.find((b) => b.id === id);
+  if (direct) return direct;
+  const slug = sanitizeBuildIdClient(id);
+  return savedBuilds.find((b) => sanitizeBuildIdClient(b.id) === slug) || null;
+}
+
 function getHomeFeaturedBuild(): Build | null {
-  const lastId = localStorage.getItem('last-launch-id');
-  if (lastId) {
-    const found = savedBuilds.find((b) => b.id === lastId);
-    if (found) return found;
+  const byLast = findBuildByLaunchId(localStorage.getItem('last-launch-id'));
+  if (byLast) return byLast;
+  // Запас: максимальный playtime, иначе первая в списке
+  if (!savedBuilds.length) return null;
+  let best = savedBuilds[0];
+  for (const b of savedBuilds) {
+    if ((b.playtime || 0) > (best.playtime || 0)) best = b;
   }
-  return savedBuilds[0] || null;
+  return best;
 }
 
 function countInstalledMods(): number {
@@ -7485,9 +8787,7 @@ function countInstalledMods(): number {
 }
 
 function getLastPlayedBuild(): Build | null {
-  const lastId = localStorage.getItem('last-launch-id');
-  if (!lastId) return null;
-  return savedBuilds.find((b) => b.id === lastId) || null;
+  return findBuildByLaunchId(localStorage.getItem('last-launch-id'));
 }
 
 function updateHomeWelcomeSub(): void {
@@ -7767,9 +9067,8 @@ function updateSidebarCards(): void {
   const qlIcon = document.getElementById('quick-launch-icon');
   const qlName = document.getElementById('quick-launch-name');
   const qlVer = document.getElementById('quick-launch-version');
-  if (savedBuilds.length > 0) {
-    const lastId = localStorage.getItem('last-launch-id');
-    const build = savedBuilds.find(b => b.id === lastId) || savedBuilds[0];
+  const build = getHomeFeaturedBuild();
+  if (build) {
     if (qlName) qlName.textContent = build.name;
     if (qlVer) qlVer.textContent = `${build.gameVersion} · ${build.loader}`;
     if (qlIcon) {
@@ -7818,20 +9117,34 @@ function updateBanner(): void {
 
 /* ── Modal helpers ── */
 const PRESENCE_MODALS: Record<string, string> = { 'modal-settings': 'settings', 'modal-about': 'about' };
+/** Базовый z-index .modal-overlay; каждая openModal поднимает окно поверх уже открытых. */
+let modalZCounter = 1500;
 
 function openModal(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
   el.classList.remove('hidden', 'closing');
+  // Считаем max среди уже видимых оверлеев — иначе versions может оказаться под details.
+  let maxZ = modalZCounter;
+  document.querySelectorAll<HTMLElement>('.modal-overlay').forEach((node) => {
+    if (node === el || node.classList.contains('hidden')) return;
+    const raw = node.style.zIndex || getComputedStyle(node).zIndex;
+    const z = parseInt(raw, 10);
+    if (Number.isFinite(z) && z > maxZ) maxZ = z;
+  });
+  modalZCounter = maxZ + 1;
+  el.style.zIndex = String(modalZCounter);
   if (PRESENCE_MODALS[id]) pushPresence(PRESENCE_MODALS[id]);
 }
 function closeModal(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
+  if (id === 'modal-mod-details') closeBeShotViewer();
   el.classList.add('closing');
   setTimeout(() => {
     el.classList.add('hidden');
     el.classList.remove('closing');
+    el.style.removeProperty('z-index');
   }, 120);
   if (PRESENCE_MODALS[id]) pushPresence(presenceTab);
 }
@@ -7950,17 +9263,25 @@ const ESC_CLOSEABLE_MODALS: { id: string; close: () => void }[] = [
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  const shotViewer = document.getElementById('be-shot-viewer');
+  if (shotViewer && !shotViewer.classList.contains('hidden')) {
+    closeBeShotViewer();
+    return;
+  }
   if (accountPopup.classList.contains('open')) {
     closeAccountPopup();
     return;
   }
-  for (let i = ESC_CLOSEABLE_MODALS.length - 1; i >= 0; i--) {
-    const entry = ESC_CLOSEABLE_MODALS[i];
+  // Закрываем верхнюю по z-index (важно при стеке: versions поверх details).
+  let top: { entry: (typeof ESC_CLOSEABLE_MODALS)[number]; z: number } | null = null;
+  for (const entry of ESC_CLOSEABLE_MODALS) {
     const el = document.getElementById(entry.id);
-    if (el && !el.classList.contains('hidden') && !el.classList.contains('closing')) {
-      try { entry.close(); } catch { closeModal(entry.id); }
-      break;
-    }
+    if (!el || el.classList.contains('hidden') || el.classList.contains('closing')) continue;
+    const z = parseInt(getComputedStyle(el).zIndex, 10) || 0;
+    if (!top || z >= top.z) top = { entry, z };
+  }
+  if (top) {
+    try { top.entry.close(); } catch { closeModal(top.entry.id); }
   }
 });
 
@@ -7973,6 +9294,7 @@ function switchBeTab(tab: string): void {
   const panelEl = document.querySelector(`.be-panel[data-be-panel="${tab}"]`);
   if (tabEl) tabEl.classList.add('active');
   if (panelEl) panelEl.classList.add('active');
+  if (tab !== 'screenshots') closeBeShotViewer();
   if (tab === 'screenshots') loadBeScreenshots();
   if (tab === 'worlds') loadBeWorlds();
 }
@@ -7982,7 +9304,7 @@ async function openModalBuild(build?: Build): Promise<void> {
   const nameInput = document.getElementById('modal-build-name') as HTMLInputElement;
   const versionSelect = document.getElementById('modal-build-version') as HTMLSelectElement;
   const loaderSelect = document.getElementById('modal-build-loader') as HTMLSelectElement;
-  const loaderVerInput = document.getElementById('modal-build-loader-ver') as HTMLInputElement;
+  const loaderVerInput = document.getElementById('modal-build-loader-ver') as HTMLSelectElement;
   const title = document.getElementById('modal-build-title');
   const sub = document.getElementById('modal-build-sub');
   const submitBtn = document.getElementById('build-form-submit') as HTMLButtonElement;
@@ -8031,7 +9353,26 @@ async function openModalBuild(build?: Build): Promise<void> {
     if (nameInput) nameInput.value = build.name;
     if (versionSelect) versionSelect.value = build.gameVersion;
     if (loaderSelect) loaderSelect.value = build.loader;
-    if (loaderVerInput) loaderVerInput.value = build.loaderVersion || '';
+    if (loaderVerInput) {
+      const lv = build.loaderVersion || '';
+      if (lv && !Array.from(loaderVerInput.options).some((o) => o.value === lv)) {
+        const opt = document.createElement('option');
+        opt.value = lv;
+        opt.textContent = lv;
+        loaderVerInput.appendChild(opt);
+        const menu = document.getElementById('modal-build-loader-ver-menu');
+        if (menu) {
+          const item = document.createElement('div');
+          item.className = 'stngs-select-opt';
+          item.dataset.value = lv;
+          item.textContent = lv;
+          menu.appendChild(item);
+        }
+      }
+      loaderVerInput.value = lv;
+      const lvWrap = loaderVerInput.closest('.stngs-select-wrap') as HTMLElement | null;
+      if (lvWrap) syncSelectUI(lvWrap);
+    }
     syncBuildVersionUI();
     const loaderWrap = loaderSelect?.closest('.stngs-select-wrap');
     if (loaderWrap) syncSelectUI(loaderWrap as HTMLElement);
@@ -8120,6 +9461,7 @@ async function openModalBuild(build?: Build): Promise<void> {
 
 function closeModalBuildModal(): void {
   stopWatchingInstance();
+  closeBeShotViewer();
   closeModal('modal-build');
 }
 
@@ -8142,6 +9484,15 @@ function stopWatchingInstance(): void {
   if (editingBuildId && api?.unwatchInstance) api.unwatchInstance(editingBuildId);
 }
 
+/** Имя файла без .disabled — для сопоставления при toggle/scan. */
+function contentFileBase(filename: string): string {
+  return filename.replace(/\.disabled$/i, '').toLowerCase();
+}
+
+/**
+ * Диск — источник правды: добавляем новые, обновляем существующие,
+ * убираем то, чего больше нет в папке (ручное удаление / rename).
+ */
 function applyScannedData(data: any): void {
   if (!editingBuild) return;
   const panels: { key: string; listId: string }[] = [
@@ -8155,24 +9506,39 @@ function applyScannedData(data: any): void {
     const buildKey = listIdToBuildKey(listId);
     const arr = buildKey ? (editingBuild[buildKey] as BeFileItem[]) : null;
     if (!arr) continue;
-    const existingByFile = new Map<string, BeFileItem>();
+
+    const existingByBase = new Map<string, BeFileItem>();
     for (const item of arr) {
-      if (item.filename) existingByFile.set(item.filename.toLowerCase(), item);
+      if (!item.filename) continue;
+      const base = contentFileBase(item.filename);
+      if (!existingByBase.has(base)) existingByBase.set(base, item);
     }
+
+    const next: BeFileItem[] = [];
+    const seen = new Set<string>();
     for (const item of scannedItems) {
-      const keyName = item.filename?.toLowerCase() || '';
-      const existing = existingByFile.get(keyName);
+      const base = contentFileBase(item.filename || '');
+      if (!base || seen.has(base)) continue;
+      seen.add(base);
+      const existing = existingByBase.get(base);
       if (existing) {
-        if (existing.name !== item.name || existing.version !== item.version || existing.description !== item.description || existing.projectId !== item.projectId || existing.iconUrl !== item.iconUrl) {
-          existing.name = item.name;
-          existing.version = item.version || existing.version;
-          existing.description = item.description || existing.description;
-          if (item.projectId) { existing.projectId = item.projectId; existing.iconUrl = item.iconUrl; }
+        existing.filename = item.filename;
+        existing.enabled = item.enabled !== false;
+        if (item.name) existing.name = item.name;
+        if (item.version) existing.version = item.version;
+        if (item.description) existing.description = item.description;
+        if (item.projectId) {
+          existing.projectId = item.projectId;
+          existing.iconUrl = item.iconUrl;
         }
+        next.push(existing);
       } else {
-        arr.push(item);
+        next.push(item);
       }
     }
+
+    arr.length = 0;
+    arr.push(...next);
     renderBeFileList(listId, arr);
   }
 }
@@ -8296,26 +9662,71 @@ function renderBeFileList(listId: string, items: BeFileItem[]): void {
     });
   });
 
-  // Toggle
+  // Toggle — переименовываем файл на диске (.jar ↔ .jar.disabled)
   list.querySelectorAll('.be-file-toggle input').forEach((cb, i) => {
-    cb.addEventListener('change', () => {
+    cb.addEventListener('change', async () => {
       const buildKey = listIdToBuildKey(listId);
       const arr = buildKey && editingBuild ? (editingBuild[buildKey] as BeFileItem[]) : null;
-      if (arr && arr[i]) arr[i].enabled = (cb as HTMLInputElement).checked;
+      const item = arr?.[i];
+      const wantEnabled = (cb as HTMLInputElement).checked;
+      if (!item) return;
+      if (!editingBuildId || !item.filename || !api?.toggleInstanceFile) {
+        item.enabled = wantEnabled;
+        return;
+      }
+      const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+      if (!sub) { item.enabled = wantEnabled; return; }
+      (cb as HTMLInputElement).disabled = true;
+      try {
+        const res = await api.toggleInstanceFile(editingBuildId, sub, item.filename, wantEnabled);
+        if (!res?.success) {
+          (cb as HTMLInputElement).checked = !wantEnabled;
+          updateStatus(t('be.toggleFailed'));
+          return;
+        }
+        item.enabled = !!res.enabled;
+        if (res.filename) item.filename = res.filename;
+        // На случай гонки с вотчером: один base — одна запись
+        const base = contentFileBase(item.filename || '');
+        for (let j = arr.length - 1; j >= 0; j--) {
+          if (j === i) continue;
+          if (contentFileBase(arr[j].filename || '') === base) arr.splice(j, 1);
+        }
+        renderBeFileList(listId, arr);
+      } catch {
+        (cb as HTMLInputElement).checked = !wantEnabled;
+        updateStatus(t('be.toggleFailed'));
+      } finally {
+        (cb as HTMLInputElement).disabled = false;
+      }
     });
   });
 
-  // Delete
+  // Delete — убираем из UI и с диска инстанса
   list.querySelectorAll('.be-file-del').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const idx = parseInt((btn as HTMLElement).dataset.index || '', 10);
       const buildKey = listIdToBuildKey(listId);
       const arr = buildKey && editingBuild ? (editingBuild[buildKey] as BeFileItem[]) : null;
-      if (arr) {
-        arr.splice(idx, 1);
-        renderBeFileList(listId, arr);
+      if (!arr || idx < 0 || idx >= arr.length) return;
+      const item = arr[idx];
+      if (!await confirmAction(t('be.confirmDeleteFile', { name: item.name || item.filename || '' }))) return;
+      const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+      if (editingBuildId && item.filename && sub && api?.deleteInstanceFiles) {
+        try {
+          const res = await api.deleteInstanceFiles(editingBuildId, sub, [item.filename]);
+          if (!res?.success) {
+            updateStatus(t('be.deleteFileFailed'));
+            return;
+          }
+        } catch {
+          updateStatus(t('be.deleteFileFailed'));
+          return;
+        }
       }
+      arr.splice(idx, 1);
+      renderBeFileList(listId, arr);
     });
   });
 
@@ -8335,7 +9746,7 @@ async function submitModalBuild(): Promise<void> {
   const nameInput = document.getElementById('modal-build-name') as HTMLInputElement;
   const versionSelect = document.getElementById('modal-build-version') as HTMLSelectElement;
   const loaderSelect = document.getElementById('modal-build-loader') as HTMLSelectElement;
-  const loaderVerInput = document.getElementById('modal-build-loader-ver') as HTMLInputElement;
+  const loaderVerInput = document.getElementById('modal-build-loader-ver') as HTMLSelectElement;
   if (!nameInput || !versionSelect || !loaderSelect || !loaderVerInput) return;
   const name = nameInput.value.trim();
   if (!name) return;
@@ -8810,6 +10221,105 @@ document.getElementById('news-refresh-btn')?.addEventListener('click', () => voi
 
 /* ── Modal: Mod Details ── */
 let detailsProjectId: string = '';
+let modDetailsTab: 'desc' | 'shots' = 'desc';
+
+type ModGalleryItem = { url: string; thumb?: string; title?: string };
+
+/** Полноразмерный URL галереи Modrinth (raw_url), иначе убираем суффикс _350 */
+function modGalleryFullUrl(item: any): string {
+  const raw = String(item?.raw_url || '').trim();
+  if (raw) return raw;
+  const url = String(item?.url || item || '').trim();
+  // CDN отдаёт превью вида ..._350.webp — для просмотра поднимаем до оригинала, если нет raw_url
+  return url.replace(/_350(?=\.(webp|png|jpe?g|gif)(?:\?|$))/i, '');
+}
+
+/** Галерея проекта Modrinth (search hit или полный project) */
+function modProjectGallery(project: any): ModGalleryItem[] {
+  const out: ModGalleryItem[] = [];
+  const seen = new Set<string>();
+  const push = (full?: string | null, thumb?: string | null, title?: string | null) => {
+    const u = String(full || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    const t = String(thumb || '').trim();
+    out.push({
+      url: u,
+      thumb: t && t !== u ? t : undefined,
+      title: title ? String(title).trim() : undefined,
+    });
+  };
+
+  const gallery = project?.gallery;
+  if (Array.isArray(gallery)) {
+    for (const item of gallery) {
+      if (typeof item === 'string') push(item, item);
+      else if (item && typeof item === 'object') {
+        push(modGalleryFullUrl(item), item.url || item.raw_url, item.title);
+      }
+    }
+  } else if (typeof gallery === 'string') {
+    push(gallery, gallery);
+  }
+  if (!out.length && typeof project?.featured_gallery === 'string') {
+    push(project.featured_gallery, project.featured_gallery);
+  }
+  return out;
+}
+
+function setModDetailsTab(tab: 'desc' | 'shots'): void {
+  modDetailsTab = tab;
+  const tabs = document.querySelectorAll<HTMLElement>('#modal-mod-tabs [data-mod-tab]');
+  tabs.forEach((btn) => {
+    const active = btn.getAttribute('data-mod-tab') === tab;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  const panels = document.querySelectorAll<HTMLElement>('#modal-mod-details [data-mod-panel]');
+  panels.forEach((panel) => {
+    const show = panel.getAttribute('data-mod-panel') === tab;
+    panel.classList.toggle('is-active', show);
+    panel.hidden = !show;
+  });
+}
+
+let modDetailsGalleryItems: ModGalleryItem[] = [];
+
+function renderModDetailsGallery(items: ModGalleryItem[]): void {
+  modDetailsGalleryItems = items;
+  const gallery = document.getElementById('modal-mod-gallery');
+  if (!gallery) return;
+  if (!items.length) {
+    gallery.innerHTML = '';
+    return;
+  }
+  gallery.innerHTML = items
+    .map((item, i) => {
+      const src = escapeHtml(catalogImageUrl(item.thumb || item.url));
+      const title = item.title ? escapeHtml(item.title) : '';
+      const cap = title ? `<span class="mod-details-gallery__cap">${title}</span>` : '';
+      return `<button type="button" class="mod-details-gallery__item" data-gallery-index="${i}" title="${title || escapeHtml(item.url)}">
+        <img src="${src}" alt="${title}" loading="lazy">
+        ${cap}
+      </button>`;
+    })
+    .join('');
+  gallery.querySelectorAll<HTMLButtonElement>('[data-gallery-index]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.getAttribute('data-gallery-index'));
+      if (!Number.isFinite(idx)) return;
+      void openModGalleryViewer(idx);
+    });
+  });
+}
+
+function setupModDetailsTabs(hasShots: boolean): void {
+  const tabsBar = document.getElementById('modal-mod-tabs');
+  const shotsTab = document.getElementById('modal-mod-tab-shots');
+  if (tabsBar) tabsBar.hidden = !hasShots;
+  if (shotsTab) shotsTab.hidden = !hasShots;
+  setModDetailsTab('desc');
+}
 
 async function openModalDetails(projectId: string): Promise<void> {
   detailsProjectId = projectId;
@@ -8824,6 +10334,8 @@ async function openModalDetails(projectId: string): Promise<void> {
   const urlBtn = document.getElementById('modal-mod-open-url');
   const dlBtn = document.getElementById('modal-mod-download-btn');
   if (!desc) return;
+  setupModDetailsTabs(false);
+  renderModDetailsGallery([]);
   desc.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('common.loading') + '</div>';
   openModal('modal-mod-details');
 
@@ -8842,9 +10354,15 @@ async function openModalDetails(projectId: string): Promise<void> {
     updated.textContent = d ? t('mods.updated', { date: d.toLocaleDateString() }) : '—';
   }
   if (author) {
-    const authorName = project.author || project.team || '—';
-    const authorUrl = `https://modrinth.com/user/${authorName}`;
-    author.innerHTML = `<a href="${authorUrl}" target="_blank">${authorName}</a>`;
+    const authorName = String(project.author || '').trim();
+    if (!authorName || authorName === '—') {
+      author.textContent = '—';
+    } else if (project.source === 'curseforge' || String(project.id || '').startsWith('cf:')) {
+      author.textContent = authorName;
+    } else {
+      const authorUrl = `https://modrinth.com/user/${encodeURIComponent(authorName)}`;
+      author.innerHTML = `<a href="${authorUrl}" target="_blank" rel="noopener">${escapeHtml(authorName)}</a>`;
+    }
   }
   if (tags) {
     const categories: string[] = project.categories || project.client_side ? [project.client_side] : [];
@@ -8852,19 +10370,42 @@ async function openModalDetails(projectId: string): Promise<void> {
   }
 
   if (urlBtn) {
-    const projUrl = `https://modrinth.com/${project.project_type || 'mod'}/${project.slug || project.id}`;
+    const isCf = project.source === 'curseforge' || String(project.id || projectId).startsWith('cf:');
+    const projUrl = isCf
+      ? (project.curseforge_url || `https://www.curseforge.com/minecraft/mc-mods/${String(project.slug || '').replace(/^cf:/, '') || project.id}`)
+      : (project.modrinth_url || `https://modrinth.com/${project.project_type || 'mod'}/${project.slug || project.id}`);
+    const label = urlBtn.querySelector('span');
+    if (label) label.textContent = isCf ? t('btn.openInCurseforge') : t('btn.openInModrinth');
     urlBtn.onclick = () => api?.openExternal(projUrl);
   }
   if (dlBtn) {
     dlBtn.onclick = () => {
       closeModal('modal-mod-details');
-      openModalVersionsForDownload(project.slug || project.id);
+      openModalVersionsForDownload(project.id || project.project_id || project.slug || projectId);
     };
   }
 
-  const bodyMd = project.body || '';
-  const bodyHtml = markedParse(bodyMd);
-  desc.innerHTML = sanitizeHtml(bodyHtml);
+  const galleryItems = modProjectGallery(project);
+  setupModDetailsTabs(galleryItems.length > 0);
+  renderModDetailsGallery(galleryItems);
+
+  if (project.body_html) {
+    desc.innerHTML = absolutizeCatalogHtml(project.body_html);
+  } else {
+    const bodyMd = project.body || project.description || '';
+    const bodyHtml = markedParse(bodyMd);
+    desc.innerHTML = absolutizeCatalogHtml(sanitizeHtml(bodyHtml));
+  }
+  // height:auto — пропорции при max-width; процентный width убираем (растягивал баннеры).
+  // Пиксельный width у бейджей оставляем — иначе 2x-картинки становятся огромными.
+  desc.querySelectorAll('img').forEach((img) => {
+    const el = img as HTMLImageElement;
+    const wAttr = el.getAttribute('width') || '';
+    if (wAttr.includes('%')) el.removeAttribute('width');
+    el.style.height = 'auto';
+    el.style.maxWidth = '100%';
+    if (el.style.width && el.style.width.includes('%')) el.style.width = '';
+  });
   // Open external links in system browser
   desc.querySelectorAll('a[href]').forEach(a => {
     a.addEventListener('click', (e) => {
@@ -8899,7 +10440,10 @@ function sanitizeHtml(html: string): string {
 }
 
 document.getElementById('modal-mod-versions')?.addEventListener('click', () => {
-  if (detailsProjectId) openModalVersionsForDownload(detailsProjectId);
+  if (!detailsProjectId) return;
+  // Как у «Скачать»: сначала закрываем Подробнее, иначе окно версий оказывается под ним.
+  closeModal('modal-mod-details');
+  openModalVersionsForDownload(detailsProjectId);
 });
 
 /* ── Modal: Import (.mrpack / .zip / ссылка шара) ── */
@@ -9091,7 +10635,13 @@ document.getElementById('modal-import-confirm')?.addEventListener('click', async
     }
     await loadBuilds();
     const modsN = enriched.mods?.length || 0;
-    updateStatus(t('import.done', { name: res.build.name }) + (modsN ? ` · ${modsN}` : ''));
+    const skipN = Number(res.skipped || 0) + (Array.isArray(res.extractSkipped) ? res.extractSkipped.length : 0);
+    if (res.incomplete || skipN > 0) {
+      updateStatus(t('import.partial', { name: res.build.name, n: skipN || modsN }));
+      showAppToast(t('import.partialHint', { n: skipN || 1 }));
+    } else {
+      updateStatus(t('import.done', { name: res.build.name }) + (modsN ? ` · ${modsN}` : ''));
+    }
   } catch (e: any) {
     updateStatus(t('import.failed', { error: e?.message || 'unknown' }));
   }
@@ -9134,26 +10684,224 @@ function renderBeScreenshots(): void {
     if (countEl) countEl.textContent = '';
     return;
   }
-  grid.innerHTML = beScreenshots.map(s => `
-    <div class="be-media-card${beSelScreenshots.has(s.name) ? ' selected' : ''}" data-name="${s.name}">
-      ${s.thumb ? `<img class="be-media-thumb" src="${s.thumb}" loading="lazy">` : '<div class="be-media-thumb"></div>'}
-      <div class="be-media-text">
-        <div class="be-media-name">${s.name}</div>
-        <div class="be-media-info">${formatBeSize(s.size)}</div>
+  grid.className = 'be-shots-grid';
+  grid.innerHTML = beScreenshots.map((s, i) => `
+    <button type="button" class="be-shot-card${beSelScreenshots.has(s.name) ? ' selected' : ''}" data-name="${s.name}" data-index="${i}" style="animation-delay:${Math.min(i, 12) * 40}ms">
+      <div class="be-shot-card__media">
+        ${s.thumb ? `<img src="${s.thumb}" alt="" loading="lazy">` : '<div class="be-shot-card__placeholder"></div>'}
+        ${BE_MEDIA_CHECK_SVG}
+        <span class="be-shot-card__open">${t('be.shotOpen')}</span>
       </div>
-      ${BE_MEDIA_CHECK_SVG}
-    </div>
+      <div class="be-shot-card__meta">
+        <div class="be-shot-card__name">${s.name}</div>
+        <div class="be-shot-card__info">${formatBeSize(s.size)}</div>
+      </div>
+    </button>
   `).join('');
   if (countEl) countEl.textContent = beSelScreenshots.size > 0 ? t('be.selectedCount').replace('{n}', String(beSelScreenshots.size)) : '';
-  grid.querySelectorAll<HTMLElement>('.be-media-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const name = card.getAttribute('data-name');
-      if (!name) return;
+  grid.querySelectorAll<HTMLElement>('.be-shot-card').forEach(card => {
+    const name = card.getAttribute('data-name');
+    if (!name) return;
+    const toggleSelect = (e: Event): void => {
+      e.preventDefault();
+      e.stopPropagation();
       if (beSelScreenshots.has(name)) beSelScreenshots.delete(name);
       else beSelScreenshots.add(name);
       renderBeScreenshots();
+    };
+    card.querySelector<HTMLElement>('.be-media-check')?.addEventListener('click', toggleSelect);
+    card.addEventListener('click', (e) => {
+      // Ctrl/Cmd по карточке — тоже мультивыбор
+      if ((e as MouseEvent).ctrlKey || (e as MouseEvent).metaKey) {
+        toggleSelect(e);
+        return;
+      }
+      void openBeShotViewer(name);
     });
   });
+}
+
+let beShotViewerIndex = 0;
+/** instance — скриншоты сборки; gallery — галерея мода с Modrinth */
+let beShotViewerMode: 'instance' | 'gallery' = 'instance';
+
+function syncBeShotViewerActions(): void {
+  const isGallery = beShotViewerMode === 'gallery';
+  const saveBtn = document.getElementById('be-shot-viewer-save');
+  const delBtn = document.getElementById('be-shot-viewer-delete');
+  // class «hidden» — display:none !important; атрибут hidden перебивается .be-add-btn
+  saveBtn?.classList.toggle('hidden', isGallery);
+  delBtn?.classList.toggle('hidden', isGallery);
+  if (saveBtn) saveBtn.hidden = isGallery;
+  if (delBtn) delBtn.hidden = isGallery;
+}
+
+function closeBeShotViewer(): void {
+  const viewer = document.getElementById('be-shot-viewer');
+  if (!viewer || viewer.classList.contains('hidden')) return;
+  viewer.classList.add('is-closing');
+  setTimeout(() => {
+    viewer.classList.add('hidden');
+    viewer.classList.remove('is-closing', 'is-open');
+    viewer.setAttribute('aria-hidden', 'true');
+    const img = document.getElementById('be-shot-viewer-img') as HTMLImageElement | null;
+    if (img) img.removeAttribute('src');
+    beShotViewerMode = 'instance';
+    syncBeShotViewerActions();
+  }, 180);
+}
+
+async function showBeShotViewer(): Promise<void> {
+  const viewer = document.getElementById('be-shot-viewer');
+  if (!viewer) return;
+  syncBeShotViewerActions();
+  viewer.classList.remove('hidden', 'is-closing');
+  viewer.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => viewer.classList.add('is-open'));
+  await loadBeShotViewerSlide();
+}
+
+async function openBeShotViewer(name: string): Promise<void> {
+  const idx = beScreenshots.findIndex((s) => s.name === name);
+  if (idx < 0) return;
+  beShotViewerMode = 'instance';
+  beShotViewerIndex = idx;
+  await showBeShotViewer();
+}
+
+async function openModGalleryViewer(index: number): Promise<void> {
+  if (index < 0 || index >= modDetailsGalleryItems.length) return;
+  beShotViewerMode = 'gallery';
+  beShotViewerIndex = index;
+  await showBeShotViewer();
+}
+
+async function loadBeShotViewerSlide(): Promise<void> {
+  const img = document.getElementById('be-shot-viewer-img') as HTMLImageElement | null;
+  const nameEl = document.getElementById('be-shot-viewer-name');
+  const infoEl = document.getElementById('be-shot-viewer-info');
+  const loading = document.getElementById('be-shot-viewer-loading');
+  const errEl = document.getElementById('be-shot-viewer-error');
+  if (loading) loading.classList.remove('hidden');
+  if (errEl) errEl.classList.add('hidden');
+  if (img) img.classList.remove('is-ready');
+
+  if (beShotViewerMode === 'gallery') {
+    const item = modDetailsGalleryItems[beShotViewerIndex];
+    if (!item) {
+      if (loading) loading.classList.add('hidden');
+      return;
+    }
+    if (nameEl) nameEl.textContent = item.title || item.url.split('/').pop() || '—';
+    if (infoEl) infoEl.textContent = `${beShotViewerIndex + 1} / ${modDetailsGalleryItems.length}`;
+    if (!img) {
+      if (loading) loading.classList.add('hidden');
+      return;
+    }
+    // Сначала превью, затем полноразмерный raw_url
+    if (item.thumb) img.src = catalogImageUrl(item.thumb);
+    const src = catalogImageUrl(item.url);
+    const slideIndex = beShotViewerIndex;
+    await new Promise<void>((resolve) => {
+      img.onload = () => {
+        if (beShotViewerMode === 'gallery' && beShotViewerIndex === slideIndex) {
+          img.classList.add('is-ready');
+        }
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = src;
+    });
+    if (loading) loading.classList.add('hidden');
+    if (beShotViewerIndex === slideIndex && !img.classList.contains('is-ready') && errEl) {
+      errEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const shot = beScreenshots[beShotViewerIndex];
+  if (!shot || !editingBuildId) {
+    if (loading) loading.classList.add('hidden');
+    return;
+  }
+  if (nameEl) nameEl.textContent = shot.name;
+  if (infoEl) infoEl.textContent = `${beShotViewerIndex + 1} / ${beScreenshots.length} · ${formatBeSize(shot.size)}`;
+  if (img && shot.thumb) img.src = shot.thumb;
+  let loaded = Boolean(shot.thumb);
+  if (api?.getScreenshot) {
+    try {
+      const res = await api.getScreenshot(editingBuildId, shot.name);
+      if (res?.success && res.dataUrl && img && beScreenshots[beShotViewerIndex]?.name === shot.name) {
+        img.onload = () => img.classList.add('is-ready');
+        img.src = res.dataUrl;
+        loaded = true;
+      }
+    } catch {
+      /* ниже покажем ошибку, если нет thumb */
+    }
+  }
+  if (loading) loading.classList.add('hidden');
+  if (!loaded && errEl) errEl.classList.remove('hidden');
+}
+
+async function beShotViewerCopy(): Promise<void> {
+  if (beShotViewerMode === 'gallery') {
+    const item = modDetailsGalleryItems[beShotViewerIndex];
+    if (!item) return;
+    const url = catalogImageUrl(item.url);
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })]);
+        showAppToast(t('be.shotCopied'));
+        return;
+      }
+    } catch {
+      /* fallback — скопировать URL */
+    }
+    try {
+      await navigator.clipboard.writeText(item.url);
+      showAppToast(t('be.shotCopied'));
+    } catch {
+      showAppToast(t('be.shotCopyFailed'));
+    }
+    return;
+  }
+  const shot = beScreenshots[beShotViewerIndex];
+  if (!shot || !editingBuildId || !api?.copyScreenshot) return;
+  const res = await api.copyScreenshot(editingBuildId, shot.name);
+  showAppToast(res?.success ? t('be.shotCopied') : t('be.shotCopyFailed'));
+}
+
+async function beShotViewerSave(): Promise<void> {
+  if (beShotViewerMode === 'gallery') return;
+  const shot = beScreenshots[beShotViewerIndex];
+  if (!shot || !editingBuildId) return;
+  await beMediaSave('screenshots', new Set([shot.name]));
+}
+
+async function beShotViewerDelete(): Promise<void> {
+  if (beShotViewerMode === 'gallery') return;
+  const shot = beScreenshots[beShotViewerIndex];
+  if (!shot) return;
+  const name = shot.name;
+  await beMediaDelete('screenshots', new Set([name]), t('be.confirmDeleteScreenshot'));
+  if (!beScreenshots.some((s) => s.name === name)) {
+    if (beScreenshots.length === 0) closeBeShotViewer();
+    else {
+      beShotViewerIndex = Math.min(beShotViewerIndex, beScreenshots.length - 1);
+      await loadBeShotViewerSlide();
+    }
+  }
+}
+
+function beShotViewerNav(delta: number): void {
+  const total =
+    beShotViewerMode === 'gallery' ? modDetailsGalleryItems.length : beScreenshots.length;
+  if (total === 0) return;
+  beShotViewerIndex = (beShotViewerIndex + delta + total) % total;
+  void loadBeShotViewerSlide();
 }
 
 function trParams(key: string, params?: Record<string, string>): string {
@@ -9316,12 +11064,16 @@ async function loadBeWorlds(): Promise<void> {
   renderBeWorlds();
 }
 
-async function beMediaDelete(sub: 'screenshots' | 'saves', sel: Set<string>): Promise<void> {
+async function beMediaDelete(
+  sub: 'screenshots' | 'saves',
+  sel: Set<string>,
+  confirmMsg?: string,
+): Promise<void> {
   if (sel.size === 0 || !editingBuildId || !api?.deleteInstanceFiles) return;
-  if (!await confirmAction(t('be.confirmDeleteFiles'))) return;
+  if (!await confirmAction(confirmMsg || t('be.confirmDeleteFiles'))) return;
   const res = await api.deleteInstanceFiles(editingBuildId, sub, [...sel]);
   if (res?.success) {
-    updateStatus(t('be.deletedOk').replace('{n}', String(res.deleted ?? 0)));
+    showAppToast(t('be.deletedOk').replace('{n}', String(res.deleted ?? 0)));
     sel.clear();
     if (sub === 'screenshots') await loadBeScreenshots();
     else await loadBeWorlds();
@@ -9342,6 +11094,22 @@ document.getElementById('be-screenshots-delete')?.addEventListener('click', () =
 document.getElementById('be-worlds-delete')?.addEventListener('click', () => beMediaDelete('saves', beSelWorlds));
 document.getElementById('be-screenshots-save')?.addEventListener('click', () => beMediaSave('screenshots', beSelScreenshots));
 document.getElementById('be-worlds-save')?.addEventListener('click', () => beMediaSave('saves', beSelWorlds));
+
+document.getElementById('be-shot-viewer-backdrop')?.addEventListener('click', () => closeBeShotViewer());
+document.getElementById('be-shot-viewer-close')?.addEventListener('click', () => closeBeShotViewer());
+document.getElementById('be-shot-viewer-prev')?.addEventListener('click', () => beShotViewerNav(-1));
+document.getElementById('be-shot-viewer-next')?.addEventListener('click', () => beShotViewerNav(1));
+document.getElementById('be-shot-viewer-copy')?.addEventListener('click', () => void beShotViewerCopy());
+document.getElementById('be-shot-viewer-save')?.addEventListener('click', () => void beShotViewerSave());
+document.getElementById('be-shot-viewer-delete')?.addEventListener('click', () => void beShotViewerDelete());
+document.addEventListener('keydown', (e) => {
+  const viewer = document.getElementById('be-shot-viewer');
+  if (!viewer || viewer.classList.contains('hidden')) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeBeShotViewer(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); beShotViewerNav(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); beShotViewerNav(1); }
+  else if (e.key === 'c' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void beShotViewerCopy(); }
+});
 
 /* ── Wire modal UI events ── */
 // Build editor tab switching
@@ -9366,50 +11134,82 @@ document.getElementById('modal-build-open-folder')?.addEventListener('click', as
 });
 document.getElementById('modal-build')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModalBuildModal(); });
 
-// ===== Импорт локальных файлов прямо в папку инстанса (.uclient/<id>/mods и т.п.) =====
-document.querySelectorAll('.be-add-btn:not(.be-scan-btn):not(.be-media-btn)').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    const listId = (btn as HTMLElement).closest('.be-panel')?.querySelector('.be-file-list')?.id;
-    if (!listId) return;
-    const sub = LIST_ID_TO_INSTANCE_SUB[listId];
-    if (!sub) return;
+// ===== Импорт/скан контента сборки (кнопки в шапке панелей mods/rp/shaders/dp) =====
+const BE_ADD_BTN_TO_LIST: Record<string, string> = {
+  'be-mods-add': 'be-mods-list',
+  'be-rp-add': 'be-rp-list',
+  'be-shaders-add': 'be-shaders-list',
+  'be-dp-add': 'be-dp-list',
+};
 
-    if (!editingBuildId) {
-      // Новая сборка ещё без id — папки инстанса нет
-      window.alert(t('be.importNeedSave'));
+async function runBeScanInstance(): Promise<void> {
+  if (!editingBuildId) {
+    window.alert(t('be.importNeedSave'));
+    return;
+  }
+  if (!api?.scanInstance) {
+    window.alert(t('be.importUnavailable'));
+    return;
+  }
+  const scanId = editingBuildId;
+  updateStatus(t('be.scanning'));
+  try {
+    const result = await api.scanInstance(scanId);
+    if (editingBuildId !== scanId) return;
+    if (result) applyScannedData(result);
+    else renderBeFileListsFromBuild();
+    updateStatus(t('be.scanDone'));
+  } catch (err) {
+    console.error('Scan failed:', err);
+    if (editingBuildId === scanId) renderBeFileListsFromBuild();
+    updateStatus(t('be.scanFailed'));
+  }
+}
+
+async function runBeImportFiles(listId: string): Promise<void> {
+  const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+  if (!sub) return;
+  if (!editingBuildId) {
+    window.alert(t('be.importNeedSave'));
+    return;
+  }
+  if (!api?.importInstanceFiles) {
+    console.error('[be-import] importInstanceFiles unavailable in preload');
+    window.alert(t('be.importUnavailable'));
+    return;
+  }
+  updateStatus(t('be.importPicking'));
+  try {
+    const result = await api.importInstanceFiles(editingBuildId, sub);
+    if (!result || result.canceled) return;
+    if (!result.success) {
+      console.error('[be-import] failed', result.error);
+      updateStatus(t('be.importFailed'));
+      window.alert(t('be.importFailed'));
       return;
     }
-    if (!api?.importInstanceFiles) return;
+    updateStatus(t('be.importDone', { n: String(result.count ?? result.imported?.length ?? 0) }));
+    await autoScanBuildInstance();
+  } catch (err) {
+    console.error('[be-import] error', err);
+    updateStatus(t('be.importFailed'));
+    window.alert(t('be.importFailed'));
+  }
+}
 
-    try {
-      const result = await api.importInstanceFiles(editingBuildId, sub);
-      if (!result || result.canceled) return;
-      if (!result.success) {
-        console.error('[be-import] failed', result.error);
-        return;
-      }
-      // Список обновляем сканом диска — источник правды папка инстанса
-      await autoScanBuildInstance();
-    } catch (e) {
-      console.error('[be-import] error', e);
-    }
+// Прямые слушатели — надёжнее делегирования с :not() по SVG внутри кнопок
+document.querySelectorAll<HTMLElement>('#modal-build .be-scan-btn').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void runBeScanInstance();
   });
 });
-
-// Build scan buttons
-document.querySelectorAll('.be-scan-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    if (!editingBuildId || !api?.scanInstance) return;
-    const scanId = editingBuildId;
-    try {
-      const result = await api.scanInstance(scanId);
-      if (editingBuildId !== scanId) return;
-      if (result) applyScannedData(result);
-      else renderBeFileListsFromBuild();
-    } catch (e) {
-      console.error('Scan failed:', e);
-      if (editingBuildId === scanId) renderBeFileListsFromBuild();
-    }
+Object.keys(BE_ADD_BTN_TO_LIST).forEach((btnId) => {
+  document.getElementById(btnId)?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void runBeImportFiles(BE_ADD_BTN_TO_LIST[btnId]);
   });
 });
 
@@ -9506,9 +11306,20 @@ document.getElementById('server-build-confirm')?.addEventListener('click', () =>
 });
 
 // Version picker
-document.getElementById('modal-versions-close')?.addEventListener('click', () => closeModal('modal-versions'));
-document.getElementById('modal-versions-cancel')?.addEventListener('click', () => closeModal('modal-versions'));
-document.getElementById('modal-versions')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal('modal-versions'); });
+document.getElementById('modal-versions-close')?.addEventListener('click', () => {
+  closeVersionsDropdown(false);
+  closeModal('modal-versions');
+});
+document.getElementById('modal-versions-cancel')?.addEventListener('click', () => {
+  closeVersionsDropdown(false);
+  closeModal('modal-versions');
+});
+document.getElementById('modal-versions')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) {
+    closeVersionsDropdown(false);
+    closeModal('modal-versions');
+  }
+});
 
 
 // News details
@@ -9520,6 +11331,12 @@ document.getElementById('modal-news-details')?.addEventListener('click', (e) => 
 document.getElementById('modal-mod-close')?.addEventListener('click', () => closeModal('modal-mod-details'));
 document.getElementById('modal-mod-close2')?.addEventListener('click', () => closeModal('modal-mod-details'));
 document.getElementById('modal-mod-details')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal('modal-mod-details'); });
+document.getElementById('modal-mod-tabs')?.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest?.('[data-mod-tab]') as HTMLElement | null;
+  if (!btn || btn.hidden) return;
+  const tab = btn.getAttribute('data-mod-tab');
+  if (tab === 'desc' || tab === 'shots') setModDetailsTab(tab);
+});
 // Каталог → агент: кнопка в футере модалки деталей мода
 document.getElementById('modal-mod-ask-agent')?.addEventListener('click', () => {
   const title = document.getElementById('modal-mod-title')?.textContent?.trim() || detailsProjectId || '';
@@ -9671,6 +11488,28 @@ function showAiAccessDeniedModal(): void {
   openModal('modal-ai-access');
 }
 
+function showMessengerOfflineModal(): void {
+  openModal('modal-msgr-offline');
+}
+
+function showSkinsOfflineModal(): void {
+  openModal('modal-skins-offline');
+}
+
+/** Чаты и скины скрыты для офлайн-аккаунта (нет уникальных auth-данных). */
+function applyOnlineOnlyTabsVisibility(): void {
+  const online = !isOfflineAccount();
+  document.querySelectorAll<HTMLElement>('.tab-btn[data-tab="messenger"]').forEach((el) => {
+    el.style.display = online ? '' : 'none';
+  });
+  document.querySelectorAll<HTMLElement>('.tab-btn[data-tab="skins"]').forEach((el) => {
+    el.style.display = online ? '' : 'none';
+  });
+  if (!online && (presenceTab === 'messenger' || presenceTab === 'skins')) {
+    switchTab('home');
+  }
+}
+
 function openAiKeyModal(opts?: { required?: boolean }): void {
   const input = document.getElementById('modal-ai-key-input') as HTMLInputElement | null;
   const status = document.getElementById('modal-ai-key-status');
@@ -9737,6 +11576,46 @@ function isAiAccessDeniedResult(result: { error?: string; code?: string; reason?
   if (!result) return false;
   const code = String(result.code || result.reason || result.error || '').toLowerCase();
   return code.includes('access_denied') || code === 'missing_key';
+}
+
+/** Человекочитаемое описание ошибки AI для чата. */
+function formatAiChatError(result: { error?: any; code?: string; reason?: string } | null | undefined): string {
+  const code = String(result?.code || result?.reason || '').toLowerCase();
+  if (
+    code === 'insufficient_balance' ||
+    code === 'insufficient_quota' ||
+    code === 'provider_unavailable' ||
+    code === 'upstream_error'
+  ) {
+    return t('ai.error.providerOutage');
+  }
+  let raw = result?.error;
+  if (raw && typeof raw === 'object') {
+    raw = (raw as any).message || JSON.stringify(raw);
+  }
+  const text = String(raw || 'unknown');
+  if (
+    /insufficient\s*balance|insufficient\s*funds|недостаточно средств|технические сбои|provider_unavailable/i.test(
+      text,
+    )
+  ) {
+    return t('ai.error.providerOutage');
+  }
+  // Старый формат прокси: "400 {\"error\":{...}}"
+  const jsonMatch = text.match(/\d{3}\s+(\{[\s\S]*\})\s*$/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      const msg = String(parsed?.error?.message || parsed?.message || '').trim();
+      if (/insufficient\s*balance|insufficient\s*funds/i.test(msg)) {
+        return t('ai.error.providerOutage');
+      }
+      if (msg) return msg;
+    } catch {
+      /* ignore */
+    }
+  }
+  return text;
 }
 
 function handleAiAccessDenied(): void {
@@ -10333,10 +12212,62 @@ function ensureUcCaretEl(): HTMLElement {
   return caret;
 }
 
-/** Смещение каретки внутри input/textarea (зеркало стилей) */
+/** Размер кастомного caret: всегда 2×16 */
+const UC_CARET_W = 2;
+const UC_CARET_H = 16;
+
+let ucCaretMeasureCtx: CanvasRenderingContext2D | null = null;
+function measureCaretTextWidth(text: string, style: CSSStyleDeclaration): number {
+  if (!ucCaretMeasureCtx) {
+    const c = document.createElement('canvas');
+    ucCaretMeasureCtx = c.getContext('2d');
+  }
+  const ctx = ucCaretMeasureCtx;
+  if (!ctx) return 0;
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`.replace(/\s+/g, ' ').trim();
+  let w = ctx.measureText(text).width;
+  const ls = style.letterSpacing;
+  if (ls && ls !== 'normal' && text.length > 1) {
+    const n = parseFloat(ls);
+    if (Number.isFinite(n)) w += n * (text.length - 1);
+  }
+  return w;
+}
+
+/** Смещение каретки внутри input/textarea относительно border-box */
 function getTextFieldCaretOffset(el: HTMLInputElement | HTMLTextAreaElement): { top: number; left: number; height: number } {
   const style = window.getComputedStyle(el);
   const isTextarea = el instanceof HTMLTextAreaElement;
+  const pos = el.selectionEnd ?? 0;
+  const isPassword = el instanceof HTMLInputElement && el.type === 'password';
+  const before = isPassword ? '\u2022'.repeat(pos) : el.value.slice(0, pos);
+  const borderTop = parseFloat(style.borderTopWidth) || 0;
+  const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+  const padTop = parseFloat(style.paddingTop) || 0;
+  const padBot = parseFloat(style.paddingBottom) || 0;
+  const padLeft = parseFloat(style.paddingLeft) || 0;
+  const padRight = parseFloat(style.paddingRight) || 0;
+  const height = UC_CARET_H;
+
+  // ===== Однострочный input: canvas по X, вертикальный центр контента =====
+  if (!isTextarea) {
+    const contentW = Math.max(0, el.clientWidth - padLeft - padRight);
+    const contentH = Math.max(0, el.clientHeight - padTop - padBot);
+    const textW = measureCaretTextWidth(before, style);
+    const full = isPassword ? '\u2022'.repeat(el.value.length) : el.value;
+    const fullW = measureCaretTextWidth(full, style);
+    const align = style.textAlign;
+    let xInContent = textW;
+    if (align === 'center') xInContent = (contentW - fullW) / 2 + textW;
+    else if (align === 'right' || align === 'end') xInContent = contentW - fullW + textW;
+    if (style.direction === 'rtl') xInContent = contentW - xInContent;
+    // Пустое поле / начало: xInContent ≈ 0 → caret у старта текста
+    const top = borderTop + padTop + Math.max(0, (contentH - height) / 2);
+    const left = borderLeft + padLeft + xInContent - el.scrollLeft;
+    return { top, left, height };
+  }
+
+  // ===== Textarea: зеркало стилей =====
   const mirror = document.createElement('div');
   const copyProps = [
     'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
@@ -10345,33 +12276,19 @@ function getTextFieldCaretOffset(el: HTMLInputElement | HTMLTextAreaElement): { 
     'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
     'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent',
     'textDecoration', 'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace',
-    'wordWrap', 'wordBreak',
+    'wordWrap', 'wordBreak', 'direction',
   ] as const;
   mirror.style.position = 'absolute';
   mirror.style.visibility = 'hidden';
   mirror.style.pointerEvents = 'none';
   mirror.style.top = '0';
   mirror.style.left = '-9999px';
-  if (isTextarea) {
-    mirror.style.whiteSpace = 'pre-wrap';
-    mirror.style.overflowWrap = 'break-word';
-  } else {
-    mirror.style.whiteSpace = 'pre';
-    mirror.style.height = 'auto';
-    mirror.style.width = `${el.clientWidth}px`;
-    mirror.style.overflow = 'hidden';
-  }
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
   for (const prop of copyProps) {
     mirror.style[prop] = style[prop];
   }
-  if (!isTextarea) {
-    // Ширина контента без вертикального скролла; горизонтальный scroll учитываем отдельно
-    mirror.style.width = `${Math.max(el.clientWidth, el.scrollWidth)}px`;
-  }
-
-  const pos = el.selectionEnd ?? 0;
-  const isPassword = el instanceof HTMLInputElement && el.type === 'password';
-  const before = isPassword ? '\u2022'.repeat(pos) : el.value.slice(0, pos);
+  mirror.style.width = style.width;
   mirror.textContent = before;
   const marker = document.createElement('span');
   marker.textContent = '\u200b';
@@ -10387,29 +12304,10 @@ function getTextFieldCaretOffset(el: HTMLInputElement | HTMLTextAreaElement): { 
     return parseFloat(style.fontSize) * 1.2 || 16;
   })();
 
-  let top: number;
-  let left: number;
-  let height: number;
-  if (isTextarea) {
-    left = marker.offsetLeft - el.scrollLeft;
-    // AI-композер: фиксированные 2×16; +1 как у старого margin-top (не центр line-height —
-    // иначе caret визуально проседает относительно глифов)
-    if (el.id === 'ai-input') {
-      height = 16;
-      top = marker.offsetTop - el.scrollTop + 1;
-    } else {
-      height = Math.max(12, Math.min(lineH, el.clientHeight - 2));
-      top = marker.offsetTop - el.scrollTop;
-    }
-  } else {
-    const padTop = parseFloat(style.paddingTop) || 0;
-    const padBot = parseFloat(style.paddingBottom) || 0;
-    const borderTop = parseFloat(style.borderTopWidth) || 0;
-    const contentH = el.clientHeight - padTop - padBot;
-    height = Math.max(12, Math.min(16, contentH - 2));
-    top = borderTop + padTop + Math.max(0, (contentH - height) / 2);
-    left = marker.offsetLeft - el.scrollLeft;
-  }
+  const left = borderLeft + marker.offsetLeft - el.scrollLeft;
+  // 2×16 по центру строки (не растягиваем caret по line-height)
+  const rowTop = marker.offsetTop - el.scrollTop;
+  const top = rowTop + Math.max(0, (lineH - height) / 2);
   mirror.remove();
   return { top, left, height };
 }
@@ -10450,7 +12348,8 @@ function syncCustomCaret(): void {
   }
 
   caret.hidden = false;
-  caret.style.height = `${height}px`;
+  caret.style.width = `${UC_CARET_W}px`;
+  caret.style.height = `${UC_CARET_H}px`;
   caret.style.transform = `translate(${Math.round(rect.left + left)}px, ${Math.round(rect.top + top)}px)`;
   caret.style.animation = 'none';
   void caret.offsetWidth;
@@ -11119,7 +13018,7 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
         handleAiAccessDenied();
         break;
       }
-      appendAiText('system', t('ai.error', { error: result?.error || 'unknown' }));
+      appendAiText('system', t('ai.error', { error: formatAiChatError(result) }));
       break;
     }
 
@@ -11552,7 +13451,7 @@ function bindAiActionBridge(): void {
           );
           if (!found) result = { ok: false, error: 'account_not_found' };
           else {
-            applyAccount(found);
+            await selectAccount(found);
             result = {
               ok: true,
               uuid: found.uuid || found.id || null,
@@ -11852,7 +13751,30 @@ function bindAiAccessSettingsUi(): void {
     tab?.click();
   });
 
+  const closeMsgrOffline = () => closeModal('modal-msgr-offline');
+  document.getElementById('modal-msgr-offline-close')?.addEventListener('click', closeMsgrOffline);
+  document.getElementById('modal-msgr-offline-ok')?.addEventListener('click', closeMsgrOffline);
+  document.getElementById('modal-msgr-offline')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeMsgrOffline();
+  });
+  document.getElementById('modal-msgr-offline-accounts')?.addEventListener('click', () => {
+    closeMsgrOffline();
+    openAccountPopup();
+  });
+
+  const closeSkinsOffline = () => closeModal('modal-skins-offline');
+  document.getElementById('modal-skins-offline-close')?.addEventListener('click', closeSkinsOffline);
+  document.getElementById('modal-skins-offline-ok')?.addEventListener('click', closeSkinsOffline);
+  document.getElementById('modal-skins-offline')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSkinsOffline();
+  });
+  document.getElementById('modal-skins-offline-accounts')?.addEventListener('click', () => {
+    closeSkinsOffline();
+    openAccountPopup();
+  });
+
   applyAiTabVisibility();
+  applyOnlineOnlyTabsVisibility();
 }
 
 /* ===== START ===== */

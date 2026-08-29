@@ -5,6 +5,8 @@ import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { initLauncher, addProgressSink } from './launcher';
 import { setApiBase, getApiBase, releaseLatestUrl } from '../shared/apiBase';
+import { registerMessengerIpc, getMessengerSessionToken } from './messenger-api';
+import { registerGameRelayIpc, setMessengerTokenProvider, stopGameRelayOnQuit } from './game-relay';
 import {
   DEEP_LINK_SCHEME,
   findDeepLinkInArgv,
@@ -14,6 +16,7 @@ import {
   type DeepLinkPayload,
 } from './deepLink';
 import { registerInstanceShareIpc } from './instanceShare';
+import { registerInstanceExportIpc } from './exportInstance';
 import { listAiToolSchemas, registerAiToolIpc } from './ai-tools';
 
 // ===== Ленивая загрузка модуля просмотра мира =====
@@ -78,6 +81,8 @@ function isNewerVersion(latest: string, current: string): boolean {
 
 let mainWindow: BrowserWindow | null = null;
 let consoleWindow: BrowserWindow | null = null;
+/** Последний акцент из рендерера — для консоли при открытии */
+let lastAccentColor = '';
 let consoleLive = false;
 const consoleLogHistory: any[] = [];
 
@@ -92,6 +97,9 @@ addProgressSink((data) => {
 function createConsoleWindow(): void {
   if (consoleWindow && !consoleWindow.isDestroyed()) {
     consoleWindow.focus();
+    if (lastAccentColor) {
+      consoleWindow.webContents.send('theme:changed', lastAccentColor);
+    }
     return;
   }
   consoleLive = false;
@@ -122,6 +130,9 @@ function createConsoleWindow(): void {
 
   consoleWindow.once('ready-to-show', () => {
     consoleWindow?.show();
+    if (lastAccentColor && consoleWindow && !consoleWindow.isDestroyed()) {
+      consoleWindow.webContents.send('theme:changed', lastAccentColor);
+    }
   });
 
   consoleWindow.on('closed', () => {
@@ -372,6 +383,7 @@ function ensureInstanceShareIpc(): void {
   if (instanceShareIpcReady) return;
   instanceShareIpcReady = true;
   registerInstanceShareIpc(() => mainWindow);
+  registerInstanceExportIpc(() => mainWindow);
 }
 
 // ===== Deep link uclient:// =====
@@ -507,6 +519,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   // Если модуль так и не понадобился, грузить его ради закрытия сессий незачем.
   worldViewerModule?.closeAllWorldSessions();
+  stopGameRelayOnQuit();
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -532,6 +545,15 @@ ipcMain.on('window:close', (event) => {
 
 ipcMain.handle('console:open', () => {
   createConsoleWindow();
+});
+
+/** Проброс смены акцента в окно консоли */
+ipcMain.on('theme:changed', (_event, accent: unknown) => {
+  const color = String(accent || '').trim();
+  if (!color) return;
+  lastAccentColor = color;
+  if (!consoleWindow || consoleWindow.isDestroyed()) return;
+  consoleWindow.webContents.send('theme:changed', color);
 });
 
 ipcMain.handle('console:append', (_event, message: unknown) => {
@@ -814,6 +836,9 @@ ipcMain.handle('news:get', async (_event, id: string, lang?: string) => {
 // ===== AI-агент через сайт (прокси Timeweb + MCP tools на клиенте) =====
 
 registerAiToolIpc();
+registerMessengerIpc();
+setMessengerTokenProvider(() => getMessengerSessionToken());
+registerGameRelayIpc();
 
 ipcMain.handle('ai:status', async (_event, opts?: { testerKey?: string }) => {
   try {

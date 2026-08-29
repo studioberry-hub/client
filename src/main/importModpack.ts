@@ -11,6 +11,7 @@ import {
   runWithConcurrency,
   PROXY_MAX_CONCURRENT_DOWNLOADS,
 } from './modrinthDownload';
+import { catalogCfFileUrl } from '../shared/apiBase';
 
 export type ModpackFormat = 'modrinth' | 'curseforge' | 'instance' | 'unknown';
 
@@ -39,6 +40,9 @@ export type ImportModpackResult = {
   inspect?: ModpackInspect;
   downloaded?: number;
   skipped?: number;
+  /** Файлы, которые не удалось распаковать (кириллица / MAX_PATH и т.п.) */
+  extractSkipped?: string[];
+  incomplete?: boolean;
   content?: {
     mods: ImportContentItem[];
     resourcePacks: ImportContentItem[];
@@ -137,6 +141,7 @@ function readZipCentralDirectory(zipPath: string): Array<{
     let off = 0;
     while (off + 46 <= cd.length) {
       if (cd.readUInt32LE(off) !== 0x02014b50) break;
+      const flags = cd.readUInt16LE(off + 8);
       const method = cd.readUInt16LE(off + 10);
       const compSize = cd.readUInt32LE(off + 20);
       const uncompSize = cd.readUInt32LE(off + 24);
@@ -144,7 +149,8 @@ function readZipCentralDirectory(zipPath: string): Array<{
       const extraLen = cd.readUInt16LE(off + 30);
       const commentLen = cd.readUInt16LE(off + 32);
       const localOffset = cd.readUInt32LE(off + 42);
-      const name = cd.toString('utf8', off + 46, off + 46 + nameLen).replace(/\\/g, '/');
+      const nameBuf = cd.subarray(off + 46, off + 46 + nameLen);
+      const name = decodeZipName(nameBuf, flags).replace(/\\/g, '/');
       entries.push({ name, method, compSize, uncompSize, localOffset });
       off += 46 + nameLen + extraLen + commentLen;
     }
@@ -176,6 +182,33 @@ function readZipEntryData(
   }
 }
 
+function decodeZipName(nameBuf: Buffer, flags: number): string {
+  // Bit 11 — UTF-8 (общий флаг ZIP)
+  if (flags & 0x800) return nameBuf.toString('utf8');
+  const asUtf8 = nameBuf.toString('utf8');
+  if (!/\uFFFD/.test(asUtf8)) {
+    try {
+      if (Buffer.from(asUtf8, 'utf8').equals(nameBuf)) return asUtf8;
+    } catch { /* fall through */ }
+  }
+  // Без UTF-8 flag Windows-архивы часто в CP1251/OEM — latin1 сохраняет байты лучше, чем битый utf8
+  return nameBuf.toString('latin1');
+}
+
+function isCriticalExtractPath(name: string): boolean {
+  const n = name.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+  const base = n.split('/').pop() || '';
+  return (
+    base === 'modrinth.index.json'
+    || base === 'manifest.json'
+    || base === 'mmc-pack.json'
+    || base === 'minecraftinstance.json'
+    || base === 'instance.cfg'
+    || /(^|\/)overrides\/saves\//i.test(n)
+    || /(^|\/)saves\/.+\/level\.dat$/i.test(n)
+  );
+}
+
 function winLongPath(p: string): string {
   if (process.platform !== 'win32') return p;
   const resolved = path.resolve(p);
@@ -185,8 +218,9 @@ function winLongPath(p: string): string {
 }
 
 /** Fallback: поэлементная распаковка ZIP с long-path на Windows. */
-function extractArchiveNode(zipPath: string, destDir: string): void {
+function extractArchiveNode(zipPath: string, destDir: string): { skipped: string[] } {
   const entries = readZipCentralDirectory(zipPath);
+  const skipped: string[] = [];
   fs.mkdirSync(winLongPath(destDir), { recursive: true });
   for (const entry of entries) {
     const name = entry.name.replace(/\\/g, '/');
@@ -197,19 +231,26 @@ function extractArchiveNode(zipPath: string, destDir: string): void {
     const target = path.join(destDir, ...name.split('/').filter(Boolean));
     try {
       const data = readZipEntryData(zipPath, entry);
-      if (!data) continue;
+      if (!data) {
+        skipped.push(name);
+        continue;
+      }
       fs.mkdirSync(winLongPath(path.dirname(target)), { recursive: true });
       fs.writeFileSync(winLongPath(target), data);
     } catch {
-      // кириллица/MAX_PATH — пропускаем проблемный файл, остальное импортируем
+      skipped.push(name);
     }
   }
+  return { skipped };
 }
 
 function extractLooksOk(dest: string): boolean {
   return (
     fs.existsSync(path.join(dest, 'modrinth.index.json'))
     || fs.existsSync(path.join(dest, 'manifest.json'))
+    || fs.existsSync(path.join(dest, 'mmc-pack.json'))
+    || fs.existsSync(path.join(dest, 'minecraftinstance.json'))
+    || fs.existsSync(path.join(dest, 'instance.cfg'))
     || fs.existsSync(path.join(dest, 'mods'))
     || fs.existsSync(path.join(dest, 'overrides'))
     || findPackRoot(dest) !== dest
@@ -217,7 +258,7 @@ function extractLooksOk(dest: string): boolean {
 }
 
 /** Распаковка: tar, иначе Node ZIP. Expand-Archive не используем. */
-export function extractArchive(archivePath: string, destDir: string): void {
+export function extractArchive(archivePath: string, destDir: string): { skipped: string[] } {
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
   const src = path.resolve(archivePath);
   const dest = path.resolve(destDir);
@@ -228,17 +269,24 @@ export function extractArchive(archivePath: string, destDir: string): void {
       maxBuffer: 16 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    if (extractLooksOk(dest)) return;
+    if (extractLooksOk(dest)) return { skipped: [] };
   } catch {
     /* fallback */
   }
-  extractArchiveNode(src, dest);
+  const { skipped } = extractArchiveNode(src, dest);
   if (!extractLooksOk(dest)) {
     throw new Error('extract_failed');
   }
+  const critical = skipped.filter(isCriticalExtractPath);
+  if (critical.length) {
+    const err = new Error('extract_incomplete') as Error & { skipped?: string[] };
+    err.skipped = skipped;
+    throw err;
+  }
+  return { skipped };
 }
 
-function mergeDirs(src: string, dest: string): void {
+function mergeDirs(src: string, dest: string, skipped?: string[]): void {
   const srcLong = winLongPath(src);
   if (!fs.existsSync(srcLong) && !fs.existsSync(src)) return;
   const listDir = fs.existsSync(srcLong) ? srcLong : src;
@@ -248,12 +296,13 @@ function mergeDirs(src: string, dest: string): void {
     const d = path.join(dest, entry);
     try {
       const st = fs.statSync(winLongPath(s));
-      if (st.isDirectory()) mergeDirs(s, d);
+      if (st.isDirectory()) mergeDirs(s, d, skipped);
       else {
         fs.mkdirSync(winLongPath(path.dirname(d)), { recursive: true });
         fs.copyFileSync(winLongPath(s), winLongPath(d));
       }
     } catch (e) {
+      skipped?.push(d);
       console.warn('[import] merge skip', d, e instanceof Error ? e.message : e);
     }
   }
@@ -278,12 +327,13 @@ function countWorlds(savesDir: string): number {
  * Ручной импорт: вытаскиваем overrides/* из ZIP сразу в корень инстанса
  * (saves, config, options.txt, …) с long-path — tar часто теряет кириллицу.
  */
-function extractOverridesToInstance(zipPath: string, instanceDir: string): { files: number; worlds: number } {
+function extractOverridesToInstance(zipPath: string, instanceDir: string): { files: number; worlds: number; skipped: string[] } {
   const entries = readZipCentralDirectory(zipPath);
   let files = 0;
+  const skipped: string[] = [];
   for (const entry of entries) {
     const name = entry.name.replace(/\\/g, '/');
-    const m = name.match(/^(?:\.\/)?(?:[^/]+\/)?(overrides|client-overrides|server-overrides)\/(.*)$/i);
+    const m = name.match(/^(?:\.\/)?(?:[^/]+\/)*(overrides|client-overrides|server-overrides)\/(.*)$/i);
     if (!m) continue;
     const rest = m[2] || '';
     if (!rest) continue;
@@ -300,15 +350,19 @@ function extractOverridesToInstance(zipPath: string, instanceDir: string): { fil
         } catch { /* rewrite */ }
       }
       const data = readZipEntryData(zipPath, entry);
-      if (!data) continue;
+      if (!data) {
+        skipped.push(rest);
+        continue;
+      }
       fs.mkdirSync(winLongPath(path.dirname(target)), { recursive: true });
       fs.writeFileSync(winLongPath(target), data);
       files++;
     } catch (e) {
+      skipped.push(rest);
       console.warn('[import] override skip', rest, e instanceof Error ? e.message : e);
     }
   }
-  return { files, worlds: countWorlds(path.join(instanceDir, 'saves')) };
+  return { files, worlds: countWorlds(path.join(instanceDir, 'saves')), skipped };
 }
 
 function countFiles(dir: string): number {
@@ -357,25 +411,47 @@ function readJson(filePath: string): any | null {
   }
 }
 
-/** Ищем корень пака: index/manifest могут оказаться во вложенной папке после unzip. */
-function findPackRoot(dir: string): string {
-  const markers = ['modrinth.index.json', 'manifest.json', 'mmc-pack.json'];
-  if (markers.some((m) => fs.existsSync(path.join(dir, m)))) return dir;
+/** Ищем корень пака: index/manifest могут оказаться во вложенных папках после unzip. */
+function findPackRoot(dir: string, maxDepth = 4): string {
+  const markers = [
+    'modrinth.index.json',
+    'manifest.json',
+    'mmc-pack.json',
+    'minecraftinstance.json',
+    'instance.cfg',
+    'pack.toml',
+  ];
+  const hasMarker = (d: string) => markers.some((m) => fs.existsSync(path.join(d, m)));
+  if (hasMarker(dir)) return dir;
 
-  let entries: fs.Dirent[] = [];
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return dir; }
+  // BFS по каталогам (пропускаем overrides и служебное)
+  type Node = { dir: string; depth: number };
+  const queue: Node[] = [{ dir, depth: 0 }];
+  const skipName = /^(overrides|client-overrides|server-overrides|mods|resourcepacks|shaderpacks|datapacks|config|saves|libraries|\.minecraft)$/i;
 
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    if (/^(overrides|client-overrides|server-overrides)$/i.test(e.name)) continue;
-    const sub = path.join(dir, e.name);
-    if (markers.some((m) => fs.existsSync(path.join(sub, m)))) return sub;
+  while (queue.length) {
+    const { dir: cur, depth } = queue.shift()!;
+    if (depth >= maxDepth) continue;
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+
+    for (const e of entries) {
+      if (!e.isDirectory() || skipName.test(e.name) || e.name.startsWith('.')) continue;
+      const sub = path.join(cur, e.name);
+      if (hasMarker(sub)) return sub;
+      queue.push({ dir: sub, depth: depth + 1 });
+    }
   }
 
-  // Один каталог без маркера — вероятно обёртка архива
-  const dirs = entries.filter((e) => e.isDirectory() && !/^\./.test(e.name));
-  const files = entries.filter((e) => e.isFile());
-  if (dirs.length === 1 && files.length === 0) return path.join(dir, dirs[0].name);
+  // Один каталог-обёртка без маркера
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const dirs = entries.filter((e) => e.isDirectory() && !/^\./.test(e.name) && !skipName.test(e.name));
+    const files = entries.filter((e) => e.isFile());
+    if (dirs.length === 1 && files.length === 0) {
+      return findPackRoot(path.join(dir, dirs[0].name), maxDepth - 1);
+    }
+  } catch { /* ignore */ }
   return dir;
 }
 
@@ -436,10 +512,32 @@ function inventoryContent(root: string): ImportModpackResult['content'] {
   };
 }
 
+function parseInstanceCfg(filePath: string): { name?: string; gameVersion?: string } {
+  try {
+    const text = fs.readFileSync(filePath, 'utf-8');
+    const out: { name?: string; gameVersion?: string } = {};
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.match(/^([^=]+)=(.*)$/);
+      if (!m) continue;
+      const key = m[1].trim().toLowerCase();
+      const val = m[2].trim();
+      if (key === 'name' && val) out.name = val;
+      if ((key === 'intendedversion' || key === 'minecraftversion') && val) out.gameVersion = val;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function detectFromDir(dir: string, archiveName: string): ModpackInspect {
   const indexPath = path.join(dir, 'modrinth.index.json');
   const manifestPath = path.join(dir, 'manifest.json');
   const mmcPath = path.join(dir, 'mmc-pack.json');
+  const cfInstancePath = path.join(dir, 'minecraftinstance.json');
+  const instanceCfgPath = path.join(dir, 'instance.cfg');
+  const packTomlPath = path.join(dir, 'pack.toml');
+  const fallbackName = archiveName.replace(/\.(mrpack|zip)$/i, '');
 
   if (fs.existsSync(indexPath)) {
     const index = readJson(indexPath) || {};
@@ -457,7 +555,7 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
       + (hasOverrides ? countByExt(path.join(dir, 'overrides', 'mods'), ['.jar', '.litemod']) : 0);
     return {
       format: 'modrinth',
-      name: String(index.name || archiveName.replace(/\.(mrpack|zip)$/i, '')),
+      name: String(index.name || fallbackName),
       gameVersion,
       loader,
       loaderVersion,
@@ -469,6 +567,7 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
 
   if (fs.existsSync(manifestPath)) {
     const manifest = readJson(manifestPath) || {};
+    // CurseForge export иногда кладёт minecraftinstance рядом — всё равно CF-формат
     const mc = manifest.minecraft || {};
     const gameVersion = String(mc.version || '');
     const loaders = Array.isArray(mc.modLoaders) ? mc.modLoaders : [];
@@ -478,12 +577,34 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
     const overrideName = String(manifest.overrides || 'overrides');
     return {
       format: 'curseforge',
-      name: String(manifest.name || archiveName.replace(/\.(mrpack|zip)$/i, '')),
+      name: String(manifest.name || fallbackName),
       gameVersion,
       loader: parsed.loader,
       loaderVersion: parsed.loaderVersion,
       fileCount: files || countByExt(path.join(dir, overrideName, 'mods'), ['.jar', '.litemod']),
       hasOverrides: fs.existsSync(path.join(dir, overrideName)),
+      archiveName,
+    };
+  }
+
+  if (fs.existsSync(cfInstancePath)) {
+    const inst = readJson(cfInstancePath) || {};
+    const base = inst.baseModLoader || {};
+    const loaderName = String(base.name || base.forgeVersion || '');
+    const parsed = parseLoaderId(loaderName.includes('-') ? loaderName : `forge-${loaderName}`);
+    const mcVer = String(base.minecraftVersion || inst.gameVersion || '');
+    const addons = Array.isArray(inst.installedAddons) ? inst.installedAddons.length : 0;
+    const modsDir = ['mods', path.join('minecraft', 'mods')]
+      .map((p) => path.join(dir, p))
+      .find((p) => fs.existsSync(p));
+    return {
+      format: addons > 0 && !modsDir ? 'curseforge' : 'instance',
+      name: String(inst.name || fallbackName),
+      gameVersion: mcVer,
+      loader: parsed.loader || 'vanilla',
+      loaderVersion: parsed.loaderVersion,
+      fileCount: modsDir ? countByExt(modsDir, ['.jar', '.litemod']) : addons,
+      hasOverrides: false,
       archiveName,
     };
   }
@@ -502,13 +623,14 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
     else if (quilt) { loader = 'quilt'; loaderVersion = String(quilt.version || ''); }
     else if (neo) { loader = 'neoforge'; loaderVersion = String(neo.version || ''); }
     else if (forge) { loader = 'forge'; loaderVersion = String(forge.version || ''); }
+    const cfg = fs.existsSync(instanceCfgPath) ? parseInstanceCfg(instanceCfgPath) : {};
     const modsDir = fs.existsSync(path.join(dir, 'minecraft', 'mods'))
       ? path.join(dir, 'minecraft', 'mods')
       : path.join(dir, 'mods');
     return {
       format: 'instance',
-      name: archiveName.replace(/\.(mrpack|zip)$/i, ''),
-      gameVersion: String(mc?.version || ''),
+      name: cfg.name || fallbackName,
+      gameVersion: String(mc?.version || cfg.gameVersion || ''),
       loader,
       loaderVersion,
       fileCount: countByExt(modsDir, ['.jar', '.litemod']),
@@ -517,13 +639,55 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
     };
   }
 
-  const modsDir = ['mods', path.join('minecraft', 'mods')]
+  if (fs.existsSync(instanceCfgPath)) {
+    const cfg = parseInstanceCfg(instanceCfgPath);
+    const modsDir = ['mods', path.join('minecraft', 'mods'), path.join('.minecraft', 'mods')]
+      .map((p) => path.join(dir, p))
+      .find((p) => fs.existsSync(p));
+    return {
+      format: 'instance',
+      name: cfg.name || fallbackName,
+      gameVersion: cfg.gameVersion || '',
+      loader: 'vanilla',
+      loaderVersion: '',
+      fileCount: modsDir ? countByExt(modsDir, ['.jar', '.litemod']) : 0,
+      hasOverrides: false,
+      archiveName,
+    };
+  }
+
+  if (fs.existsSync(packTomlPath)) {
+    // packwiz: минимальный разбор без TOML-парсера
+    try {
+      const text = fs.readFileSync(packTomlPath, 'utf-8');
+      const name = (text.match(/^\s*name\s*=\s*"([^"]+)"/m) || [])[1] || fallbackName;
+      const gameVersion = (text.match(/^\s*minecraft\s*=\s*"([^"]+)"/m) || [])[1] || '';
+      let loader = 'vanilla';
+      let loaderVersion = '';
+      for (const key of ['fabric', 'quilt', 'forge', 'neoforge'] as const) {
+        const m = text.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]+)"`, 'm'));
+        if (m) { loader = key === 'fabric' ? 'fabric' : key; loaderVersion = m[1]; break; }
+      }
+      return {
+        format: 'instance',
+        name,
+        gameVersion,
+        loader,
+        loaderVersion,
+        fileCount: countByExt(path.join(dir, 'mods'), ['.jar', '.litemod']),
+        hasOverrides: false,
+        archiveName,
+      };
+    } catch { /* fallthrough */ }
+  }
+
+  const modsDir = ['mods', path.join('minecraft', 'mods'), path.join('.minecraft', 'mods')]
     .map((p) => path.join(dir, p))
     .find((p) => fs.existsSync(p));
   if (modsDir || [...CONTENT_NAMES].some((n) => fs.existsSync(path.join(dir, n)))) {
     return {
       format: 'instance',
-      name: archiveName.replace(/\.(mrpack|zip)$/i, ''),
+      name: fallbackName,
       gameVersion: '',
       loader: 'vanilla',
       loaderVersion: '',
@@ -535,7 +699,7 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
 
   return {
     format: 'unknown',
-    name: archiveName.replace(/\.(mrpack|zip)$/i, ''),
+    name: fallbackName,
     gameVersion: '',
     loader: 'vanilla',
     loaderVersion: '',
@@ -621,10 +785,35 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
   }
 
   const mmcEntry = entries.find((e) => /(^|\/)mmc-pack\.json$/i.test(norm(e.name)));
-  if (mmcEntry || jarInArchive > 0) {
+  const cfInstEntry = entries.find((e) => /(^|\/)minecraftinstance\.json$/i.test(norm(e.name)));
+  const cfgEntry = entries.find((e) => /(^|\/)instance\.cfg$/i.test(norm(e.name)));
+
+  if (cfInstEntry && !mmcEntry) {
+    const buf = readZipEntryData(archivePath, cfInstEntry);
+    const inst = buf ? (() => { try { return JSON.parse(buf.toString('utf8')); } catch { return null; } })() : null;
+    const base = inst?.baseModLoader || {};
+    const loaderName = String(base.name || '');
+    const parsed = parseLoaderId(loaderName.includes('-') ? loaderName : loaderName ? `forge-${loaderName}` : '');
+    return {
+      format: jarInArchive > 0 ? 'instance' : 'curseforge',
+      name: String(inst?.name || fallback.name),
+      gameVersion: String(base.minecraftVersion || inst?.gameVersion || ''),
+      loader: parsed.loader || 'vanilla',
+      loaderVersion: parsed.loaderVersion,
+      fileCount: Math.max(
+        jarInArchive,
+        Array.isArray(inst?.installedAddons) ? inst.installedAddons.length : 0,
+      ),
+      hasOverrides,
+      archiveName,
+    };
+  }
+
+  if (mmcEntry || jarInArchive > 0 || cfgEntry) {
     let gameVersion = '';
     let loader = 'vanilla';
     let loaderVersion = '';
+    let name = fallback.name;
     if (mmcEntry) {
       const buf = readZipEntryData(archivePath, mmcEntry);
       const mmc = buf ? (() => { try { return JSON.parse(buf.toString('utf8')); } catch { return null; } })() : null;
@@ -640,9 +829,19 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
       else if (neo) { loader = 'neoforge'; loaderVersion = String(neo.version || ''); }
       else if (forge) { loader = 'forge'; loaderVersion = String(forge.version || ''); }
     }
+    if (cfgEntry) {
+      const buf = readZipEntryData(archivePath, cfgEntry);
+      if (buf) {
+        const text = buf.toString('utf8');
+        const nm = (text.match(/^name=(.*)$/im) || [])[1];
+        const ver = (text.match(/^IntendedVersion=(.*)$/im) || text.match(/^MinecraftVersion=(.*)$/im) || [])[1];
+        if (nm?.trim()) name = nm.trim();
+        if (ver?.trim() && !gameVersion) gameVersion = ver.trim();
+      }
+    }
     return {
       format: 'instance',
-      name: fallback.name,
+      name,
       gameVersion,
       loader,
       loaderVersion,
@@ -661,7 +860,36 @@ function forgeCdnUrl(fileId: number, fileName: string): string {
   return `https://mediafilez.forgecdn.net/files/${n}/${m}/${encodeURIComponent(fileName)}`;
 }
 
+/** Метаданные файла CF через наш каталог (ключ API на сервере). */
+async function resolveCurseFileViaCatalog(
+  projectId: number,
+  fileId: number,
+): Promise<{ filename: string; url: string; size?: number; sha1?: string } | null> {
+  try {
+    const res = await fetch(catalogCfFileUrl(`cf:${projectId}`, fileId), {
+      headers: { 'User-Agent': 'Undefined-Client', Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      file?: { filename?: string; url?: string; size?: number; hashes?: { sha1?: string } };
+      name?: string;
+    };
+    const file = data?.file;
+    if (!file?.url) return null;
+    return {
+      filename: String(file.filename || data.name || `${fileId}.jar`),
+      url: String(file.url),
+      size: file.size,
+      sha1: file.hashes?.sha1,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function resolveCurseFileName(projectId: number, fileId: number): Promise<string | null> {
+  const via = await resolveCurseFileViaCatalog(projectId, fileId);
+  if (via?.filename) return via.filename;
   const urls = [
     `https://api.curse.tools/v1/cf/mods/${projectId}/files/${fileId}`,
     `https://www.curseforge.com/api/v1/mods/${projectId}/files/${fileId}`,
@@ -676,15 +904,6 @@ async function resolveCurseFileName(projectId: number, fileId: number): Promise<
     } catch { /* try next */ }
   }
   return null;
-}
-
-async function downloadUrlToFile(url: string, dest: string): Promise<number> {
-  const res = await fetch(url, { headers: { 'User-Agent': 'Undefined-Client' }, redirect: 'follow' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, buf);
-  return buf.length;
 }
 
 function shouldInstallModrinthFile(entry: any): boolean {
@@ -723,12 +942,32 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
   sendProgress({ kind: 'status', key: 'import.extracting' });
 
   const zipPath = path.join(instanceDir, `pack-${crypto.randomBytes(4).toString('hex')}.zip`);
+  let extractSkipped: string[] = [];
   try {
     fs.copyFileSync(archivePath, zipPath);
-    extractArchive(zipPath, instanceDir);
+    const extracted = extractArchive(zipPath, instanceDir);
+    extractSkipped = extracted.skipped || [];
   } catch (e: any) {
+    const skippedList = Array.isArray(e?.skipped) ? e.skipped as string[] : [];
     try { fs.rmSync(instanceDir, { recursive: true, force: true }); } catch { /* ignore */ }
-    return { success: false, error: e?.message || 'extract_failed' };
+    return {
+      success: false,
+      error: e?.message || 'extract_failed',
+      extractSkipped: skippedList,
+    };
+  }
+
+  if (extractSkipped.length) {
+    sendProgress({
+      kind: 'status',
+      key: 'smp.packFileErr',
+      params: {
+        i: extractSkipped.length,
+        n: extractSkipped.length,
+        file: path.basename(extractSkipped[0] || ''),
+        msg: `extract_skipped:${extractSkipped.length}`,
+      },
+    });
   }
 
   // Вложенный корень архива → в корень инстанса
@@ -749,11 +988,13 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
 
   let downloaded = 0;
   let skipped = 0;
+  const mergeSkipped: string[] = [];
 
   // Overrides (saves/config/options/…) — отдельно из ZIP с long-path, затем merge с диска
   sendProgress({ kind: 'status', key: 'import.overrides' });
   try {
     const ov = extractOverridesToInstance(zipPath, instanceDir);
+    if (ov.skipped?.length) extractSkipped.push(...ov.skipped);
     if (ov.files > 0) {
       sendProgress({
         kind: 'status',
@@ -772,7 +1013,7 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
       const ovDir = path.join(instanceDir, overrideName);
       if (fs.existsSync(ovDir) || fs.existsSync(winLongPath(ovDir))) {
         const n = countFiles(ovDir);
-        mergeDirs(ovDir, instanceDir);
+        mergeDirs(ovDir, instanceDir, mergeSkipped);
         try { fs.rmSync(winLongPath(ovDir), { recursive: true, force: true }); } catch {
           try { fs.rmSync(ovDir, { recursive: true, force: true }); } catch { /* ignore */ }
         }
@@ -870,7 +1111,7 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
     }
   }
 
-  // ===== CurseForge: докачка модов =====
+  // ===== CurseForge: докачка модов через каталог сайта =====
   if (inspect.format === 'curseforge') {
     const manifest = readJson(path.join(instanceDir, 'manifest.json')) || {};
     const files = Array.isArray(manifest.files) ? manifest.files : [];
@@ -879,7 +1120,7 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
       const modsDir = path.join(instanceDir, 'mods');
       fs.mkdirSync(modsDir, { recursive: true });
       let done = 0;
-      await runWithConcurrency(files, 3, async (entry: any) => {
+      await runWithConcurrency(files, PROXY_MAX_CONCURRENT_DOWNLOADS, async (entry: any) => {
         const projectId = Number(entry.projectID || entry.projectId);
         const fileId = Number(entry.fileID || entry.fileId);
         if (!projectId || !fileId) {
@@ -889,19 +1130,41 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
           return;
         }
         try {
-          const fileName = (await resolveCurseFileName(projectId, fileId)) || `${fileId}.jar`;
-          const dest = path.join(modsDir, fileName);
+          const meta = await resolveCurseFileViaCatalog(projectId, fileId);
+          const fileName = meta?.filename
+            || (await resolveCurseFileName(projectId, fileId))
+            || `${fileId}.jar`;
+          const dest = path.join(modsDir, path.basename(fileName));
           if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
             downloaded++;
             const i = ++done;
             sendProgress({ kind: 'status', key: 'smp.packFile', params: { i, n: files.length, file: fileName, size: '0' } });
             return;
           }
-          const url = forgeCdnUrl(fileId, fileName);
-          await downloadUrlToFile(url, dest);
+
+          if (meta?.url) {
+            await downloadModrinthFile(meta.url, dest, {
+              reason: 'modpack',
+              expectedSize: meta.size,
+              sha1: meta.sha1,
+            });
+          } else {
+            // Запасной путь: прямой forgecdn (часто режется DPI)
+            const url = forgeCdnUrl(fileId, fileName);
+            await downloadModrinthFile(url, dest, { reason: 'modpack' });
+          }
           downloaded++;
           const i = ++done;
-          sendProgress({ kind: 'status', key: 'smp.packFile', params: { i, n: files.length, file: fileName, size: '?' } });
+          sendProgress({
+            kind: 'status',
+            key: 'smp.packFile',
+            params: {
+              i,
+              n: files.length,
+              file: fileName,
+              size: meta?.size ? (meta.size / 1024 / 1024).toFixed(1) : '?',
+            },
+          });
         } catch (err) {
           skipped++;
           const i = ++done;
@@ -912,11 +1175,16 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
     }
   }
 
-  // ===== Инстанс / MultiMC =====
+  // ===== Инстанс / MultiMC / Prism =====
   if (inspect.format === 'instance' || inspect.format === 'unknown') {
-    const nested = path.join(instanceDir, 'minecraft');
-    if (fs.existsSync(nested) && fs.statSync(nested).isDirectory()) {
-      mergeDirs(nested, instanceDir);
+    for (const nestedName of ['minecraft', '.minecraft']) {
+      const nested = path.join(instanceDir, nestedName);
+      if (fs.existsSync(nested) && fs.statSync(nested).isDirectory()) {
+        mergeDirs(nested, instanceDir);
+        try { fs.rmSync(winLongPath(nested), { recursive: true, force: true }); } catch {
+          try { fs.rmSync(nested, { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+      }
     }
     // Повторно смержить overrides, если они были внутри minecraft/
     mergeOverrideDirs(instanceDir, sendProgress);
@@ -1003,5 +1271,16 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
     build,
   });
 
-  return { success: true, build, inspect, downloaded, skipped, content };
+  return {
+    success: true,
+    build,
+    inspect,
+    downloaded,
+    skipped: skipped + extractSkipped.length + mergeSkipped.length,
+    extractSkipped: extractSkipped.length || mergeSkipped.length
+      ? [...extractSkipped, ...mergeSkipped]
+      : undefined,
+    incomplete: extractSkipped.length > 0 || mergeSkipped.length > 0 || skipped > 0,
+    content,
+  };
 }

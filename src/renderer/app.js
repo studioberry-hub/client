@@ -6921,7 +6921,7 @@ var app = (() => {
       }
     }
   }
-  var REVISION, MOUSE, TOUCH, CullFaceNone, CullFaceBack, CullFaceFront, PCFShadowMap, PCFSoftShadowMap, VSMShadowMap, FrontSide, BackSide, DoubleSide, NoBlending, NormalBlending, AdditiveBlending, SubtractiveBlending, MultiplyBlending, CustomBlending, AddEquation, SubtractEquation, ReverseSubtractEquation, MinEquation, MaxEquation, ZeroFactor, OneFactor, SrcColorFactor, OneMinusSrcColorFactor, SrcAlphaFactor, OneMinusSrcAlphaFactor, DstAlphaFactor, OneMinusDstAlphaFactor, DstColorFactor, OneMinusDstColorFactor, SrcAlphaSaturateFactor, NeverDepth, AlwaysDepth, LessDepth, LessEqualDepth, EqualDepth, GreaterEqualDepth, GreaterDepth, NotEqualDepth, MultiplyOperation, MixOperation, AddOperation, NoToneMapping, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, CustomToneMapping, UVMapping, CubeReflectionMapping, CubeRefractionMapping, EquirectangularReflectionMapping, EquirectangularRefractionMapping, CubeUVReflectionMapping, RepeatWrapping, ClampToEdgeWrapping, MirroredRepeatWrapping, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, LinearFilter, LinearMipmapNearestFilter, LinearMipmapLinearFilter, UnsignedByteType, ByteType, ShortType, UnsignedShortType, IntType, UnsignedIntType, FloatType, HalfFloatType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, AlphaFormat, RGBAFormat, LuminanceFormat, LuminanceAlphaFormat, DepthFormat, DepthStencilFormat, RedFormat, RedIntegerFormat, RGFormat, RGIntegerFormat, RGBAIntegerFormat, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, RED_GREEN_RGTC2_Format, SIGNED_RED_GREEN_RGTC2_Format, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, ZeroCurvatureEnding, ZeroSlopeEnding, WrapAroundEnding, LinearEncoding, sRGBEncoding, BasicDepthPacking, RGBADepthPacking, TangentSpaceNormalMap, ObjectSpaceNormalMap, NoColorSpace, SRGBColorSpace, LinearSRGBColorSpace, DisplayP3ColorSpace, KeepStencilOp, AlwaysStencilFunc, NeverCompare, LessCompare, EqualCompare, LessEqualCompare, GreaterCompare, NotEqualCompare, GreaterEqualCompare, AlwaysCompare, StaticDrawUsage, GLSL3, _SRGBAFormat, WebGLCoordinateSystem, WebGPUCoordinateSystem, EventDispatcher, _lut, _seed, DEG2RAD, RAD2DEG, MathUtils, Vector2, Matrix3, _m3, _cache, LINEAR_SRGB_TO_LINEAR_DISPLAY_P3, LINEAR_DISPLAY_P3_TO_LINEAR_SRGB, TO_LINEAR, FROM_LINEAR, ColorManagement, _canvas, ImageUtils, sourceId, Source, _textureId, Texture, Vector4, RenderTarget, WebGLRenderTarget, DataArrayTexture, Data3DTexture, Quaternion, Vector3, _vector$b, _quaternion$4, Box3, _points, _vector$a, _box$3, _v0$2, _v1$7, _v2$4, _f0, _f1, _f2, _center, _extents, _triangleNormal, _testAxis, _box$2, _v1$6, _v2$3, Sphere, _vector$9, _segCenter, _segDir, _diff, _edge1, _edge2, _normal$1, Ray, Matrix4, _v1$5, _m1$2, _zero, _one, _x, _y, _z, _matrix, _quaternion$3, Euler, Layers, _object3DId, _v1$4, _q1, _m1$1, _target, _position$3, _scale$2, _quaternion$2, _xAxis, _yAxis, _zAxis, _addedEvent, _removedEvent, Object3D, _v0$1, _v1$3, _v2$2, _v3$1, _vab, _vac, _vbc, _vap, _vbp, _vcp, warnedGetUV, Triangle, _materialId, Material, _colorKeywords, _hslA, _hslB, Color, _color, MeshBasicMaterial, _vector$8, _vector2$1, BufferAttribute, Uint16BufferAttribute, Uint32BufferAttribute, Float32BufferAttribute, _id$2, _m1, _obj, _offset, _box$1, _boxMorphTargets, _vector$7, BufferGeometry, _inverseMatrix$3, _ray$3, _sphere$5, _sphereHitAt, _vA$1, _vB$1, _vC$1, _tempA, _morphA, _uvA$1, _uvB$1, _uvC$1, _normalA, _normalB, _normalC, _intersectionPoint, _intersectionPointWorld, Mesh, BoxGeometry, UniformsUtils, default_vertex, default_fragment, ShaderMaterial, Camera, PerspectiveCamera, fov, aspect, CubeCamera, CubeTexture, WebGLCubeRenderTarget, _vector1, _vector2, _normalMatrix, Plane, _sphere$4, _vector$6, Frustum, PlaneGeometry, alphahash_fragment, alphahash_pars_fragment, alphamap_fragment, alphamap_pars_fragment, alphatest_fragment, alphatest_pars_fragment, aomap_fragment, aomap_pars_fragment, begin_vertex, beginnormal_vertex, bsdfs, iridescence_fragment, bumpmap_pars_fragment, clipping_planes_fragment, clipping_planes_pars_fragment, clipping_planes_pars_vertex, clipping_planes_vertex, color_fragment, color_pars_fragment, color_pars_vertex, color_vertex, common, cube_uv_reflection_fragment, defaultnormal_vertex, displacementmap_pars_vertex, displacementmap_vertex, emissivemap_fragment, emissivemap_pars_fragment, colorspace_fragment, colorspace_pars_fragment, envmap_fragment, envmap_common_pars_fragment, envmap_pars_fragment, envmap_pars_vertex, envmap_vertex, fog_vertex, fog_pars_vertex, fog_fragment, fog_pars_fragment, gradientmap_pars_fragment, lightmap_fragment, lightmap_pars_fragment, lights_lambert_fragment, lights_lambert_pars_fragment, lights_pars_begin, envmap_physical_pars_fragment, lights_toon_fragment, lights_toon_pars_fragment, lights_phong_fragment, lights_phong_pars_fragment, lights_physical_fragment, lights_physical_pars_fragment, lights_fragment_begin, lights_fragment_maps, lights_fragment_end, logdepthbuf_fragment, logdepthbuf_pars_fragment, logdepthbuf_pars_vertex, logdepthbuf_vertex, map_fragment, map_pars_fragment, map_particle_fragment, map_particle_pars_fragment, metalnessmap_fragment, metalnessmap_pars_fragment, morphcolor_vertex, morphnormal_vertex, morphtarget_pars_vertex, morphtarget_vertex, normal_fragment_begin, normal_fragment_maps, normal_pars_fragment, normal_pars_vertex, normal_vertex, normalmap_pars_fragment, clearcoat_normal_fragment_begin, clearcoat_normal_fragment_maps, clearcoat_pars_fragment, iridescence_pars_fragment, opaque_fragment, packing, premultiplied_alpha_fragment, project_vertex, dithering_fragment, dithering_pars_fragment, roughnessmap_fragment, roughnessmap_pars_fragment, shadowmap_pars_fragment, shadowmap_pars_vertex, shadowmap_vertex, shadowmask_pars_fragment, skinbase_vertex, skinning_pars_vertex, skinning_vertex, skinnormal_vertex, specularmap_fragment, specularmap_pars_fragment, tonemapping_fragment, tonemapping_pars_fragment, transmission_fragment, transmission_pars_fragment, uv_pars_fragment, uv_pars_vertex, uv_vertex, worldpos_vertex, vertex$h, fragment$h, vertex$g, fragment$g, vertex$f, fragment$f, vertex$e, fragment$e, vertex$d, fragment$d, vertex$c, fragment$c, vertex$b, fragment$b, vertex$a, fragment$a, vertex$9, fragment$9, vertex$8, fragment$8, vertex$7, fragment$7, vertex$6, fragment$6, vertex$5, fragment$5, vertex$4, fragment$4, vertex$3, fragment$3, vertex$2, fragment$2, vertex$1, fragment$1, ShaderChunk, UniformsLib, ShaderLib, _rgb, OrthographicCamera, LOD_MIN, EXTRA_LOD_SIGMA, MAX_SAMPLES, _flatCamera, _clearColor, _oldTarget, PHI, INV_PHI, _axisDirections, PMREMGenerator, emptyTexture, emptyArrayTexture, empty3dTexture, emptyCubeTexture, arrayCacheF32, arrayCacheI32, mat4array, mat3array, mat2array, SingleUniform, PureArrayUniform, StructuredUniform, RePathPart, WebGLUniforms, programIdCount, includePattern, shaderChunkMap, unrollLoopPattern, _id$1, WebGLShaderCache, WebGLShaderStage, nextVersion, MeshDepthMaterial, MeshDistanceMaterial, vertex, fragment, LinearTransferFunction, SRGBTransferFunction, ArrayCamera, Group, _moveEvent, WebXRController, DepthTexture, WebXRManager, WebGLRenderer, WebGL1Renderer, Scene, InterleavedBuffer, _vector$5, InterleavedBufferAttribute, SpriteMaterial, _geometry, _intersectPoint, _worldScale, _mvPosition, _alignedPosition, _rotatedPosition, _viewWorldMatrix, _vA, _vB, _vC, _uvA, _uvB, _uvC, Sprite, LineBasicMaterial, _start$1, _end$1, _inverseMatrix$1, _ray$1, _sphere$1, Line, _start, _end, LineSegments, CanvasTexture, CircleGeometry, SphereGeometry, ShadowMaterial, RawShaderMaterial, MeshStandardMaterial, Interpolant, CubicInterpolant, LinearInterpolant, DiscreteInterpolant, KeyframeTrack, BooleanKeyframeTrack, ColorKeyframeTrack, NumberKeyframeTrack, QuaternionLinearInterpolant, QuaternionKeyframeTrack, StringKeyframeTrack, VectorKeyframeTrack, LoadingManager, DefaultLoadingManager, Loader, Light, HemisphereLight, _projScreenMatrix$1, _lightPositionWorld$1, _lookTarget$1, LightShadow, _projScreenMatrix, _lightPositionWorld, _lookTarget, PointLightShadow, PointLight, DirectionalLightShadow, DirectionalLight, AmbientLight, Clock, _RESERVED_CHARS_RE, _reservedRe, _wordChar, _wordCharOrDot, _directoryRe, _nodeRe, _objectRe, _propertyRe, _trackRe, _supportedObjectNames, Composite, PropertyBinding, _controlInterpolantsResultBuffer, Raycaster, Spherical, GridHelper, _v1, _v2, _v3, DirectionalLightHelper, _vector, _camera, CameraHelper, _box, BoxHelper, AxesHelper;
+  var REVISION, MOUSE, TOUCH, CullFaceNone, CullFaceBack, CullFaceFront, PCFShadowMap, PCFSoftShadowMap, VSMShadowMap, FrontSide, BackSide, DoubleSide, NoBlending, NormalBlending, AdditiveBlending, SubtractiveBlending, MultiplyBlending, CustomBlending, AddEquation, SubtractEquation, ReverseSubtractEquation, MinEquation, MaxEquation, ZeroFactor, OneFactor, SrcColorFactor, OneMinusSrcColorFactor, SrcAlphaFactor, OneMinusSrcAlphaFactor, DstAlphaFactor, OneMinusDstAlphaFactor, DstColorFactor, OneMinusDstColorFactor, SrcAlphaSaturateFactor, NeverDepth, AlwaysDepth, LessDepth, LessEqualDepth, EqualDepth, GreaterEqualDepth, GreaterDepth, NotEqualDepth, MultiplyOperation, MixOperation, AddOperation, NoToneMapping, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, CustomToneMapping, UVMapping, CubeReflectionMapping, CubeRefractionMapping, EquirectangularReflectionMapping, EquirectangularRefractionMapping, CubeUVReflectionMapping, RepeatWrapping, ClampToEdgeWrapping, MirroredRepeatWrapping, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, LinearFilter, LinearMipmapNearestFilter, LinearMipmapLinearFilter, UnsignedByteType, ByteType, ShortType, UnsignedShortType, IntType, UnsignedIntType, FloatType, HalfFloatType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, AlphaFormat, RGBAFormat, LuminanceFormat, LuminanceAlphaFormat, DepthFormat, DepthStencilFormat, RedFormat, RedIntegerFormat, RGFormat, RGIntegerFormat, RGBAIntegerFormat, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, RED_GREEN_RGTC2_Format, SIGNED_RED_GREEN_RGTC2_Format, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, ZeroCurvatureEnding, ZeroSlopeEnding, WrapAroundEnding, LinearEncoding, sRGBEncoding, BasicDepthPacking, RGBADepthPacking, TangentSpaceNormalMap, ObjectSpaceNormalMap, NoColorSpace, SRGBColorSpace, LinearSRGBColorSpace, DisplayP3ColorSpace, KeepStencilOp, AlwaysStencilFunc, NeverCompare, LessCompare, EqualCompare, LessEqualCompare, GreaterCompare, NotEqualCompare, GreaterEqualCompare, AlwaysCompare, StaticDrawUsage, GLSL3, _SRGBAFormat, WebGLCoordinateSystem, WebGPUCoordinateSystem, EventDispatcher, _lut, _seed, DEG2RAD, RAD2DEG, MathUtils, Vector2, Matrix3, _m3, _cache, LINEAR_SRGB_TO_LINEAR_DISPLAY_P3, LINEAR_DISPLAY_P3_TO_LINEAR_SRGB, TO_LINEAR, FROM_LINEAR, ColorManagement, _canvas, ImageUtils, sourceId, Source, _textureId, Texture, Vector4, RenderTarget, WebGLRenderTarget, DataArrayTexture, Data3DTexture, Quaternion, Vector3, _vector$b, _quaternion$4, Box3, _points, _vector$a, _box$3, _v0$2, _v1$7, _v2$4, _f0, _f1, _f2, _center, _extents, _triangleNormal, _testAxis, _box$2, _v1$6, _v2$3, Sphere, _vector$9, _segCenter, _segDir, _diff, _edge1, _edge2, _normal$1, Ray, Matrix4, _v1$5, _m1$2, _zero, _one, _x, _y, _z, _matrix, _quaternion$3, Euler, Layers, _object3DId, _v1$4, _q1, _m1$1, _target, _position$3, _scale$2, _quaternion$2, _xAxis, _yAxis, _zAxis, _addedEvent, _removedEvent, Object3D, _v0$1, _v1$3, _v2$2, _v3$1, _vab, _vac, _vbc, _vap, _vbp, _vcp, warnedGetUV, Triangle, _materialId, Material, _colorKeywords, _hslA, _hslB, Color, _color, MeshBasicMaterial, _vector$8, _vector2$1, BufferAttribute, Uint16BufferAttribute, Uint32BufferAttribute, Float32BufferAttribute, _id$2, _m1, _obj, _offset, _box$1, _boxMorphTargets, _vector$7, BufferGeometry, _inverseMatrix$3, _ray$3, _sphere$5, _sphereHitAt, _vA$1, _vB$1, _vC$1, _tempA, _morphA, _uvA$1, _uvB$1, _uvC$1, _normalA, _normalB, _normalC, _intersectionPoint, _intersectionPointWorld, Mesh, BoxGeometry, UniformsUtils, default_vertex, default_fragment, ShaderMaterial, Camera, PerspectiveCamera, fov, aspect, CubeCamera, CubeTexture, WebGLCubeRenderTarget, _vector1, _vector2, _normalMatrix, Plane, _sphere$4, _vector$6, Frustum, PlaneGeometry, alphahash_fragment, alphahash_pars_fragment, alphamap_fragment, alphamap_pars_fragment, alphatest_fragment, alphatest_pars_fragment, aomap_fragment, aomap_pars_fragment, begin_vertex, beginnormal_vertex, bsdfs, iridescence_fragment, bumpmap_pars_fragment, clipping_planes_fragment, clipping_planes_pars_fragment, clipping_planes_pars_vertex, clipping_planes_vertex, color_fragment, color_pars_fragment, color_pars_vertex, color_vertex, common, cube_uv_reflection_fragment, defaultnormal_vertex, displacementmap_pars_vertex, displacementmap_vertex, emissivemap_fragment, emissivemap_pars_fragment, colorspace_fragment, colorspace_pars_fragment, envmap_fragment, envmap_common_pars_fragment, envmap_pars_fragment, envmap_pars_vertex, envmap_vertex, fog_vertex, fog_pars_vertex, fog_fragment, fog_pars_fragment, gradientmap_pars_fragment, lightmap_fragment, lightmap_pars_fragment, lights_lambert_fragment, lights_lambert_pars_fragment, lights_pars_begin, envmap_physical_pars_fragment, lights_toon_fragment, lights_toon_pars_fragment, lights_phong_fragment, lights_phong_pars_fragment, lights_physical_fragment, lights_physical_pars_fragment, lights_fragment_begin, lights_fragment_maps, lights_fragment_end, logdepthbuf_fragment, logdepthbuf_pars_fragment, logdepthbuf_pars_vertex, logdepthbuf_vertex, map_fragment, map_pars_fragment, map_particle_fragment, map_particle_pars_fragment, metalnessmap_fragment, metalnessmap_pars_fragment, morphcolor_vertex, morphnormal_vertex, morphtarget_pars_vertex, morphtarget_vertex, normal_fragment_begin, normal_fragment_maps, normal_pars_fragment, normal_pars_vertex, normal_vertex, normalmap_pars_fragment, clearcoat_normal_fragment_begin, clearcoat_normal_fragment_maps, clearcoat_pars_fragment, iridescence_pars_fragment, opaque_fragment, packing, premultiplied_alpha_fragment, project_vertex, dithering_fragment, dithering_pars_fragment, roughnessmap_fragment, roughnessmap_pars_fragment, shadowmap_pars_fragment, shadowmap_pars_vertex, shadowmap_vertex, shadowmask_pars_fragment, skinbase_vertex, skinning_pars_vertex, skinning_vertex, skinnormal_vertex, specularmap_fragment, specularmap_pars_fragment, tonemapping_fragment, tonemapping_pars_fragment, transmission_fragment, transmission_pars_fragment, uv_pars_fragment, uv_pars_vertex, uv_vertex, worldpos_vertex, vertex$h, fragment$h, vertex$g, fragment$g, vertex$f, fragment$f, vertex$e, fragment$e, vertex$d, fragment$d, vertex$c, fragment$c, vertex$b, fragment$b, vertex$a, fragment$a, vertex$9, fragment$9, vertex$8, fragment$8, vertex$7, fragment$7, vertex$6, fragment$6, vertex$5, fragment$5, vertex$4, fragment$4, vertex$3, fragment$3, vertex$2, fragment$2, vertex$1, fragment$1, ShaderChunk, UniformsLib, ShaderLib, _rgb, OrthographicCamera, LOD_MIN, EXTRA_LOD_SIGMA, MAX_SAMPLES, _flatCamera, _clearColor, _oldTarget, PHI, INV_PHI, _axisDirections, PMREMGenerator, emptyTexture, emptyArrayTexture, empty3dTexture, emptyCubeTexture, arrayCacheF32, arrayCacheI32, mat4array, mat3array, mat2array, SingleUniform, PureArrayUniform, StructuredUniform, RePathPart, WebGLUniforms, programIdCount, includePattern, shaderChunkMap, unrollLoopPattern, _id$1, WebGLShaderCache, WebGLShaderStage, nextVersion, MeshDepthMaterial, MeshDistanceMaterial, vertex, fragment, LinearTransferFunction, SRGBTransferFunction, ArrayCamera, Group, _moveEvent, WebXRController, DepthTexture, WebXRManager, WebGLRenderer, WebGL1Renderer, Scene, InterleavedBuffer, _vector$5, InterleavedBufferAttribute, SpriteMaterial, _geometry, _intersectPoint, _worldScale, _mvPosition, _alignedPosition, _rotatedPosition, _viewWorldMatrix, _vA, _vB, _vC, _uvA, _uvB, _uvC, Sprite, LineBasicMaterial, _start$1, _end$1, _inverseMatrix$1, _ray$1, _sphere$1, Line, _start, _end, LineSegments, CanvasTexture, SphereGeometry, ShadowMaterial, RawShaderMaterial, MeshStandardMaterial, Interpolant, CubicInterpolant, LinearInterpolant, DiscreteInterpolant, KeyframeTrack, BooleanKeyframeTrack, ColorKeyframeTrack, NumberKeyframeTrack, QuaternionLinearInterpolant, QuaternionKeyframeTrack, StringKeyframeTrack, VectorKeyframeTrack, LoadingManager, DefaultLoadingManager, Loader, Light, HemisphereLight, _projScreenMatrix$1, _lightPositionWorld$1, _lookTarget$1, LightShadow, _projScreenMatrix, _lightPositionWorld, _lookTarget, PointLightShadow, PointLight, DirectionalLightShadow, DirectionalLight, AmbientLight, Clock, _RESERVED_CHARS_RE, _reservedRe, _wordChar, _wordCharOrDot, _directoryRe, _nodeRe, _objectRe, _propertyRe, _trackRe, _supportedObjectNames, Composite, PropertyBinding, _controlInterpolantsResultBuffer, Raycaster, Spherical, GridHelper, _v1, _v2, _v3, DirectionalLightHelper, _vector, _camera, CameraHelper, _box, BoxHelper, AxesHelper;
   var init_three_module = __esm({
     "node_modules/three/build/three.module.js"() {
       REVISION = "156";
@@ -18147,53 +18147,6 @@ var app = (() => {
           this.needsUpdate = true;
         }
       };
-      CircleGeometry = class _CircleGeometry extends BufferGeometry {
-        constructor(radius = 1, segments = 32, thetaStart = 0, thetaLength = Math.PI * 2) {
-          super();
-          this.type = "CircleGeometry";
-          this.parameters = {
-            radius,
-            segments,
-            thetaStart,
-            thetaLength
-          };
-          segments = Math.max(3, segments);
-          const indices = [];
-          const vertices = [];
-          const normals = [];
-          const uvs = [];
-          const vertex2 = new Vector3();
-          const uv = new Vector2();
-          vertices.push(0, 0, 0);
-          normals.push(0, 0, 1);
-          uvs.push(0.5, 0.5);
-          for (let s = 0, i = 3; s <= segments; s++, i += 3) {
-            const segment = thetaStart + s / segments * thetaLength;
-            vertex2.x = radius * Math.cos(segment);
-            vertex2.y = radius * Math.sin(segment);
-            vertices.push(vertex2.x, vertex2.y, vertex2.z);
-            normals.push(0, 0, 1);
-            uv.x = (vertices[i] / radius + 1) / 2;
-            uv.y = (vertices[i + 1] / radius + 1) / 2;
-            uvs.push(uv.x, uv.y);
-          }
-          for (let i = 1; i <= segments; i++) {
-            indices.push(i, i + 1, 0);
-          }
-          this.setIndex(indices);
-          this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
-          this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
-          this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
-        }
-        copy(source) {
-          super.copy(source);
-          this.parameters = Object.assign({}, source.parameters);
-          return this;
-        }
-        static fromJSON(data) {
-          return new _CircleGeometry(data.radius, data.segments, data.thetaStart, data.thetaLength);
-        }
-      };
       SphereGeometry = class _SphereGeometry extends BufferGeometry {
         constructor(radius = 1, widthSegments = 32, heightSegments = 16, phiStart = 0, phiLength = Math.PI * 2, thetaStart = 0, thetaLength = Math.PI) {
           super();
@@ -23659,13 +23612,13 @@ var app = (() => {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
     renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
+    renderer.toneMappingExposure = 1.18;
     renderer.outputColorSpace = SRGBColorSpace;
   }
   function createPlasticEnvironment(renderer) {
     const pmrem = new PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
-    const texture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const texture = pmrem.fromScene(new RoomEnvironment(), 0.28).texture;
     pmrem.dispose();
     return texture;
   }
@@ -23820,17 +23773,22 @@ var app = (() => {
     return new ProductLighting(scene);
   }
   function createFloorAndContactShadow(scene) {
-    const ground = new Mesh(new CircleGeometry(48, 64), new MeshStandardMaterial({
-      color: 1184276,
-      roughness: 0.88,
-      metalness: 0.12,
-      envMapIntensity: 0.35
+    const groundSize = 420;
+    const groundTex = createFadingGroundTexture();
+    const ground = new Mesh(new PlaneGeometry(groundSize, groundSize), new MeshStandardMaterial({
+      map: groundTex,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.96,
+      metalness: 0,
+      envMapIntensity: 0.05
     }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = FLOOR_Y - 0.04;
     ground.receiveShadow = true;
+    ground.visible = false;
     scene.add(ground);
-    const floor = new Mesh(new PlaneGeometry(200, 200), new ShadowMaterial({ opacity: 0.24, color: 0 }));
+    const floor = new Mesh(new PlaneGeometry(groundSize, groundSize), new ShadowMaterial({ opacity: 0.12, color: 0 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = FLOOR_Y;
     floor.receiveShadow = true;
@@ -23838,6 +23796,29 @@ var app = (() => {
     const contactShadow = createContactShadowBlob();
     scene.add(contactShadow);
     return { floor, contactShadow, ground };
+  }
+  function createFadingGroundTexture() {
+    const size = 512;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Canvas 2D \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0434\u043B\u044F \u0442\u0435\u043A\u0441\u0442\u0443\u0440\u044B \u043F\u043E\u043B\u0430");
+    }
+    const c = size / 2;
+    const g2 = ctx.createRadialGradient(c, c, size * 0.12, c, c, size * 0.5);
+    g2.addColorStop(0, "rgba(40, 40, 40, 1)");
+    g2.addColorStop(0.28, "rgba(36, 36, 36, 0.95)");
+    g2.addColorStop(0.55, "rgba(34, 34, 34, 0.55)");
+    g2.addColorStop(0.78, "rgba(32, 32, 32, 0.18)");
+    g2.addColorStop(1, "rgba(32, 32, 32, 0)");
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, size, size);
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.needsUpdate = true;
+    return texture;
   }
   function createContactShadowBlob() {
     const size = 256;
@@ -23850,8 +23831,8 @@ var app = (() => {
     }
     const center = size / 2;
     const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-    gradient.addColorStop(0, "rgba(0, 0, 0, 0.22)");
-    gradient.addColorStop(0.25, "rgba(0, 0, 0, 0.12)");
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0.18)");
+    gradient.addColorStop(0.28, "rgba(0, 0, 0, 0.1)");
     gradient.addColorStop(0.55, "rgba(0, 0, 0, 0.04)");
     gradient.addColorStop(0.82, "rgba(0, 0, 0, 0.01)");
     gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
@@ -23863,7 +23844,7 @@ var app = (() => {
       transparent: true,
       depthWrite: false
     });
-    const mesh = new Mesh(new PlaneGeometry(58, 36), material);
+    const mesh = new Mesh(new PlaneGeometry(48, 28), material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(0, FLOOR_Y + 0.05, 0.5);
     mesh.renderOrder = 1;
@@ -23875,7 +23856,7 @@ var app = (() => {
     scene.environmentIntensity = SCENE_ENV_INTENSITY;
     return envMap;
   }
-  var FLOOR_Y, DEG2RAD2, RAD2DEG2, DEFAULT_KEY_AZIMUTH_DEG, DEFAULT_KEY_ELEVATION_DEG, DEFAULT_KEY_DISTANCE, DEFAULT_LIGHT_SETTINGS, SKIN_ROUGHNESS_INNER, SKIN_METALNESS_INNER, SKIN_ENV_MAP_INTENSITY_INNER, SKIN_ROUGHNESS_OUTER, SKIN_METALNESS_OUTER, SKIN_ENV_MAP_INTENSITY_OUTER, SCENE_ENV_INTENSITY, ProductLighting;
+  var FLOOR_Y, DEG2RAD2, RAD2DEG2, DEFAULT_KEY_AZIMUTH_DEG, DEFAULT_KEY_ELEVATION_DEG, DEFAULT_KEY_DISTANCE, DEFAULT_LIGHT_SETTINGS, SKIN_ROUGHNESS_INNER, SKIN_METALNESS_INNER, SKIN_ENV_MAP_INTENSITY_INNER, SKIN_ROUGHNESS_OUTER, SKIN_METALNESS_OUTER, SKIN_ENV_MAP_INTENSITY_OUTER, SCENE_ENV_INTENSITY, HEMI_INTENSITY, RIM_INTENSITY, ProductLighting;
   var init_product_visuals = __esm({
     "skinviewengine/dist/core/product-visuals.js"() {
       "use strict";
@@ -23884,26 +23865,28 @@ var app = (() => {
       FLOOR_Y = -16;
       DEG2RAD2 = Math.PI / 180;
       RAD2DEG2 = 180 / Math.PI;
-      DEFAULT_KEY_AZIMUTH_DEG = 58;
-      DEFAULT_KEY_ELEVATION_DEG = 40;
+      DEFAULT_KEY_AZIMUTH_DEG = 38;
+      DEFAULT_KEY_ELEVATION_DEG = 42;
       DEFAULT_KEY_DISTANCE = 55;
       DEFAULT_LIGHT_SETTINGS = {
         keyAzimuthDeg: DEFAULT_KEY_AZIMUTH_DEG,
         keyElevationDeg: DEFAULT_KEY_ELEVATION_DEG,
-        keyIntensity: 1.75,
-        ambientIntensity: 0.28,
-        fillIntensity: 0.32,
-        shadowRadius: 5.5,
-        shadowIntensity: 0.82,
+        keyIntensity: 1.48,
+        ambientIntensity: 0.58,
+        fillIntensity: 0.55,
+        shadowRadius: 11,
+        shadowIntensity: 0.26,
         castShadows: true
       };
-      SKIN_ROUGHNESS_INNER = 0.32;
-      SKIN_METALNESS_INNER = 0.08;
-      SKIN_ENV_MAP_INTENSITY_INNER = 1.05;
-      SKIN_ROUGHNESS_OUTER = 0.34;
-      SKIN_METALNESS_OUTER = 0.06;
-      SKIN_ENV_MAP_INTENSITY_OUTER = 0.9;
-      SCENE_ENV_INTENSITY = 0.62;
+      SKIN_ROUGHNESS_INNER = 0.52;
+      SKIN_METALNESS_INNER = 0.04;
+      SKIN_ENV_MAP_INTENSITY_INNER = 0.28;
+      SKIN_ROUGHNESS_OUTER = 0.55;
+      SKIN_METALNESS_OUTER = 0.03;
+      SKIN_ENV_MAP_INTENSITY_OUTER = 0.22;
+      SCENE_ENV_INTENSITY = 0.22;
+      HEMI_INTENSITY = 0.72;
+      RIM_INTENSITY = 0.3;
       ProductLighting = class {
         ambient;
         hemi;
@@ -23915,9 +23898,9 @@ var app = (() => {
         constructor(scene) {
           this.ambient = new AmbientLight(15790840, DEFAULT_LIGHT_SETTINGS.ambientIntensity);
           scene.add(this.ambient);
-          this.hemi = new HemisphereLight(15265528, 2763312, 0.42);
+          this.hemi = new HemisphereLight(15265528, 3816002, HEMI_INTENSITY);
           scene.add(this.hemi);
-          this.key = new DirectionalLight(16774892, DEFAULT_LIGHT_SETTINGS.keyIntensity);
+          this.key = new DirectionalLight(16774376, DEFAULT_LIGHT_SETTINGS.keyIntensity);
           this.keyDistance = DEFAULT_KEY_DISTANCE;
           this.applyKeySpherical(DEFAULT_LIGHT_SETTINGS.keyAzimuthDeg, DEFAULT_LIGHT_SETTINGS.keyElevationDeg, this.keyDistance);
           configureKeyLightShadow(this.key, DEFAULT_LIGHT_SETTINGS.shadowRadius, DEFAULT_LIGHT_SETTINGS.shadowIntensity);
@@ -23925,11 +23908,11 @@ var app = (() => {
           this.key.target.position.set(0, 0, 0);
           scene.add(this.key);
           scene.add(this.key.target);
-          this.fill = new DirectionalLight(13161712, DEFAULT_LIGHT_SETTINGS.fillIntensity);
-          this.fill.position.set(14, 10, -12);
+          this.fill = new DirectionalLight(14213360, DEFAULT_LIGHT_SETTINGS.fillIntensity);
+          this.fill.position.set(-18, 8, 14);
           scene.add(this.fill);
-          this.rim = new DirectionalLight(12110079, 0.55);
-          this.rim.position.set(-20, 12, -24);
+          this.rim = new DirectionalLight(13161727, RIM_INTENSITY);
+          this.rim.position.set(-18, 14, -22);
           scene.add(this.rim);
         }
         /** Текущие настройки освещения */
@@ -24306,74 +24289,24 @@ var app = (() => {
   });
 
   // skinviewengine/dist/core/studio-atmosphere.js
-  var BG_W, BG_H, StudioAtmosphere, STUDIO_CLEAR_COLOR;
+  var STUDIO_CLEAR_COLOR, StudioAtmosphere;
   var init_studio_atmosphere = __esm({
     "skinviewengine/dist/core/studio-atmosphere.js"() {
       "use strict";
       init_three_module();
-      BG_W = 64;
-      BG_H = 64;
+      STUDIO_CLEAR_COLOR = new Color(2763306);
       StudioAtmosphere = class {
         group = new Group();
-        backgroundTexture;
-        _bgCanvas;
-        _time = 0;
-        constructor() {
-          this._bgCanvas = document.createElement("canvas");
-          this._bgCanvas.width = BG_W;
-          this._bgCanvas.height = BG_H;
-          this.backgroundTexture = new CanvasTexture(this._bgCanvas);
-          this.backgroundTexture.colorSpace = SRGBColorSpace;
-          this._paintBackground(0);
-        }
+        /** Сплошной фон для scene.background */
+        backgroundColor = STUDIO_CLEAR_COLOR.clone();
         setVisible(visible) {
           this.group.visible = visible;
         }
-        update(delta) {
-          if (!this.group.visible)
-            return;
-          this._time += Math.min(0.05, Math.max(0, delta));
-          this._paintBackground(this._time);
+        update(_delta) {
         }
         dispose() {
-          this.backgroundTexture.dispose();
-        }
-        _paintBackground(t) {
-          const ctx = this._bgCanvas.getContext("2d");
-          if (!ctx)
-            return;
-          const breathe = 0.5 + 0.5 * Math.sin(t * 0.2);
-          const lift = breathe * 5;
-          const topR = 20 + lift;
-          const topG = 22 + lift;
-          const topB = 28 + lift;
-          const midR = 26 + lift * 0.7;
-          const midG = 27 + lift * 0.7;
-          const midB = 32 + lift * 0.7;
-          const botR = 12 + lift * 0.35;
-          const botG = 12 + lift * 0.35;
-          const botB = 14 + lift * 0.35;
-          const g2 = ctx.createLinearGradient(0, 0, 0, BG_H);
-          g2.addColorStop(0, `rgb(${topR | 0},${topG | 0},${topB | 0})`);
-          g2.addColorStop(0.52, `rgb(${midR | 0},${midG | 0},${midB | 0})`);
-          g2.addColorStop(1, `rgb(${botR | 0},${botG | 0},${botB | 0})`);
-          ctx.fillStyle = g2;
-          ctx.fillRect(0, 0, BG_W, BG_H);
-          const spot = ctx.createRadialGradient(BG_W * 0.5, BG_H * 0.38, BG_W * 0.08, BG_W * 0.5, BG_H * 0.45, BG_W * 0.55);
-          spot.addColorStop(0, "rgba(255, 255, 255, 0.055)");
-          spot.addColorStop(1, "rgba(0, 0, 0, 0)");
-          ctx.fillStyle = spot;
-          ctx.fillRect(0, 0, BG_W, BG_H);
-          const vg = ctx.createRadialGradient(BG_W * 0.5, BG_H * 0.42, BG_W * 0.15, BG_W * 0.5, BG_H * 0.5, BG_W * 0.8);
-          vg.addColorStop(0, "rgba(255, 255, 255, 0.02)");
-          vg.addColorStop(0.55, "rgba(0, 0, 0, 0)");
-          vg.addColorStop(1, "rgba(0, 0, 0, 0.45)");
-          ctx.fillStyle = vg;
-          ctx.fillRect(0, 0, BG_W, BG_H);
-          this.backgroundTexture.needsUpdate = true;
         }
       };
-      STUDIO_CLEAR_COLOR = new Color(1447446);
     }
   });
 
@@ -25417,9 +25350,9 @@ var app = (() => {
       init_RenderPass();
       init_SMAAPass();
       init_UnrealBloomPass();
-      BLOOM_BASE = 0.14;
-      BLOOM_RADIUS = 0.45;
-      BLOOM_THRESHOLD = 0.92;
+      BLOOM_BASE = 0.06;
+      BLOOM_RADIUS = 0.48;
+      BLOOM_THRESHOLD = 0.88;
       StudioPostFx = class {
         _composer;
         _bloom;
@@ -25428,11 +25361,15 @@ var app = (() => {
         constructor(renderer, scene, camera) {
           const size = renderer.getSize(new Vector2());
           const pixelRatio = renderer.getPixelRatio();
-          const renderTarget = new WebGLRenderTarget(Math.max(1, Math.floor(size.width * pixelRatio)), Math.max(1, Math.floor(size.height * pixelRatio)), { type: HalfFloatType, samples: 0 });
+          const renderTarget = new WebGLRenderTarget(Math.max(1, Math.floor(size.width * pixelRatio)), Math.max(1, Math.floor(size.height * pixelRatio)), {
+            type: UnsignedByteType,
+            samples: 0
+          });
           renderTarget.texture.name = "StudioPostFx.rt";
           this._composer = new EffectComposer(renderer, renderTarget);
           this._composer.addPass(new RenderPass(scene, camera));
           this._bloom = new UnrealBloomPass(new Vector2(1, 1), BLOOM_BASE, BLOOM_RADIUS, BLOOM_THRESHOLD);
+          this._bloom.enabled = BLOOM_BASE > 0;
           this._composer.addPass(this._bloom);
           const smaaW = Math.max(1, Math.floor(size.width * pixelRatio));
           const smaaH = Math.max(1, Math.floor(size.height * pixelRatio));
@@ -25452,6 +25389,17 @@ var app = (() => {
         setBloomBoost(amount) {
           const t = Math.max(0, Math.min(1, amount));
           this._bloom.strength = BLOOM_BASE + t * 0.35;
+          this._bloom.enabled = this._bloom.strength > 1e-3;
+        }
+        /** Прямая сила bloom (модалка профиля — без bloom) */
+        setBloomStrength(strength) {
+          this._bloom.strength = Math.max(0, strength);
+          this._bloom.enabled = this._bloom.strength > 1e-3;
+        }
+        /** Вернуть базовую силу bloom */
+        resetBloomStrength() {
+          this._bloom.strength = BLOOM_BASE;
+          this._bloom.enabled = BLOOM_BASE > 0;
         }
         render() {
           this._composer.render();
@@ -25575,6 +25523,10 @@ var app = (() => {
         _animation;
         _freeLegs = false;
         _transparent = false;
+        /** Сохранённый environmentIntensity до flat UI-режима */
+        _savedEnvIntensity = null;
+        /** Tone mapping до flat UI (ACES ломает совпадение с CSS) */
+        _savedToneMapping = null;
         _presentation = "full";
         /** Кроссфейд между анимациями */
         _blendFrom = null;
@@ -25659,7 +25611,7 @@ var app = (() => {
           ColorManagement.enabled = true;
           this.scene = new Scene();
           this._atmosphere = new StudioAtmosphere();
-          this.scene.background = this._atmosphere.backgroundTexture;
+          this.scene.background = this._atmosphere.backgroundColor.clone();
           this.scene.add(this._atmosphere.group);
           this.lighting = setupProductLighting(this.scene);
           const floorParts = createFloorAndContactShadow(this.scene);
@@ -25850,16 +25802,62 @@ var app = (() => {
             this._atmosphere.setVisible(false);
             this._postFx?.setBloomBoost(0);
           } else {
-            this.scene.background = this._atmosphere.backgroundTexture;
+            this.scene.background = this._atmosphere.backgroundColor.clone();
             this.renderer.setClearColor(STUDIO_CLEAR_COLOR, 1);
             if (this._debugEnabled)
               this._applySceneVisibility();
             else {
               this._floor.visible = true;
-              this._ground.visible = true;
+              this._ground.visible = false;
               this._contactShadow.visible = true;
               this._atmosphere.setVisible(true);
             }
+          }
+        }
+        /**
+         * Фон под UI-модалку: точный CSS-цвет панели.
+         * Без ACES (иначе midtones уезжают) и без transparent (OutputPass даёт чёрный).
+         * PostFX/SMAA остаются — _transparent не трогаем.
+         */
+        setUiFlatBackground(hex) {
+          if (hex == null) {
+            if (this._savedEnvIntensity != null) {
+              this.scene.environmentIntensity = this._savedEnvIntensity;
+              this._savedEnvIntensity = null;
+            }
+            if (this._savedToneMapping != null) {
+              this.renderer.toneMapping = this._savedToneMapping;
+              this._savedToneMapping = null;
+            }
+            this._postFx?.resetBloomStrength();
+            this.setTransparentBackground(false);
+            this.resetLighting();
+            return;
+          }
+          const firstEnter = this._savedToneMapping == null;
+          if (firstEnter) {
+            this._savedToneMapping = this.renderer.toneMapping;
+          }
+          this.renderer.toneMapping = NoToneMapping;
+          this.scene.background = new Color(hex);
+          this.renderer.setClearColor(hex, 1);
+          this._floor.visible = false;
+          this._ground.visible = false;
+          this._contactShadow.visible = false;
+          this._atmosphere.setVisible(false);
+          if (this._savedEnvIntensity == null) {
+            this._savedEnvIntensity = this.scene.environmentIntensity;
+          }
+          this.scene.environmentIntensity = 0.2;
+          if (firstEnter) {
+            this.lighting.applySettings({
+              keyIntensity: 1.25,
+              ambientIntensity: 0.72,
+              fillIntensity: 0.62,
+              shadowIntensity: 0.2,
+              shadowRadius: 12
+            });
+            this._postFx?.setBloomStrength(0.05);
           }
         }
         get presentationMode() {
@@ -26016,7 +26014,7 @@ var app = (() => {
             geometries: memory.geometries,
             textures: memory.textures,
             programs,
-            postFx: this._postFx && !this._transparent && (!this._debugEnabled || this._debugOpts.postFx) ? "bloom+SMAA" : "direct",
+            postFx: this._postFx && !this._transparent && this._debugOpts.postFx ? "bloom+SMAA" : "direct",
             skinType: this._modelType,
             hasCape: !!(this.capeTexture && this.playerObject.cape.visible),
             hasElytra: !!this.playerObject.elytra.visible,
@@ -26483,7 +26481,7 @@ var app = (() => {
             this.playerObject.cape.visible = true;
           if (!this._transparent) {
             this._floor.visible = true;
-            this._ground.visible = true;
+            this._ground.visible = false;
             this._contactShadow.visible = true;
             this._atmosphere.setVisible(true);
           }
@@ -26689,11 +26687,14 @@ var app = (() => {
           });
         }
         /**
-         * Основной вьювер — composer (bloom + SMAA).
+         * Основной вьювер — composer (SMAA; bloom опционален).
          * Transparent/превью — прямой рендер.
+         * postFx из отладки учитывается только при включённой панели — иначе
+         * старый localStorage postFx=false навсегда убивал сглаживание.
          */
         _renderFrame() {
-          const usePost = this._postFx && !this._transparent && (!this._debugEnabled || this._debugOpts.postFx);
+          const postFxAllowed = !this._debugEnabled || this._debugOpts.postFx;
+          const usePost = !!this._postFx && !this._transparent && postFxAllowed;
           if (usePost) {
             this._postFx.render();
             return;
@@ -28202,9 +28203,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       exports.releaseLatestUrl = releaseLatestUrl;
       exports.releaseZipDirectUrl = releaseZipDirectUrl;
       exports.absoluteApiUrl = absoluteApiUrl;
+      exports.isCurseForgeProjectId = isCurseForgeProjectId;
+      exports.isCatalogCdnUrl = isCatalogCdnUrl;
       exports.isModrinthCdnUrl = isModrinthCdnUrl;
       exports.catalogFileUrl = catalogFileUrl;
       exports.catalogImageUrl = catalogImageUrl;
+      exports.catalogSearchUrl = catalogSearchUrl;
+      exports.catalogProjectUrl = catalogProjectUrl;
+      exports.catalogVersionsUrl = catalogVersionsUrl;
+      exports.catalogCfFileUrl = catalogCfFileUrl;
+      exports.catalogFingerprintsUrl = catalogFingerprintsUrl;
       exports.isSkinServiceUrl = isSkinServiceUrl;
       exports.skinImageUrl = skinImageUrl;
       exports.skinProfileUrl = skinProfileUrl;
@@ -28237,20 +28245,38 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           return text;
         }
       }
-      var CDN_HOST = "cdn.modrinth.com";
-      function isModrinthCdnUrl(raw) {
+      var CATALOG_CDN_HOSTS = /* @__PURE__ */ new Set([
+        "cdn.modrinth.com",
+        "media.forgecdn.net",
+        "mediafilez.forgecdn.net",
+        "edge.forgecdn.net",
+        "www.curseforge.com"
+      ]);
+      function isCurseForgeProjectId(id) {
+        return /^cf:\d+$/i.test(String(id || "").trim());
+      }
+      function isCatalogCdnUrl(raw) {
         const text = String(raw ?? "").trim();
         if (!text || text.length > 1024)
           return false;
         try {
           const url = new URL(text);
-          return url.protocol === "https:" && url.hostname === CDN_HOST && !url.port;
+          if (url.protocol !== "https:" || url.port || !CATALOG_CDN_HOSTS.has(url.hostname)) {
+            return false;
+          }
+          if (url.hostname === "www.curseforge.com") {
+            return /^\/api\/v1\/mods\/\d+\/files\/\d+\/download\/?$/i.test(url.pathname);
+          }
+          return true;
         } catch {
           return false;
         }
       }
+      function isModrinthCdnUrl(raw) {
+        return isCatalogCdnUrl(raw);
+      }
       function catalogFileUrl(rawUrl, reason) {
-        if (!isModrinthCdnUrl(rawUrl))
+        if (!isCatalogCdnUrl(rawUrl))
           return rawUrl;
         const qs = new URLSearchParams({ url: rawUrl });
         if (reason)
@@ -28259,11 +28285,37 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       }
       function catalogImageUrl(rawUrl) {
         const text = String(rawUrl ?? "").trim();
-        if (!isModrinthCdnUrl(text))
-          return text;
+        if (!text)
+          return "";
+        if (text.startsWith("/client/api/catalog/") || text.includes("/api/catalog/image")) {
+          return absoluteApiUrl(text);
+        }
+        if (!isCatalogCdnUrl(text))
+          return absoluteApiUrl(text);
         return `${apiBase}/api/catalog/image?${new URLSearchParams({ url: text }).toString()}`;
       }
-      var SKIN_HOSTS = /* @__PURE__ */ new Set(["mc-heads.net", "mineskin.eu", "textures.minecraft.net"]);
+      function catalogSearchUrl(params) {
+        return `${apiBase}/api/catalog/search?${params.toString()}`;
+      }
+      function catalogProjectUrl(projectId) {
+        return `${apiBase}/api/catalog/project/${encodeURIComponent(projectId)}`;
+      }
+      function catalogVersionsUrl(projectId) {
+        return `${apiBase}/api/catalog/project/${encodeURIComponent(projectId)}/version`;
+      }
+      function catalogCfFileUrl(projectId, fileId) {
+        return `${apiBase}/api/catalog/project/${encodeURIComponent(projectId)}/file/${encodeURIComponent(String(fileId))}`;
+      }
+      function catalogFingerprintsUrl() {
+        return `${apiBase}/api/catalog/fingerprints`;
+      }
+      var SKIN_HOSTS = /* @__PURE__ */ new Set([
+        "mc-heads.net",
+        "mineskin.eu",
+        "textures.minecraft.net",
+        "skinsystem.ely.by",
+        "ely.by"
+      ]);
       function upgradeSkinScheme(text) {
         return text.startsWith("http://") ? `https://${text.slice(7)}` : text;
       }
@@ -28414,6 +28466,4488 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           return { kind: "degraded", labelKey: "be.worldBadgeDegraded" };
         }
         return { kind: "live", labelKey: "be.worldBadgeLive" };
+      }
+    }
+  });
+
+  // dist/renderer/messenger/ui.js
+  var require_ui = __commonJS({
+    "dist/renderer/messenger/ui.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.notifyMessengerGameRunning = notifyMessengerGameRunning;
+      exports.openGroupInviteModal = openGroupInviteModal;
+      exports.ensureMessengerTab = ensureMessengerTab;
+      exports.notifyMessengerAccountChanged = notifyMessengerAccountChanged;
+      exports.notifyMessengerGameStopped = notifyMessengerGameStopped;
+      exports.initMessenger = initMessenger;
+      exports.disposeMessenger = disposeMessenger;
+      var skinviewengine_1 = (init_dist2(), __toCommonJS(dist_exports));
+      var apiBase_1 = require_apiBase();
+      var ONLINE_MS = 2 * 60 * 1e3;
+      var POLL_FALLBACK_MS = 2e4;
+      var AVATAR_SIZE = 64;
+      var host = null;
+      var inited = false;
+      var me2 = null;
+      var sessionToken = null;
+      var conversations = [];
+      var activeId = null;
+      var messages = [];
+      var replyTo = null;
+      var pollTimer = null;
+      var searchTimer = null;
+      var groupSearchTimer = null;
+      var stream = null;
+      var streamToken = null;
+      var busy = false;
+      var profileViewer = null;
+      var profileSkinLoaded = null;
+      var openProfileUser = null;
+      var pendingFiles = [];
+      var railTab = "chats";
+      var friendsBundle = { friends: [], incoming: [], outgoing: [] };
+      var blockedUsers = [];
+      var myPresenceStatus = "online";
+      var boundAccountKey = null;
+      var lastDetectedLanPort = null;
+      var hostRelaySession = null;
+      var lastGameInvite = null;
+      var unsubLanPort = null;
+      var unsubTunnel = null;
+      var avatarCache = /* @__PURE__ */ new Map();
+      var avatarInflight = /* @__PURE__ */ new Map();
+      var MSGR_CACHE_PREFIX = "msgr-cache-v1:";
+      var MSGR_PRESENCE_PREFIX = "msgr-presence-v1:";
+      var MSGR_PREFS_PREFIX = "msgr-prefs-v1:";
+      function loadMsgrPrefs() {
+        const key = boundAccountKey || accountCacheKey();
+        if (!key)
+          return { mutedUntil: {}, pinned: [] };
+        try {
+          const raw = localStorage.getItem(MSGR_PREFS_PREFIX + key);
+          if (!raw)
+            return { mutedUntil: {}, pinned: [] };
+          const parsed = JSON.parse(raw);
+          const mutedUntil = {};
+          if (parsed?.mutedUntil && typeof parsed.mutedUntil === "object") {
+            for (const [id, v2] of Object.entries(parsed.mutedUntil)) {
+              mutedUntil[String(id)] = v2 == null ? null : Number(v2);
+            }
+          } else if (Array.isArray(parsed?.muted)) {
+            for (const id of parsed.muted)
+              mutedUntil[String(id)] = null;
+          }
+          return {
+            mutedUntil,
+            pinned: Array.isArray(parsed?.pinned) ? parsed.pinned.map(String) : []
+          };
+        } catch {
+          return { mutedUntil: {}, pinned: [] };
+        }
+      }
+      function saveMsgrPrefs(prefs) {
+        const key = boundAccountKey || accountCacheKey();
+        if (!key)
+          return;
+        try {
+          localStorage.setItem(MSGR_PREFS_PREFIX + key, JSON.stringify(prefs));
+        } catch {
+        }
+      }
+      function pruneExpiredMutes(prefs) {
+        const now2 = Date.now();
+        let changed = false;
+        for (const [id, until] of Object.entries(prefs.mutedUntil)) {
+          if (until != null && until <= now2) {
+            delete prefs.mutedUntil[id];
+            changed = true;
+          }
+        }
+        if (changed)
+          saveMsgrPrefs(prefs);
+        return prefs;
+      }
+      function isConvMuted(id) {
+        const prefs = pruneExpiredMutes(loadMsgrPrefs());
+        if (!(id in prefs.mutedUntil))
+          return false;
+        const until = prefs.mutedUntil[id];
+        if (until == null)
+          return true;
+        return until > Date.now();
+      }
+      function getMuteUntil(id) {
+        const prefs = pruneExpiredMutes(loadMsgrPrefs());
+        if (!(id in prefs.mutedUntil))
+          return void 0;
+        return prefs.mutedUntil[id];
+      }
+      function setConvMute(id, until) {
+        const prefs = loadMsgrPrefs();
+        prefs.mutedUntil[id] = until;
+        saveMsgrPrefs(prefs);
+      }
+      function clearConvMute(id) {
+        const prefs = loadMsgrPrefs();
+        delete prefs.mutedUntil[id];
+        saveMsgrPrefs(prefs);
+      }
+      function isConvPinned(id) {
+        return loadMsgrPrefs().pinned.includes(id);
+      }
+      function toggleConvPin(id) {
+        const prefs = loadMsgrPrefs();
+        const i = prefs.pinned.indexOf(id);
+        if (i >= 0)
+          prefs.pinned.splice(i, 1);
+        else
+          prefs.pinned.unshift(id);
+        saveMsgrPrefs(prefs);
+        return prefs.pinned.includes(id);
+      }
+      var MUTE_DURATIONS = [
+        { key: "msgr.mute1h", ms: 36e5 },
+        { key: "msgr.mute2h", ms: 72e5 },
+        { key: "msgr.mute1w", ms: 7 * 864e5 },
+        { key: "msgr.muteForever", ms: null }
+      ];
+      function formatMuteUntilLabel(until) {
+        if (until == null)
+          return host?.t("msgr.muteUntilForever") || "";
+        const d2 = new Date(until);
+        const pad = (n) => String(n).padStart(2, "0");
+        return host?.t("msgr.muteUntilAt", {
+          d: `${pad(d2.getDate())}.${pad(d2.getMonth() + 1)} ${pad(d2.getHours())}:${pad(d2.getMinutes())}`
+        }) || "";
+      }
+      function unmuteConversation(convId, onDone) {
+        clearConvMute(convId);
+        toast(host?.t("msgr.unmutedOk") || "");
+        renderConversationList();
+        onDone?.();
+      }
+      function openMuteMenu(convId, x2, y2, onDone) {
+        if (!host)
+          return;
+        if (isConvMuted(convId)) {
+          unmuteConversation(convId, onDone);
+          return;
+        }
+        window.setTimeout(() => {
+          if (!host)
+            return;
+          showCtx(x2, y2, MUTE_DURATIONS.map((d2) => ({
+            label: host.t(d2.key),
+            action: () => {
+              setConvMute(convId, d2.ms == null ? null : Date.now() + d2.ms);
+              toast(host.t("msgr.mutedOk"));
+              renderConversationList();
+              onDone?.();
+            }
+          })));
+        }, 0);
+      }
+      async function hideOrLeaveConversation(conv) {
+        const id = conv.id;
+        if (conv.type === "group" && conv.myRole === "owner") {
+          await req(`/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+        } else if (conv.type === "group" && me2) {
+          await req(`/conversations/${encodeURIComponent(id)}/members/${encodeURIComponent(me2.id)}`, {
+            method: "DELETE"
+          });
+        } else {
+          await req(`/conversations/${encodeURIComponent(id)}/hide`, { method: "POST", body: {} });
+        }
+        if (activeId === id) {
+          activeId = null;
+          messages = [];
+          renderMessages();
+          renderPeerHeader();
+        }
+        await loadConversations();
+      }
+      function chatActionItems(conv) {
+        if (!host)
+          return [];
+        const items = [
+          {
+            label: host.t("msgr.actionOpenProfile"),
+            action: () => {
+              void openConversation(conv.id).then(() => openProfileModal());
+            }
+          },
+          {
+            label: host.t(isConvMuted(conv.id) ? "msgr.actionUnmute" : "msgr.actionMute"),
+            action: () => {
+              openMuteMenu(conv.id, lastCtxPos.x, lastCtxPos.y, () => renderPeerHeader());
+            }
+          },
+          {
+            label: host.t(isConvPinned(conv.id) ? "msgr.actionUnpin" : "msgr.actionPin"),
+            action: () => {
+              const pinned = toggleConvPin(conv.id);
+              toast(host.t(pinned ? "msgr.pinnedOk" : "msgr.unpinnedOk"));
+              renderConversationList();
+            }
+          },
+          {
+            label: host.t(conv.type === "group" ? "msgr.actionCopyGroupName" : "msgr.actionCopyUsername"),
+            action: () => {
+              void navigator.clipboard.writeText(conv.title).then(() => toast(host.t("msgr.copied")), () => toast(host.t("msgr.copyFailed")));
+            }
+          }
+        ];
+        if (conv.type === "group") {
+          items.push({
+            label: host.t("msgr.profileTabMembers"),
+            action: () => {
+              void openConversation(conv.id).then(() => openProfileModal().then(() => setProfilePanelTab("members", false)));
+            }
+          });
+        }
+        items.push({
+          label: conv.type === "group" ? conv.myRole === "owner" ? host.t("msgr.actionDeleteGroup") : host.t("msgr.actionLeave") : host.t("msgr.actionDeleteChat"),
+          danger: true,
+          action: () => void hideOrLeaveConversation(conv)
+        });
+        return items;
+      }
+      function parseShareId(raw) {
+        const s = String(raw || "").trim();
+        if (!s)
+          return null;
+        if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(s) || /^[0-9a-f-]{20,}$/i.test(s))
+          return s;
+        try {
+          if (s.startsWith("uclient://")) {
+            const q2 = s.split("?")[1] || "";
+            const id = new URLSearchParams(q2).get("id");
+            return id ? decodeURIComponent(id) : null;
+          }
+          const u = new URL(s);
+          const fromQuery = u.searchParams.get("id");
+          if (fromQuery)
+            return fromQuery;
+          const m2 = u.pathname.match(/\/(?:import-instance|share|instance-share)\/([^/]+)/i);
+          if (m2?.[1])
+            return decodeURIComponent(m2[1]);
+        } catch {
+        }
+        return null;
+      }
+      var PROFILE_FRAME = { fillY: 0.58, maxFillX: 0.7, offsetY: -0.1 };
+      var PROFILE_BG_FALLBACK = 2105376;
+      var PROFILE_LIGHT_ONLINE = {
+        keyIntensity: 1.25,
+        ambientIntensity: 0.72,
+        fillIntensity: 0.62,
+        shadowIntensity: 0.2,
+        shadowRadius: 12
+      };
+      var PROFILE_LIGHT_OFFLINE = {
+        keyIntensity: 0.28,
+        ambientIntensity: 0.2,
+        fillIntensity: 0.14,
+        shadowIntensity: 0.1,
+        shadowRadius: 12
+      };
+      var PROFILE_HEMI_ONLINE = 0.72;
+      var PROFILE_RIM_ONLINE = 0.3;
+      var PROFILE_HEMI_OFFLINE = 0.22;
+      var PROFILE_RIM_OFFLINE = 0.06;
+      var DEFAULT_BUILD_ICON = "../../assets/InstancesIcons/newBuild.png";
+      var DEFAULT_SERVER_ICON = "../../assets/icons/serverIcon.png";
+      var ICON_ELY = "../../assets/icons/elyby.svg";
+      var ICON_MS = "../../assets/icons/microsoft.svg";
+      var ICON_JOINED = "../../assets/icons/userregistered.svg";
+      var LOCAL_FILE_KEY = "msgr-local-files";
+      function $2(id) {
+        return document.getElementById(id);
+      }
+      function providerLabel(provider) {
+        return provider === "ely" ? "Ely.by" : "MS";
+      }
+      function providerLabelFull(provider) {
+        return provider === "ely" ? "Ely.by" : "Microsoft";
+      }
+      function providerIconUrl(provider) {
+        return provider === "ely" ? ICON_ELY : ICON_MS;
+      }
+      function providerClass(provider) {
+        return provider === "ely" ? "msgr-badge--ely" : "msgr-badge--ms";
+      }
+      function readLocalFileMap() {
+        try {
+          const raw = localStorage.getItem(LOCAL_FILE_KEY);
+          if (!raw)
+            return {};
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch {
+          return {};
+        }
+      }
+      function writeLocalFileMap(map) {
+        try {
+          localStorage.setItem(LOCAL_FILE_KEY, JSON.stringify(map));
+        } catch {
+        }
+      }
+      function getLocalFilePath(messageId) {
+        const p = readLocalFileMap()[messageId];
+        return p ? String(p) : null;
+      }
+      function setLocalFilePath(messageId, filePath) {
+        const map = readLocalFileMap();
+        map[messageId] = filePath;
+        writeLocalFileMap(map);
+      }
+      function formatFileSize(bytes) {
+        if (!bytes || bytes < 0)
+          return "";
+        if (bytes < 1024)
+          return `${bytes} B`;
+        if (bytes < 1024 * 1024)
+          return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      }
+      function isImageAttachment(att) {
+        if (!att)
+          return false;
+        if (/^image\//i.test(String(att.mime || "")))
+          return true;
+        return /\.(png|jpe?g|gif|webp|bmp)$/i.test(String(att.name || ""));
+      }
+      function isVideoAttachment(att) {
+        if (!att)
+          return false;
+        if (/^video\//i.test(String(att.mime || "")))
+          return true;
+        return /\.(mp4|webm|mov|mkv|avi)$/i.test(String(att.name || ""));
+      }
+      function isMediaAttachment(att) {
+        return isImageAttachment(att) || isVideoAttachment(att);
+      }
+      function attachmentMediaUrl(messageId) {
+        if (!sessionToken)
+          return "";
+        return `${(0, apiBase_1.getApiBase)()}/api/messenger/messages/${encodeURIComponent(messageId)}/attachment?token=${encodeURIComponent(sessionToken)}`;
+      }
+      function formatMediaTime(sec) {
+        if (!Number.isFinite(sec) || sec < 0)
+          return "0:00";
+        const s = Math.floor(sec % 60);
+        const m2 = Math.floor(sec / 60);
+        return `${m2}:${String(s).padStart(2, "0")}`;
+      }
+      var mediaViewerZoom = 1;
+      var mediaViewerKind = null;
+      function setMediaViewerZoom(z2) {
+        mediaViewerZoom = Math.min(4, Math.max(0.25, z2));
+        const img = $2("msgr-media-img");
+        const label = $2("msgr-media-zoom-label");
+        if (img)
+          img.style.transform = `scale(${mediaViewerZoom})`;
+        if (label)
+          label.textContent = `${Math.round(mediaViewerZoom * 100)}%`;
+      }
+      function closeMediaViewer() {
+        const overlay = $2("modal-msgr-media");
+        const img = $2("msgr-media-img");
+        const video = $2("msgr-media-video");
+        const barPhoto = $2("msgr-media-bar-photo");
+        const barVideo = $2("msgr-media-bar-video");
+        if (video) {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+          video.hidden = true;
+        }
+        if (img) {
+          img.removeAttribute("src");
+          img.hidden = true;
+          img.style.transform = "";
+        }
+        if (barPhoto)
+          barPhoto.hidden = true;
+        if (barVideo)
+          barVideo.hidden = true;
+        mediaViewerKind = null;
+        mediaViewerZoom = 1;
+        closeOverlay("modal-msgr-media");
+        overlay?.setAttribute("aria-hidden", "true");
+      }
+      function openMediaViewer(messageId, kind) {
+        if (!host || !sessionToken)
+          return;
+        const url = attachmentMediaUrl(messageId);
+        if (!url)
+          return;
+        const overlay = $2("modal-msgr-media");
+        const img = $2("msgr-media-img");
+        const video = $2("msgr-media-video");
+        const barPhoto = $2("msgr-media-bar-photo");
+        const barVideo = $2("msgr-media-bar-video");
+        const playBtn = $2("msgr-media-play");
+        mediaViewerKind = kind;
+        openOverlay("modal-msgr-media");
+        overlay?.setAttribute("aria-hidden", "false");
+        if (kind === "image") {
+          if (video) {
+            video.pause();
+            video.hidden = true;
+            video.removeAttribute("src");
+          }
+          if (barVideo)
+            barVideo.hidden = true;
+          if (barPhoto)
+            barPhoto.hidden = false;
+          if (img) {
+            img.hidden = false;
+            img.src = url;
+            setMediaViewerZoom(1);
+          }
+        } else {
+          if (img) {
+            img.hidden = true;
+            img.removeAttribute("src");
+          }
+          if (barPhoto)
+            barPhoto.hidden = true;
+          if (barVideo)
+            barVideo.hidden = false;
+          if (video) {
+            video.hidden = false;
+            video.src = url;
+            void video.play().catch(() => void 0);
+          }
+          if (playBtn) {
+            playBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2.5" y="2" width="2.5" height="8" rx="0.5" fill="currentColor"/><rect x="7" y="2" width="2.5" height="8" rx="0.5" fill="currentColor"/></svg>';
+          }
+        }
+      }
+      function renderAttachmentBlock(m2) {
+        if (m2.deleted || !m2.attachment || !host)
+          return "";
+        const att = m2.attachment;
+        if (isImageAttachment(att)) {
+          const url = attachmentMediaUrl(m2.id);
+          return `<button type="button" class="msgr-media msgr-media--image" data-msgr-media="image" data-msg-id="${host.escapeHtml(m2.id)}">
+      <img class="msgr-media__thumb" src="${host.escapeHtml(url)}" alt="${host.escapeHtml(att.name)}" loading="lazy">
+    </button>`;
+        }
+        if (isVideoAttachment(att)) {
+          const url = attachmentMediaUrl(m2.id);
+          return `<button type="button" class="msgr-media msgr-media--video" data-msgr-media="video" data-msg-id="${host.escapeHtml(m2.id)}">
+      <video class="msgr-media__thumb" src="${host.escapeHtml(url)}" muted preload="metadata" playsinline></video>
+      <span class="msgr-media__play" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 12 12" fill="none"><path d="M3 1.5v9l7-4.5L3 1.5z" fill="currentColor"/></svg>
+      </span>
+    </button>`;
+        }
+        const localPath = getLocalFilePath(m2.id);
+        return `<div class="msgr-file" data-msg-id="${host.escapeHtml(m2.id)}">
+    <div class="msgr-file__meta">
+      <div class="msgr-file__name">${host.escapeHtml(att.name)}</div>
+      <div class="msgr-file__size">${host.escapeHtml(formatFileSize(att.size))}</div>
+    </div>
+    <button type="button" class="msgr-file__btn" data-file-act="${localPath ? "open" : "download"}">
+      ${host.escapeHtml(host.t(localPath ? "msgr.fileOpen" : "msgr.fileDownload"))}
+    </button>
+  </div>`;
+      }
+      var toastHintTimer = null;
+      function relayErrMsg(code, fallback) {
+        const raw = String(code || fallback || "").trim();
+        if (!raw)
+          return host?.t("msgr.err.unknown") || "Error";
+        const key = `msgr.err.${raw}`;
+        const translated = host?.t(key) || key;
+        if (translated !== key)
+          return translated;
+        return host?.t("msgr.err.generic", { msg: raw }) || raw;
+      }
+      function toast(msg) {
+        if (host?.showToast) {
+          host.showToast(msg);
+        } else {
+          const hint = $2("msgr-rail-hint");
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = msg;
+            if (toastHintTimer)
+              clearTimeout(toastHintTimer);
+            toastHintTimer = setTimeout(() => {
+              hint.hidden = true;
+              hint.textContent = "";
+              toastHintTimer = null;
+            }, 5e3);
+          }
+        }
+      }
+      function parseHostPort(raw) {
+        const s = String(raw || "").trim();
+        if (!s)
+          return null;
+        const v6 = s.match(/^\[([^\]]+)\]:(\d{1,5})$/);
+        if (v6) {
+          const port2 = Number(v6[2]);
+          if (port2 >= 1 && port2 <= 65535)
+            return { ip: v6[1], port: port2 };
+          return null;
+        }
+        const idx = s.lastIndexOf(":");
+        if (idx <= 0)
+          return { ip: s, port: 25565 };
+        const ip = s.slice(0, idx).trim();
+        const port = Number(s.slice(idx + 1));
+        if (!ip || !Number.isInteger(port) || port < 1 || port > 65535)
+          return null;
+        return { ip, port };
+      }
+      async function copyText(text) {
+        const value = String(text || "").trim();
+        if (!value)
+          return false;
+        try {
+          await navigator.clipboard.writeText(value);
+          toast(host?.t("msgr.shareCopied") || "Copied");
+          return true;
+        } catch {
+          toast(value);
+          return false;
+        }
+      }
+      function inviteAddress(inv) {
+        if (inv.mode === "relay" && inv.publicHost && inv.publicPort) {
+          return `${inv.publicHost}:${inv.publicPort}`;
+        }
+        if (inv.host)
+          return `${inv.host}${inv.port ? `:${inv.port}` : ""}`;
+        return "";
+      }
+      async function resolveInviteAddress(inv) {
+        if (inv.mode === "direct") {
+          if (inv.host && inv.port)
+            return { ip: inv.host, port: Number(inv.port), name: inv.serverName || void 0 };
+          return null;
+        }
+        if (inv.publicHost && inv.publicPort) {
+          return {
+            ip: inv.publicHost,
+            port: Number(inv.publicPort),
+            name: inv.serverName || shareLanServerName(inv.from?.username) || "Friends world"
+          };
+        }
+        if (inv.sessionId && host?.api.gameRelayJoinSession) {
+          const res = await host.api.gameRelayJoinSession(inv.sessionId);
+          if (!res?.ok) {
+            toast(host.t("msgr.joinFailed", { msg: relayErrMsg(res?.code, res?.error) }));
+            return null;
+          }
+          return {
+            ip: String(res.publicHost),
+            port: Number(res.publicPort),
+            name: inv.serverName || shareLanServerName(inv.from?.username) || "Friends world"
+          };
+        }
+        return null;
+      }
+      async function joinFromInvite(inv) {
+        if (!host?.launchJoinServer) {
+          toast(host?.t("msgr.joinUnavailable") || "Join unavailable");
+          return;
+        }
+        const builds = host.listLocalBuilds?.() || [];
+        const hasBuild = !inv.buildName || builds.some((b2) => b2.name.toLowerCase() === String(inv.buildName).toLowerCase());
+        if (!hasBuild && inv.shareId && host.openInstanceShare) {
+          toast(host.t("msgr.joinBuildHint", { name: inv.buildName || "" }));
+          await host.openInstanceShare(inv.shareId);
+          return;
+        }
+        const addr = await resolveInviteAddress(inv);
+        if (!addr) {
+          toast(host.t("msgr.joinFailed", { msg: relayErrMsg("address") }));
+          return;
+        }
+        if (inv.buildName) {
+          toast(host.t("msgr.joinBuildHint", { name: inv.buildName }));
+        }
+        await host.launchJoinServer(addr, {
+          buildName: inv.buildName,
+          gameVersion: inv.gameVersion
+        });
+      }
+      function inviteFromMeta(meta, fallbackFrom) {
+        if (!meta || typeof meta !== "object")
+          return null;
+        const mode = meta.mode === "direct" ? "direct" : meta.mode === "relay" ? "relay" : null;
+        if (!mode)
+          return null;
+        const fromRaw = meta.from || fallbackFrom;
+        if (!fromRaw?.id)
+          return null;
+        return {
+          mode,
+          sessionId: meta.sessionId != null ? String(meta.sessionId) : null,
+          host: meta.host != null ? String(meta.host) : null,
+          port: meta.port != null ? Number(meta.port) : null,
+          publicHost: meta.publicHost != null ? String(meta.publicHost) : null,
+          publicPort: meta.publicPort != null ? Number(meta.publicPort) : null,
+          buildName: meta.buildName != null ? String(meta.buildName) : null,
+          gameVersion: meta.gameVersion != null ? String(meta.gameVersion) : null,
+          loader: meta.loader != null ? String(meta.loader) : null,
+          serverName: meta.serverName != null ? String(meta.serverName) : null,
+          shareId: meta.shareId != null ? String(meta.shareId) : null,
+          shareUrl: meta.shareUrl != null ? String(meta.shareUrl) : null,
+          from: { id: String(fromRaw.id), username: String(fromRaw.username || "") },
+          ts: Number(meta.ts) || Date.now()
+        };
+      }
+      function renderInviteCardHtml(inv, msgId) {
+        if (!host)
+          return "";
+        const addr = inviteAddress(inv);
+        const metaLine = [inv.buildName, inv.serverName].filter(Boolean).join(" \xB7 ");
+        const idAttr = msgId ? ` data-msg-id="${host.escapeHtml(msgId)}"` : "";
+        const addrAttr = addr ? ` data-invite-addr="${host.escapeHtml(addr)}"` : "";
+        const getBuild = inv.shareId ? `<button type="button" class="msgr-invite-card__btn" data-invite-act="build"${idAttr}>${host.escapeHtml(host.t("msgr.joinGetBuild"))}</button>` : "";
+        const copyBtn = addr ? `<button type="button" class="msgr-invite-card__btn" data-invite-act="copy"${idAttr}${addrAttr}>${host.escapeHtml(host.t("msgr.worldsCopyIp"))}</button>` : "";
+        return `<div class="msgr-invite-card" data-invite-card${idAttr}>
+    <div class="msgr-invite-card__title">${host.escapeHtml(host.t("msgr.joinInviteCard"))}</div>
+    <div class="msgr-invite-card__meta">${host.escapeHtml(metaLine || host.t("msgr.joinInviteHint"))}</div>
+    ${addr ? `<div class="msgr-invite-card__addr">${host.escapeHtml(addr)}</div>` : ""}
+    <div class="msgr-invite-card__actions">
+      <button type="button" class="msgr-invite-card__btn msgr-invite-card__btn--primary" data-invite-act="join"${idAttr}>${host.escapeHtml(host.t("msgr.joinPlay"))}</button>
+      ${copyBtn}
+      ${getBuild}
+    </div>
+  </div>`;
+      }
+      function shouldShowHostPanel() {
+        if (hostRelaySession)
+          return true;
+        return Boolean(host?.getRunningBuild?.()?.id);
+      }
+      function renderHostPanelHtml() {
+        if (!host || !shouldShowHostPanel())
+          return "";
+        if (hostRelaySession) {
+          const addr = `${hostRelaySession.publicHost}:${hostRelaySession.publicPort}`;
+          return `<div class="msgr-share-panel" id="msgr-share-panel">
+      <div class="msgr-share-panel__label">${host.escapeHtml(host.t("msgr.sharePanelTitle"))}</div>
+      <div class="msgr-share-panel__status">${host.escapeHtml(host.t("msgr.shareOkNone"))}</div>
+      <button type="button" class="msgr-share-addr" id="msgr-share-addr" data-share-addr="${host.escapeHtml(addr)}" title="${host.escapeHtml(host.t("msgr.shareCopyAddr"))}">${host.escapeHtml(addr)}</button>
+      <div class="msgr-share-panel__row">
+        <button type="button" class="msgr-rail-btn msgr-rail-btn--ghost" id="msgr-share-copy" data-share-addr="${host.escapeHtml(addr)}">${host.escapeHtml(host.t("msgr.shareCopyAddr"))}</button>
+        <button type="button" class="msgr-rail-btn msgr-rail-btn--ghost" id="msgr-share-stop">${host.escapeHtml(host.t("msgr.shareStop"))}</button>
+      </div>
+    </div>`;
+        }
+        const running = Boolean(host.getRunningBuild?.()?.id);
+        const lanReady = Boolean(lastDetectedLanPort);
+        const step1 = running ? "is-done" : "is-active";
+        const step2 = !running ? "" : lanReady ? "is-done" : "is-active";
+        const step3 = running && lanReady ? "is-active" : "";
+        const steps = `<ol class="msgr-share-steps" aria-label="${host.escapeHtml(host.t("msgr.sharePanelTitle"))}">
+    <li class="${step1}" data-step="1">${host.escapeHtml(host.t("msgr.shareStepGame"))}</li>
+    <li class="${step2}" data-step="2">${host.escapeHtml(host.t("msgr.shareStepLan"))}</li>
+    <li class="${step3}" data-step="3">${host.escapeHtml(host.t("msgr.shareStepShare"))}</li>
+  </ol>`;
+        if (lanReady) {
+          return `<div class="msgr-share-panel" id="msgr-share-panel">
+      <div class="msgr-share-panel__label">${host.escapeHtml(host.t("msgr.sharePanelTitle"))}</div>
+      ${steps}
+      <div class="msgr-share-panel__status">${host.escapeHtml(host.t("msgr.shareHostHint"))}</div>
+      <button type="button" class="msgr-rail-btn" id="msgr-share-lan">${host.escapeHtml(host.t("msgr.shareLan"))}</button>
+    </div>`;
+        }
+        return `<div class="msgr-share-panel" id="msgr-share-panel">
+    <div class="msgr-share-panel__label">${host.escapeHtml(host.t("msgr.sharePanelTitle"))}</div>
+    ${steps}
+    <div class="msgr-share-panel__status">${host.escapeHtml(host.t(running ? "msgr.shareNeedLan" : "msgr.shareNeedGame"))}</div>
+    <button type="button" class="msgr-rail-btn msgr-rail-btn--ghost" id="msgr-share-rescan">${host.escapeHtml(host.t("msgr.shareRescanLan"))}</button>
+  </div>`;
+      }
+      function updateSharePanel() {
+        if (railTab === "worlds")
+          renderWorldsList();
+      }
+      function renderWorldsList() {
+        const list = $2("msgr-worlds-list");
+        if (!list || !host)
+          return;
+        const worlds = friendsBundle.friends.filter((u) => u.activity?.playing && u.activity?.hosting && u.activity?.serverHost);
+        const hostPanel = renderHostPanelHtml();
+        const head = `<div class="msgr-friends-head"><div class="msgr-friends-title">${host.escapeHtml(host.t("msgr.worldsTitle"))}</div></div>`;
+        const emptyOrList = worlds.length ? worlds.map((u) => {
+          ensureAvatar(u);
+          const a = u.activity;
+          const addr = String(a.serverHost || "");
+          const meta = [a.build, a.server].filter(Boolean).join(" \xB7 ");
+          return `<div class="msgr-world-item" data-world-user="${host.escapeHtml(u.id)}">
+            <span class="msgr-avatar ${presenceClass(u)}">${avatarImgHtml(u, 36, u.username.slice(0, 1))}</span>
+            <span class="msgr-world-item__body">
+              <span class="msgr-world-item__name">${host.escapeHtml(u.username)}</span>
+              <span class="msgr-world-item__meta">${host.escapeHtml(meta || addr)}</span>
+              ${addr ? `<span class="msgr-world-item__addr">${host.escapeHtml(addr)}</span>` : ""}
+            </span>
+            <span class="msgr-world-item__actions">
+              <button type="button" class="msgr-world-item__btn msgr-world-item__btn--primary" data-world-act="join" data-world-user="${host.escapeHtml(u.id)}">${host.escapeHtml(host.t("msgr.worldsJoin"))}</button>
+              ${addr ? `<button type="button" class="msgr-world-item__btn" data-world-act="copy" data-world-addr="${host.escapeHtml(addr)}">${host.escapeHtml(host.t("msgr.worldsCopyIp"))}</button>` : ""}
+            </span>
+          </div>`;
+        }).join("") : `<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.worldsEmpty"))}</div>`;
+        list.innerHTML = `${hostPanel}${head}${emptyOrList}`;
+      }
+      async function joinFriendWorld(userId) {
+        const user = friendsBundle.friends.find((u) => u.id === userId);
+        if (!user?.activity?.hosting || !user.activity?.serverHost || !host)
+          return;
+        const parsed = parseHostPort(String(user.activity.serverHost));
+        if (!parsed) {
+          toast(host.t("msgr.joinFailed", { msg: relayErrMsg("address") }));
+          return;
+        }
+        if (lastGameInvite && lastGameInvite.from.id === userId) {
+          await joinFromInvite(lastGameInvite);
+          return;
+        }
+        await host.launchJoinServer?.({ ip: parsed.ip, port: parsed.port, name: user.activity.serverName || shareLanServerName(user.username) }, { buildName: user.activity.build, gameVersion: user.activity.version });
+      }
+      function hostDisplayNick() {
+        const a = host?.getAccount?.();
+        return String(a?.username || a?.name || "").trim();
+      }
+      function shareLanServerName(nick) {
+        const name = String(nick || hostDisplayNick()).trim() || "Player";
+        return host?.t("msgr.shareLanLabel", { name }) || `\u041C\u0438\u0440 \u0438\u0433\u0440\u043E\u043A\u0430 ${name}`;
+      }
+      async function shareLanWithFriends() {
+        if (!host)
+          return;
+        const running = host.getRunningBuild?.();
+        if (!running?.id) {
+          toast(host.t("msgr.shareNeedGame"));
+          return;
+        }
+        if (!host.api.gameRelayWatchLan || !host.api.gameRelayStart) {
+          toast(host.t("msgr.joinUnavailable"));
+          return;
+        }
+        await host.api.gameRelayWatchLan(running.id);
+        let port = lastDetectedLanPort;
+        if (!port) {
+          const got = await host.api.gameRelayGetLanPort?.(running.id);
+          port = got?.port || null;
+        }
+        if (port)
+          lastDetectedLanPort = port;
+        if (!port) {
+          toast(host.t("msgr.shareNeedLan"));
+          updateSharePanel();
+          return;
+        }
+        toast(host.t("msgr.shareStarting"));
+        const worldName = shareLanServerName();
+        const started = await host.api.gameRelayStart(port, {
+          buildId: running.id,
+          buildName: running.name,
+          gameVersion: running.gameVersion,
+          loader: running.loader,
+          serverName: worldName
+        });
+        if (!started?.ok || !started.session) {
+          toast(host.t("msgr.shareFailed", { msg: relayErrMsg(started?.code, started?.error) }));
+          return;
+        }
+        const session = started.session;
+        hostRelaySession = {
+          sessionId: session.sessionId,
+          publicHost: session.publicHost,
+          publicPort: session.publicPort,
+          localPort: session.localPort,
+          buildId: running.id,
+          buildName: running.name,
+          gameVersion: running.gameVersion,
+          loader: running.loader
+        };
+        updateSharePanel();
+        let shareId;
+        let shareUrl;
+        if (host.createInstanceShare) {
+          toast(host.t("msgr.shareCreatingPack"));
+          try {
+            const share = await host.createInstanceShare(running.id);
+            if (share?.ok && share.id) {
+              shareId = share.id;
+              shareUrl = share.url;
+            }
+          } catch {
+          }
+        }
+        const inviteRes = await req("/game-invites", {
+          method: "POST",
+          body: {
+            mode: "relay",
+            sessionId: session.sessionId,
+            publicHost: session.publicHost,
+            publicPort: session.publicPort,
+            buildName: running.name,
+            gameVersion: running.gameVersion,
+            loader: running.loader,
+            serverName: worldName,
+            shareId,
+            shareUrl
+          }
+        });
+        if (!inviteRes?.ok) {
+          toast(host.t("msgr.shareFailed", { msg: relayErrMsg(inviteRes?.code, inviteRes?.error) }));
+          return;
+        }
+        await loadConversations();
+        const recipients = Number(inviteRes.data?.recipients);
+        if (Number.isFinite(recipients) && recipients > 0) {
+          toast(host.t("msgr.shareOk", { n: String(recipients) }));
+        } else {
+          toast(host.t("msgr.shareOkNone"));
+        }
+        updateSharePanel();
+      }
+      async function stopHostRelayShare() {
+        const sessionId = hostRelaySession?.sessionId;
+        hostRelaySession = null;
+        try {
+          await host?.api.gameRelayStop?.();
+        } catch {
+        }
+        if (sessionId) {
+          await req("/game-invites/end", { method: "POST", body: { sessionId } });
+        }
+        updateSharePanel();
+        toast(host?.t("msgr.shareStopped") || "Share stopped");
+      }
+      async function ensureLanWatch() {
+        const running = host?.getRunningBuild?.();
+        if (!running?.id) {
+          if (!hostRelaySession)
+            lastDetectedLanPort = null;
+          return;
+        }
+        if (!host?.api.gameRelayWatchLan)
+          return;
+        try {
+          await host.api.gameRelayWatchLan(running.id);
+          const got = await host.api.gameRelayGetLanPort?.(running.id);
+          lastDetectedLanPort = got?.port || null;
+        } catch {
+        }
+      }
+      async function notifyMessengerGameRunning() {
+        await ensureLanWatch();
+        updateSharePanel();
+        if (!hostRelaySession) {
+          await syncHostRelayFromMain();
+        }
+        updateSharePanel();
+      }
+      function applyHostTunnelState(data) {
+        if (!data?.active) {
+          hostRelaySession = null;
+          updateSharePanel();
+          return;
+        }
+        hostRelaySession = {
+          sessionId: String(data.sessionId || ""),
+          publicHost: String(data.publicHost || ""),
+          publicPort: Number(data.publicPort) || 0,
+          localPort: Number(data.localPort) || 0,
+          buildId: data.buildId != null ? String(data.buildId) : null,
+          buildName: data.buildName != null ? String(data.buildName) : null,
+          gameVersion: data.gameVersion != null ? String(data.gameVersion) : null,
+          loader: data.loader != null ? String(data.loader) : null
+        };
+        if (hostRelaySession.localPort)
+          lastDetectedLanPort = hostRelaySession.localPort;
+        updateSharePanel();
+        if (data.restored) {
+          void refreshHostingAfterRestore(hostRelaySession);
+          toast(host?.t("msgr.shareRestored") || "Share restored");
+        }
+      }
+      async function refreshHostingAfterRestore(session) {
+        const addr = `${session.publicHost}:${session.publicPort}`;
+        if (!addr || addr === ":0")
+          return;
+        await req("/activity", {
+          method: "POST",
+          body: {
+            playing: true,
+            hosting: true,
+            buildName: session.buildName || void 0,
+            gameVersion: session.gameVersion || void 0,
+            loader: session.loader || void 0,
+            serverName: shareLanServerName(),
+            serverHost: addr
+          }
+        });
+      }
+      async function syncHostRelayFromMain() {
+        if (!host?.api.gameRelayStatus)
+          return;
+        try {
+          const st2 = await host.api.gameRelayStatus();
+          const tunnel = st2?.tunnel;
+          if (tunnel?.active && tunnel.publicHost && tunnel.publicPort) {
+            applyHostTunnelState({
+              active: true,
+              restored: false,
+              sessionId: tunnel.sessionId,
+              publicHost: tunnel.publicHost,
+              publicPort: tunnel.publicPort,
+              localPort: tunnel.localPort,
+              buildId: tunnel.buildId || st2?.buildId,
+              buildName: tunnel.buildName
+            });
+            return;
+          }
+          if (host.api.gameRelayRestore && !hostRelaySession) {
+            const restored = await host.api.gameRelayRestore();
+            if (restored?.ok && restored.restored && restored.session) {
+              applyHostTunnelState({
+                active: true,
+                restored: true,
+                sessionId: restored.session.sessionId,
+                publicHost: restored.session.publicHost,
+                publicPort: restored.session.publicPort,
+                localPort: restored.session.localPort,
+                buildId: restored.meta?.buildId,
+                buildName: restored.meta?.buildName,
+                gameVersion: restored.meta?.gameVersion,
+                loader: restored.meta?.loader
+              });
+            }
+          }
+        } catch {
+        }
+      }
+      function bindGameRelayEvents() {
+        unsubLanPort?.();
+        unsubTunnel?.();
+        unsubLanPort = host?.api.onGameRelayLanPort?.((data) => {
+          lastDetectedLanPort = data.port != null && Number(data.port) > 0 ? Number(data.port) : null;
+          updateSharePanel();
+        }) || null;
+        unsubTunnel = host?.api.onGameRelayTunnel?.((data) => {
+          applyHostTunnelState(data);
+        }) || null;
+        void syncHostRelayFromMain();
+      }
+      var MSGR_SOUND = {
+        message: "../../assets/sounds/message.mp3",
+        send: "../../assets/sounds/send.mp3"
+      };
+      function playMsgrSound(kind) {
+        try {
+          const audio = new Audio(MSGR_SOUND[kind]);
+          audio.volume = 0.85;
+          void audio.play().catch(() => {
+          });
+        } catch {
+        }
+      }
+      function accountCacheKey(account) {
+        const a = account || host?.getAccount?.();
+        const type = String(a?.meta?.type || a?.type || "").toLowerCase();
+        const provider = type === "yggdrasil" || type === "ely" ? "ely" : type === "msa" || type === "microsoft" ? "msa" : "";
+        const uuid = String(a?.uuid || "").replace(/-/g, "").toLowerCase();
+        if (!provider || !uuid)
+          return null;
+        return `${provider}:${uuid}`;
+      }
+      function normalizePresenceStatus(raw) {
+        const s = String(raw || "online").trim().toLowerCase();
+        if (s === "busy" || s === "dnd" || s === "offline" || s === "online")
+          return s;
+        return "online";
+      }
+      function resolvePresence(user) {
+        const manual = normalizePresenceStatus(user?.presenceStatus);
+        if (manual === "offline")
+          return "offline";
+        if (!user?.lastSeenAt || Date.now() - Number(user.lastSeenAt) >= ONLINE_MS)
+          return "offline";
+        return manual;
+      }
+      function presenceClass(user) {
+        return `is-${resolvePresence(user)}`;
+      }
+      function isOnline(user) {
+        const p = resolvePresence(user);
+        return p === "online" || p === "busy" || p === "dnd";
+      }
+      function persistAccountCache() {
+        const key = boundAccountKey || accountCacheKey();
+        if (!key)
+          return;
+        try {
+          const messagesByConv = {};
+          if (activeId && messages.length)
+            messagesByConv[activeId] = messages;
+          localStorage.setItem(MSGR_CACHE_PREFIX + key, JSON.stringify({
+            conversations,
+            messagesByConv,
+            activeId,
+            presenceStatus: myPresenceStatus,
+            savedAt: Date.now()
+          }));
+          localStorage.setItem(MSGR_PRESENCE_PREFIX + key, myPresenceStatus);
+        } catch {
+        }
+      }
+      function restoreAccountCache(key) {
+        conversations = [];
+        messages = [];
+        activeId = null;
+        friendsBundle = { friends: [], incoming: [], outgoing: [] };
+        blockedUsers = [];
+        pendingFiles = [];
+        replyTo = null;
+        if (!key)
+          return;
+        try {
+          const raw = localStorage.getItem(MSGR_CACHE_PREFIX + key);
+          const presenceRaw = localStorage.getItem(MSGR_PRESENCE_PREFIX + key);
+          if (presenceRaw)
+            myPresenceStatus = normalizePresenceStatus(presenceRaw);
+          if (!raw)
+            return;
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed?.conversations))
+            conversations = parsed.conversations;
+          if (parsed?.activeId && parsed?.messagesByConv?.[parsed.activeId]) {
+            activeId = String(parsed.activeId);
+            messages = Array.isArray(parsed.messagesByConv[parsed.activeId]) ? parsed.messagesByConv[parsed.activeId] : [];
+          }
+          if (parsed?.presenceStatus)
+            myPresenceStatus = normalizePresenceStatus(parsed.presenceStatus);
+        } catch {
+        }
+      }
+      function cropSkinHead(skinUrl, size = AVATAR_SIZE) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            try {
+              const canvas = document.createElement("canvas");
+              canvas.width = size;
+              canvas.height = size;
+              const ctx = canvas.getContext("2d");
+              if (!ctx) {
+                resolve(null);
+                return;
+              }
+              ctx.imageSmoothingEnabled = false;
+              const scale = img.width / 64;
+              const h = 8 * scale;
+              ctx.drawImage(img, 8 * scale, 8 * scale, h, h, 0, 0, size, size);
+              ctx.drawImage(img, 40 * scale, 8 * scale, h, h, 0, 0, size, size);
+              resolve(canvas.toDataURL("image/png"));
+            } catch {
+              resolve(null);
+            }
+          };
+          img.onerror = () => resolve(null);
+          img.src = skinUrl;
+        });
+      }
+      function rawSkinUrl(user) {
+        const toHttps = (u) => String(u || "").replace(/^http:\/\//i, "https://");
+        if (user.provider === "ely") {
+          const byName = `https://skinsystem.ely.by/skins/${encodeURIComponent(user.username)}.png`;
+          const candidate = user.skinUrl ? toHttps(user.skinUrl) : byName;
+          return (0, apiBase_1.skinImageUrl)(candidate) || (0, apiBase_1.skinImageUrl)(byName) || candidate;
+        }
+        if (user.skinUrl) {
+          const https = toHttps(user.skinUrl);
+          return (0, apiBase_1.skinImageUrl)(https) || https;
+        }
+        const uuid = String(user.uuid || "").replace(/-/g, "");
+        if (uuid) {
+          return (0, apiBase_1.skinImageUrl)(`https://mc-heads.net/avatar/${uuid}/64`) || `${(0, apiBase_1.getApiBase)()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/avatar/${uuid}/64`)}`;
+        }
+        return "";
+      }
+      function fullSkinTextureUrl(user) {
+        const toHttps = (u) => String(u || "").replace(/^http:\/\//i, "https://");
+        if (user.provider === "ely") {
+          const byName = `https://skinsystem.ely.by/skins/${encodeURIComponent(user.username)}.png`;
+          const candidate = user.skinUrl ? toHttps(user.skinUrl) : byName;
+          return (0, apiBase_1.skinImageUrl)(candidate) || (0, apiBase_1.skinImageUrl)(byName) || candidate;
+        }
+        if (user.skinUrl && /textures\.minecraft\.net|skin/i.test(user.skinUrl)) {
+          const https = toHttps(user.skinUrl);
+          return (0, apiBase_1.skinImageUrl)(https) || https;
+        }
+        const uuid = String(user.uuid || "").replace(/-/g, "");
+        if (uuid) {
+          return (0, apiBase_1.skinImageUrl)(`https://mc-heads.net/skin/${uuid}`) || `${(0, apiBase_1.getApiBase)()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/skin/${uuid}`)}`;
+        }
+        return rawSkinUrl(user);
+      }
+      function openOverlay(id) {
+        if (host?.openModal)
+          host.openModal(id);
+        else
+          $2(id)?.classList.remove("hidden");
+      }
+      function closeOverlay(id) {
+        if (host?.closeModal)
+          host.closeModal(id);
+        else
+          $2(id)?.classList.add("hidden");
+      }
+      function avatarUrlSync(user) {
+        if (!user)
+          return "";
+        const cached = avatarCache.get(user.id);
+        if (cached)
+          return cached;
+        if (user.provider === "msa") {
+          const uuid = String(user.uuid || "").replace(/-/g, "");
+          if (uuid) {
+            return (0, apiBase_1.skinImageUrl)(`https://mc-heads.net/avatar/${uuid}/48`) || `${(0, apiBase_1.getApiBase)()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/avatar/${uuid}/48`)}`;
+          }
+        }
+        return "";
+      }
+      function ensureAvatar(user) {
+        if (!user?.id || avatarCache.has(user.id) || avatarInflight.has(user.id))
+          return;
+        const raw = rawSkinUrl(user);
+        if (!raw)
+          return;
+        const task = (async () => {
+          if (user.provider === "ely" || /\.png(\?|$)/i.test(raw) || raw.includes("skinsystem.ely.by") || raw.includes("textures.minecraft.net")) {
+            const cropped = await cropSkinHead(raw);
+            if (cropped) {
+              avatarCache.set(user.id, cropped);
+              return cropped;
+            }
+          }
+          if (user.provider === "msa") {
+            const url = avatarUrlSync(user);
+            if (url)
+              avatarCache.set(user.id, url);
+            return url;
+          }
+          avatarCache.set(user.id, raw);
+          return raw;
+        })().finally(() => {
+          avatarInflight.delete(user.id);
+        });
+        avatarInflight.set(user.id, task);
+        void task.then(() => {
+          applyAvatarsInDom(user.id);
+        });
+      }
+      function applyAvatarsInDom(userId) {
+        const url = avatarCache.get(userId);
+        if (!url)
+          return;
+        document.querySelectorAll("[data-msgr-user]").forEach((el) => {
+          if (el.getAttribute("data-msgr-user") !== userId)
+            return;
+          if (el instanceof HTMLImageElement) {
+            if (el.getAttribute("src") !== url)
+              el.src = url;
+            return;
+          }
+          const img = document.createElement("img");
+          img.setAttribute("data-msgr-user", userId);
+          img.src = url;
+          img.alt = "";
+          const w2 = Number(el.getAttribute("data-size") || el.getAttribute("width") || 32) || 32;
+          img.width = w2;
+          img.height = w2;
+          el.replaceWith(img);
+        });
+      }
+      function avatarImgHtml(user, size, fallbackLetter) {
+        if (!user) {
+          return `<span class="msgr-avatar__fallback">${host.escapeHtml(fallbackLetter)}</span>`;
+        }
+        ensureAvatar(user);
+        const url = avatarCache.get(user.id) || avatarUrlSync(user);
+        const idAttr = host.escapeHtml(user.id);
+        if (url) {
+          return `<img data-msgr-user="${idAttr}" src="${host.escapeHtml(url)}" alt="" width="${size}" height="${size}">`;
+        }
+        return `<span class="msgr-avatar__fallback" data-msgr-user="${idAttr}" data-size="${size}">${host.escapeHtml(fallbackLetter)}</span>`;
+      }
+      function groupAvatarHtml(conv, size) {
+        const letter = host.escapeHtml((conv.title || "?").slice(0, 1));
+        if (conv.avatarUrl) {
+          const url = resolveMsgrMediaUrl(conv.avatarUrl, conv.updatedAt);
+          return `<img class="msgr-avatar__photo" src="${host.escapeHtml(url)}" alt="" width="${size}" height="${size}" data-fallback="${letter}" onerror="var s=document.createElement('span');s.className='msgr-avatar__fallback';s.textContent=this.getAttribute('data-fallback')||'?';this.replaceWith(s)">`;
+        }
+        return `<span class="msgr-avatar__fallback">${letter}</span>`;
+      }
+      function resolveMsgrMediaUrl(raw, cacheBust) {
+        const s = String(raw || "").trim();
+        if (!s)
+          return "";
+        let url = s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:") ? s : `${(0, apiBase_1.getApiBase)()}${s.startsWith("/") ? "" : "/"}${s}`;
+        if (cacheBust != null && String(cacheBust) !== "") {
+          const sep = url.includes("?") ? "&" : "?";
+          url += `${sep}v=${encodeURIComponent(String(cacheBust))}`;
+        }
+        return url;
+      }
+      function setProfileSkinPanel(mode, coverUrl, cacheBust) {
+        const skin = $2("msgr-profile-skin");
+        const canvas = $2("msgr-profile-canvas");
+        const fallback = $2("msgr-profile-skin-fallback");
+        const win = document.querySelector(".msgr-profile-window");
+        win?.classList.toggle("is-no-skin", mode === "hidden");
+        if (skin)
+          skin.hidden = mode === "hidden";
+        if (mode === "hidden") {
+          disposeProfileViewer();
+          if (canvas)
+            canvas.hidden = true;
+          if (fallback) {
+            fallback.hidden = true;
+            fallback.innerHTML = "";
+          }
+          return;
+        }
+        if (mode === "cover") {
+          disposeProfileViewer();
+          if (canvas)
+            canvas.hidden = true;
+          if (fallback) {
+            const url = coverUrl ? resolveMsgrMediaUrl(coverUrl, cacheBust) : "";
+            if (!url) {
+              fallback.hidden = true;
+              fallback.innerHTML = "";
+              return;
+            }
+            fallback.hidden = false;
+            fallback.innerHTML = `<img class="msgr-profile__cover" src="${host.escapeHtml(url)}" alt="">`;
+          }
+          return;
+        }
+        if (skin)
+          skin.hidden = false;
+      }
+      function openCoverCropEditor(file) {
+        return new Promise((resolve) => {
+          const overlay = $2("modal-msgr-cover");
+          const frame = $2("msgr-cover-frame");
+          const img = $2("msgr-cover-img");
+          const zoomEl = $2("msgr-cover-zoom");
+          const ok = $2("modal-msgr-cover-ok");
+          const cancel = $2("modal-msgr-cover-cancel");
+          const closeBtn = $2("modal-msgr-cover-close");
+          if (!overlay || !frame || !img || !zoomEl || !ok || !cancel) {
+            resolve(null);
+            return;
+          }
+          let baseScale = 1;
+          let zoom = 1;
+          let offsetX = 0;
+          let offsetY = 0;
+          let dragging = false;
+          let lastX = 0;
+          let lastY = 0;
+          let nw = 0;
+          let nh = 0;
+          let ready = false;
+          const frameW = () => frame.clientWidth || 220;
+          const frameH = () => frame.clientHeight || 410;
+          const syncZoomProgress = () => {
+            const min = Number(zoomEl.min) || 100;
+            const max = Number(zoomEl.max) || 300;
+            const val = Number(zoomEl.value) || min;
+            const pct = (val - min) / (max - min) * 100;
+            zoomEl.style.setProperty("--range-progress", `${pct}%`);
+          };
+          const clampOffsets = () => {
+            const fw = frameW();
+            const fh = frameH();
+            const scale = baseScale * zoom;
+            const dw = nw * scale;
+            const dh = nh * scale;
+            const minX = Math.min(0, fw - dw);
+            const minY = Math.min(0, fh - dh);
+            offsetX = Math.min(0, Math.max(minX, offsetX));
+            offsetY = Math.min(0, Math.max(minY, offsetY));
+          };
+          const applyTransform = () => {
+            clampOffsets();
+            const scale = baseScale * zoom;
+            img.style.width = `${nw * scale}px`;
+            img.style.height = `${nh * scale}px`;
+            img.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+          };
+          const fitCover = () => {
+            const fw = frameW();
+            const fh = frameH();
+            baseScale = Math.max(fw / nw, fh / nh);
+            zoom = 1;
+            zoomEl.value = "100";
+            syncZoomProgress();
+            const dw = nw * baseScale;
+            const dh = nh * baseScale;
+            offsetX = (fw - dw) / 2;
+            offsetY = (fh - dh) / 2;
+            applyTransform();
+          };
+          const exportDataUrl = () => {
+            if (!ready || !img.complete || nw < 1 || nh < 1)
+              return "";
+            const fw = frameW();
+            const fh = frameH();
+            const scale = baseScale * zoom;
+            const outW = 600;
+            const outH = Math.round(outW * fh / fw);
+            const canvas = document.createElement("canvas");
+            canvas.width = outW;
+            canvas.height = outH;
+            const ctx = canvas.getContext("2d");
+            if (!ctx)
+              return "";
+            const sx = -offsetX / scale;
+            const sy = -offsetY / scale;
+            const sw = fw / scale;
+            const sh = fh / scale;
+            try {
+              ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+            } catch {
+              return "";
+            }
+            return canvas.toDataURL("image/jpeg", 0.88);
+          };
+          const finish = (value) => {
+            closeOverlay("modal-msgr-cover");
+            overlay.setAttribute("aria-hidden", "true");
+            img.removeAttribute("src");
+            ok.removeEventListener("click", onOk);
+            cancel.removeEventListener("click", onCancel);
+            closeBtn?.removeEventListener("click", onCancel);
+            overlay.removeEventListener("click", onBackdrop);
+            frame.removeEventListener("pointerdown", onPointerDown);
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+            frame.removeEventListener("wheel", onWheel);
+            zoomEl.removeEventListener("input", onZoomInput);
+            resolve(value);
+          };
+          const onOk = () => {
+            const dataUrl = exportDataUrl();
+            if (!dataUrl) {
+              toast(host?.t("msgr.coverFailed", { msg: "image" }) || "Cover export failed");
+              return;
+            }
+            finish(dataUrl);
+          };
+          const onCancel = () => finish(null);
+          const onBackdrop = (e) => {
+            if (e.target === overlay)
+              onCancel();
+          };
+          const onZoomInput = () => {
+            const next = Math.max(1, Number(zoomEl.value) / 100);
+            const fw = frameW();
+            const fh = frameH();
+            const cx = fw / 2;
+            const cy = fh / 2;
+            const prev = zoom;
+            const imgX = (cx - offsetX) / (baseScale * prev);
+            const imgY = (cy - offsetY) / (baseScale * prev);
+            zoom = next;
+            offsetX = cx - imgX * baseScale * zoom;
+            offsetY = cy - imgY * baseScale * zoom;
+            syncZoomProgress();
+            applyTransform();
+          };
+          const onPointerDown = (e) => {
+            dragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            frame.classList.add("is-dragging");
+            frame.setPointerCapture?.(e.pointerId);
+          };
+          const onPointerMove = (e) => {
+            if (!dragging)
+              return;
+            offsetX += e.clientX - lastX;
+            offsetY += e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            applyTransform();
+          };
+          const onPointerUp = () => {
+            dragging = false;
+            frame.classList.remove("is-dragging");
+          };
+          const onWheel = (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -5 : 5;
+            const next = Math.min(300, Math.max(100, Number(zoomEl.value) + delta));
+            zoomEl.value = String(next);
+            onZoomInput();
+          };
+          img.onload = () => {
+            nw = img.naturalWidth || 1;
+            nh = img.naturalHeight || 1;
+            ready = true;
+            fitCover();
+          };
+          img.onerror = () => {
+            ready = false;
+            toast(host?.t("msgr.coverFailed", { msg: "load" }) || "Cover load failed");
+            finish(null);
+          };
+          const reader = new FileReader();
+          reader.onload = () => {
+            img.src = String(reader.result || "");
+          };
+          reader.onerror = () => {
+            toast(host?.t("msgr.coverFailed", { msg: "read" }) || "Cover read failed");
+            finish(null);
+          };
+          reader.readAsDataURL(file);
+          zoomEl.value = "100";
+          syncZoomProgress();
+          openOverlay("modal-msgr-cover");
+          overlay.setAttribute("aria-hidden", "false");
+          ok.addEventListener("click", onOk);
+          cancel.addEventListener("click", onCancel);
+          closeBtn?.addEventListener("click", onCancel);
+          overlay.addEventListener("click", onBackdrop);
+          frame.addEventListener("pointerdown", onPointerDown);
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+          frame.addEventListener("wheel", onWheel, { passive: false });
+          zoomEl.addEventListener("input", onZoomInput);
+        });
+      }
+      function formatMsgTime(ts) {
+        const d2 = new Date(ts);
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(d2.getDate())}.${pad(d2.getMonth() + 1)} ${pad(d2.getHours())}:${pad(d2.getMinutes())}`;
+      }
+      function formatLastSeen(ts) {
+        if (!ts)
+          return host?.t("msgr.lastSeenUnknown") || "";
+        const diff = Date.now() - Number(ts);
+        if (diff < ONLINE_MS)
+          return host?.t("msgr.online") || "Online";
+        if (diff < 36e5) {
+          const m2 = Math.max(1, Math.floor(diff / 6e4));
+          return host?.t("msgr.lastSeenMinutes", { n: m2 }) || `${m2}m`;
+        }
+        if (diff < 864e5) {
+          const h = Math.floor(diff / 36e5);
+          return host?.t("msgr.lastSeenHours", { n: h }) || `${h}h`;
+        }
+        return formatMsgTime(Number(ts));
+      }
+      function activityLine(user) {
+        const a = user?.activity;
+        if (!a?.playing || !a.build)
+          return "";
+        const parts = [a.build];
+        if (a.version)
+          parts.push(String(a.version));
+        if (a.loader && a.loader !== "vanilla")
+          parts.push(String(a.loader));
+        if (a.server)
+          parts.push(String(a.server));
+        return parts.join(" \xB7 ");
+      }
+      function previewText(conv) {
+        const last = conv.lastMessage;
+        if (!last)
+          return host?.t("msgr.noMessages") || "";
+        if (last.deleted)
+          return host?.t("msgr.messageDeleted") || "";
+        const mine = me2 && last.senderId === me2.id;
+        const prefix = mine ? `${host?.t("msgr.you") || "You"}: ` : "";
+        if (last.kind === "game_invite") {
+          return prefix + (host?.t("msgr.invitePreview") || "Invite");
+        }
+        return prefix + last.body;
+      }
+      async function req(path, opts = {}) {
+        const api = host?.api;
+        if (!api?.messengerRequest)
+          return { ok: false, code: "unavailable" };
+        return api.messengerRequest({ path, method: opts.method, body: opts.body, query: opts.query });
+      }
+      function setGate(mode, errorText) {
+        const gate = $2("msgr-gate");
+        const shell = $2("msgr-shell");
+        const retry = $2("msgr-retry");
+        if (!gate || !shell)
+          return;
+        const title = gate.querySelector(".msgr-gate__title");
+        const hint = gate.querySelector(".msgr-gate__hint");
+        const spinner = gate.querySelector(".msgr-gate__spinner");
+        if (mode === "ready" || mode === "loading") {
+          gate.hidden = true;
+          gate.classList.remove("is-loading", "is-blocking");
+          shell.hidden = false;
+          shell.classList.remove("is-dimmed");
+          if (retry)
+            retry.classList.add("hidden");
+          return;
+        }
+        shell.hidden = true;
+        shell.classList.remove("is-dimmed");
+        gate.hidden = false;
+        gate.classList.remove("is-loading");
+        gate.classList.add("is-blocking");
+        if (spinner)
+          spinner.hidden = true;
+        if (!host)
+          return;
+        if (mode === "need-account") {
+          if (title)
+            title.textContent = host.t("msgr.needAccount");
+          if (hint)
+            hint.textContent = host.t("msgr.needAccountHint");
+        } else {
+          if (title)
+            title.textContent = host.t("msgr.error");
+          if (hint)
+            hint.textContent = errorText || host.t("msgr.errorHint");
+        }
+        if (retry)
+          retry.classList.remove("hidden");
+        conversations = [];
+        updateMessengerTabBadge();
+      }
+      function renderPresence(state = "online") {
+        const el = $2("msgr-presence");
+        if (!el || !host)
+          return;
+        const effective = state === "connecting" ? "connecting" : state === "offline" ? "offline" : myPresenceStatus === "offline" ? "offline" : myPresenceStatus === "busy" ? "busy" : myPresenceStatus === "dnd" ? "dnd" : state === "online" ? "online" : "offline";
+        el.className = `msgr-presence is-${effective}`;
+        el.setAttribute("aria-expanded", "false");
+        const labelKey = effective === "connecting" ? "msgr.connectingShort" : effective === "busy" ? "msgr.statusBusy" : effective === "dnd" ? "msgr.statusDnd" : effective === "offline" ? "msgr.statusOffline" : "msgr.statusOnline";
+        if (effective === "connecting") {
+          el.innerHTML = `<span class="msgr-presence__dot is-pulse"></span><span class="msgr-presence__label">${host.escapeHtml(host.t(labelKey))}</span>`;
+          return;
+        }
+        el.innerHTML = `<span class="msgr-presence__dot is-${effective}"></span><span class="msgr-presence__label">${host.escapeHtml(host.t(labelKey))}</span>`;
+      }
+      function setPresenceMenuOpen(open) {
+        const menu = $2("msgr-presence-menu");
+        const btn = $2("msgr-presence");
+        if (!menu || !btn)
+          return;
+        menu.classList.toggle("hidden", !open);
+        menu.setAttribute("aria-hidden", open ? "false" : "true");
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+      async function setMyPresenceStatus(status) {
+        myPresenceStatus = status;
+        const key = boundAccountKey || accountCacheKey();
+        if (key) {
+          try {
+            localStorage.setItem(MSGR_PRESENCE_PREFIX + key, status);
+          } catch {
+          }
+        }
+        renderPresence(status === "offline" ? "offline" : "online");
+        setPresenceMenuOpen(false);
+        if (!sessionToken)
+          return;
+        const res = await req("/presence", { method: "POST", body: { status } });
+        if (res?.ok && res.data?.user) {
+          me2 = { ...me2, ...res.data.user, presenceStatus: status };
+        } else if (!res?.ok) {
+          toast(host?.t("msgr.presenceFailed", { msg: res?.error || "" }) || "Presence failed");
+        }
+        persistAccountCache();
+      }
+      function updateMessengerTabBadge() {
+        const badge = $2("msgr-tab-badge");
+        if (!badge)
+          return;
+        const total = conversations.reduce((sum, c) => sum + (Number(c.unreadCount) || 0), 0);
+        if (total <= 0) {
+          badge.hidden = true;
+          badge.setAttribute("aria-hidden", "true");
+          badge.textContent = "0";
+          return;
+        }
+        badge.hidden = false;
+        badge.setAttribute("aria-hidden", "false");
+        badge.textContent = total > 99 ? "99+" : String(total);
+      }
+      function renderConversationList() {
+        const list = $2("msgr-chat-list");
+        if (!list || !host)
+          return;
+        updateMessengerTabBadge();
+        if (!conversations.length) {
+          list.innerHTML = `<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.emptyChats"))}</div>`;
+          return;
+        }
+        const prefs = pruneExpiredMutes(loadMsgrPrefs());
+        const ordered = [...conversations].sort((a, b2) => {
+          const ap = prefs.pinned.includes(a.id) ? 0 : 1;
+          const bp = prefs.pinned.includes(b2.id) ? 0 : 1;
+          if (ap !== bp)
+            return ap - bp;
+          return (Number(b2.updatedAt) || 0) - (Number(a.updatedAt) || 0);
+        });
+        list.innerHTML = ordered.map((c) => {
+          const user = c.type === "dm" ? c.peer : null;
+          if (user)
+            ensureAvatar(user);
+          const title = host.escapeHtml(c.title || "Chat");
+          const preview = host.escapeHtml(previewText(c));
+          const badge = user ? `<span class="msgr-badge ${providerClass(user.provider)}">${host.escapeHtml(providerLabel(user.provider))}</span>` : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
+          const online = user ? presenceClass(user) : "";
+          const active = c.id === activeId ? "is-active" : "";
+          const unread = c.unreadCount && c.id !== activeId ? `<span class="msgr-unread">${c.unreadCount}</span>` : "";
+          const marks = (prefs.pinned.includes(c.id) ? `<span class="msgr-chat-mark is-pinned" title="${host.escapeHtml(host.t("msgr.actionPin"))}" aria-hidden="true"></span>` : "") + (isConvMuted(c.id) ? `<span class="msgr-chat-mark is-muted" data-mute-id="${host.escapeHtml(c.id)}" title="${host.escapeHtml(host.t("msgr.actionMuted"))}" aria-hidden="true"></span>` : "");
+          const av = c.type === "group" ? groupAvatarHtml(c, 40) : avatarImgHtml(user || void 0, 40, (c.title || "?").slice(0, 1));
+          return `
+        <button type="button" class="msgr-chat-item ${active}" data-id="${host.escapeHtml(c.id)}">
+          <span class="msgr-avatar ${online}">${av}</span>
+          <span class="msgr-chat-item__body">
+            <span class="msgr-chat-item__top">
+              <span class="msgr-chat-item__name">${marks}${title}</span>
+              ${badge}
+              ${unread}
+            </span>
+            <span class="msgr-chat-item__preview">${preview}</span>
+          </span>
+        </button>`;
+        }).join("");
+      }
+      function friendRowHtml(user, kind) {
+        ensureAvatar(user);
+        const online = presenceClass(user);
+        const actions = kind === "incoming" ? `<button type="button" class="msgr-mini-btn" data-friend-act="accept" data-user-id="${host.escapeHtml(user.id)}">${host.escapeHtml(host.t("msgr.friendAccept"))}</button>
+         <button type="button" class="msgr-mini-btn" data-friend-act="decline" data-user-id="${host.escapeHtml(user.id)}">${host.escapeHtml(host.t("msgr.friendDecline"))}</button>` : kind === "outgoing" ? `<button type="button" class="msgr-mini-btn" data-friend-act="cancel" data-user-id="${host.escapeHtml(user.id)}">${host.escapeHtml(host.t("msgr.friendCancel"))}</button>` : kind === "blocked" ? `<button type="button" class="msgr-mini-btn" data-friend-act="unblock" data-user-id="${host.escapeHtml(user.id)}">${host.escapeHtml(host.t("msgr.actionUnblock"))}</button>` : `<button type="button" class="msgr-mini-btn" data-friend-act="write" data-user-id="${host.escapeHtml(user.id)}">${host.escapeHtml(host.t("msgr.actionWrite"))}</button>
+             <button type="button" class="msgr-mini-btn" data-friend-act="profile" data-user-id="${host.escapeHtml(user.id)}">${host.escapeHtml(host.t("msgr.actionOpenProfile"))}</button>`;
+        return `<div class="msgr-friend-item" data-user-id="${host.escapeHtml(user.id)}">
+    <span class="msgr-avatar ${online}">${avatarImgHtml(user, 36, user.username.slice(0, 1))}</span>
+    <span class="msgr-friend-item__body">
+      <span class="msgr-friend-item__name">${host.escapeHtml(user.username)}</span>
+      <span class="msgr-badge ${providerClass(user.provider)}">${host.escapeHtml(providerLabel(user.provider))}</span>
+    </span>
+    <span class="msgr-friend-item__actions">${actions}</span>
+  </div>`;
+      }
+      function renderFriendsList() {
+        const list = $2("msgr-friends-list");
+        if (!list || !host)
+          return;
+        if (railTab === "blocked") {
+          list.innerHTML = `
+      <div class="msgr-friends-head">
+        <button type="button" class="msgr-mini-btn" data-friend-act="back-friends">${host.escapeHtml(host.t("msgr.backToFriends"))}</button>
+        <div class="msgr-friends-title">${host.escapeHtml(host.t("msgr.blockedTitle"))}</div>
+      </div>
+      ${blockedUsers.length ? blockedUsers.map((u) => friendRowHtml(u, "blocked")).join("") : `<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.blockedEmpty"))}</div>`}`;
+          return;
+        }
+        const parts = [];
+        parts.push(`<div class="msgr-friends-head">
+    <div class="msgr-friends-title">${host.escapeHtml(host.t("msgr.tabFriends"))}</div>
+    <button type="button" class="msgr-mini-btn" data-friend-act="show-blocked">${host.escapeHtml(host.t("msgr.blockedTitle"))}</button>
+  </div>`);
+        if (friendsBundle.incoming.length) {
+          parts.push(`<div class="msgr-friends-section">${host.escapeHtml(host.t("msgr.friendIncoming"))}</div>`);
+          parts.push(friendsBundle.incoming.map((u) => friendRowHtml(u, "incoming")).join(""));
+        }
+        if (friendsBundle.outgoing.length) {
+          parts.push(`<div class="msgr-friends-section">${host.escapeHtml(host.t("msgr.friendOutgoing"))}</div>`);
+          parts.push(friendsBundle.outgoing.map((u) => friendRowHtml(u, "outgoing")).join(""));
+        }
+        parts.push(`<div class="msgr-friends-section">${host.escapeHtml(host.t("msgr.friendsList"))}</div>`);
+        if (friendsBundle.friends.length) {
+          parts.push(friendsBundle.friends.map((u) => friendRowHtml(u, "friend")).join(""));
+        } else {
+          parts.push(`<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.friendsEmpty"))}</div>`);
+        }
+        list.innerHTML = parts.join("");
+      }
+      function setRailTab(tab) {
+        const next = tab === "blocked" ? "blocked" : tab;
+        const prev = railTab;
+        railTab = next;
+        const chatsList = $2("msgr-chat-list");
+        const friendsList = $2("msgr-friends-list");
+        const worldsList = $2("msgr-worlds-list");
+        const pages = $2("msgr-rail-pages");
+        const tabs = $2("msgr-rail-tabs");
+        const newGroup = $2("msgr-new-group");
+        const tabChats = $2("msgr-tab-chats");
+        const tabFriends = $2("msgr-tab-friends");
+        const tabWorlds = $2("msgr-tab-worlds");
+        const showChats = railTab === "chats";
+        const showFriends = railTab === "friends" || railTab === "blocked";
+        const showWorlds = railTab === "worlds";
+        const dir = prev === "chats" && !showChats ? "left" : prev !== "chats" && showChats ? "right" : showChats ? "right" : "left";
+        if (pages)
+          pages.setAttribute("data-dir", dir);
+        if (tabs) {
+          tabs.setAttribute("data-active", showChats ? "chats" : showWorlds ? "worlds" : "friends");
+        }
+        if (chatsList) {
+          chatsList.hidden = false;
+          chatsList.classList.toggle("is-active", showChats);
+        }
+        if (friendsList) {
+          friendsList.hidden = false;
+          friendsList.classList.toggle("is-active", showFriends);
+        }
+        if (worldsList) {
+          worldsList.hidden = false;
+          worldsList.classList.toggle("is-active", showWorlds);
+        }
+        if (newGroup)
+          newGroup.hidden = !showChats;
+        tabChats?.classList.toggle("is-active", showChats);
+        tabFriends?.classList.toggle("is-active", showFriends);
+        tabWorlds?.classList.toggle("is-active", showWorlds);
+        tabChats?.setAttribute("aria-selected", showChats ? "true" : "false");
+        tabFriends?.setAttribute("aria-selected", showFriends ? "true" : "false");
+        tabWorlds?.setAttribute("aria-selected", showWorlds ? "true" : "false");
+        if (showChats)
+          renderConversationList();
+        else if (showWorlds)
+          void refreshWorldsRail();
+        else
+          void refreshFriendsRail();
+      }
+      async function refreshWorldsRail() {
+        const res = await req("/friends");
+        if (res?.ok) {
+          friendsBundle = {
+            friends: Array.isArray(res.data?.friends) ? res.data.friends : [],
+            incoming: Array.isArray(res.data?.incoming) ? res.data.incoming : [],
+            outgoing: Array.isArray(res.data?.outgoing) ? res.data.outgoing : []
+          };
+        }
+        renderWorldsList();
+      }
+      var profilePanelTab = "info";
+      function setProfilePanelTab(tab, animate = true) {
+        const prev = profilePanelTab;
+        profilePanelTab = tab;
+        const tabs = $2("msgr-profile-tabs");
+        const pages = $2("msgr-profile-pages");
+        const info = $2("msgr-profile-info");
+        const membersPage = $2("msgr-profile-members-page");
+        const tabInfo = $2("msgr-profile-tab-info");
+        const tabMembers = $2("msgr-profile-tab-members");
+        if (animate && pages) {
+          const dir = prev === "info" && tab === "members" ? "left" : "right";
+          pages.setAttribute("data-dir", dir);
+        }
+        if (tabs)
+          tabs.setAttribute("data-active", tab);
+        if (info) {
+          info.hidden = false;
+          info.classList.toggle("is-active", tab === "info");
+        }
+        if (membersPage) {
+          membersPage.hidden = false;
+          membersPage.classList.toggle("is-active", tab === "members");
+        }
+        tabInfo?.classList.toggle("is-active", tab === "info");
+        tabMembers?.classList.toggle("is-active", tab === "members");
+        tabInfo?.setAttribute("aria-selected", tab === "info" ? "true" : "false");
+        tabMembers?.setAttribute("aria-selected", tab === "members" ? "true" : "false");
+      }
+      function setProfileTabsVisible(visible) {
+        const tabs = $2("msgr-profile-tabs");
+        if (tabs)
+          tabs.hidden = !visible;
+        if (!visible)
+          setProfilePanelTab("info", false);
+      }
+      async function refreshFriendsRail() {
+        if (railTab === "blocked") {
+          const res2 = await req("/users/blocked");
+          blockedUsers = res2?.ok && Array.isArray(res2.data?.users) ? res2.data.users : [];
+          renderFriendsList();
+          return;
+        }
+        const res = await req("/friends");
+        if (res?.ok) {
+          friendsBundle = {
+            friends: Array.isArray(res.data?.friends) ? res.data.friends : [],
+            incoming: Array.isArray(res.data?.incoming) ? res.data.incoming : [],
+            outgoing: Array.isArray(res.data?.outgoing) ? res.data.outgoing : []
+          };
+        }
+        renderFriendsList();
+      }
+      async function openProfileByUserId(userId) {
+        await openProfileModal({ userId });
+      }
+      function renderPeerHeader() {
+        const nameEl = $2("msgr-peer-name");
+        const metaEl = $2("msgr-peer-meta");
+        const avEl = $2("msgr-peer-avatar");
+        const empty = $2("msgr-stage-empty");
+        const thread = $2("msgr-thread");
+        const composer = $2("msgr-composer-bar");
+        const head = $2("msgr-stage-head");
+        const headRow = $2("msgr-stage-head-row");
+        const moreBtn = $2("msgr-stage-more");
+        if (!host)
+          return;
+        const conv = conversations.find((c) => c.id === activeId) || null;
+        if (!conv) {
+          if (nameEl)
+            nameEl.textContent = host.t("msgr.selectChat");
+          if (metaEl)
+            metaEl.textContent = "";
+          if (avEl) {
+            avEl.className = "msgr-avatar";
+            avEl.innerHTML = "";
+          }
+          if (empty)
+            empty.hidden = false;
+          if (thread)
+            thread.hidden = true;
+          if (composer)
+            composer.hidden = true;
+          if (head)
+            head.classList.remove("is-clickable");
+          if (headRow)
+            headRow.hidden = true;
+          if (moreBtn)
+            moreBtn.hidden = true;
+          return;
+        }
+        if (empty)
+          empty.hidden = true;
+        if (thread)
+          thread.hidden = false;
+        if (composer)
+          composer.hidden = false;
+        if (head)
+          head.classList.add("is-clickable");
+        if (headRow)
+          headRow.hidden = false;
+        if (moreBtn) {
+          moreBtn.hidden = false;
+          moreBtn.title = host.t("msgr.moreActions");
+        }
+        if (nameEl)
+          nameEl.textContent = conv.title;
+        const peer = conv.peer;
+        if (metaEl) {
+          if (conv.type === "group") {
+            metaEl.innerHTML = `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>
+        <span class="msgr-peer-status">${host.escapeHtml(host.t("msgr.members", { n: String(conv.members?.length || 0) }))}</span>`;
+          } else if (peer) {
+            const act = activityLine(peer);
+            const p = resolvePresence(peer);
+            const status = act ? host.t("msgr.playing", { detail: act }) : p === "busy" ? host.t("msgr.statusBusy") : p === "dnd" ? host.t("msgr.statusDnd") : p === "offline" ? host.t("msgr.statusOffline") : formatLastSeen(peer.lastSeenAt);
+            metaEl.innerHTML = `<span class="msgr-badge ${providerClass(peer.provider)}">${host.escapeHtml(providerLabel(peer.provider))}</span>
+        <span class="msgr-peer-status">${host.escapeHtml(status)}</span>`;
+          } else {
+            metaEl.textContent = "";
+          }
+        }
+        if (avEl) {
+          const online = peer ? presenceClass(peer) : "";
+          avEl.className = `msgr-avatar ${online}`;
+          avEl.innerHTML = conv.type === "group" ? groupAvatarHtml(conv, 36) : avatarImgHtml(peer || void 0, 36, (conv.title || "?").slice(0, 1));
+        }
+      }
+      function renderReplyBar() {
+        const bar = $2("msgr-reply-bar");
+        const label = $2("msgr-reply-label");
+        const text = $2("msgr-reply-text");
+        if (!bar || !host)
+          return;
+        if (!replyTo) {
+          bar.hidden = true;
+          return;
+        }
+        bar.hidden = false;
+        const conv = conversations.find((c) => c.id === activeId);
+        const name = conv?.members?.find((u) => u.id === replyTo.senderId)?.username || (replyTo.senderId === me2?.id ? host.t("msgr.you") : "");
+        if (label)
+          label.textContent = host.t("msgr.replyTo", { name });
+        if (text)
+          text.textContent = replyTo.deleted ? host.t("msgr.messageDeleted") : replyTo.body;
+      }
+      function setReplyTo(msg) {
+        replyTo = msg;
+        renderReplyBar();
+      }
+      function renderMessages() {
+        const thread = $2("msgr-messages");
+        if (!thread || !host || !me2)
+          return;
+        const conv = conversations.find((c) => c.id === activeId);
+        thread.innerHTML = messages.map((m2) => {
+          const mine = m2.senderId === me2.id;
+          const sender = conv?.members?.find((u) => u.id === m2.senderId)?.username || (mine ? me2.username : "");
+          const showName = conv?.type === "group" && !mine;
+          const reply = m2.replyTo ? `<div class="msgr-bubble__reply">
+            <div class="msgr-bubble__reply-name">${host.escapeHtml(conv?.members?.find((u) => u.id === m2.replyTo.senderId)?.username || "")}</div>
+            <div class="msgr-bubble__reply-text">${host.escapeHtml(m2.replyTo.deleted ? host.t("msgr.messageDeleted") : m2.replyTo.attachment ? m2.replyTo.attachment.name : m2.replyTo.body)}</div>
+          </div>` : "";
+          const fileBlock = renderAttachmentBlock(m2);
+          const invite = !m2.deleted && m2.kind === "game_invite" ? inviteFromMeta(m2.meta, {
+            id: m2.senderId,
+            username: sender
+          }) : null;
+          const inviteBlock = invite ? renderInviteCardHtml(invite, m2.id) : "";
+          const textBody = m2.deleted ? `<div class="msgr-bubble__text is-deleted">${host.escapeHtml(host.t("msgr.messageDeleted"))}</div>` : invite ? "" : m2.body && (!m2.attachment || m2.body !== m2.attachment.name) ? `<div class="msgr-bubble__text">${host.escapeHtml(m2.body)}</div>` : "";
+          return `
+        <div class="msgr-bubble-row ${mine ? "is-mine" : "is-theirs"}" data-msg-id="${host.escapeHtml(m2.id)}">
+          <div class="msgr-bubble ${m2.deleted ? "is-deleted" : ""}${m2.attachment && isMediaAttachment(m2.attachment) ? " has-media" : ""}${invite ? " has-invite" : ""}">
+            ${showName ? `<div class="msgr-bubble__name">${host.escapeHtml(sender)}</div>` : ""}
+            ${reply}
+            ${inviteBlock}
+            ${textBody}
+            ${fileBlock}
+            <div class="msgr-bubble__meta">
+              <span>${host.escapeHtml(formatMsgTime(m2.createdAt))}</span>
+              ${mine && !m2.deleted ? `<span class="msgr-bubble__read">${host.escapeHtml(host.t("msgr.read"))}</span>` : ""}
+            </div>
+          </div>
+        </div>`;
+        }).join("");
+        thread.scrollTop = thread.scrollHeight;
+      }
+      function renderPendingFiles() {
+        const chips = $2("msgr-attach-chips");
+        if (!chips || !host)
+          return;
+        if (!pendingFiles.length) {
+          chips.hidden = true;
+          chips.innerHTML = "";
+          return;
+        }
+        chips.hidden = false;
+        chips.innerHTML = `<div class="ai-attach-badges">${pendingFiles.map((f, i) => {
+          const media = isMediaAttachment(f);
+          const thumb = media && isImageAttachment(f) ? `<span class="ai-attach-thumb" style="background-image:url('data:${host.escapeHtml(f.mime)};base64,${f.dataBase64}')"></span>` : media && isVideoAttachment(f) ? `<span class="ai-attach-menu__ico ai-attach-badge--media" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M10 9l6 3-6 3V9z" fill="currentColor"/></svg></span>` : "";
+          return `<button type="button" class="ai-attach-badge ${media ? "ai-attach-badge--media" : "ai-attach-badge--file"}" data-pending-idx="${i}">
+          ${thumb}
+          <span class="ai-attach-badge__text">
+            <span class="ai-attach-badge__label">${host.escapeHtml(f.name)}</span>
+            <span class="ai-attach-badge__kind">${host.escapeHtml(formatFileSize(f.size))}</span>
+          </span>
+          <span class="ai-attach-badge__x" aria-hidden="true">\xD7</span>
+        </button>`;
+        }).join("")}</div>`;
+      }
+      function setAttachMenuOpen(open) {
+        const menu = $2("msgr-attach-menu");
+        const btn = $2("msgr-attach");
+        if (!menu || !btn)
+          return;
+        menu.classList.toggle("hidden", !open);
+        menu.classList.toggle("is-open", open);
+        menu.setAttribute("aria-hidden", open ? "false" : "true");
+        btn.classList.toggle("is-open", open);
+      }
+      async function pickMessengerFiles(opts) {
+        if (!host?.api.messengerPickFiles || !host.api.messengerReadFile) {
+          toast(host?.t("msgr.attachUnavailable") || "Attach unavailable");
+          return;
+        }
+        const paths = await host.api.messengerPickFiles(opts?.media ? { media: true } : void 0);
+        if (!paths?.length)
+          return;
+        for (const p of paths) {
+          if (pendingFiles.length >= 5)
+            break;
+          const read = await host.api.messengerReadFile(p);
+          if (!read?.ok || !read.dataBase64 || !read.name) {
+            toast(host.t("msgr.attachFailed", { msg: read?.error || "error" }));
+            continue;
+          }
+          if (opts?.media && !isMediaAttachment({ mime: read.mime, name: read.name })) {
+            toast(host.t("msgr.attachFailed", { msg: "media" }));
+            continue;
+          }
+          pendingFiles.push({
+            name: read.name,
+            mime: read.mime || "application/octet-stream",
+            size: read.size || 0,
+            dataBase64: read.dataBase64
+          });
+        }
+        renderPendingFiles();
+        setAttachMenuOpen(false);
+      }
+      async function handleFileAction(messageId, act) {
+        if (!host)
+          return;
+        const msg = messages.find((m2) => m2.id === messageId);
+        if (!msg?.attachment)
+          return;
+        if (act === "open") {
+          const local = getLocalFilePath(messageId);
+          if (!local || !host.api.messengerOpenLocalFile)
+            return;
+          const res = await host.api.messengerOpenLocalFile(local);
+          if (!res?.ok)
+            toast(host.t("msgr.fileOpenFailed", { msg: res?.error || "" }));
+          return;
+        }
+        if (act === "download") {
+          if (!host.api.messengerDownloadAttachment) {
+            toast(host.t("msgr.attachUnavailable"));
+            return;
+          }
+          const res = await host.api.messengerDownloadAttachment({
+            messageId,
+            fileName: msg.attachment.name
+          });
+          if (!res?.ok || !res.path) {
+            if (res?.error !== "canceled") {
+              toast(host.t("msgr.fileDownloadFailed", { msg: res?.error || "" }));
+            }
+            return;
+          }
+          setLocalFilePath(messageId, res.path);
+          toast(host.t("msgr.fileSaved"));
+          renderMessages();
+        }
+      }
+      function upsertIncomingMessage(message) {
+        if (!message?.id)
+          return;
+        const idx = messages.findIndex((m2) => m2.id === message.id);
+        if (idx >= 0) {
+          messages[idx] = message;
+        } else {
+          messages = [...messages, message];
+        }
+        renderMessages();
+      }
+      function applyActivityToUsers(userId, data) {
+        const patch = (u) => {
+          if (!u || u.id !== userId)
+            return u;
+          return {
+            ...u,
+            lastSeenAt: data.lastSeenAt ?? u.lastSeenAt,
+            presenceStatus: data.presenceStatus ?? u.presenceStatus,
+            activity: data.activity ?? u.activity,
+            favoriteBuild: data.favoriteBuild ?? u.favoriteBuild
+          };
+        };
+        conversations = conversations.map((c) => ({
+          ...c,
+          peer: patch(c.peer) || c.peer,
+          members: c.members?.map((m2) => patch(m2) || m2)
+        }));
+        if (me2?.id === userId)
+          me2 = patch(me2) || me2;
+        friendsBundle = {
+          friends: friendsBundle.friends.map((u) => patch(u) || u),
+          incoming: friendsBundle.incoming.map((u) => patch(u) || u),
+          outgoing: friendsBundle.outgoing.map((u) => patch(u) || u)
+        };
+        blockedUsers = blockedUsers.map((u) => patch(u) || u);
+        if (openProfileUser?.id === userId) {
+          openProfileUser = patch(openProfileUser) || openProfileUser;
+        }
+        renderConversationList();
+        renderPeerHeader();
+        if (railTab === "friends" || railTab === "blocked")
+          renderFriendsList();
+        if (railTab === "worlds")
+          renderWorldsList();
+        syncOpenProfilePresence();
+      }
+      function syncOpenProfilePresence() {
+        if (!host || !openProfileUser)
+          return;
+        const overlay = $2("modal-msgr-profile");
+        if (!overlay || overlay.classList.contains("hidden") || overlay.getAttribute("aria-hidden") === "true") {
+          return;
+        }
+        const profile = openProfileUser;
+        const online = isOnline(profile);
+        const statusEl = $2("msgr-profile-status");
+        if (statusEl) {
+          const p = resolvePresence(profile);
+          statusEl.className = `msgr-profile__status ${online ? "is-online" : ""}`;
+          if (!online) {
+            statusEl.textContent = formatLastSeen(profile.lastSeenAt);
+          } else if (p === "busy") {
+            statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.statusBusy"))}`;
+          } else if (p === "dnd") {
+            statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.statusDnd"))}`;
+          } else {
+            statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.online"))}`;
+          }
+        }
+        const lastSeenCard = document.querySelector('#msgr-profile-rows [data-profile-card="lastSeen"]');
+        if (lastSeenCard) {
+          const title = lastSeenCard.querySelector(".msgr-profile-card__title");
+          const icon = lastSeenCard.querySelector(".msgr-profile-card__icon");
+          if (title)
+            title.textContent = formatLastSeen(profile.lastSeenAt);
+          if (icon && !icon.querySelector("img"))
+            icon.textContent = online ? "ON" : "OFF";
+        }
+        const a = profile.activity;
+        const playingCard = document.querySelector('#msgr-profile-rows [data-profile-card="playing"]');
+        if (playingCard) {
+          const playingTitle = a?.playing && a.build ? a.build : host.t("msgr.profileIdle");
+          const playingSub = a?.playing && a.build ? [a.version, a.loader, a.server].filter(Boolean).join(" \xB7 ") : "";
+          const title = playingCard.querySelector(".msgr-profile-card__title");
+          const sub = playingCard.querySelector(".msgr-profile-card__sub");
+          if (title)
+            title.textContent = playingTitle;
+          if (sub) {
+            if (playingSub) {
+              sub.textContent = playingSub;
+              sub.hidden = false;
+            } else {
+              sub.textContent = "";
+              sub.hidden = true;
+            }
+          } else if (playingSub) {
+            const meta = playingCard.querySelector(".msgr-profile-card__meta");
+            if (meta) {
+              const el = document.createElement("div");
+              el.className = "msgr-profile-card__sub";
+              el.textContent = playingSub;
+              meta.appendChild(el);
+            }
+          }
+        }
+        applyProfilePresenceMood(online);
+      }
+      async function loadConversations() {
+        const res = await req("/conversations");
+        if (!res?.ok)
+          return;
+        conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
+        renderConversationList();
+        renderPeerHeader();
+        persistAccountCache();
+      }
+      async function loadMessages(conversationId) {
+        const res = await req(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
+          query: { limit: 80 }
+        });
+        if (!res?.ok)
+          return;
+        messages = Array.isArray(res.data?.messages) ? res.data.messages : [];
+        renderMessages();
+        persistAccountCache();
+        await req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: "POST", body: {} });
+      }
+      async function openConversation(id) {
+        activeId = id;
+        setReplyTo(null);
+        pendingFiles = [];
+        renderPendingFiles();
+        setAttachMenuOpen(false);
+        renderConversationList();
+        renderPeerHeader();
+        messages = [];
+        renderMessages();
+        await loadMessages(id);
+        const res = await req("/conversations");
+        if (res?.ok) {
+          conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
+          renderConversationList();
+          renderPeerHeader();
+        }
+      }
+      async function sendMessage(text) {
+        if (!activeId || busy)
+          return;
+        const body = text.trim();
+        const files = [...pendingFiles];
+        if (!body && !files.length)
+          return;
+        busy = true;
+        let sentOk = false;
+        try {
+          if (files.length) {
+            for (const file of files) {
+              const payload2 = {
+                body: body && files.indexOf(file) === 0 ? body : "",
+                attachment: {
+                  name: file.name,
+                  mime: file.mime,
+                  dataBase64: file.dataBase64
+                }
+              };
+              if (replyTo?.id && files.indexOf(file) === 0)
+                payload2.replyToId = replyTo.id;
+              const res2 = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
+                method: "POST",
+                body: payload2
+              });
+              if (!res2?.ok) {
+                toast(host?.t("msgr.sendFailed", { msg: res2?.error || res2?.code || "" }) || "Send failed");
+                break;
+              }
+              sentOk = true;
+              if (res2.data?.message)
+                upsertIncomingMessage(res2.data.message);
+            }
+            pendingFiles = [];
+            renderPendingFiles();
+            setReplyTo(null);
+            await loadConversations();
+            if (sentOk)
+              playMsgrSound("send");
+            return;
+          }
+          const payload = { body };
+          if (replyTo?.id)
+            payload.replyToId = replyTo.id;
+          const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
+            method: "POST",
+            body: payload
+          });
+          if (res?.ok && res.data?.message) {
+            setReplyTo(null);
+            upsertIncomingMessage(res.data.message);
+            await loadConversations();
+            playMsgrSound("send");
+          } else if (!res?.ok) {
+            toast(host?.t("msgr.sendFailed", { msg: res?.error || res?.code || "" }) || "Send failed");
+          }
+        } finally {
+          busy = false;
+        }
+      }
+      async function deleteMessage(msgId) {
+        if (!activeId)
+          return;
+        const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages/${encodeURIComponent(msgId)}`, { method: "DELETE" });
+        if (res?.ok && res.data?.message) {
+          upsertIncomingMessage(res.data.message);
+          await loadConversations();
+        }
+      }
+      function hideCtx() {
+        const ctx = $2("msgr-ctx");
+        if (ctx) {
+          ctx.classList.add("hidden");
+          ctx.innerHTML = "";
+        }
+      }
+      function collapseActiveChat() {
+        if (!activeId)
+          return;
+        activeId = null;
+        messages = [];
+        setReplyTo(null);
+        pendingFiles = [];
+        renderPendingFiles();
+        setAttachMenuOpen(false);
+        hideCtx();
+        renderMessages();
+        renderPeerHeader();
+        renderConversationList();
+        persistAccountCache();
+      }
+      function isMessengerTabActive() {
+        return Boolean($2("tab-messenger")?.classList.contains("active"));
+      }
+      function isMsgrOverlayVisible(id) {
+        const el = $2(id);
+        if (!el || el.classList.contains("hidden"))
+          return false;
+        return el.getAttribute("aria-hidden") !== "true";
+      }
+      var lastCtxPos = { x: 40, y: 80 };
+      function showCtx(x2, y2, items) {
+        const ctx = $2("msgr-ctx");
+        if (!ctx || !host)
+          return;
+        lastCtxPos = { x: x2, y: y2 };
+        ctx.innerHTML = items.map((it2, i) => `<button type="button" class="msgr-ctx__item ${it2.danger ? "is-danger" : ""}" data-i="${i}">${host.escapeHtml(it2.label)}</button>`).join("");
+        ctx.classList.remove("hidden");
+        const rect = ctx.getBoundingClientRect();
+        const left = Math.min(x2, window.innerWidth - rect.width - 8);
+        const top = Math.min(y2, window.innerHeight - rect.height - 8);
+        ctx.style.left = `${Math.max(8, left)}px`;
+        ctx.style.top = `${Math.max(8, top)}px`;
+        ctx.querySelectorAll(".msgr-ctx__item").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const i = Number(btn.dataset.i);
+            hideCtx();
+            items[i]?.action();
+          });
+        });
+      }
+      function renderSearchResults(users, opts) {
+        const box = $2("msgr-search-results");
+        if (!box || !host)
+          return;
+        const query = String(opts?.query || "").trim();
+        if (!query) {
+          box.hidden = true;
+          box.innerHTML = "";
+          return;
+        }
+        box.hidden = false;
+        if (opts?.failed) {
+          box.innerHTML = `<div class="msgr-search-empty">${host.escapeHtml(host.t("msgr.searchFailed"))}</div>`;
+          return;
+        }
+        if (!users.length) {
+          box.innerHTML = `<div class="msgr-search-empty">${host.escapeHtml(host.t("msgr.searchEmpty"))}</div>`;
+          return;
+        }
+        box.innerHTML = users.map((u) => {
+          ensureAvatar(u);
+          return `
+        <button type="button" class="msgr-search-hit" data-user-id="${host.escapeHtml(u.id)}">
+          <span class="msgr-avatar">${avatarImgHtml(u, 32, u.username.slice(0, 1))}</span>
+          <span class="msgr-search-hit__meta">
+            <span class="msgr-search-hit__name">${host.escapeHtml(u.username)}</span>
+            <span class="msgr-badge ${providerClass(u.provider)}">${host.escapeHtml(providerLabel(u.provider))}</span>
+          </span>
+        </button>`;
+        }).join("");
+      }
+      async function runSearch(q2) {
+        const query = q2.trim();
+        if (query.length < 2) {
+          renderSearchResults([], { query: "" });
+          return;
+        }
+        const res = await req("/users/search", { query: { q: query, limit: 20 } });
+        if (!res?.ok) {
+          renderSearchResults([], { query, failed: true });
+          return;
+        }
+        const users = Array.isArray(res.data?.users) ? res.data.users : [];
+        renderSearchResults(users, { query });
+      }
+      async function startDm(userId) {
+        const res = await req("/conversations/dm", { method: "POST", body: { userId } });
+        renderSearchResults([], { query: "" });
+        const input = $2("msgr-search");
+        if (input)
+          input.value = "";
+        if (res?.ok && res.data?.conversation?.id) {
+          setRailTab("chats");
+          await loadConversations();
+          await openConversation(res.data.conversation.id);
+        } else if (!res?.ok) {
+          toast(host?.t("msgr.dmFailed", { msg: res?.error || res?.code || "" }) || "DM failed");
+        }
+      }
+      async function createGroup() {
+        if (!host)
+          return;
+        const result = await askGroupCreate();
+        if (!result?.title)
+          return;
+        const res = await req("/conversations/group", {
+          method: "POST",
+          body: { title: result.title, memberIds: result.memberIds }
+        });
+        if (res?.ok && res.data?.conversation?.id) {
+          await loadConversations();
+          await openConversation(res.data.conversation.id);
+        } else {
+          window.alert(res?.error || host.t("msgr.errorHint"));
+        }
+      }
+      function askGroupCreate() {
+        return new Promise((resolve) => {
+          const overlay = $2("modal-msgr-group");
+          const input = $2("modal-msgr-group-input");
+          const search = $2("modal-msgr-group-search");
+          const pickedEl = $2("modal-msgr-group-picked");
+          const resultsEl = $2("modal-msgr-group-results");
+          const ok = $2("modal-msgr-group-ok");
+          const cancel = $2("modal-msgr-group-cancel");
+          const closeBtn = $2("modal-msgr-group-close");
+          if (!overlay || !input || !ok || !cancel) {
+            resolve(null);
+            return;
+          }
+          const picked = /* @__PURE__ */ new Map();
+          input.value = "";
+          if (search)
+            search.value = "";
+          if (pickedEl)
+            pickedEl.innerHTML = "";
+          if (resultsEl)
+            resultsEl.innerHTML = "";
+          openOverlay("modal-msgr-group");
+          setTimeout(() => input.focus(), 30);
+          const renderPicked = () => {
+            if (!pickedEl || !host)
+              return;
+            pickedEl.innerHTML = [...picked.values()].map((u) => `<button type="button" class="msgr-chip" data-id="${host.escapeHtml(u.id)}">${host.escapeHtml(u.username)} \xD7</button>`).join("");
+          };
+          const finish = (value) => {
+            closeOverlay("modal-msgr-group");
+            ok.removeEventListener("click", onOk);
+            cancel.removeEventListener("click", onCancel);
+            closeBtn?.removeEventListener("click", onCancel);
+            overlay.removeEventListener("click", onBackdrop);
+            input.removeEventListener("keydown", onKey);
+            search?.removeEventListener("input", onSearch);
+            pickedEl?.removeEventListener("click", onPickedClick);
+            resultsEl?.removeEventListener("click", onResultClick);
+            resolve(value);
+          };
+          const onOk = () => {
+            const v2 = input.value.trim().slice(0, 64);
+            if (!v2)
+              return;
+            finish({ title: v2, memberIds: [...picked.keys()] });
+          };
+          const onCancel = () => finish(null);
+          const onBackdrop = (e) => {
+            if (e.target === overlay)
+              onCancel();
+          };
+          const onKey = (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onOk();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          };
+          const onSearch = () => {
+            if (groupSearchTimer)
+              clearTimeout(groupSearchTimer);
+            groupSearchTimer = setTimeout(async () => {
+              const q2 = search?.value.trim() || "";
+              if (q2.length < 2 || !resultsEl || !host) {
+                if (resultsEl)
+                  resultsEl.innerHTML = "";
+                return;
+              }
+              const res = await req("/users/search", { query: { q: q2, limit: 12 } });
+              const users = Array.isArray(res?.data?.users) ? res.data.users : [];
+              resultsEl.innerHTML = users.filter((u) => !picked.has(u.id)).map((u) => `<button type="button" class="msgr-search-hit" data-user-id="${host.escapeHtml(u.id)}" data-name="${host.escapeHtml(u.username)}" data-provider="${host.escapeHtml(u.provider)}">
+                <span class="msgr-search-hit__name">${host.escapeHtml(u.username)}</span>
+                <span class="msgr-badge ${providerClass(u.provider)}">${host.escapeHtml(providerLabel(u.provider))}</span>
+              </button>`).join("");
+            }, 250);
+          };
+          const onPickedClick = (e) => {
+            const btn = e.target.closest(".msgr-chip");
+            const id = btn?.getAttribute("data-id");
+            if (id) {
+              picked.delete(id);
+              renderPicked();
+            }
+          };
+          const onResultClick = (e) => {
+            const btn = e.target.closest(".msgr-search-hit");
+            const id = btn?.getAttribute("data-user-id");
+            const name = btn?.getAttribute("data-name") || "";
+            const provider = btn?.getAttribute("data-provider") || "msa";
+            if (!id)
+              return;
+            picked.set(id, { id, username: name, provider, uuid: "" });
+            renderPicked();
+            if (search)
+              search.value = "";
+            if (resultsEl)
+              resultsEl.innerHTML = "";
+          };
+          ok.addEventListener("click", onOk);
+          cancel.addEventListener("click", onCancel);
+          closeBtn?.addEventListener("click", onCancel);
+          overlay.addEventListener("click", onBackdrop);
+          input.addEventListener("keydown", onKey);
+          search?.addEventListener("input", onSearch);
+          pickedEl?.addEventListener("click", onPickedClick);
+          resultsEl?.addEventListener("click", onResultClick);
+        });
+      }
+      function readModalBgHex() {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue("--bg-base").trim();
+        const m2 = raw.match(/^#([0-9a-f]{6})$/i);
+        if (m2)
+          return parseInt(m2[1], 16);
+        return PROFILE_BG_FALLBACK;
+      }
+      function disposeProfileViewer() {
+        if (profileViewer && !profileViewer.disposed) {
+          try {
+            profileViewer.dispose();
+          } catch {
+          }
+        }
+        profileViewer = null;
+        profileSkinLoaded = null;
+      }
+      function fitProfileViewer() {
+        if (!profileViewer || profileViewer.disposed)
+          return;
+        const canvas = $2("msgr-profile-canvas");
+        if (!canvas)
+          return;
+        const w2 = canvas.clientWidth || 280;
+        const h = canvas.clientHeight || 420;
+        if (w2 < 2 || h < 2)
+          return;
+        profileViewer.setSize(w2, h);
+        profileViewer.fitPlayerToFrame(PROFILE_FRAME);
+      }
+      function applyProfilePresenceMood(online) {
+        if (!profileViewer || profileViewer.disposed)
+          return;
+        profileViewer.setAnimation((0, skinviewengine_1.createSkinAnimation)(online ? "idle" : "sad"));
+        profileViewer.setCursorFollow(online);
+        if (!online)
+          profileViewer.setCursorAim(0, 0);
+        profileViewer.applyLightSettings(online ? PROFILE_LIGHT_ONLINE : PROFILE_LIGHT_OFFLINE);
+        profileViewer.lighting.hemi.intensity = online ? PROFILE_HEMI_ONLINE : PROFILE_HEMI_OFFLINE;
+        profileViewer.lighting.rim.intensity = online ? PROFILE_RIM_ONLINE : PROFILE_RIM_OFFLINE;
+      }
+      async function ensureProfileViewer(skinUrl, online = true) {
+        const canvas = $2("msgr-profile-canvas");
+        const fallback = $2("msgr-profile-skin-fallback");
+        if (!canvas)
+          return;
+        if (!skinUrl) {
+          disposeProfileViewer();
+          canvas.hidden = true;
+          if (fallback)
+            fallback.hidden = false;
+          return;
+        }
+        canvas.hidden = false;
+        if (fallback)
+          fallback.hidden = true;
+        try {
+          if (!profileViewer || profileViewer.disposed) {
+            profileViewer = new skinviewengine_1.SkinViewEngine(canvas, {
+              autoDetectModel: true,
+              idleAnimation: true,
+              enableControls: true,
+              antialias: true,
+              transparent: false,
+              presentation: "full",
+              enableEffects: true,
+              autoResize: false
+            });
+            profileViewer.controls.enableZoom = false;
+            profileViewer.setUiFlatBackground(readModalBgHex());
+            profileSkinLoaded = null;
+            if (typeof ResizeObserver !== "undefined") {
+              new ResizeObserver(() => fitProfileViewer()).observe(canvas.parentElement || canvas);
+            }
+          }
+          if (profileSkinLoaded !== skinUrl) {
+            await profileViewer.setSkin(skinUrl);
+            profileSkinLoaded = skinUrl;
+          }
+          applyProfilePresenceMood(online);
+          requestAnimationFrame(() => {
+            profileViewer?.setUiFlatBackground(readModalBgHex());
+            applyProfilePresenceMood(online);
+            fitProfileViewer();
+            profileViewer?.start();
+          });
+        } catch (e) {
+          console.warn("[msgr] profile skin failed", e);
+          disposeProfileViewer();
+          canvas.hidden = true;
+          if (fallback) {
+            fallback.hidden = false;
+            fallback.innerHTML = "";
+          }
+        }
+      }
+      function formatJoined(ts) {
+        if (!ts)
+          return host?.t("msgr.profileNoData") || "\u2014";
+        const d2 = new Date(Number(ts));
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(d2.getDate())}.${pad(d2.getMonth() + 1)}.${d2.getFullYear()}`;
+      }
+      function shortUuid(uuid) {
+        const hex = String(uuid || "").replace(/-/g, "");
+        if (hex.length < 8)
+          return uuid || "\u2014";
+        return `${hex.slice(0, 8)}\u2026`;
+      }
+      function profileCardIconHtml(opts) {
+        const url = opts?.iconUrl?.trim();
+        const size = opts?.iconSize && opts.iconSize > 0 ? opts.iconSize : null;
+        if (url) {
+          const sizeAttr = size ? ` width="${size}" height="${size}"` : "";
+          const sizeClass = size ? ` msgr-profile-card__icon--${size}` : "";
+          return `<div class="msgr-profile-card__icon${sizeClass}"><img src="${host.escapeHtml(url)}" alt=""${sizeAttr}></div>`;
+        }
+        const initials = (opts?.iconText || opts?.title || "?").slice(0, 2).toUpperCase();
+        return `<div class="msgr-profile-card__icon">${host.escapeHtml(initials)}</div>`;
+      }
+      function profileCardHtml(label, title, sub, opts) {
+        const click = opts?.clickAct ? ` data-card-act="${host.escapeHtml(opts.clickAct)}" role="button" tabindex="0"` : "";
+        const clickClass = opts?.clickAct ? " is-clickable" : "";
+        const key = opts?.cardKey ? ` data-profile-card="${host.escapeHtml(opts.cardKey)}"` : "";
+        return `<div class="msgr-profile-card${clickClass}"${click}${key}>
+    ${profileCardIconHtml({ iconUrl: opts?.iconUrl, iconText: opts?.iconText, title, iconSize: opts?.iconSize })}
+    <div class="msgr-profile-card__meta">
+      <div class="msgr-profile-card__label">${host.escapeHtml(label)}</div>
+      <div class="msgr-profile-card__title">${host.escapeHtml(title)}</div>
+      ${sub ? `<div class="msgr-profile-card__sub">${host.escapeHtml(sub)}</div>` : ""}
+    </div>
+  </div>`;
+      }
+      function setProfileMoreMenuOpen(open) {
+        const menu = $2("msgr-profile-more-menu");
+        const btn = $2("msgr-profile-more");
+        if (!menu || !btn)
+          return;
+        if (open) {
+          menu.classList.remove("hidden");
+          requestAnimationFrame(() => menu.classList.add("is-open"));
+          btn.setAttribute("aria-expanded", "true");
+        } else if (menu.classList.contains("is-open") || !menu.classList.contains("hidden")) {
+          menu.classList.remove("is-open");
+          btn.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!menu.classList.contains("is-open"))
+              menu.classList.add("hidden");
+          }, 160);
+        }
+      }
+      function renderProfileActionsBar(primaryHtml, menuItems) {
+        const items = menuItems.map((it2) => `<button type="button" class="msgr-profile__more-item${it2.danger ? " is-danger" : ""}" role="menuitem" data-act="${host.escapeHtml(it2.act)}">${host.escapeHtml(it2.label)}</button>`).join("");
+        return `
+    ${primaryHtml}
+    <div class="msgr-profile__more-wrap">
+      <button type="button" class="msgr-profile__more-btn" id="msgr-profile-more" aria-haspopup="menu" aria-expanded="false" title="${host.escapeHtml(host.t("msgr.moreActions"))}">
+        <span aria-hidden="true">\xB7\xB7\xB7</span>
+      </button>
+      <div class="msgr-profile__more-menu hidden" id="msgr-profile-more-menu" role="menu" aria-hidden="true">${items}</div>
+    </div>`;
+      }
+      function bindProfileActionsBar(actionsEl, onAct) {
+        actionsEl.onclick = (e) => {
+          const moreBtn = e.target.closest("#msgr-profile-more");
+          if (moreBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const menu = $2("msgr-profile-more-menu");
+            const open = menu?.classList.contains("is-open");
+            setProfileMoreMenuOpen(!open);
+            return;
+          }
+          const btn = e.target.closest("[data-act]");
+          const act = btn?.getAttribute("data-act");
+          if (!act)
+            return;
+          setProfileMoreMenuOpen(false);
+          void onAct(act);
+        };
+      }
+      function resolveBuildCardIcon(name, hasRealName) {
+        if (!hasRealName || !name)
+          return null;
+        return host?.resolveBuildIcon?.(name) || DEFAULT_BUILD_ICON;
+      }
+      function resolveServerCardIcon(name, hasRealName) {
+        if (!hasRealName || !name)
+          return null;
+        return host?.resolveServerIcon?.(name) || DEFAULT_SERVER_ICON;
+      }
+      function askPromptText(opts) {
+        return new Promise((resolve) => {
+          const overlay = $2("modal-msgr-prompt");
+          const titleEl = $2("modal-msgr-prompt-title");
+          const subEl = $2("modal-msgr-prompt-sub");
+          const input = $2("modal-msgr-prompt-input");
+          const resultsEl = $2("modal-msgr-prompt-results");
+          const ok = $2("modal-msgr-prompt-ok");
+          const cancel = $2("modal-msgr-prompt-cancel");
+          const closeBtn = $2("modal-msgr-prompt-close");
+          if (!overlay || !input || !ok || !cancel) {
+            resolve(null);
+            return;
+          }
+          if (titleEl)
+            titleEl.textContent = opts.title;
+          if (subEl)
+            subEl.textContent = opts.sub || "";
+          if (ok)
+            ok.textContent = opts.okLabel || host?.t("btn.save") || "OK";
+          input.value = opts.value || "";
+          input.placeholder = opts.placeholder || "";
+          input.readOnly = Boolean(opts.selectAll);
+          const maxLen = opts.maxLength || (opts.searchUsers ? 32 : opts.pickBuild ? 200 : 64);
+          input.maxLength = maxLen;
+          if (resultsEl) {
+            resultsEl.hidden = !(opts.searchUsers || opts.pickBuild);
+            resultsEl.innerHTML = "";
+          }
+          openOverlay("modal-msgr-prompt");
+          setTimeout(() => {
+            input.focus();
+            if (opts.selectAll)
+              input.select();
+          }, 40);
+          let pickedUserId = null;
+          let pickedBuildId = null;
+          let searchTimerLocal = null;
+          const renderBuildHits = (q2) => {
+            if (!resultsEl || !host)
+              return;
+            const builds = host.listLocalBuilds?.() || [];
+            const qq = q2.trim().toLowerCase();
+            const hits = builds.filter((b2) => !qq || b2.name.toLowerCase().includes(qq) || b2.meta.toLowerCase().includes(qq)).slice(0, 12);
+            resultsEl.hidden = false;
+            resultsEl.innerHTML = hits.length ? hits.map((b2) => `<button type="button" class="msgr-search-hit" data-build-id="${host.escapeHtml(b2.id)}">
+                  <span class="msgr-search-hit__name">${host.escapeHtml(b2.name)}</span>
+                  <span class="msgr-search-hit__sub">${host.escapeHtml(b2.meta)}</span>
+                </button>`).join("") : `<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.noLocalBuilds"))}</div>`;
+          };
+          const finish = (value) => {
+            closeOverlay("modal-msgr-prompt");
+            input.readOnly = false;
+            ok.removeEventListener("click", onOk);
+            cancel.removeEventListener("click", onCancel);
+            closeBtn?.removeEventListener("click", onCancel);
+            overlay.removeEventListener("click", onBackdrop);
+            input.removeEventListener("keydown", onKey);
+            input.removeEventListener("input", onInput);
+            resultsEl?.removeEventListener("click", onResultClick);
+            if (searchTimerLocal)
+              clearTimeout(searchTimerLocal);
+            resolve(value);
+          };
+          const onOk = () => {
+            if (opts.searchUsers) {
+              finish(pickedUserId);
+              return;
+            }
+            if (opts.pickBuild) {
+              finish(pickedBuildId || input.value.trim() || null);
+              return;
+            }
+            const v2 = input.value.trim().slice(0, maxLen);
+            finish(v2 || null);
+          };
+          const onCancel = () => finish(null);
+          const onBackdrop = (e) => {
+            if (e.target === overlay)
+              onCancel();
+          };
+          const onKey = (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onOk();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          };
+          const onInput = () => {
+            pickedUserId = null;
+            pickedBuildId = null;
+            if (opts.pickBuild) {
+              renderBuildHits(input.value);
+              return;
+            }
+            if (!opts.searchUsers || !resultsEl || !host)
+              return;
+            if (searchTimerLocal)
+              clearTimeout(searchTimerLocal);
+            searchTimerLocal = setTimeout(async () => {
+              const q2 = input.value.trim();
+              if (q2.length < 2) {
+                resultsEl.innerHTML = "";
+                return;
+              }
+              const res = await req("/users/search", { query: { q: q2, limit: 8 } });
+              const users = Array.isArray(res?.data?.users) ? res.data.users : [];
+              resultsEl.hidden = false;
+              resultsEl.innerHTML = users.map((u) => `<button type="button" class="msgr-search-hit" data-user-id="${host.escapeHtml(u.id)}">
+                <span class="msgr-search-hit__name">${host.escapeHtml(u.username)}</span>
+                <span class="msgr-badge ${providerClass(u.provider)}">${host.escapeHtml(providerLabel(u.provider))}</span>
+              </button>`).join("");
+            }, 250);
+          };
+          const onResultClick = (e) => {
+            const btn = e.target.closest(".msgr-search-hit");
+            if (!btn)
+              return;
+            const buildId = btn.getAttribute("data-build-id");
+            if (buildId) {
+              pickedBuildId = buildId;
+              const name2 = btn.querySelector(".msgr-search-hit__name")?.textContent || "";
+              input.value = name2;
+              finish(buildId);
+              return;
+            }
+            const id = btn.getAttribute("data-user-id");
+            if (!id)
+              return;
+            pickedUserId = id;
+            const name = btn.querySelector(".msgr-search-hit__name")?.textContent || "";
+            input.value = name;
+            finish(id);
+          };
+          if (opts.pickBuild)
+            renderBuildHits("");
+          ok.addEventListener("click", onOk);
+          cancel.addEventListener("click", onCancel);
+          closeBtn?.addEventListener("click", onCancel);
+          overlay.addEventListener("click", onBackdrop);
+          input.addEventListener("keydown", onKey);
+          input.addEventListener("input", onInput);
+          resultsEl?.addEventListener("click", onResultClick);
+        });
+      }
+      function closeProfileModal() {
+        setProfileMoreMenuOpen(false);
+        openProfileUser = null;
+        disposeProfileViewer();
+        closeOverlay("modal-msgr-profile");
+        const overlay = $2("modal-msgr-profile");
+        overlay?.setAttribute("aria-hidden", "true");
+      }
+      async function fillDmProfile(profile, conv, els) {
+        if (!host)
+          return;
+        openProfileUser = profile;
+        const { titleEl, badgesEl, statusEl, avatarEl, rowsEl, membersEl, actionsEl, fallback } = els;
+        titleEl.textContent = profile.username;
+        badgesEl.innerHTML = `<span class="msgr-badge ${providerClass(profile.provider)}">${host.escapeHtml(providerLabel(profile.provider))}</span>`;
+        avatarEl.innerHTML = avatarImgHtml(profile, 44, profile.username.slice(0, 1));
+        const online = isOnline(profile);
+        const p = resolvePresence(profile);
+        statusEl.className = `msgr-profile__status ${online ? "is-online" : ""}`;
+        if (!online) {
+          statusEl.textContent = formatLastSeen(profile.lastSeenAt);
+        } else if (p === "busy") {
+          statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.statusBusy"))}`;
+        } else if (p === "dnd") {
+          statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.statusDnd"))}`;
+        } else {
+          statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.online"))}`;
+        }
+        const a = profile.activity;
+        const playingTitle = a?.playing && a.build ? a.build : host.t("msgr.profileIdle");
+        const playingSub = a?.playing && a.build ? [a.version, a.loader, a.server].filter(Boolean).join(" \xB7 ") : "";
+        const favRaw = profile.favoriteBuild || null;
+        const fav = favRaw || host.t("msgr.profileNoFavorite");
+        const favSub = favRaw && profile.favoriteBuildCount ? host.t("msgr.profileFavoriteCount", { n: String(profile.favoriteBuildCount) }) : void 0;
+        const lastBuildRaw = profile.lastBuild || !a?.playing && a?.build || null;
+        const lastBuild = lastBuildRaw || host.t("msgr.profileNoData");
+        const lastBuildSub = profile.lastBuildMeta || void 0;
+        const lastServerRaw = profile.lastServer || !a?.playing && a?.server || null;
+        const lastServer = lastServerRaw || host.t("msgr.profileNoServer");
+        const lastServerSub = profile.lastServerMeta || void 0;
+        const accountTitle = providerLabelFull(profile.provider);
+        const accountSub = shortUuid(profile.uuid);
+        const playingIcon = a?.playing && a.build ? resolveBuildCardIcon(a.build, true) : null;
+        rowsEl.innerHTML = profileCardHtml(host.t("msgr.profileLastSeen"), formatLastSeen(profile.lastSeenAt), void 0, {
+          iconText: online ? "ON" : "OFF",
+          cardKey: "lastSeen"
+        }) + profileCardHtml(host.t("msgr.profilePlayingNow"), playingTitle, playingSub || void 0, {
+          iconUrl: playingIcon,
+          iconText: playingTitle,
+          cardKey: "playing"
+        }) + profileCardHtml(host.t("msgr.profileLastBuild"), String(lastBuild), lastBuildSub, {
+          iconUrl: resolveBuildCardIcon(String(lastBuildRaw || ""), Boolean(lastBuildRaw)),
+          iconText: String(lastBuild)
+        }) + profileCardHtml(host.t("msgr.profileLastServer"), String(lastServer), lastServerSub, {
+          iconUrl: resolveServerCardIcon(String(lastServerRaw || ""), Boolean(lastServerRaw)),
+          iconText: String(lastServer)
+        }) + profileCardHtml(host.t("msgr.profileFavorite"), fav, favSub, {
+          iconUrl: resolveBuildCardIcon(favRaw, Boolean(favRaw)),
+          iconText: fav
+        }) + `<div class="msgr-profile__cards-row">` + profileCardHtml(host.t("msgr.profileAccountType"), accountTitle, accountSub, {
+          iconUrl: providerIconUrl(profile.provider),
+          iconSize: 24
+        }) + profileCardHtml(host.t("msgr.profileJoined"), formatJoined(profile.createdAt), profile.sharedChats != null ? host.t("msgr.profileShared", { n: String(profile.sharedChats) }) : void 0, { iconUrl: ICON_JOINED, iconSize: 30 }) + `</div>`;
+        membersEl.hidden = false;
+        membersEl.innerHTML = "";
+        setProfileTabsVisible(false);
+        setProfileSkinPanel("dm");
+        if (fallback)
+          fallback.textContent = profile.username.slice(0, 1).toUpperCase();
+        await ensureProfileViewer(fullSkinTextureUrl(profile), online);
+        const blocked = Boolean(profile.blockedByMe);
+        const fs = String(profile.friendship || "none");
+        const canJoin = fs === "friends" && Boolean(profile.activity?.playing && profile.activity?.hosting && profile.activity?.serverHost || lastGameInvite && lastGameInvite.from.id === profile.id);
+        const menuItems = [];
+        if (!blocked) {
+          if (fs === "friends")
+            menuItems.push({ act: "unfriend", label: host.t("msgr.friendRemove") });
+          else if (fs === "outgoing")
+            menuItems.push({ act: "cancel-friend", label: host.t("msgr.friendCancel") });
+          else if (fs === "incoming") {
+            menuItems.push({ act: "accept-friend", label: host.t("msgr.friendAccept") });
+            menuItems.push({ act: "decline-friend", label: host.t("msgr.friendDecline") });
+          } else
+            menuItems.push({ act: "add-friend", label: host.t("msgr.friendAdd") });
+        }
+        menuItems.push({ act: "copy-name", label: host.t("msgr.actionCopyUsername") });
+        if (conv) {
+          menuItems.push({
+            act: "mute",
+            label: host.t(isConvMuted(conv.id) ? "msgr.actionUnmute" : "msgr.actionMute")
+          });
+          if (isConvMuted(conv.id)) {
+            const until = getMuteUntil(conv.id);
+            if (until !== void 0) {
+              menuItems.push({ act: "mute-info", label: formatMuteUntilLabel(until) });
+            }
+          }
+          menuItems.push({
+            act: "pin",
+            label: host.t(isConvPinned(conv.id) ? "msgr.actionUnpin" : "msgr.actionPin")
+          });
+        }
+        menuItems.push({
+          act: "block",
+          label: host.t(blocked ? "msgr.actionUnblock" : "msgr.actionBlock")
+        });
+        if (conv)
+          menuItems.push({ act: "hide", label: host.t("msgr.actionDeleteChat"), danger: true });
+        const primaryBtns = [
+          canJoin ? `<button type="button" class="stngs-btn primary" data-act="join-game">${host.escapeHtml(host.t("msgr.joinPlay"))}</button>` : "",
+          `<button type="button" class="stngs-btn ${canJoin ? "ghost" : "primary"}" data-act="write">${host.escapeHtml(host.t("msgr.actionWrite"))}</button>`
+        ].filter(Boolean).join("");
+        actionsEl.innerHTML = renderProfileActionsBar(primaryBtns, menuItems);
+        bindProfileActionsBar(actionsEl, async (act) => {
+          if (act === "join-game") {
+            const fromInvite = lastGameInvite && lastGameInvite.from.id === profile.id ? lastGameInvite : null;
+            if (fromInvite) {
+              await joinFromInvite(fromInvite);
+              return;
+            }
+            const hostPort = parseHostPort(String(profile.activity?.serverHost || ""));
+            if (!hostPort || !host?.launchJoinServer) {
+              toast(host.t("msgr.joinFailed", { msg: relayErrMsg("address") }));
+              return;
+            }
+            if (profile.activity?.build) {
+              toast(host.t("msgr.joinBuildHint", { name: profile.activity.build }));
+            }
+            await host.launchJoinServer({
+              ip: hostPort.ip,
+              port: hostPort.port,
+              name: profile.activity?.serverName || profile.username
+            }, { buildName: profile.activity?.build, gameVersion: profile.activity?.version });
+            return;
+          }
+          if (act === "write") {
+            closeProfileModal();
+            await startDm(profile.id);
+            return;
+          }
+          if (act === "copy-name") {
+            try {
+              await navigator.clipboard.writeText(profile.username);
+              toast(host.t("msgr.copied"));
+            } catch {
+              toast(host.t("msgr.copyFailed"));
+            }
+            return;
+          }
+          if (act === "mute-info")
+            return;
+          if (act === "mute" && conv) {
+            const btn = actionsEl.querySelector('[data-act="mute"]');
+            const r = btn?.getBoundingClientRect();
+            openMuteMenu(conv.id, r ? r.left : 40, r ? r.bottom + 4 : 80, () => void openProfileModal());
+            return;
+          }
+          if (act === "pin" && conv) {
+            const pinned = toggleConvPin(conv.id);
+            toast(host.t(pinned ? "msgr.pinnedOk" : "msgr.unpinnedOk"));
+            renderConversationList();
+            void openProfileModal();
+            return;
+          }
+          if (act === "add-friend") {
+            const res = await req(`/friends/${encodeURIComponent(profile.id)}/request`, { method: "POST", body: {} });
+            if (!res?.ok) {
+              toast(host.t("msgr.friendFailed", { msg: res?.error || res?.code || "" }));
+              return;
+            }
+            toast(host.t(res.data?.status === "friends" ? "msgr.friendAcceptedOk" : "msgr.friendRequestOk"));
+            closeProfileModal();
+            void refreshFriendsRail();
+            return;
+          }
+          if (act === "accept-friend") {
+            const res = await req(`/friends/${encodeURIComponent(profile.id)}/accept`, { method: "POST", body: {} });
+            if (!res?.ok) {
+              toast(host.t("msgr.friendFailed", { msg: res?.error || res?.code || "" }));
+              return;
+            }
+            toast(host.t("msgr.friendAcceptedOk"));
+            closeProfileModal();
+            void refreshFriendsRail();
+            return;
+          }
+          if (act === "decline-friend" || act === "cancel-friend" || act === "unfriend") {
+            const path = act === "unfriend" || act === "cancel-friend" ? `/friends/${encodeURIComponent(profile.id)}` : `/friends/${encodeURIComponent(profile.id)}/decline`;
+            const method = act === "decline-friend" ? "POST" : "DELETE";
+            const res = await req(path, { method, body: method === "POST" ? {} : void 0 });
+            if (!res?.ok) {
+              toast(host.t("msgr.friendFailed", { msg: res?.error || res?.code || "" }));
+              return;
+            }
+            toast(host.t(act === "unfriend" ? "msgr.friendRemovedOk" : "msgr.friendDeclinedOk"));
+            closeProfileModal();
+            void refreshFriendsRail();
+            return;
+          }
+          if (act === "block") {
+            const res = await req(`/users/${encodeURIComponent(profile.id)}/block`, {
+              method: blocked ? "DELETE" : "POST",
+              body: {}
+            });
+            if (!res?.ok) {
+              toast(host.t(blocked ? "msgr.unblockFailed" : "msgr.blockFailed", { msg: res?.error || res?.code || "" }));
+              return;
+            }
+            closeProfileModal();
+            if (!blocked) {
+              if (conv) {
+                await req(`/conversations/${encodeURIComponent(conv.id)}/hide`, { method: "POST", body: {} });
+                if (activeId === conv.id) {
+                  activeId = null;
+                  messages = [];
+                  pendingFiles = [];
+                  renderPendingFiles();
+                  setReplyTo(null);
+                }
+              }
+              toast(host.t("msgr.blockedOk"));
+            } else {
+              toast(host.t("msgr.unblockedOk"));
+            }
+            await loadConversations();
+            renderPeerHeader();
+            renderMessages();
+            void refreshFriendsRail();
+            return;
+          }
+          if (act === "hide" && conv) {
+            await req(`/conversations/${encodeURIComponent(conv.id)}/hide`, { method: "POST", body: {} });
+            closeProfileModal();
+            activeId = null;
+            messages = [];
+            await loadConversations();
+            renderPeerHeader();
+            renderMessages();
+          }
+        });
+      }
+      async function openProfileModal(opts) {
+        const conv = conversations.find((c) => c.id === activeId);
+        if (!host)
+          return;
+        const overlay = $2("modal-msgr-profile");
+        const titleEl = $2("msgr-profile-title");
+        const badgesEl = $2("msgr-profile-badges");
+        const statusEl = $2("msgr-profile-status");
+        const avatarEl = $2("msgr-profile-avatar");
+        const rowsEl = $2("msgr-profile-rows");
+        const membersEl = $2("msgr-profile-members");
+        const actionsEl = $2("msgr-profile-actions");
+        const fallback = $2("msgr-profile-skin-fallback");
+        if (!overlay || !titleEl || !badgesEl || !rowsEl || !actionsEl || !membersEl || !statusEl || !avatarEl)
+          return;
+        if (opts?.userId) {
+          openOverlay("modal-msgr-profile");
+          overlay.setAttribute("aria-hidden", "false");
+          const res = await req(`/users/${encodeURIComponent(opts.userId)}/profile`);
+          if (!res?.ok || !res.data?.profile) {
+            closeProfileModal();
+            toast(host.t("msgr.profileLoadFailed"));
+            return;
+          }
+          const profile = res.data.profile;
+          const dmConv = conversations.find((c) => c.type === "dm" && c.peer?.id === profile.id) || null;
+          await fillDmProfile(profile, dmConv, {
+            titleEl,
+            badgesEl,
+            statusEl,
+            avatarEl,
+            rowsEl,
+            membersEl,
+            actionsEl,
+            fallback
+          });
+          return;
+        }
+        if (!conv)
+          return;
+        openOverlay("modal-msgr-profile");
+        overlay.setAttribute("aria-hidden", "false");
+        if (conv.type === "dm" && conv.peer) {
+          const res = await req(`/users/${encodeURIComponent(conv.peer.id)}/profile`);
+          const profile = res?.ok ? res.data.profile : conv.peer;
+          await fillDmProfile(profile, conv, {
+            titleEl,
+            badgesEl,
+            statusEl,
+            avatarEl,
+            rowsEl,
+            membersEl,
+            actionsEl,
+            fallback
+          });
+          return;
+        }
+        openProfileUser = null;
+        titleEl.textContent = conv.title;
+        badgesEl.innerHTML = `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
+        avatarEl.innerHTML = groupAvatarHtml(conv, 44);
+        statusEl.className = "msgr-profile__status";
+        statusEl.textContent = host.t("msgr.members", { n: String(conv.members?.length || 0) });
+        const aboutCard = profileCardHtml(host.t("msgr.profileAbout"), conv.description || host.t("msgr.profileNoAbout"), conv.myRole || "member", { iconText: conv.title });
+        const buildName = conv.groupBuildName || "";
+        const buildCard = buildName ? profileCardHtml(host.t("msgr.profileGroupBuild"), buildName, conv.groupBuildMeta || void 0, {
+          iconUrl: resolveBuildCardIcon(buildName, true),
+          iconText: buildName,
+          clickAct: "open-group-build"
+        }) : "";
+        rowsEl.innerHTML = aboutCard + buildCard;
+        rowsEl.onclick = (e) => {
+          const card = e.target.closest("[data-card-act]");
+          const act = card?.getAttribute("data-card-act");
+          if (act === "open-group-build") {
+            const shareId = conv.groupBuildShareId;
+            if (shareId && host?.openInstanceShare) {
+              closeProfileModal();
+              void host.openInstanceShare(shareId);
+              return;
+            }
+            if (buildName && host?.focusBuildByName) {
+              closeProfileModal();
+              host.focusBuildByName(buildName);
+              return;
+            }
+            toast(host?.t("msgr.groupBuildOpenFailed") || "");
+          }
+        };
+        if (conv.coverUrl) {
+          setProfileSkinPanel("cover", conv.coverUrl, conv.updatedAt);
+        } else {
+          setProfileSkinPanel("hidden");
+        }
+        setProfileTabsVisible(true);
+        setProfilePanelTab("info", false);
+        const canMod = conv.myRole === "owner" || conv.myRole === "admin";
+        const isOwner = conv.myRole === "owner";
+        membersEl.hidden = false;
+        membersEl.innerHTML = (conv.members || []).map((m2) => {
+          ensureAvatar(m2);
+          const menuItems2 = [];
+          if (isOwner && m2.id !== me2?.id && m2.role !== "owner") {
+            if (m2.role === "admin") {
+              menuItems2.push(`<button type="button" data-role="member" data-uid="${host.escapeHtml(m2.id)}">${host.escapeHtml(host.t("msgr.actionDemote"))}</button>`);
+            } else {
+              menuItems2.push(`<button type="button" data-role="admin" data-uid="${host.escapeHtml(m2.id)}">${host.escapeHtml(host.t("msgr.actionPromote"))}</button>`);
+            }
+          }
+          if (canMod && m2.id !== me2?.id && m2.role !== "owner") {
+            menuItems2.push(`<button type="button" class="is-danger" data-kick="${host.escapeHtml(m2.id)}">${host.escapeHtml(host.t("msgr.actionKick"))}</button>`);
+          }
+          const more = menuItems2.length ? `<div class="msgr-profile__member-more">
+            <button type="button" class="msgr-profile__member-more-btn" data-member-more aria-label="${host.escapeHtml(host.t("msgr.moreActions"))}">\xB7\xB7\xB7</button>
+            <div class="msgr-profile__member-menu" role="menu">${menuItems2.join("")}</div>
+          </div>` : "";
+          return `<div class="msgr-profile__member is-clickable" data-user-id="${host.escapeHtml(m2.id)}">
+        <span class="msgr-avatar">${avatarImgHtml(m2, 32, m2.username.slice(0, 1))}</span>
+        <span class="msgr-profile__member-body">
+          <span class="msgr-profile__member-name">${host.escapeHtml(m2.username)}</span>
+          <span class="msgr-profile__member-meta">
+            <span class="msgr-badge ${providerClass(m2.provider)}">${host.escapeHtml(providerLabel(m2.provider))}</span>
+            <span class="msgr-profile__member-role">${host.escapeHtml(m2.role || "member")}</span>
+          </span>
+        </span>
+        ${more}
+      </div>`;
+        }).join("");
+        for (const m2 of conv.members || []) {
+          if (avatarCache.has(m2.id))
+            applyAvatarsInDom(m2.id);
+          else if (avatarInflight.has(m2.id))
+            void avatarInflight.get(m2.id)?.then(() => applyAvatarsInDom(m2.id));
+        }
+        membersEl.onclick = async (e) => {
+          const moreBtn = e.target.closest("[data-member-more]");
+          if (moreBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const wrap = moreBtn.closest(".msgr-profile__member-more");
+            const open = wrap?.classList.contains("is-open");
+            membersEl.querySelectorAll(".msgr-profile__member-more.is-open").forEach((el) => {
+              el.classList.remove("is-open");
+            });
+            if (!open)
+              wrap?.classList.add("is-open");
+            return;
+          }
+          const roleBtn = e.target.closest("[data-role]");
+          const role = roleBtn?.getAttribute("data-role");
+          const roleUid = roleBtn?.getAttribute("data-uid");
+          if (role && roleUid) {
+            const res = await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(roleUid)}`, { method: "PATCH", body: { role } });
+            if (!res?.ok)
+              toast(host.t("msgr.roleFailed", { msg: res?.error || "" }));
+            await loadConversations();
+            void openProfileModal().then(() => setProfilePanelTab("members", false));
+            return;
+          }
+          const btn = e.target.closest("[data-kick]");
+          const uid = btn?.getAttribute("data-kick");
+          if (uid) {
+            await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(uid)}`, {
+              method: "DELETE"
+            });
+            await loadConversations();
+            void openProfileModal().then(() => setProfilePanelTab("members", false));
+            return;
+          }
+          if (e.target.closest(".msgr-profile__member-menu"))
+            return;
+          const row = e.target.closest(".msgr-profile__member[data-user-id]");
+          const userId = row?.getAttribute("data-user-id");
+          if (!userId)
+            return;
+          closeProfileModal();
+          void openProfileByUserId(userId);
+        };
+        const menuItems = [];
+        if (canMod) {
+          menuItems.push({ act: "rename", label: host.t("msgr.actionRename") });
+          menuItems.push({ act: "description", label: host.t("msgr.actionDescription") });
+          menuItems.push({
+            act: "group-build",
+            label: host.t(conv.groupBuildName ? "msgr.actionGroupBuildChange" : "msgr.actionGroupBuild")
+          });
+          if (conv.groupBuildName) {
+            menuItems.push({ act: "group-build-remove", label: host.t("msgr.actionGroupBuildRemove") });
+          }
+          menuItems.push({
+            act: "avatar",
+            label: host.t(conv.avatarUrl ? "msgr.actionAvatarChange" : "msgr.actionAvatar")
+          });
+          if (conv.avatarUrl) {
+            menuItems.push({ act: "avatar-remove", label: host.t("msgr.actionAvatarRemove") });
+          }
+          menuItems.push({
+            act: "cover",
+            label: host.t(conv.coverUrl ? "msgr.actionCoverChange" : "msgr.actionCover")
+          });
+          if (conv.coverUrl) {
+            menuItems.push({ act: "cover-remove", label: host.t("msgr.actionCoverRemove") });
+          }
+          menuItems.push({ act: "add", label: host.t("msgr.actionAddMembers") });
+          menuItems.push({ act: "invite-link", label: host.t("msgr.actionInviteLink") });
+        }
+        menuItems.push({
+          act: "mute",
+          label: host.t(isConvMuted(conv.id) ? "msgr.actionUnmute" : "msgr.actionMute")
+        });
+        if (conv && isConvMuted(conv.id)) {
+          const until = getMuteUntil(conv.id);
+          if (until !== void 0) {
+            menuItems.push({
+              act: "mute-info",
+              label: formatMuteUntilLabel(until)
+            });
+          }
+        }
+        menuItems.push({
+          act: "pin",
+          label: host.t(isConvPinned(conv.id) ? "msgr.actionUnpin" : "msgr.actionPin")
+        });
+        menuItems.push({ act: "copy-title", label: host.t("msgr.actionCopyGroupName") });
+        if (conv.myRole === "owner") {
+          menuItems.push({ act: "delete", label: host.t("msgr.actionDeleteGroup"), danger: true });
+        }
+        actionsEl.innerHTML = renderProfileActionsBar(`<button type="button" class="stngs-btn danger" data-act="leave">${host.escapeHtml(host.t("msgr.actionLeave"))}</button>`, menuItems);
+        bindProfileActionsBar(actionsEl, async (act) => {
+          if (act === "rename") {
+            const title = await askPromptText({
+              title: host.t("msgr.groupTitlePrompt"),
+              sub: host.t("msgr.actionRename"),
+              value: conv.title,
+              okLabel: host.t("btn.save")
+            });
+            if (!title?.trim())
+              return;
+            await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: { title: title.trim() }
+            });
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "description") {
+            const description = await askPromptText({
+              title: host.t("msgr.actionDescription"),
+              sub: host.t("msgr.descriptionHint"),
+              value: conv.description || "",
+              placeholder: host.t("msgr.descriptionHint"),
+              okLabel: host.t("btn.save"),
+              maxLength: 280
+            });
+            if (description == null)
+              return;
+            await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: { description }
+            });
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "group-build") {
+            const mode = await askPromptText({
+              title: host.t("msgr.actionGroupBuild"),
+              sub: host.t("msgr.groupBuildHint"),
+              placeholder: host.t("msgr.groupBuildPlaceholder"),
+              okLabel: host.t("btn.save"),
+              pickBuild: true,
+              maxLength: 200
+            });
+            if (!mode)
+              return;
+            const local = (host.listLocalBuilds?.() || []).find((b2) => b2.id === mode);
+            if (local) {
+              toast(host.t("msgr.groupBuildSharing"));
+              const share = await host.createInstanceShare?.(local.id);
+              if (!share?.ok || !share.id) {
+                toast(host.t("msgr.groupBuildFailed", { msg: share?.error || "" }));
+                return;
+              }
+              await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+                method: "PATCH",
+                body: {
+                  groupBuildName: local.name,
+                  groupBuildShareId: share.id,
+                  groupBuildMeta: local.meta
+                }
+              });
+              await loadConversations();
+              void openProfileModal();
+              return;
+            }
+            const shareId = parseShareId(mode);
+            if (!shareId) {
+              toast(host.t("msgr.groupBuildInvalid"));
+              return;
+            }
+            await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: {
+                groupBuildName: mode.slice(0, 64),
+                groupBuildShareId: shareId,
+                groupBuildMeta: ""
+              }
+            });
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "group-build-remove") {
+            await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: { clearGroupBuild: true }
+            });
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "avatar") {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "image/png,image/jpeg,image/webp";
+            input.onchange = async () => {
+              const file = input.files?.[0];
+              if (!file)
+                return;
+              const reader = new FileReader();
+              reader.onload = async () => {
+                const res = await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+                  method: "PATCH",
+                  body: { avatarDataUrl: String(reader.result || "") }
+                });
+                if (!res?.ok) {
+                  toast(host.t("msgr.avatarFailed", { msg: res?.error || res?.code || "" }));
+                  return;
+                }
+                await loadConversations();
+                void openProfileModal();
+              };
+              reader.readAsDataURL(file);
+            };
+            input.click();
+            return;
+          }
+          if (act === "avatar-remove") {
+            const res = await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: { avatarUrl: "" }
+            });
+            if (!res?.ok) {
+              toast(host.t("msgr.avatarFailed", { msg: res?.error || res?.code || "" }));
+              return;
+            }
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "cover") {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "image/png,image/jpeg,image/webp";
+            input.onchange = async () => {
+              const file = input.files?.[0];
+              if (!file)
+                return;
+              const dataUrl = await openCoverCropEditor(file);
+              if (!dataUrl)
+                return;
+              const res = await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+                method: "PATCH",
+                body: { coverDataUrl: dataUrl }
+              });
+              if (!res?.ok) {
+                toast(host.t("msgr.coverFailed", { msg: res?.error || res?.code || "" }));
+                return;
+              }
+              await loadConversations();
+              void openProfileModal();
+            };
+            input.click();
+            return;
+          }
+          if (act === "cover-remove") {
+            const res = await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: { coverUrl: "" }
+            });
+            if (!res?.ok) {
+              toast(host.t("msgr.coverFailed", { msg: res?.error || res?.code || "" }));
+              return;
+            }
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "add") {
+            const userId = await askPromptText({
+              title: host.t("msgr.actionAddMembers"),
+              sub: host.t("msgr.addMembersSearch"),
+              placeholder: host.t("msgr.addMembersSearch"),
+              okLabel: host.t("msgr.actionAddMembers"),
+              searchUsers: true
+            });
+            if (!userId)
+              return;
+            await req(`/conversations/${encodeURIComponent(conv.id)}/members`, {
+              method: "POST",
+              body: { memberIds: [userId] }
+            });
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "invite-link") {
+            try {
+              const res = await req(`/conversations/${encodeURIComponent(conv.id)}/invites`, {
+                method: "POST",
+                body: {}
+              });
+              if (!res?.ok || !res.data?.invite?.token) {
+                toast(host.t("msgr.inviteCreateFailed", { msg: res?.error || res?.code || "error" }));
+                return;
+              }
+              const pageUrl = `${(0, apiBase_1.getApiBase)()}/groupInvite/${encodeURIComponent(String(res.data.invite.token))}`;
+              const confirmed = await askPromptText({
+                title: host.t("msgr.actionInviteLink"),
+                sub: host.t("msgr.inviteLinkHint"),
+                value: pageUrl,
+                okLabel: host.t("msgr.inviteCopy"),
+                maxLength: 400,
+                selectAll: true
+              });
+              if (!confirmed)
+                return;
+              try {
+                await navigator.clipboard.writeText(pageUrl);
+                toast(host.t("msgr.inviteCopied"));
+              } catch {
+                toast(host.t("msgr.copyFailed"));
+              }
+            } catch (e) {
+              toast(host.t("msgr.inviteCreateFailed", { msg: e?.message || "error" }));
+            }
+            return;
+          }
+          if (act === "mute-info")
+            return;
+          if (act === "mute") {
+            const btn = actionsEl.querySelector('[data-act="mute"]');
+            const r = btn?.getBoundingClientRect();
+            openMuteMenu(conv.id, r ? r.left : 40, r ? r.bottom + 4 : 80, () => void openProfileModal());
+            return;
+          }
+          if (act === "pin") {
+            const pinned = toggleConvPin(conv.id);
+            toast(host.t(pinned ? "msgr.pinnedOk" : "msgr.unpinnedOk"));
+            renderConversationList();
+            void openProfileModal();
+            return;
+          }
+          if (act === "copy-title") {
+            try {
+              await navigator.clipboard.writeText(conv.title);
+              toast(host.t("msgr.copied"));
+            } catch {
+              toast(host.t("msgr.copyFailed"));
+            }
+            return;
+          }
+          if (act === "leave" && me2) {
+            await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(me2.id)}`, {
+              method: "DELETE"
+            });
+            closeProfileModal();
+            activeId = null;
+            messages = [];
+            await loadConversations();
+            renderPeerHeader();
+            renderMessages();
+            return;
+          }
+          if (act === "delete") {
+            await req(`/conversations/${encodeURIComponent(conv.id)}`, { method: "DELETE" });
+            closeProfileModal();
+            activeId = null;
+            messages = [];
+            await loadConversations();
+            renderPeerHeader();
+            renderMessages();
+          }
+        });
+      }
+      function onRealtimePayload(eventName, data) {
+        if (eventName === "message" && data?.message) {
+          const msg = data.message;
+          const mine = Boolean(me2?.id && msg.senderId === me2.id);
+          if (!mine && myPresenceStatus !== "dnd" && !isConvMuted(String(msg.conversationId || ""))) {
+            playMsgrSound("message");
+          }
+          if (msg.conversationId === activeId) {
+            upsertIncomingMessage(msg);
+            void req(`/conversations/${encodeURIComponent(msg.conversationId)}/read`, {
+              method: "POST",
+              body: {}
+            });
+          }
+          void loadConversations();
+          return;
+        }
+        if (eventName === "message_deleted" && data?.message) {
+          const msg = data.message;
+          if (msg.conversationId === activeId)
+            upsertIncomingMessage(msg);
+          void loadConversations();
+          return;
+        }
+        if (eventName === "friend") {
+          if (railTab !== "chats")
+            void refreshFriendsRail();
+          if (data?.type === "request" && data?.from?.username) {
+            toast(host?.t("msgr.friendIncomingToast", { name: data.from.username }) || "Friend request");
+          } else if (data?.type === "accepted" && data?.from?.username) {
+            toast(host?.t("msgr.friendAcceptedToast", { name: data.from.username }) || "Friend accepted");
+          }
+          return;
+        }
+        if (eventName === "presence" && data?.userId) {
+          applyActivityToUsers(data.userId, data);
+          if (me2?.id === data.userId && data.presenceStatus) {
+            myPresenceStatus = normalizePresenceStatus(data.presenceStatus);
+            renderPresence(myPresenceStatus === "offline" ? "offline" : "online");
+          }
+          return;
+        }
+        if (eventName === "activity" && data?.userId) {
+          applyActivityToUsers(data.userId, data);
+          if (railTab === "worlds")
+            renderWorldsList();
+          return;
+        }
+        if (eventName === "game_invite" && data?.from?.id) {
+          lastGameInvite = {
+            mode: data.mode === "direct" ? "direct" : "relay",
+            sessionId: data.sessionId || null,
+            host: data.host || null,
+            port: data.port != null ? Number(data.port) : null,
+            publicHost: data.publicHost || null,
+            publicPort: data.publicPort != null ? Number(data.publicPort) : null,
+            buildName: data.buildName || null,
+            gameVersion: data.gameVersion || null,
+            loader: data.loader || null,
+            serverName: data.serverName || null,
+            shareId: data.shareId || null,
+            shareUrl: data.shareUrl || null,
+            from: { id: String(data.from.id), username: String(data.from.username || "") },
+            ts: Number(data.ts) || Date.now()
+          };
+          const inviteHost = lastGameInvite.mode === "relay" && lastGameInvite.publicHost && lastGameInvite.publicPort ? `${lastGameInvite.publicHost}:${lastGameInvite.publicPort}` : lastGameInvite.host ? `${lastGameInvite.host}${lastGameInvite.port ? `:${lastGameInvite.port}` : ""}` : null;
+          applyActivityToUsers(lastGameInvite.from.id, {
+            userId: lastGameInvite.from.id,
+            activity: {
+              playing: true,
+              hosting: true,
+              build: lastGameInvite.buildName,
+              version: lastGameInvite.gameVersion,
+              loader: lastGameInvite.loader,
+              server: lastGameInvite.serverName,
+              serverHost: inviteHost,
+              at: lastGameInvite.ts
+            }
+          });
+          if (railTab === "worlds")
+            renderWorldsList();
+          void loadConversations();
+          return;
+        }
+        if (eventName === "game_invite_ended") {
+          if (data?.from?.id) {
+            applyActivityToUsers(data.from.id, {
+              userId: data.from.id,
+              activity: {
+                playing: true,
+                hosting: false,
+                build: friendsBundle.friends.find((u) => u.id === data.from.id)?.activity?.build || null,
+                version: friendsBundle.friends.find((u) => u.id === data.from.id)?.activity?.version || null,
+                loader: friendsBundle.friends.find((u) => u.id === data.from.id)?.activity?.loader || null,
+                server: null,
+                serverHost: null,
+                at: Date.now()
+              }
+            });
+            if (railTab === "worlds")
+              renderWorldsList();
+          }
+          if (lastGameInvite && data?.from?.id && lastGameInvite.from.id === data.from.id) {
+            lastGameInvite = null;
+          }
+          return;
+        }
+        if (eventName === "conversation" || eventName === "conversation_updated" || eventName === "member_changed" || eventName === "read") {
+          if (data?.deleted || data?.left) {
+            if (activeId === data.conversationId) {
+              activeId = null;
+              messages = [];
+              renderMessages();
+            }
+          }
+          void loadConversations();
+        }
+      }
+      function disconnectStream() {
+        if (stream) {
+          stream.close();
+          stream = null;
+        }
+        streamToken = null;
+      }
+      function isStreamAlive() {
+        return Boolean(stream && stream.readyState !== EventSource.CLOSED);
+      }
+      function connectStream(token) {
+        if (!token) {
+          disconnectStream();
+          return;
+        }
+        if (streamToken === token && isStreamAlive())
+          return;
+        disconnectStream();
+        streamToken = token;
+        const url = `${(0, apiBase_1.getApiBase)()}/api/messenger/stream?token=${encodeURIComponent(token)}`;
+        try {
+          stream = new EventSource(url);
+        } catch {
+          streamToken = null;
+          return;
+        }
+        const handle = (eventName) => (ev) => {
+          try {
+            const data = JSON.parse(String(ev.data || "{}"));
+            onRealtimePayload(eventName, data);
+          } catch {
+          }
+        };
+        stream.addEventListener("message", handle("message"));
+        stream.addEventListener("message_deleted", handle("message_deleted"));
+        stream.addEventListener("conversation", handle("conversation"));
+        stream.addEventListener("conversation_updated", handle("conversation_updated"));
+        stream.addEventListener("member_changed", handle("member_changed"));
+        stream.addEventListener("activity", handle("activity"));
+        stream.addEventListener("presence", handle("presence"));
+        stream.addEventListener("read", handle("read"));
+        stream.addEventListener("friend", handle("friend"));
+        stream.addEventListener("game_invite", handle("game_invite"));
+        stream.addEventListener("game_invite_ended", handle("game_invite_ended"));
+        stream.onerror = () => {
+        };
+      }
+      function bindUi() {
+        const list = $2("msgr-chat-list");
+        list?.addEventListener("click", (e) => {
+          const btn = e.target.closest(".msgr-chat-item");
+          const id = btn?.getAttribute("data-id");
+          if (id)
+            void openConversation(id);
+        });
+        list?.addEventListener("contextmenu", (e) => {
+          const btn = e.target.closest(".msgr-chat-item");
+          const id = btn?.getAttribute("data-id");
+          if (!id || !host)
+            return;
+          e.preventDefault();
+          const conv = conversations.find((c) => c.id === id);
+          if (!conv)
+            return;
+          showCtx(e.clientX, e.clientY, chatActionItems(conv));
+        });
+        $2("msgr-stage-head")?.addEventListener("click", () => {
+          if (activeId)
+            void openProfileModal();
+        });
+        $2("msgr-stage-head")?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && activeId)
+            void openProfileModal();
+        });
+        $2("msgr-stage-more")?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const conv = conversations.find((c) => c.id === activeId);
+          if (!conv || !host)
+            return;
+          const btn = e.currentTarget;
+          const r = btn.getBoundingClientRect();
+          showCtx(r.left, r.bottom + 4, chatActionItems(conv));
+        });
+        $2("msgr-profile-close")?.addEventListener("click", closeProfileModal);
+        $2("modal-msgr-profile")?.addEventListener("click", (e) => {
+          if (e.target === $2("modal-msgr-profile"))
+            closeProfileModal();
+        });
+        $2("msgr-reply-clear")?.addEventListener("click", () => setReplyTo(null));
+        const messagesEl = $2("msgr-messages");
+        messagesEl?.addEventListener("contextmenu", (e) => {
+          const row = e.target.closest(".msgr-bubble-row");
+          const msgId = row?.getAttribute("data-msg-id");
+          if (!msgId || !host)
+            return;
+          e.preventDefault();
+          const msg = messages.find((m2) => m2.id === msgId);
+          if (!msg || msg.deleted)
+            return;
+          const conv = conversations.find((c) => c.id === activeId);
+          const canDelete = msg.senderId === me2?.id || conv?.type === "group" && (conv.myRole === "owner" || conv.myRole === "admin");
+          const items = [
+            {
+              label: host.t("msgr.actionReply"),
+              action: () => setReplyTo(msg)
+            },
+            {
+              label: host.t("msgr.actionCopyMessage"),
+              action: () => {
+                void navigator.clipboard.writeText(msg.body || "").then(() => toast(host.t("msgr.copied")), () => toast(host.t("msgr.copyFailed")));
+              }
+            }
+          ];
+          if (conv?.type === "group" && msg.senderId && msg.senderId !== me2?.id) {
+            items.push({
+              label: host.t("msgr.actionOpenProfile"),
+              action: () => void openProfileByUserId(msg.senderId)
+            });
+          }
+          if (canDelete) {
+            items.push({
+              label: host.t("msgr.actionDeleteMessage"),
+              danger: true,
+              action: () => void deleteMessage(msg.id)
+            });
+          }
+          showCtx(e.clientX, e.clientY, items);
+        });
+        document.addEventListener("click", (e) => {
+          const wrap = $2("msgr-profile-more")?.closest(".msgr-profile__more-wrap");
+          if (wrap && wrap.contains(e.target))
+            return;
+          setProfileMoreMenuOpen(false);
+          document.querySelectorAll(".msgr-profile__member-more.is-open").forEach((el) => {
+            el.classList.remove("is-open");
+          });
+        });
+        document.addEventListener("click", (e) => {
+          const ctx = $2("msgr-ctx");
+          if (ctx && !ctx.contains(e.target))
+            hideCtx();
+        });
+        const search = $2("msgr-search");
+        search?.addEventListener("input", () => {
+          if (searchTimer)
+            clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => void runSearch(search.value), 250);
+        });
+        const results = $2("msgr-search-results");
+        results?.addEventListener("click", (e) => {
+          const btn = e.target.closest(".msgr-search-hit");
+          const id = btn?.getAttribute("data-user-id");
+          if (id)
+            void startDm(id);
+        });
+        const form = $2("msgr-form");
+        const input = $2("msgr-input");
+        form?.addEventListener("submit", (e) => {
+          e.preventDefault();
+          if (!input)
+            return;
+          const text = input.value;
+          input.value = "";
+          input.style.height = "";
+          void sendMessage(text);
+        });
+        input?.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            form?.requestSubmit();
+          }
+        });
+        input?.addEventListener("input", () => {
+          if (!input)
+            return;
+          input.style.height = "auto";
+          input.style.height = `${Math.min(160, input.scrollHeight)}px`;
+        });
+        $2("msgr-new-group")?.addEventListener("click", () => void createGroup());
+        $2("msgr-retry")?.addEventListener("click", () => void ensureMessengerTab(true));
+        $2("msgr-tab-chats")?.addEventListener("click", () => setRailTab("chats"));
+        $2("msgr-tab-friends")?.addEventListener("click", () => setRailTab("friends"));
+        $2("msgr-tab-worlds")?.addEventListener("click", () => {
+          setRailTab("worlds");
+          void ensureLanWatch().then(() => renderWorldsList());
+        });
+        $2("msgr-profile-tab-info")?.addEventListener("click", () => setProfilePanelTab("info"));
+        $2("msgr-profile-tab-members")?.addEventListener("click", () => setProfilePanelTab("members"));
+        $2("msgr-rail-tabs")?.setAttribute("data-active", "chats");
+        $2("msgr-rail-pages")?.setAttribute("data-dir", "right");
+        $2("msgr-chat-list")?.classList.add("is-active");
+        const friendsInit = $2("msgr-friends-list");
+        if (friendsInit) {
+          friendsInit.hidden = false;
+          friendsInit.classList.remove("is-active");
+        }
+        const worldsInit = $2("msgr-worlds-list");
+        if (worldsInit) {
+          worldsInit.hidden = false;
+          worldsInit.classList.remove("is-active");
+        }
+        $2("msgr-worlds-list")?.addEventListener("click", (e) => {
+          const t = e.target;
+          if (t.closest("#msgr-share-lan")) {
+            void shareLanWithFriends();
+            return;
+          }
+          if (t.closest("#msgr-share-rescan")) {
+            void ensureLanWatch().then(() => {
+              updateSharePanel();
+              if (lastDetectedLanPort) {
+                toast(host?.t("msgr.lanPortFound", { port: String(lastDetectedLanPort) }) || "");
+              } else {
+                toast(host?.t("msgr.shareNeedLan") || "");
+              }
+            });
+            return;
+          }
+          if (t.closest("#msgr-share-stop")) {
+            void stopHostRelayShare();
+            return;
+          }
+          const copyHost = t.closest("#msgr-share-copy, #msgr-share-addr");
+          if (copyHost) {
+            const addr = copyHost.getAttribute("data-share-addr") || (hostRelaySession ? `${hostRelaySession.publicHost}:${hostRelaySession.publicPort}` : "");
+            void copyText(addr);
+            return;
+          }
+          const actBtn = t.closest("[data-world-act]");
+          if (!actBtn)
+            return;
+          const act = actBtn.getAttribute("data-world-act");
+          if (act === "copy") {
+            void copyText(actBtn.getAttribute("data-world-addr") || "");
+            return;
+          }
+          if (act === "join") {
+            const userId = actBtn.getAttribute("data-world-user") || "";
+            if (userId)
+              void joinFriendWorld(userId);
+          }
+        });
+        $2("msgr-presence")?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if ($2("msgr-presence")?.classList.contains("is-connecting"))
+            return;
+          const menu = $2("msgr-presence-menu");
+          setPresenceMenuOpen(!!menu?.classList.contains("hidden"));
+        });
+        $2("msgr-presence-menu")?.addEventListener("click", (e) => {
+          const item = e.target.closest("[data-presence]");
+          const status = item?.getAttribute("data-presence");
+          if (status === "online" || status === "busy" || status === "dnd" || status === "offline") {
+            void setMyPresenceStatus(status);
+          }
+        });
+        document.addEventListener("click", (e) => {
+          const wrap = $2("msgr-presence")?.closest(".msgr-presence-wrap");
+          if (wrap && wrap.contains(e.target))
+            return;
+          setPresenceMenuOpen(false);
+        });
+        $2("msgr-friends-list")?.addEventListener("click", (e) => {
+          const btn = e.target.closest("[data-friend-act]");
+          const act = btn?.getAttribute("data-friend-act");
+          const userId = btn?.getAttribute("data-user-id") || "";
+          if (!act)
+            return;
+          void (async () => {
+            if (act === "show-blocked") {
+              railTab = "blocked";
+              await refreshFriendsRail();
+              return;
+            }
+            if (act === "back-friends") {
+              setRailTab("friends");
+              return;
+            }
+            if (act === "write" && userId) {
+              await startDm(userId);
+              return;
+            }
+            if (act === "profile" && userId) {
+              await openProfileByUserId(userId);
+              return;
+            }
+            if (act === "accept" && userId) {
+              const res = await req(`/friends/${encodeURIComponent(userId)}/accept`, { method: "POST", body: {} });
+              if (res?.ok)
+                toast(host.t("msgr.friendAcceptedOk"));
+              else
+                toast(host.t("msgr.friendFailed", { msg: res?.error || "" }));
+              await refreshFriendsRail();
+              return;
+            }
+            if ((act === "decline" || act === "cancel") && userId) {
+              const res = act === "decline" ? await req(`/friends/${encodeURIComponent(userId)}/decline`, { method: "POST", body: {} }) : await req(`/friends/${encodeURIComponent(userId)}`, { method: "DELETE" });
+              if (res?.ok)
+                toast(host.t("msgr.friendDeclinedOk"));
+              else
+                toast(host.t("msgr.friendFailed", { msg: res?.error || "" }));
+              await refreshFriendsRail();
+              return;
+            }
+            if (act === "unblock" && userId) {
+              const res = await req(`/users/${encodeURIComponent(userId)}/block`, { method: "DELETE", body: {} });
+              if (res?.ok)
+                toast(host.t("msgr.unblockedOk"));
+              else
+                toast(host.t("msgr.unblockFailed", { msg: res?.error || "" }));
+              await refreshFriendsRail();
+            }
+          })();
+        });
+        const attachBtn = $2("msgr-attach");
+        attachBtn?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const menu = $2("msgr-attach-menu");
+          const open = menu?.classList.contains("is-open");
+          setAttachMenuOpen(!open);
+        });
+        $2("msgr-attach-menu")?.addEventListener("click", (e) => {
+          const item = e.target.closest("[data-msgr-attach]");
+          const kind = item?.getAttribute("data-msgr-attach");
+          if (kind === "file")
+            void pickMessengerFiles();
+          if (kind === "media")
+            void pickMessengerFiles({ media: true });
+        });
+        $2("msgr-attach-chips")?.addEventListener("click", (e) => {
+          const chip = e.target.closest("[data-pending-idx]");
+          const idx = Number(chip?.getAttribute("data-pending-idx"));
+          if (!Number.isFinite(idx) || idx < 0)
+            return;
+          pendingFiles.splice(idx, 1);
+          renderPendingFiles();
+        });
+        messagesEl?.addEventListener("click", (e) => {
+          const inviteAct = e.target.closest("[data-invite-act]");
+          if (inviteAct) {
+            e.preventDefault();
+            e.stopPropagation();
+            const act2 = inviteAct.getAttribute("data-invite-act");
+            const msgId2 = inviteAct.getAttribute("data-msg-id") || "";
+            const msg = messages.find((m2) => m2.id === msgId2);
+            const inv = inviteFromMeta(msg?.meta, {
+              id: msg?.senderId || "",
+              username: ""
+            }) || lastGameInvite;
+            if (!inv)
+              return;
+            if (act2 === "copy") {
+              void copyText(inviteAct.getAttribute("data-invite-addr") || inviteAddress(inv));
+              return;
+            }
+            if (act2 === "join")
+              void joinFromInvite(inv);
+            if (act2 === "build" && inv.shareId && host?.openInstanceShare) {
+              void host.openInstanceShare(inv.shareId);
+            }
+            return;
+          }
+          const mediaBtn = e.target.closest("[data-msgr-media]");
+          const mediaKind = mediaBtn?.getAttribute("data-msgr-media");
+          const mediaMsgId = mediaBtn?.getAttribute("data-msg-id");
+          if (mediaMsgId && (mediaKind === "image" || mediaKind === "video")) {
+            e.preventDefault();
+            openMediaViewer(mediaMsgId, mediaKind);
+            return;
+          }
+          const btn = e.target.closest("[data-file-act]");
+          const file = btn?.closest(".msgr-file");
+          const msgId = file?.getAttribute("data-msg-id");
+          const act = btn?.getAttribute("data-file-act");
+          if (msgId && act)
+            void handleFileAction(msgId, act);
+        });
+        $2("msgr-media-close")?.addEventListener("click", closeMediaViewer);
+        $2("modal-msgr-media")?.addEventListener("click", (e) => {
+          if (e.target === $2("modal-msgr-media"))
+            closeMediaViewer();
+        });
+        $2("msgr-media-zoom-in")?.addEventListener("click", () => setMediaViewerZoom(mediaViewerZoom + 0.25));
+        $2("msgr-media-zoom-out")?.addEventListener("click", () => setMediaViewerZoom(mediaViewerZoom - 0.25));
+        $2("msgr-media-zoom-reset")?.addEventListener("click", () => setMediaViewerZoom(1));
+        $2("msgr-media-stage")?.addEventListener("wheel", (e) => {
+          if (mediaViewerKind !== "image")
+            return;
+          e.preventDefault();
+          const dy = e.deltaY;
+          setMediaViewerZoom(mediaViewerZoom + (dy < 0 ? 0.1 : -0.1));
+        }, { passive: false });
+        const mediaVideo = $2("msgr-media-video");
+        const mediaSeek = $2("msgr-media-seek");
+        const mediaTime = $2("msgr-media-time");
+        const mediaPlay = $2("msgr-media-play");
+        const mediaMute = $2("msgr-media-mute");
+        const syncVideoUi = () => {
+          if (!mediaVideo)
+            return;
+          if (mediaSeek && mediaVideo.duration) {
+            mediaSeek.value = String(Math.round(mediaVideo.currentTime / mediaVideo.duration * 1e3));
+          }
+          if (mediaTime) {
+            mediaTime.textContent = `${formatMediaTime(mediaVideo.currentTime)} / ${formatMediaTime(mediaVideo.duration || 0)}`;
+          }
+          if (mediaPlay) {
+            mediaPlay.innerHTML = mediaVideo.paused ? '<svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 1.5v9l7-4.5L3 1.5z" fill="currentColor"/></svg>' : '<svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2.5" y="2" width="2.5" height="8" rx="0.5" fill="currentColor"/><rect x="7" y="2" width="2.5" height="8" rx="0.5" fill="currentColor"/></svg>';
+          }
+        };
+        mediaVideo?.addEventListener("timeupdate", syncVideoUi);
+        mediaVideo?.addEventListener("loadedmetadata", syncVideoUi);
+        mediaVideo?.addEventListener("play", syncVideoUi);
+        mediaVideo?.addEventListener("pause", syncVideoUi);
+        mediaPlay?.addEventListener("click", () => {
+          if (!mediaVideo)
+            return;
+          if (mediaVideo.paused)
+            void mediaVideo.play();
+          else
+            mediaVideo.pause();
+        });
+        mediaSeek?.addEventListener("input", () => {
+          if (!mediaVideo || !mediaVideo.duration)
+            return;
+          mediaVideo.currentTime = Number(mediaSeek.value) / 1e3 * mediaVideo.duration;
+        });
+        mediaMute?.addEventListener("click", () => {
+          if (!mediaVideo)
+            return;
+          mediaVideo.muted = !mediaVideo.muted;
+          mediaMute.classList.toggle("is-muted", mediaVideo.muted);
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape")
+            return;
+          if (!isMessengerTabActive())
+            return;
+          if (isMsgrOverlayVisible("modal-msgr-media")) {
+            e.preventDefault();
+            closeMediaViewer();
+            return;
+          }
+          if (isMsgrOverlayVisible("modal-msgr-profile")) {
+            e.preventDefault();
+            closeProfileModal();
+            return;
+          }
+          if (isMsgrOverlayVisible("modal-msgr-invite")) {
+            e.preventDefault();
+            closeGroupInviteModal();
+            return;
+          }
+          const ctx = $2("msgr-ctx");
+          if (ctx && !ctx.classList.contains("hidden")) {
+            e.preventDefault();
+            hideCtx();
+            return;
+          }
+          const attachMenu = $2("msgr-attach-menu");
+          if (attachMenu && !attachMenu.classList.contains("hidden")) {
+            e.preventDefault();
+            setAttachMenuOpen(false);
+            return;
+          }
+          const presenceMenu = $2("msgr-presence-menu");
+          if (presenceMenu && !presenceMenu.classList.contains("hidden")) {
+            e.preventDefault();
+            setPresenceMenuOpen(false);
+            return;
+          }
+          if (replyTo) {
+            e.preventDefault();
+            setReplyTo(null);
+            return;
+          }
+          if (activeId) {
+            e.preventDefault();
+            collapseActiveChat();
+          }
+        });
+        document.addEventListener("click", (e) => {
+          const wrap = $2("msgr-attach")?.closest(".msgr-attach-wrap") || $2("msgr-attach")?.closest(".ai-attach-wrap");
+          if (wrap && wrap.contains(e.target))
+            return;
+          setAttachMenuOpen(false);
+        });
+        $2("msgr-invite-close")?.addEventListener("click", closeGroupInviteModal);
+        $2("msgr-invite-decline")?.addEventListener("click", closeGroupInviteModal);
+        $2("msgr-invite-join")?.addEventListener("click", () => void acceptGroupInvite());
+        $2("modal-msgr-invite")?.addEventListener("click", (e) => {
+          if (e.target === $2("modal-msgr-invite"))
+            closeGroupInviteModal();
+        });
+      }
+      function startPolling() {
+        stopPolling();
+        pollTimer = setInterval(() => {
+          if (document.hidden)
+            return;
+          void loadConversations();
+          if (activeId)
+            void loadMessages(activeId);
+          void ensureLanWatch().then(() => {
+            if (railTab === "worlds")
+              renderWorldsList();
+            else
+              updateSharePanel();
+          });
+          if (railTab === "worlds")
+            void refreshWorldsRail();
+        }, POLL_FALLBACK_MS);
+      }
+      function stopPolling() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+      var inviteJoinToken = null;
+      function closeGroupInviteModal() {
+        inviteJoinToken = null;
+        closeOverlay("modal-msgr-invite");
+        $2("modal-msgr-invite")?.setAttribute("aria-hidden", "true");
+      }
+      async function openGroupInviteModal(token) {
+        if (!host)
+          return;
+        const clean = String(token || "").trim();
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(clean)) {
+          toast(host.t("msgr.inviteInvalid"));
+          return;
+        }
+        if (!sessionToken) {
+          await ensureMessengerTab(true);
+        }
+        if (!sessionToken) {
+          toast(host.t("msgr.inviteNeedAccount"));
+          return;
+        }
+        inviteJoinToken = clean;
+        const titleEl = $2("msgr-invite-title");
+        const bodyEl = $2("msgr-invite-body");
+        const avatarEl = $2("msgr-invite-avatar");
+        const joinBtn = $2("msgr-invite-join");
+        if (titleEl)
+          titleEl.textContent = "\u2026";
+        if (bodyEl)
+          bodyEl.textContent = host.t("msgr.inviteLoading");
+        if (avatarEl)
+          avatarEl.innerHTML = "";
+        if (joinBtn)
+          joinBtn.disabled = true;
+        openOverlay("modal-msgr-invite");
+        $2("modal-msgr-invite")?.setAttribute("aria-hidden", "false");
+        const res = await req(`/invites/${encodeURIComponent(clean)}`);
+        if (!res?.ok || !res.data?.invite) {
+          if (titleEl)
+            titleEl.textContent = host.t("msgr.inviteInvalid");
+          if (bodyEl)
+            bodyEl.textContent = host.t("msgr.inviteInvalidHint");
+          return;
+        }
+        const inv = res.data.invite;
+        if (titleEl)
+          titleEl.textContent = inv.title || host.t("msgr.group");
+        const nick = inv.inviter?.username || host.t("msgr.inviteSomeone");
+        if (bodyEl)
+          bodyEl.textContent = host.t("msgr.inviteBody", { name: nick });
+        if (avatarEl) {
+          if (inv.avatarUrl) {
+            avatarEl.innerHTML = `<img class="msgr-avatar__photo" src="${host.escapeHtml(resolveMsgrMediaUrl(inv.avatarUrl))}" alt="">`;
+          } else {
+            avatarEl.innerHTML = `<span class="msgr-avatar__fallback">${host.escapeHtml((inv.title || "?").slice(0, 1))}</span>`;
+          }
+        }
+        if (inv.alreadyMember && inv.conversationId) {
+          if (joinBtn) {
+            joinBtn.disabled = false;
+            joinBtn.textContent = host.t("msgr.inviteOpenChat");
+          }
+          inviteJoinToken = `open:${inv.conversationId}`;
+          return;
+        }
+        if (joinBtn) {
+          joinBtn.disabled = false;
+          joinBtn.textContent = host.t("msgr.inviteJoin");
+        }
+      }
+      async function acceptGroupInvite() {
+        if (!host || !inviteJoinToken)
+          return;
+        if (inviteJoinToken.startsWith("open:")) {
+          const id = inviteJoinToken.slice(5);
+          closeGroupInviteModal();
+          await openConversation(id);
+          return;
+        }
+        const token = inviteJoinToken;
+        const joinBtn = $2("msgr-invite-join");
+        if (joinBtn)
+          joinBtn.disabled = true;
+        const res = await req(`/invites/${encodeURIComponent(token)}/join`, { method: "POST", body: {} });
+        if (!res?.ok || !res.data?.conversation) {
+          toast(host.t("msgr.inviteJoinFailed", { msg: res?.error || res?.code || "" }));
+          if (joinBtn)
+            joinBtn.disabled = false;
+          return;
+        }
+        const conv = res.data.conversation;
+        closeGroupInviteModal();
+        toast(host.t("msgr.inviteJoinedOk"));
+        await loadConversations();
+        await openConversation(conv.id);
+      }
+      async function ensureMessengerTab(force = false) {
+        if (!host)
+          return;
+        if (!inited) {
+          bindUi();
+          bindGameRelayEvents();
+          inited = true;
+        }
+        const account = host.getAccount();
+        const type = String(account?.meta?.type || account?.type || "").toLowerCase();
+        const nextKey = accountCacheKey(account);
+        if (type !== "msa" && type !== "yggdrasil") {
+          persistAccountCache();
+          me2 = null;
+          sessionToken = null;
+          boundAccountKey = null;
+          disconnectStream();
+          stopPolling();
+          conversations = [];
+          messages = [];
+          activeId = null;
+          updateMessengerTabBadge();
+          setGate("need-account");
+          return;
+        }
+        if (boundAccountKey && nextKey && boundAccountKey !== nextKey) {
+          persistAccountCache();
+          disconnectStream();
+          stopPolling();
+          await host.api.messengerLogout?.();
+          sessionToken = null;
+          me2 = null;
+          restoreAccountCache(nextKey);
+          boundAccountKey = nextKey;
+          renderConversationList();
+          renderPeerHeader();
+          renderMessages();
+          updateMessengerTabBadge();
+        } else if (!boundAccountKey && nextKey) {
+          restoreAccountCache(nextKey);
+          boundAccountKey = nextKey;
+          renderConversationList();
+          renderPeerHeader();
+          renderMessages();
+          updateMessengerTabBadge();
+        }
+        const sameAccount = Boolean(boundAccountKey && nextKey && boundAccountKey === nextKey);
+        if (!force && sameAccount && sessionToken && me2 && isStreamAlive()) {
+          setGate("ready");
+          renderPresence(myPresenceStatus === "offline" ? "offline" : "online");
+          if (!pollTimer)
+            startPolling();
+          void loadConversations();
+          if (activeId)
+            void loadMessages(activeId);
+          else
+            renderPeerHeader();
+          updateSharePanel();
+          return;
+        }
+        setGate("loading");
+        renderPresence("connecting");
+        if (host.refreshAccount) {
+          try {
+            await host.refreshAccount();
+          } catch {
+          }
+        }
+        const fresh = host.getAccount();
+        if (!host.api.messengerSession) {
+          setGate("error", host.t("msgr.errorHint"));
+          return;
+        }
+        const session = await host.api.messengerSession(fresh);
+        if (!session?.ok) {
+          setGate(session?.code === "account_required" ? "need-account" : "error", session?.error || host.t("msgr.errorHint"));
+          return;
+        }
+        me2 = session.user;
+        if (me2?.presenceStatus)
+          myPresenceStatus = normalizePresenceStatus(me2.presenceStatus);
+        sessionToken = String(session.token || "");
+        boundAccountKey = accountCacheKey(fresh) || nextKey;
+        setGate("ready");
+        renderPresence(myPresenceStatus === "offline" ? "offline" : "online");
+        if (sessionToken && myPresenceStatus) {
+          void req("/presence", { method: "POST", body: { status: myPresenceStatus } });
+        }
+        if (sessionToken)
+          connectStream(sessionToken);
+        await syncLauncherStats();
+        await loadConversations();
+        if (activeId)
+          await loadMessages(activeId);
+        else
+          renderPeerHeader();
+        updateSharePanel();
+        startPolling();
+      }
+      async function notifyMessengerAccountChanged() {
+        if (!host)
+          return;
+        if (!inited) {
+          await host.api.messengerLogout?.();
+          return;
+        }
+        await ensureMessengerTab(true);
+      }
+      async function syncLauncherStats() {
+        const stats = host?.getLauncherStats?.();
+        if (!stats)
+          return;
+        const body = {};
+        if (stats.favoriteBuild) {
+          body.favoriteBuild = stats.favoriteBuild;
+          body.favoriteBuildCount = stats.favoriteBuildCount ?? 0;
+        }
+        if (stats.lastBuild) {
+          body.lastBuild = stats.lastBuild;
+          body.lastBuildMeta = stats.lastBuildMeta || null;
+        }
+        if (stats.lastServer) {
+          body.lastServer = stats.lastServer;
+          body.lastServerMeta = stats.lastServerMeta || null;
+        }
+        if (!Object.keys(body).length)
+          return;
+        await req("/activity", { method: "POST", body });
+      }
+      function notifyMessengerGameStopped() {
+        lastDetectedLanPort = null;
+        void stopHostRelayShare();
+        updateSharePanel();
+      }
+      function initMessenger(h) {
+        host = h;
+      }
+      function disposeMessenger() {
+        persistAccountCache();
+        stopPolling();
+        disconnectStream();
+        unsubLanPort?.();
+        unsubTunnel?.();
+        unsubLanPort = null;
+        unsubTunnel = null;
+        void stopHostRelayShare();
+        hideCtx();
+        closeProfileModal();
+        disposeProfileViewer();
+        conversations = [];
+        updateMessengerTabBadge();
       }
     }
   });
@@ -30226,6 +34760,7 @@ buildId: ${id}` : ""));
       var marked_1 = (init_marked_esm(), __toCommonJS(marked_esm_exports));
       var apiBase_1 = require_apiBase();
       var world_preview_matrix_1 = require_world_preview_matrix();
+      var ui_1 = require_ui();
       var confirm_ui_1 = require_confirm_ui();
       var integrations_ui_1 = require_integrations_ui();
       var attach_ui_1 = require_attach_ui();
@@ -30437,6 +34972,18 @@ buildId: ${id}` : ""));
             return;
           }
         }
+        if (target === "messenger") {
+          if (isOfflineAccount()) {
+            showMessengerOfflineModal();
+            return;
+          }
+        }
+        if (target === "skins") {
+          if (isOfflineAccount()) {
+            showSkinsOfflineModal();
+            return;
+          }
+        }
         tabs.forEach((t2) => t2.classList.remove("active"));
         tabViews.forEach((v2) => v2.classList.remove("active"));
         const tabBtn = document.querySelector(`.tab-btn[data-tab="${target}"]`);
@@ -30467,6 +35014,9 @@ buildId: ${id}` : ""));
             if (!getAiTesterKey() || aiAccessOk === false)
               showAiAccessDeniedModal();
           });
+        }
+        if (target === "messenger") {
+          void (0, ui_1.ensureMessengerTab)();
         }
       }
       function scheduleIdle(fn, timeout = 2e3) {
@@ -30768,6 +35318,9 @@ buildId: ${id}` : ""));
             applyAccount(account);
             closeModal("modal-account");
             await api?.saveAccount?.(account);
+            if (account?.uuid)
+              await api?.setActiveAccount?.(account.uuid);
+            void (0, ui_1.notifyMessengerAccountChanged)();
             renderSavedAccounts();
           } catch {
             updateStatus(t("status.microsoftError"));
@@ -30785,6 +35338,9 @@ buildId: ${id}` : ""));
             applyAccount(account);
             closeModal("modal-account");
             await api?.saveAccount?.(account);
+            if (account?.uuid)
+              await api?.setActiveAccount?.(account.uuid);
+            void (0, ui_1.notifyMessengerAccountChanged)();
             renderSavedAccounts();
           } catch {
             updateStatus(t("status.elyError"));
@@ -30803,6 +35359,9 @@ buildId: ${id}` : ""));
           applyAccount(account);
           closeModal("modal-account");
           await api?.saveAccount?.(account);
+          if (account?.uuid)
+            await api?.setActiveAccount?.(account.uuid);
+          void (0, ui_1.notifyMessengerAccountChanged)();
           renderSavedAccounts();
         }
       }
@@ -30864,6 +35423,7 @@ buildId: ${id}` : ""));
         if (nicknameEl)
           nicknameEl.textContent = account.name;
         applyAccountTypeLabel();
+        applyOnlineOnlyTabsVisibility();
         const popupNicknameEl = document.querySelector(".account-popup-current-name");
         if (popupNicknameEl)
           popupNicknameEl.textContent = account.name;
@@ -30933,19 +35493,41 @@ buildId: ${id}` : ""));
       }
       var accountRefreshPromise = null;
       async function refreshAccountInBackground(account) {
+        const startedUuid = String(account?.uuid || "");
         try {
           const refreshed = await api?.refreshAccount?.(account);
           if (!refreshed)
+            return;
+          await api?.saveAccount?.(refreshed);
+          if (startedUuid && currentAccount?.uuid && currentAccount.uuid !== startedUuid)
             return;
           if (refreshed.name !== account.name || refreshed.uuid !== account.uuid) {
             applyAccount(refreshed);
           } else {
             currentAccount = { ...currentAccount, ...refreshed, username: refreshed.name };
           }
-          await api?.saveAccount?.(refreshed);
         } catch {
         } finally {
           accountRefreshPromise = null;
+        }
+      }
+      async function selectAccount(account, opts) {
+        if (!account)
+          return;
+        const prevUuid = currentAccount?.uuid || "";
+        applyAccount(account);
+        if (account.uuid) {
+          try {
+            await api?.setActiveAccount?.(account.uuid);
+          } catch {
+          }
+        }
+        const type = account.meta?.type || account.type;
+        if (opts?.refresh !== false && (type === "msa" || type === "yggdrasil") && api?.refreshAccount) {
+          accountRefreshPromise = refreshAccountInBackground(account);
+        }
+        if (account.uuid && account.uuid !== prevUuid) {
+          void (0, ui_1.notifyMessengerAccountChanged)();
         }
       }
       function showNoAccountState() {
@@ -30956,6 +35538,7 @@ buildId: ${id}` : ""));
         if (typeEl)
           typeEl.textContent = t("acc.addHint");
         currentAccount = { uuid: "", username: "", type: "offline" };
+        applyOnlineOnlyTabsVisibility();
         void refreshSkinsUiForAccount();
         void applyOfflineSteveSkin();
         pushPresence();
@@ -31139,25 +35722,37 @@ buildId: ${id}` : ""));
         const sep = root.includes("/") && !root.includes("\\") ? "/" : "\\";
         return [root.replace(/[\\/]+$/, ""), ...parts].join(sep);
       }
-      async function showCrashModal(logs) {
+      async function showCrashModal(logs, build) {
         lastCrashLogs = Array.isArray(logs) ? logs.slice() : [];
-        lastCrashBuild = runningBuild;
+        lastCrashBuild = build || runningBuild || lastCrashBuild;
         const sub = document.getElementById("modal-crash-sub");
         if (sub) {
-          sub.textContent = runningBuild ? t("crash.subBuild", { name: runningBuild.name }) : t("crash.sub");
+          sub.textContent = lastCrashBuild ? t("crash.subBuild", { name: lastCrashBuild.name }) : t("crash.sub");
         }
-        const msg = document.getElementById("modal-crash-message");
-        if (msg)
-          msg.textContent = t("crash.message");
+        const logWrap = document.getElementById("modal-crash-log-wrap");
+        const logPre = document.getElementById("modal-crash-log-preview");
+        const excerpt = lastCrashLogs.join("\n").trim().slice(-2400);
+        if (logPre) {
+          logPre.textContent = excerpt || t("crash.logEmpty");
+          requestAnimationFrame(() => {
+            logPre.scrollTop = logPre.scrollHeight;
+          });
+        }
+        if (logWrap)
+          logWrap.hidden = false;
         openModal("modal-crash");
       }
       async function openCrashLaunchLog() {
         const build = lastCrashBuild || runningBuild;
-        if (!build?.id || !api?.getInstancePath || !api?.openPath)
+        if (!build?.id || !api?.getInstancePath || !api?.openPath) {
+          updateStatus(t("crash.noBuild"));
           return;
+        }
         const instanceDir = await api.getInstancePath(build.id);
-        if (!instanceDir)
+        if (!instanceDir) {
+          updateStatus(t("crash.openFailed"));
           return;
+        }
         const latestLog = joinInstancePath(instanceDir, "logs", "latest.log");
         const err = await api.openPath(latestLog);
         if (!err) {
@@ -31167,12 +35762,17 @@ buildId: ${id}` : ""));
         const buffer = lastCrashLogs.join("\n").trim();
         if (buffer && api.saveLogFile) {
           const result = await api.saveLogFile(build.id, buffer);
-          if (result?.success && result.path)
+          if (result?.success && result.path) {
             await api.openPath(result.path);
-        } else {
-          await api.openPath(joinInstancePath(instanceDir, "logs"));
+            closeModal("modal-crash");
+            return;
+          }
         }
-        closeModal("modal-crash");
+        const logsErr = await api.openPath(joinInstancePath(instanceDir, "logs"));
+        if (logsErr)
+          updateStatus(t("crash.openFailed"));
+        else
+          closeModal("modal-crash");
       }
       async function openCrashWithAgent() {
         const build = lastCrashBuild || runningBuild;
@@ -31215,14 +35815,28 @@ buildId: ${id}` : ""));
       });
       document.getElementById("modal-crash-folder")?.addEventListener("click", async () => {
         const build = lastCrashBuild || runningBuild;
-        if (!build?.id)
+        if (!build?.id) {
+          updateStatus(t("crash.noBuild"));
           return;
-        if (api?.getInstancePath && api?.openPath) {
-          const instanceDir = await api.getInstancePath(build.id);
-          if (instanceDir)
-            await api.openPath(instanceDir);
         }
-        closeModal("modal-crash");
+        if (!api?.getInstancePath || !api?.openPath) {
+          updateStatus(t("crash.openFailed"));
+          return;
+        }
+        try {
+          const instanceDir = await api.getInstancePath(build.id);
+          if (!instanceDir) {
+            updateStatus(t("crash.openFailed"));
+            return;
+          }
+          const err = await api.openPath(instanceDir);
+          if (err)
+            updateStatus(t("crash.openFailed"));
+          else
+            closeModal("modal-crash");
+        } catch {
+          updateStatus(t("crash.openFailed"));
+        }
       });
       document.getElementById("modal-crash-log")?.addEventListener("click", () => {
         void openCrashLaunchLog();
@@ -31260,7 +35874,7 @@ buildId: ${id}` : ""));
       var downloadPrevTime = 0;
       var SPLASH_MIN_MS = 600;
       var SPLASH_SAFETY_MS = 6e3;
-      var STARTUP_AI_SEEN_KEY = "Undefined Client-seen-startup-ai-1.0.4-beta";
+      var STARTUP_AI_SEEN_KEY = "Undefined Client-seen-startup-ai-1.0.5-beta";
       var initStartedAt = performance.now();
       var splashClosed = false;
       var splashAwaitingWelcome = false;
@@ -31324,7 +35938,7 @@ buildId: ${id}` : ""));
         const headerFor = (s) => {
           switch (s) {
             case "1":
-              return { title: t("splash.welcomeTitle"), sub: t("splash.welcomeSub", { ver: "1.0.4-beta" }) };
+              return { title: t("splash.welcomeTitle"), sub: t("splash.welcomeSub", { ver: "1.0.5-beta" }) };
             case "2":
               return { title: t("splash.welcome.p2.header"), sub: t("splash.welcome.p2.headerSub") };
             case "3":
@@ -31461,6 +36075,114 @@ buildId: ${id}` : ""));
         initCustomCarets();
         applyAiTabVisibility();
         initAiAssistant();
+        (0, ui_1.initMessenger)({
+          t,
+          escapeHtml,
+          getAccount: () => currentAccount,
+          openModal,
+          closeModal,
+          updateStatus,
+          showToast: showAppToast,
+          getLauncherStats: () => {
+            const played = savedBuilds.map((b2) => ({ build: b2, time: b2.playtime || 0 })).filter((x2) => x2.time > 0).sort((a, b2) => b2.time - a.time);
+            const fav = played[0]?.build || null;
+            const last = getLastPlayedBuild();
+            const srv = savedServers.length ? savedServers[savedServers.length - 1] : null;
+            return {
+              favoriteBuild: fav?.name || null,
+              // Секунды наигранного → «вес» для отображения
+              favoriteBuildCount: fav ? Math.max(1, Math.round((played[0].time || 0) / 60)) : null,
+              lastBuild: last?.name || null,
+              lastBuildMeta: last ? [last.gameVersion, last.loader].filter(Boolean).join(" \xB7 ") : null,
+              lastServer: srv ? srv.name || srv.ip : null,
+              lastServerMeta: srv?.version || (srv ? srv.ip : null)
+            };
+          },
+          resolveBuildIcon: (name) => {
+            if (!name)
+              return null;
+            const build = savedBuilds.find((b2) => b2.name === name);
+            if (!build)
+              return DEFAULT_BUILD_ICON_SRC;
+            return build.icon ? buildIconSrc(build.icon) : DEFAULT_BUILD_ICON_SRC;
+          },
+          resolveServerIcon: (name) => {
+            if (!name)
+              return null;
+            const q2 = name.toLowerCase();
+            const saved = savedServers.find((s) => String(s.name || "").toLowerCase() === q2 || String(s.ip || "").toLowerCase() === q2 || savedServerAddr(s).toLowerCase() === q2);
+            if (saved) {
+              const addr = savedServerAddr(saved);
+              const fav = srvServerFavicon(srvStatusCache[addr] || {});
+              if (fav)
+                return fav;
+            }
+            const cat = serverCatalog.find((c) => String(c.name || "").toLowerCase() === q2 || String(srvAddr(c) || "").toLowerCase() === q2);
+            if (cat) {
+              const fav = srvServerFavicon(cat.status || srvStatusCache[srvAddr(cat)] || {});
+              if (fav)
+                return fav;
+            }
+            return "../../assets/icons/serverIcon.png";
+          },
+          listLocalBuilds: () => savedBuilds.map((b2) => ({
+            id: b2.id,
+            name: b2.name,
+            meta: [b2.gameVersion, b2.loader, b2.loaderVersion].filter(Boolean).join(" \xB7 ")
+          })),
+          openInstanceShare: (shareId) => {
+            void openShareImportModal(String(shareId || ""));
+          },
+          createInstanceShare: async (buildId) => {
+            const authorName = currentAccount?.username && currentAccount.username !== t("common.loading") ? currentAccount.username : "Undefined Client";
+            const result = await api?.createInstanceShare?.(buildId, { authorName });
+            if (!result?.ok)
+              return { ok: false, error: String(result?.error || "error") };
+            return { ok: true, id: result.id, url: result.url };
+          },
+          focusBuildByName: (name) => {
+            const build = savedBuilds.find((b2) => b2.name === name);
+            if (!build) {
+              updateStatus(t("msgr.groupBuildOpenFailed"));
+              return;
+            }
+            switchTab("builds");
+            const safeId = build.id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+            const card = document.querySelector(`.build-card[data-build-id="${safeId}"]`);
+            card?.scrollIntoView({ behavior: "smooth", block: "center" });
+            card?.classList.add("is-highlight");
+            window.setTimeout(() => card?.classList.remove("is-highlight"), 1600);
+          },
+          getRunningBuild: () => {
+            if (!runningBuild)
+              return null;
+            return {
+              id: runningBuild.id,
+              name: runningBuild.name,
+              gameVersion: runningBuild.gameVersion,
+              loader: runningBuild.loader
+            };
+          },
+          launchJoinServer: async (server, hint) => {
+            if (hint?.buildName) {
+              const byName = savedBuilds.find((b2) => b2.name === hint.buildName);
+              if (byName) {
+                await launchBuild(byName, {
+                  ip: server.ip,
+                  port: server.port,
+                  name: server.name
+                });
+                return;
+              }
+            }
+            openServerLaunchPicker(server.ip, server.port, server.name || server.ip);
+          },
+          api: api || {},
+          refreshAccount: async () => {
+            if (currentAccount?.uuid)
+              await refreshAccountInBackground(currentAccount);
+          }
+        });
         const firstAiRun = needsStartupAiAnnounce();
         if (firstAiRun) {
           splashAwaitingWelcome = true;
@@ -31612,12 +36334,21 @@ buildId: ${id}` : ""));
               case "launching":
                 crashLogs = [];
                 el.classList.remove("is-success", "is-error");
-                if (runningBuild) {
+                if (data?.adopted && data.buildId) {
+                  applyAdoptedRunningGame({
+                    buildId: String(data.buildId),
+                    name: data.name ? String(data.name) : void 0,
+                    gameVersion: data.gameVersion ? String(data.gameVersion) : void 0,
+                    loader: data.loader ? String(data.loader) : void 0,
+                    startedAt: data.startedAt != null ? Number(data.startedAt) : void 0
+                  });
+                } else if (runningBuild) {
                   runningBuildStart = Date.now();
                   startRunningTimer();
                   updateStatus(t("status.playing", { name: runningBuild.name }));
                   updateBanner();
                   updateSidebarCards();
+                  void (0, ui_1.notifyMessengerGameRunning)();
                 }
                 if (el)
                   el.classList.add("hidden");
@@ -31638,10 +36369,14 @@ buildId: ${id}` : ""));
                   fill.style.width = "0%";
                   fill.style.animation = "none";
                 }
-                stopRunningTimer();
-                updateBanner();
-                if (data.code && data.code !== 0) {
-                  showCrashModal(crashLogs);
+                {
+                  const crashedBuild = runningBuild;
+                  stopRunningTimer();
+                  (0, ui_1.notifyMessengerGameStopped)();
+                  updateBanner();
+                  if (data.code && data.code !== 0) {
+                    void showCrashModal(crashLogs, crashedBuild);
+                  }
                 }
                 setTimeout(() => el.classList.add("hidden"), 4e3);
                 break;
@@ -31656,9 +36391,13 @@ buildId: ${id}` : ""));
                 }
                 if (percent)
                   percent.textContent = "\u2014";
-                stopRunningTimer();
-                updateBanner();
-                showCrashModal(crashLogs);
+                {
+                  const crashedBuild = runningBuild;
+                  stopRunningTimer();
+                  (0, ui_1.notifyMessengerGameStopped)();
+                  updateBanner();
+                  void showCrashModal(crashLogs, crashedBuild);
+                }
                 break;
               case "error":
                 el.classList.remove("hidden", "is-success");
@@ -31683,10 +36422,17 @@ buildId: ${id}` : ""));
         if (api?.loadAccounts) {
           const saved = await api.loadAccounts();
           if (saved.length > 0) {
-            const last = saved[saved.length - 1];
-            applyAccount(last);
-            if (last.meta?.type === "msa" || last.meta?.type === "yggdrasil") {
-              accountRefreshPromise = refreshAccountInBackground(last);
+            const activeUuid = api.getActiveAccount ? await api.getActiveAccount() : null;
+            const preferred = activeUuid && saved.find((a) => a.uuid === activeUuid) || saved[saved.length - 1];
+            applyAccount(preferred);
+            if (preferred.uuid) {
+              try {
+                await api.setActiveAccount?.(preferred.uuid);
+              } catch {
+              }
+            }
+            if (preferred.meta?.type === "msa" || preferred.meta?.type === "yggdrasil") {
+              accountRefreshPromise = refreshAccountInBackground(preferred);
             }
           } else {
             showNoAccountState();
@@ -31699,6 +36445,7 @@ buildId: ${id}` : ""));
         api?.onBuildsChanged?.(() => {
           void loadBuilds();
         });
+        void adoptRunningGameFromMain();
         await loadServers();
         renderSavedAccounts();
         loadTheme();
@@ -31817,7 +36564,7 @@ buildId: ${id}` : ""));
       <div class="build-card-icon">${iconHtml}</div>
       <div class="build-card-info">
         <div class="build-card-title"${agentTouched ? ` data-agent-badge="${t("ai.build.touchedByAgent").replace(/"/g, "&quot;")}"` : ""}>
-          ${isRunning ? '<span class="build-running-dot"></span>' : ""}
+          ${isRunning ? `<span class="build-running-badge">${t("btn.playing")}</span>` : ""}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b2.name}</span>
         </div>
         <div class="build-card-meta">${meta}</div>
@@ -31827,7 +36574,7 @@ buildId: ${id}` : ""));
         </div>` : ""}
       </div>
       <div class="build-card-actions">
-        <button class="list-row-btn launch-btn" data-build-id="${b2.id}"${runningBuild ? " disabled" : ""}>
+        <button class="list-row-btn launch-btn${isRunning ? " is-running" : ""}" data-build-id="${b2.id}"${runningBuild ? " disabled" : ""}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 1.61803C0 0.724419 0.724419 0 1.61803 0C1.86923 0 2.11697 0.058484 2.34164 0.17082L13.1056 5.55279C13.6537 5.82687 14 6.38713 14 7C14 7.61287 13.6537 8.17313 13.1056 8.44721L2.34164 13.8292C2.11697 13.9415 1.86923 14 1.61803 14C0.724419 14 0 13.2756 0 12.382V1.61803Z" fill="currentColor"/></svg>
           ${isRunning ? t("btn.playing") : t("btn.launch")}
         </button>
@@ -31856,10 +36603,11 @@ buildId: ${id}` : ""));
           });
         });
         list.querySelectorAll(".build-share-btn").forEach((btn) => {
-          btn.addEventListener("click", () => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
             const build = savedBuilds.find((b2) => b2.id === btn.getAttribute("data-build-id"));
             if (build)
-              void openShareModal(build);
+              openBuildShareMenu(btn, build);
           });
         });
         list.querySelectorAll(".build-manage-btn").forEach((btn) => {
@@ -31932,31 +36680,43 @@ buildId: ${id}` : ""));
       document.getElementById("build-form-cancel")?.addEventListener("click", () => closeModalBuildModal());
       document.getElementById("build-form-submit")?.addEventListener("click", () => submitModalBuild());
       function populateLoaderVersions(loader, mcVersion) {
-        const verInput = document.getElementById("modal-build-loader-ver");
-        const datalist = document.getElementById("modal-loader-versions");
+        const verSelect = document.getElementById("modal-build-loader-ver");
+        const verMenu = document.getElementById("modal-build-loader-ver-menu");
+        const verField = document.getElementById("modal-build-loader-ver-field");
         const isVanilla = loader === "vanilla";
-        if (verInput)
-          verInput.disabled = isVanilla;
+        if (verField)
+          verField.style.display = isVanilla ? "none" : "";
         if (isVanilla) {
-          if (datalist)
-            datalist.innerHTML = "";
-          if (verInput)
-            verInput.value = "";
+          if (verSelect) {
+            verSelect.innerHTML = "";
+            verSelect.value = "";
+          }
+          if (verMenu)
+            verMenu.innerHTML = "";
+          const wrap = verSelect?.closest(".stngs-select-wrap");
+          if (wrap)
+            syncSelectUI(wrap);
           return;
         }
-        if (api?.getLoaderVersions) {
-          api.getLoaderVersions(loader, mcVersion).then((versions) => {
-            const currentLoader = document.getElementById("modal-build-loader")?.value;
-            if (currentLoader !== loader)
-              return;
-            if (datalist)
-              datalist.innerHTML = (versions || []).map((v2) => `<option value="${v2}">`).join("");
-            if (verInput && !verInput.value && versions && versions.length > 0) {
-              verInput.value = versions[0];
-            }
-          }).catch(() => {
-          });
-        }
+        if (!api?.getLoaderVersions || !verSelect || !verMenu)
+          return;
+        api.getLoaderVersions(loader, mcVersion).then((versions) => {
+          const currentLoader = document.getElementById("modal-build-loader")?.value;
+          if (currentLoader !== loader)
+            return;
+          const list = versions || [];
+          const prev = verSelect.value;
+          verSelect.innerHTML = list.map((v2) => `<option value="${v2}">${v2}</option>`).join("");
+          verMenu.innerHTML = list.map((v2) => `<div class="stngs-select-opt" data-value="${v2}">${v2}</div>`).join("");
+          if (prev && list.includes(prev))
+            verSelect.value = prev;
+          else if (list.length > 0)
+            verSelect.value = list[0];
+          const wrap = verSelect.closest(".stngs-select-wrap");
+          if (wrap)
+            syncSelectUI(wrap);
+        }).catch(() => {
+        });
       }
       var detectedJava = [];
       function populateJavaOptions() {
@@ -32277,7 +37037,7 @@ buildId: ${id}` : ""));
         srvLoading = true;
         const grid = document.getElementById("servers-grid");
         if (grid && srvCategory !== "mine") {
-          grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t("common.loading") + "</div>";
+          grid.innerHTML = catalogStateHtml("servers.loadingTitle");
         }
         const scraped = await api?.fetchServerCatalog?.() || [];
         console.log("[SRV] scraped rows:", scraped.length);
@@ -32493,13 +37253,17 @@ buildId: ${id}` : ""));
         }
         if (!srvLoaded) {
           if (!append && !srvLoading)
-            grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t("common.loading") + "</div>";
+            grid.innerHTML = catalogStateHtml("servers.loadingTitle");
           return;
         }
         const list = serverCatalog.filter(srvMatchesFilters).sort(srvSorted);
         if (list.length === 0) {
           srvRenderedCount = 0;
-          grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t("servers.notFound") + "</div>";
+          const hasQuery = Boolean(srvQuery.trim()) || srvCategory !== "all" || srvRegion !== "all" || srvOnlineOnly || srvVersionFilter;
+          grid.innerHTML = hasQuery ? catalogStateHtml("servers.notFoundTitle", "servers.notFoundDesc") : catalogStateHtml("servers.emptyTitle", "servers.emptyDesc", { labelKey: "servers.add", id: "servers-empty-add" });
+          document.getElementById("servers-empty-add")?.addEventListener("click", () => {
+            document.getElementById("add-server-btn")?.click();
+          });
           return;
         }
         const slice = append ? list.slice(srvRenderedCount, srvRenderedCount + SRV_PAGE_SIZE) : list.slice(0, SRV_PAGE_SIZE);
@@ -32507,7 +37271,7 @@ buildId: ${id}` : ""));
           srvRenderedCount = 0;
         srvRenderedCount += slice.length;
         const cards = slice.map(srvCardHtml).join("");
-        const more = srvRenderedCount < list.length ? `<div class="load-more-wrap"><button class="load-more-btn">${t("mods.showMore")}</button></div>` : "";
+        const more = srvRenderedCount < list.length ? `<div class="load-more-wrap"><button class="load-more-btn">${t("servers.showMore")}</button></div>` : "";
         if (append) {
           const old = grid.querySelector(".load-more-wrap");
           if (old)
@@ -32550,18 +37314,25 @@ buildId: ${id}` : ""));
         if (!grid)
           return;
         void pingSavedServerStatuses();
-        if (savedServers.length === 0) {
-          grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t("servers.empty") + "</div>";
+        const q2 = srvQuery.trim().toLowerCase();
+        const list = q2 ? savedServers.filter((s) => {
+          const addr = savedServerAddr(s);
+          return String(s.name || "").toLowerCase().includes(q2) || addr.toLowerCase().includes(q2) || String(s.ip || "").toLowerCase().includes(q2);
+        }) : savedServers;
+        if (list.length === 0) {
+          grid.innerHTML = savedServers.length === 0 ? catalogStateHtml("servers.emptyTitle", "servers.emptyDesc", { labelKey: "servers.add", id: "servers-empty-add" }) : catalogStateHtml("servers.notFoundTitle", "servers.notFoundDesc");
+          document.getElementById("servers-empty-add")?.addEventListener("click", () => {
+            document.getElementById("add-server-btn")?.click();
+          });
           return;
         }
-        grid.innerHTML = savedServers.map((s) => {
+        grid.innerHTML = list.map((s) => {
           const addr = savedServerAddr(s);
           const st2 = srvStatus(addr) || {};
           const online = !!st2.online;
           const players = st2.players?.online != null ? st2.players.online : null;
           const max = st2.players?.max != null ? st2.players.max : null;
           const version = String(st2.version || s.version || "").split("\n")[0] || "";
-          const cat = serverCatalog.find((c) => srvAddr(c) === addr);
           let icon = srvServerFavicon(st2);
           const iconHtml = icon ? `<img src="${icon}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">` : `<span>${srvEsc(s.name).charAt(0).toUpperCase()}</span>`;
           const statusTxt = online ? players != null ? `${Number(players).toLocaleString()}${max != null ? "/" + Number(max).toLocaleString() : ""}` : t("servers.online") : t("servers.offline");
@@ -33269,7 +38040,7 @@ buildId: ${id}` : ""));
           }
         }
         if (skinViewer && !skinViewer.disposed) {
-          skinViewer.setDebugOptions(opts);
+          skinViewer.setDebugOptions(enabled ? opts : { ...skinviewengine_1.DEFAULT_SKIN_DEBUG_OPTIONS });
           skinViewer.setDebugEnabled(enabled);
         }
         if (enabled)
@@ -33522,16 +38293,34 @@ buildId: ${id}` : ""));
               } catch (e) {
                 console.warn("auto sync cosmetics on skins tab failed", e);
                 await loadSkinsList();
+                if (auth === "yggdrasil")
+                  await ensureElySkinFallback();
               }
             } else {
               await loadSkinsList();
             }
             if (isOfflineAccount()) {
               await applyOfflineSteveSkin();
-            } else if (pendingViewerSkin) {
-              const url = pendingViewerSkin;
-              pendingViewerSkin = null;
-              await loadSkinToViewer(url);
+            } else {
+              if (pendingViewerSkin) {
+                const url = pendingViewerSkin;
+                pendingViewerSkin = null;
+                await loadSkinToViewer(url);
+              }
+              if (!viewerSkinUrl) {
+                const mine = cosmeticsForCurrentAccount().filter((s) => !isCapeId(s.id) && s.dataUrl);
+                const activeId = getActiveSkinId();
+                const pick = activeId && mine.find((s) => s.id === activeId) || mine[0];
+                if (pick?.dataUrl) {
+                  setActiveSkinId(pick.id);
+                  await loadSkinToViewer(pick.dataUrl);
+                  const typeLabel = pick.id.startsWith("ely-skin-") ? t("acc.ely") : pick.id.startsWith("license-skin-") ? t("acc.license") : t("acc.local");
+                  updateNameType(pick.name, typeLabel);
+                } else if (auth === "yggdrasil") {
+                  await ensureElySkinFallback();
+                  await loadSkinsList();
+                }
+              }
             }
             if (presenceTab === "skins" && !document.hidden)
               setSkinViewerPaused(false);
@@ -33641,6 +38430,39 @@ buildId: ${id}` : ""));
           ...skin,
           accountId: accountCosmeticsKey()
         });
+      }
+      async function ensureElySkinFallback() {
+        if (accountAuthType() !== "yggdrasil")
+          return false;
+        if (!api?.fetchSkinImage)
+          return false;
+        const accKey = accountCosmeticsKey();
+        if (!accKey || accKey === "offline")
+          return false;
+        const nick = String(currentAccount?.username || "").trim();
+        let skinUrl = String(currentAccount?.skinUrl || "").trim() || (nick ? `https://skinsystem.ely.by/skins/${encodeURIComponent(nick)}.png` : "");
+        if (api.getSkinData && currentAccount?.uuid) {
+          try {
+            const data = await api.getSkinData(String(currentAccount.uuid).replace(/-/g, ""), ELY_AUTH_SERVER);
+            if (data?.skinUrl)
+              skinUrl = data.skinUrl;
+          } catch (e) {
+            console.warn("[skins] ely getSkinData fallback failed", e);
+          }
+        }
+        if (!skinUrl)
+          return false;
+        const b64 = await api.fetchSkinImage(skinUrl);
+        if (!b64)
+          return false;
+        const dataUrl = `data:image/png;base64,${b64}`;
+        const id = `ely-skin-${accKey}`;
+        await saveAccountSkin({ id, name: t("skins.elySkin"), dataUrl });
+        setActiveSkinId(id);
+        await loadSkinToViewer(dataUrl);
+        await refreshAccountUiAvatar(dataUrl);
+        await bumpAccountAvatarRev(skinUrl);
+        return true;
       }
       var OFFLINE_STEVE_SKIN_URL = "../../assets/skins/steve.png";
       async function applyOfflineSteveSkin() {
@@ -34059,6 +38881,7 @@ buildId: ${id}` : ""));
         if (!api?.listProfileCosmetics || !api?.fetchSkinImage || !api?.saveSkin) {
           if (!opts?.quiet)
             updateStatus(t("skins.fetchFailed"));
+          await loadSkinsList();
           return 0;
         }
         if (!opts?.quiet)
@@ -34068,6 +38891,9 @@ buildId: ${id}` : ""));
           if (!opts?.quiet) {
             updateStatus(t("skins.applyFailed", { msg: profile.error || t("common.error") }));
           }
+          await loadSkinsList();
+          if (auth === "yggdrasil")
+            await ensureElySkinFallback();
           return 0;
         }
         if (profile.account?.accessToken) {
@@ -34098,8 +38924,9 @@ buildId: ${id}` : ""));
         }
         const activeSkin = (profile.skins || []).find((s) => s.state === "active") || (profile.skins || [])[0];
         const keepLocalProfileCard = opts?.quiet && !!prevActiveId && prevActiveId.startsWith("skin-") && savedSkins.some((s) => s.id === prevActiveId && ownsCosmetic(s));
-        if (activeSkin?.url && !keepLocalProfileCard) {
-          const b64 = await api.fetchSkinImage(activeSkin.url);
+        const skinUrl = activeSkin?.url || activeSkin?.texture || activeSkin?.skinUrl || null;
+        if (skinUrl && !keepLocalProfileCard) {
+          const b64 = await api.fetchSkinImage(skinUrl);
           if (b64) {
             const dataUrl = `data:image/png;base64,${b64}`;
             const id = (auth === "yggdrasil" ? "ely-skin-" : "license-skin-") + accKey;
@@ -34110,10 +38937,13 @@ buildId: ${id}` : ""));
               setActiveSkinId(id);
               await loadSkinToViewer(dataUrl);
               await refreshAccountUiAvatar(dataUrl);
-              await bumpAccountAvatarRev(activeSkin.url);
+              await bumpAccountAvatarRev(skinUrl);
             }
             hadSkin = true;
           }
+        }
+        if (!hadSkin && auth === "yggdrasil" && !keepLocalProfileCard) {
+          hadSkin = await ensureElySkinFallback();
         }
         const capeList = auth === "msa" ? profile.capes || [] : [];
         const keepCapeIds = /* @__PURE__ */ new Set();
@@ -34394,8 +39224,11 @@ buildId: ${id}` : ""));
         });
       }
       document.getElementById("quick-banner-play")?.addEventListener("click", async () => {
-        if (savedBuilds.length > 0)
-          await launchBuild(savedBuilds[0]);
+        if (runningBuild)
+          return;
+        const build = getHomeFeaturedBuild();
+        if (build)
+          await launchBuild(build);
         else
           updateStatus(t("status.noBuilds"));
       });
@@ -34540,6 +39373,26 @@ buildId: ${id}` : ""));
       });
       document.addEventListener("click", () => ctxMenu.classList.remove("open"));
       ctxMenu.addEventListener("click", (e) => e.stopPropagation());
+      document.getElementById("build-share-menu")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const btn = e.target.closest("[data-share-action]");
+        if (!btn || !shareMenuBuild)
+          return;
+        const action = btn.getAttribute("data-share-action");
+        const build = shareMenuBuild;
+        hideBuildShareMenu();
+        if (action === "link")
+          void openShareModal(build);
+        else if (action === "zip")
+          void runInstanceExport("zip", build);
+        else if (action === "mrpack")
+          void runInstanceExport("mrpack", build);
+      });
+      document.addEventListener("click", () => hideBuildShareMenu());
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape")
+          hideBuildShareMenu();
+      });
       document.getElementById("ctx-settings")?.addEventListener("click", () => {
         ctxMenu.classList.remove("open");
         openModal("modal-settings");
@@ -34612,6 +39465,7 @@ buildId: ${id}` : ""));
         localStorage.setItem("Undefined Client-theme", "custom");
         applyAccent(color);
         updateAccentUI(color);
+        api?.notifyThemeChanged?.(color);
       }
       document.querySelectorAll("#settings-accent-picker .accent-swatch[data-accent]").forEach((swatch) => {
         swatch.addEventListener("click", () => {
@@ -35087,8 +39941,10 @@ buildId: ${id}` : ""));
           const defAccent = themeAccents[theme] || "#70ADDF";
           localStorage.setItem("Undefined Client-accent", defAccent);
           applyAccent(defAccent);
+          api?.notifyThemeChanged?.(defAccent);
         } else {
           applyAccent(accent);
+          api?.notifyThemeChanged?.(accent);
         }
         const currentAccent = localStorage.getItem("Undefined Client-accent") || "#70ADDF";
         updateAccentUI(currentAccent);
@@ -35118,11 +39974,14 @@ buildId: ${id}` : ""));
         bindAiAccessSettingsUi();
       }
       document.getElementById("quick-launch")?.addEventListener("click", async () => {
-        if (savedBuilds.length > 0) {
-          const lastId = localStorage.getItem("last-launch-id");
-          const build = savedBuilds.find((b2) => b2.id === lastId) || savedBuilds[0];
+        if (runningBuild) {
+          updateStatus(t("status.closeFirst", { name: runningBuild.name }));
+          return;
+        }
+        const build = getHomeFeaturedBuild();
+        if (build)
           await launchBuild(build);
-        } else
+        else
           updateStatus(t("status.noBuilds"));
       });
       document.getElementById("last-server")?.addEventListener("click", () => {
@@ -35181,6 +40040,7 @@ buildId: ${id}` : ""));
           return;
         }
         runningBuild = build;
+        syncRunningLaunchUi();
         const slugBuildId = build.id.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
         const globalRam = Number(localStorage.getItem("Undefined Client-ram") || "2048") || 2048;
         const mem = build.memory;
@@ -35224,8 +40084,75 @@ buildId: ${id}` : ""));
           applyLaunchBehavior();
         } else {
           runningBuild = null;
+          syncRunningLaunchUi();
           updateStatus(t("status.error", { msg: result.errorKey ? t(result.errorKey) : result.error || t("common.error") }));
         }
+      }
+      function sanitizeBuildIdClient(id) {
+        return String(id || "").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+      }
+      function applyAdoptedRunningGame(info) {
+        const slug = sanitizeBuildIdClient(info.buildId);
+        const build = savedBuilds.find((b2) => sanitizeBuildIdClient(b2.id) === slug || b2.id === info.buildId) || null;
+        if (build) {
+          runningBuild = build;
+        } else {
+          runningBuild = {
+            id: info.buildId,
+            name: info.name || info.buildId,
+            gameVersion: info.gameVersion || "?",
+            loader: info.loader || "vanilla",
+            loaderVersion: "",
+            iconBg: "#3a3a3a",
+            playtime: 0
+          };
+        }
+        runningBuildStart = info.startedAt && info.startedAt > 0 ? info.startedAt : Date.now();
+        startRunningTimer();
+        updateStatus(t("status.playing", { name: runningBuild.name }));
+        updateBanner();
+        updateSidebarCards();
+        renderBuilds();
+        void (0, ui_1.notifyMessengerGameRunning)();
+      }
+      async function adoptRunningGameFromMain() {
+        if (!api?.detectRunningGame || runningBuild)
+          return;
+        try {
+          const res = await api.detectRunningGame();
+          if (!res?.ok || !res.running || !res.buildId)
+            return;
+          applyAdoptedRunningGame({
+            buildId: res.buildId,
+            name: res.name,
+            gameVersion: res.gameVersion,
+            loader: res.loader,
+            startedAt: res.startedAt
+          });
+        } catch {
+        }
+      }
+      function syncHomePlayButton() {
+        const btn = document.getElementById("quick-banner-play");
+        if (!btn)
+          return;
+        const label = btn.querySelector("span");
+        if (runningBuild) {
+          btn.disabled = true;
+          btn.classList.add("is-running");
+          if (label)
+            label.textContent = t("btn.playing");
+        } else {
+          btn.disabled = false;
+          btn.classList.remove("is-running");
+          if (label)
+            label.textContent = t("btn.play");
+        }
+      }
+      function syncRunningLaunchUi() {
+        syncHomePlayButton();
+        renderBuilds();
+        updateSidebarCards();
       }
       var runningTimerTick = false;
       var runningTimerId = null;
@@ -35233,6 +40160,7 @@ buildId: ${id}` : ""));
         if (runningTimerTick)
           return;
         runningTimerTick = true;
+        syncRunningLaunchUi();
         const tick = () => {
           if (!runningBuild) {
             runningTimerTick = false;
@@ -35251,9 +40179,7 @@ buildId: ${id}` : ""));
           const sub = document.getElementById("quick-banner-sub");
           if (sub)
             sub.textContent = t("status.timeInBuild");
-          const btn = document.getElementById("quick-banner-play");
-          if (btn)
-            btn.disabled = true;
+          syncHomePlayButton();
           const ind = document.getElementById("running-indicator");
           if (ind)
             ind.classList.remove("hidden");
@@ -35291,18 +40217,43 @@ buildId: ${id}` : ""));
         const ind = document.getElementById("running-indicator");
         if (ind)
           ind.classList.add("hidden");
-        const btn = document.getElementById("quick-banner-play");
-        if (btn)
-          btn.disabled = false;
-        renderBuilds();
+        syncRunningLaunchUi();
         updateBanner();
-        updateSidebarCards();
         updateStats();
       }
       function updateStatus(message) {
         const bannerSub = document.getElementById("quick-banner-sub");
         if (bannerSub)
           bannerSub.textContent = message;
+      }
+      var appToastTimer = null;
+      function showAppToast(message, ms = 4200) {
+        const el = document.getElementById("app-toast");
+        if (!el) {
+          updateStatus(message);
+          return;
+        }
+        el.hidden = false;
+        el.textContent = message;
+        el.classList.add("is-visible");
+        if (appToastTimer)
+          clearTimeout(appToastTimer);
+        appToastTimer = setTimeout(() => {
+          el.classList.remove("is-visible");
+          appToastTimer = setTimeout(() => {
+            el.hidden = true;
+            appToastTimer = null;
+          }, 200);
+        }, ms);
+      }
+      function catalogStateHtml(titleKey, descKey, cta) {
+        const desc = descKey ? `<div class="catalog-state__desc">${escapeAiHtml(t(descKey))}</div>` : "";
+        const btn = cta ? `<button type="button" class="action-btn catalog-state__cta" id="${cta.id}"><span>${escapeAiHtml(t(cta.labelKey))}</span></button>` : "";
+        return `<div class="catalog-state">
+    <div class="catalog-state__title">${escapeAiHtml(t(titleKey))}</div>
+    ${desc}
+    ${btn}
+  </div>`;
       }
       async function renderSavedAccounts() {
         const list = document.getElementById("acc-popup-list");
@@ -35366,21 +40317,9 @@ buildId: ${id}` : ""));
             const account = accounts.find((a) => a.uuid === uuid);
             if (!account)
               return;
-            if ((account.meta?.type === "msa" || account.meta?.type === "yggdrasil") && api?.refreshAccount) {
-              try {
-                const refreshed = await api.refreshAccount(account);
-                if (refreshed) {
-                  applyAccount(refreshed);
-                  closeAccountPopup();
-                  await api?.saveAccount?.(refreshed);
-                  renderSavedAccounts();
-                  return;
-                }
-              } catch {
-              }
-            }
-            applyAccount(account);
             closeAccountPopup();
+            await selectAccount(account);
+            renderSavedAccounts();
           });
         });
         list.querySelectorAll(".acc-popup-row-del").forEach((btn) => {
@@ -35388,7 +40327,16 @@ buildId: ${id}` : ""));
             e.stopPropagation();
             const uuid = btn.getAttribute("data-uuid");
             if (uuid && api?.removeAccount) {
+              const wasCurrent = currentAccount?.uuid === uuid;
               await api.removeAccount(uuid);
+              if (wasCurrent) {
+                const remaining = api.loadAccounts ? await api.loadAccounts() : [];
+                if (remaining.length) {
+                  await selectAccount(remaining[remaining.length - 1]);
+                } else {
+                  showNoAccountState();
+                }
+              }
               renderSavedAccounts();
             }
           });
@@ -35430,6 +40378,9 @@ buildId: ${id}` : ""));
       var modsTotal = 0;
       var modsQuery = "";
       var modsSort = "relevance";
+      var modsSource = localStorage.getItem("Undefined Client-mods-source") || "both";
+      if (modsSource !== "both" && modsSource !== "modrinth" && modsSource !== "curseforge")
+        modsSource = "both";
       var modsVersion = "";
       var modsLoaders = /* @__PURE__ */ new Set();
       var modsTags = /* @__PURE__ */ new Set();
@@ -35437,6 +40388,245 @@ buildId: ${id}` : ""));
       function modsPageSize() {
         const v2 = Number(localStorage.getItem("Undefined Client-mods-page-size") || "20");
         return [10, 20, 50].includes(v2) ? v2 : 20;
+      }
+      function getModsViewMode() {
+        return localStorage.getItem("Undefined Client-mods-view-mode") === "cards" ? "cards" : "list";
+      }
+      function applyModsViewModeUi(mode = getModsViewMode()) {
+        const grid = document.getElementById("mods-grid");
+        const btn = document.getElementById("mods-view-toggle");
+        grid?.classList.toggle("is-cards", mode === "cards");
+        if (btn) {
+          btn.setAttribute("aria-pressed", mode === "cards" ? "true" : "false");
+          btn.dataset.mode = mode;
+          const titleKey = mode === "cards" ? "mods.view.toggleToList" : "mods.view.toggleToCards";
+          btn.setAttribute("title", t(titleKey));
+          btn.setAttribute("aria-label", t(titleKey));
+        }
+      }
+      function setModsViewMode(mode) {
+        localStorage.setItem("Undefined Client-mods-view-mode", mode);
+        applyModsViewModeUi(mode);
+        modsRenderedCount = 0;
+        renderMods(false);
+      }
+      function modAccentColor(p) {
+        if (p?.color == null)
+          return "rgba(255,255,255,0.05)";
+        const n = Number(p.color);
+        if (!Number.isFinite(n))
+          return "rgba(255,255,255,0.05)";
+        return `#${Math.max(0, Math.floor(n)).toString(16).padStart(6, "0")}`;
+      }
+      function modGalleryUrl(p) {
+        if (typeof p?.featured_gallery === "string" && p.featured_gallery.trim()) {
+          return p.featured_gallery.trim();
+        }
+        if (Array.isArray(p?.gallery) && p.gallery.length) {
+          const first = p.gallery.find((u) => typeof u === "string" && String(u).trim());
+          return first ? String(first).trim() : null;
+        }
+        if (typeof p?.gallery === "string" && p.gallery.trim())
+          return p.gallery.trim();
+        return null;
+      }
+      var MOD_GALLERY_PLACEHOLDER = `<div class="mod-tile__hero-ph" aria-hidden="true">
+  <img class="mod-tile__hero-ph-img" src="../../assets/images/modPlaceholder.png" alt="">
+</div>`;
+      var MOD_CF_GALLERY_PLACEHOLDER = `<div class="mod-tile__hero-ph" aria-hidden="true">
+  <img class="mod-tile__hero-ph-img" src="../../assets/images/modCFPlaceholder.png" alt="">
+</div>`;
+      function modSourceOf(p) {
+        const raw = String(p?.source || "").toLowerCase();
+        if (raw === "curseforge" || raw === "cf")
+          return "curseforge";
+        if (String(p?.project_id || p?.id || "").startsWith("cf:"))
+          return "curseforge";
+        return "modrinth";
+      }
+      function modSourceBadge(source) {
+        return source === "curseforge" ? `<span class="mod-source-badge mod-source-badge--cf">CurseForge</span>` : `<span class="mod-source-badge mod-source-badge--mr">Modrinth</span>`;
+      }
+      function absolutizeCatalogHtml(html) {
+        return String(html || "").replace(/(<img\b[^>]*?\bsrc=(["']))([^"']+)(\2)/gi, (_m, pre, _q, src, post) => {
+          const abs = (0, apiBase_1.catalogImageUrl)(src) || absoluteApiUrl(src) || src;
+          return `${pre}${abs}${post}`;
+        });
+      }
+      function formatModsRelativeDate(raw) {
+        if (!raw)
+          return "";
+        const d2 = new Date(raw);
+        if (Number.isNaN(d2.getTime()))
+          return "";
+        const sec = Math.max(0, Math.floor((Date.now() - d2.getTime()) / 1e3));
+        if (sec < 60)
+          return `${Math.max(1, sec)}s`;
+        if (sec < 3600)
+          return `${Math.floor(sec / 60)}m`;
+        if (sec < 86400)
+          return `${Math.floor(sec / 3600)}h`;
+        return `${Math.floor(sec / 86400)}d`;
+      }
+      function renderModListRow(p) {
+        const id = escapeHtml(String(p.project_id || p.slug || p.id || ""));
+        const title = escapeHtml(String(p.title || "Unknown"));
+        const desc = escapeHtml(String(p.description || "").substring(0, 100));
+        const accent = modAccentColor(p);
+        const source = modSourceOf(p);
+        const sourceBadge = modSourceBadge(source);
+        const icon = p.icon_url ? `<img src="${escapeHtml((0, apiBase_1.catalogImageUrl)(p.icon_url))}" alt="">` : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
+        return `<div class="mod-card" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || "mod"))}" data-mod-source="${escapeHtml(source)}">
+      <div class="mod-card-icon" style="background:${accent}">${icon}</div>
+      <div class="mod-card-info">
+        <div class="mod-card-name">${title} ${sourceBadge}</div>
+        <div class="mod-card-desc">${desc}</div>
+      </div>
+      <div class="mod-card-actions">
+        <button class="details-btn" data-modrinth-id="${id}">${t("btn.details")}</button>
+        <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${id}" data-modrinth-title="${title}">${t("ai.askAboutMod")}</button>
+        <button class="list-row-btn download-btn" data-modrinth-id="${id}">${t("btn.download")}</button>
+      </div>
+    </div>`;
+      }
+      function renderModTile(p) {
+        const id = escapeHtml(String(p.project_id || p.slug || p.id || ""));
+        const title = escapeHtml(String(p.title || "Unknown"));
+        const desc = escapeHtml(String(p.description || "").substring(0, 120));
+        const authorRaw = String(p.author || "").trim();
+        const accent = modAccentColor(p);
+        const gallery = modGalleryUrl(p);
+        const source = modSourceOf(p);
+        const sourceBadge = modSourceBadge(source);
+        const icon = p.icon_url ? `<img src="${escapeHtml((0, apiBase_1.catalogImageUrl)(p.icon_url))}" alt="">` : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
+        const placeholder = source === "curseforge" ? MOD_CF_GALLERY_PLACEHOLDER : MOD_GALLERY_PLACEHOLDER;
+        const hero = gallery ? `<img class="mod-tile__hero-img" src="${escapeHtml((0, apiBase_1.catalogImageUrl)(gallery))}" alt="" loading="lazy">` : placeholder;
+        const downloads = formatAiDownloads(p.downloads);
+        const follows = formatAiDownloads(p.follows);
+        const updated = formatModsRelativeDate(p.date_modified);
+        return `<article class="mod-tile" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || "mod"))}" data-mod-source="${escapeHtml(source)}">
+      <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
+      <div class="mod-tile__body">
+        <div class="mod-tile__head">
+          <div class="mod-tile__icon" style="background:${accent}">${icon}</div>
+          <div class="mod-tile__titles">
+            <div class="mod-tile__name">${title} ${sourceBadge}</div>
+            ${authorRaw ? `<div class="mod-tile__author">${escapeHtml(t("mods.byAuthor", { author: authorRaw }))}</div>` : ""}
+          </div>
+        </div>
+        <p class="mod-tile__desc">${desc}</p>
+        <div class="mod-tile__stats">
+          <span title="${escapeHtml(t("mods.stat.downloads"))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6.5M3.5 5.5L6 8l2.5-2.5M2 10.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            ${escapeHtml(downloads)}
+          </span>
+          <span title="${escapeHtml(t("mods.stat.follows"))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 10.2l-4.1-3.7A2.6 2.6 0 016 2.7a2.6 2.6 0 014.1 3.8L6 10.2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            ${escapeHtml(follows)}
+          </span>
+          ${updated ? `<span title="${escapeHtml(t("mods.stat.updated"))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5V6l1.8 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            ${escapeHtml(updated)}
+          </span>` : ""}
+        </div>
+        <div class="mod-card-actions mod-tile__actions">
+          <button class="details-btn" data-modrinth-id="${id}">${t("btn.details")}</button>
+          <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${id}" data-modrinth-title="${title}">${t("ai.askAboutMod")}</button>
+          <button class="list-row-btn download-btn" data-modrinth-id="${id}">${t("btn.download")}</button>
+        </div>
+      </div>
+    </article>`;
+      }
+      var modsRenderedCount = 0;
+      var modsLoadingMore = false;
+      var modsSentinelObserver = null;
+      function modsHasMore() {
+        return modsOffset < modsTotal;
+      }
+      function disconnectModsInfiniteScroll() {
+        modsSentinelObserver?.disconnect();
+        modsSentinelObserver = null;
+      }
+      function bindModsInfiniteScroll(grid) {
+        disconnectModsInfiniteScroll();
+        const sentinel = grid.querySelector(".mods-scroll-sentinel");
+        if (!sentinel || !modsHasMore())
+          return;
+        modsSentinelObserver = new IntersectionObserver((entries) => {
+          if (!entries.some((e) => e.isIntersecting))
+            return;
+          void loadMoreModsOnScroll();
+        }, { root: null, rootMargin: "200px 0px", threshold: 0 });
+        modsSentinelObserver.observe(sentinel);
+      }
+      async function loadMoreModsOnScroll() {
+        if (modsLoadingMore || !modsHasMore())
+          return;
+        modsLoadingMore = true;
+        const grid = document.getElementById("mods-grid");
+        const status = grid?.querySelector(".mods-loading-more");
+        if (status)
+          status.hidden = false;
+        try {
+          await searchMods(modsQuery, currentCategory, true);
+        } finally {
+          modsLoadingMore = false;
+          const g2 = document.getElementById("mods-grid");
+          const s = g2?.querySelector(".mods-loading-more");
+          if (s)
+            s.hidden = !modsLoadingMore;
+        }
+      }
+      function renderMods(append = false) {
+        const grid = document.getElementById("mods-grid");
+        if (!grid)
+          return;
+        applyModsViewModeUi();
+        if (!modsData || modsData.length === 0) {
+          disconnectModsInfiniteScroll();
+          if (!append)
+            grid.innerHTML = catalogStateHtml("mods.notFoundTitle", "mods.notFoundDesc");
+          return;
+        }
+        const mode = getModsViewMode();
+        const newItems = append ? modsData.slice(modsRenderedCount) : modsData;
+        modsRenderedCount = modsData.length;
+        const cardsHtml = newItems.map((p) => mode === "cards" ? renderModTile(p) : renderModListRow(p)).join("");
+        const footerHtml = modsHasMore() ? `<div class="mods-scroll-sentinel" aria-hidden="true"></div>
+       <div class="mods-loading-more"${modsLoadingMore ? "" : " hidden"}>${t("common.loading")}</div>` : "";
+        if (append) {
+          grid.querySelector(".mods-scroll-sentinel")?.remove();
+          grid.querySelector(".mods-loading-more")?.remove();
+          grid.insertAdjacentHTML("beforeend", cardsHtml + footerHtml);
+        } else {
+          grid.innerHTML = cardsHtml + footerHtml;
+        }
+        grid.querySelectorAll(".details-btn").forEach((btn) => {
+          btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute("data-modrinth-id");
+            if (id)
+              openModalDetails(id);
+          });
+        });
+        grid.querySelectorAll(".ai-ask-mod-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute("data-modrinth-id") || "";
+            const title = btn.getAttribute("data-modrinth-title") || id;
+            (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, id);
+          });
+        });
+        grid.querySelectorAll(".download-btn").forEach((btn) => {
+          btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute("data-modrinth-id");
+            if (!id)
+              return;
+            openModalVersionsForDownload(id);
+          });
+        });
+        bindModsInfiniteScroll(grid);
       }
       function versionKey(v2) {
         const m2 = v2.match(/(\d+)\.(\d+)(?:\.(\d+))?/);
@@ -35486,6 +40676,13 @@ buildId: ${id}` : ""));
         modsOffset = 0;
         modsRenderedCount = 0;
         modsData = [];
+        const sourceSel = document.getElementById("mods-source-select");
+        if (sourceSel) {
+          sourceSel.value = modsSource;
+          const wrap = sourceSel.closest(".stngs-select-wrap");
+          if (wrap)
+            syncSelectUI(wrap);
+        }
         refreshModsClearBtn();
         searchMods("", "all");
       }
@@ -35500,13 +40697,16 @@ buildId: ${id}` : ""));
         const grid = document.getElementById("mods-grid");
         if (!grid)
           return;
-        if (!append)
+        if (!append) {
           modsOffset = 0;
+          modsLoadingMore = false;
+          disconnectModsInfiniteScroll();
+        }
         modsQuery = query;
         currentCategory = category;
         if (api?.getModrinthProjects) {
           if (!append) {
-            grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t("common.loading") + "</div>";
+            grid.innerHTML = catalogStateHtml("mods.loadingTitle");
             modsRenderedCount = 0;
           }
           try {
@@ -35514,7 +40714,8 @@ buildId: ${id}` : ""));
               categories: [...modsTags],
               loaders: [...modsLoaders],
               version: modsVersion || void 0,
-              index: modsSort
+              index: modsSort,
+              source: modsSource
             });
             if (result.error) {
               if (!append) {
@@ -35539,6 +40740,8 @@ buildId: ${id}` : ""));
               modsData = hits;
             }
             modsOffset += hits.length;
+            if (append && hits.length === 0)
+              modsTotal = modsOffset;
             renderMods(append);
           } catch {
             if (!append)
@@ -35546,154 +40749,128 @@ buildId: ${id}` : ""));
           }
         }
       }
-      var modsRenderedCount = 0;
-      function renderMods(append = false) {
-        const grid = document.getElementById("mods-grid");
-        if (!grid)
-          return;
-        if (!modsData || modsData.length === 0) {
-          if (!append)
-            grid.innerHTML = '<div style="padding:20px;text-align:center;color:rgba(255,255,255,0.3);font-weight:300;">' + t("mods.notFound") + "</div>";
-          return;
-        }
-        const newItems = append ? modsData.slice(modsRenderedCount) : modsData;
-        modsRenderedCount = modsData.length;
-        const cardsHtml = newItems.map((p) => `
-    <div class="mod-card" data-modrinth-id="${p.slug || p.id}" data-modrinth-type="${p.project_type || "mod"}">
-      <div class="mod-card-icon" style="background:${p.color ? "#" + p.color.toString(16).padStart(6, "0") : "rgba(255,255,255,0.05)"}">
-        ${p.icon_url ? `<img src="${(0, apiBase_1.catalogImageUrl)(p.icon_url)}" alt="">` : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>'}
-      </div>
-      <div class="mod-card-info">
-        <div class="mod-card-name">${p.title || "Unknown"}</div>
-        <div class="mod-card-desc">${(p.description || "").substring(0, 100)}</div>
-      </div>
-      <div class="mod-card-actions">
-        <button class="details-btn" data-modrinth-id="${p.slug || p.id}">${t("btn.details")}</button>
-        <button class="details-btn ai-ask-mod-btn" data-modrinth-id="${p.slug || p.id}" data-modrinth-title="${String(p.title || "").replace(/"/g, "&quot;")}">${t("ai.askAboutMod")}</button>
-        <button class="list-row-btn download-btn" data-modrinth-id="${p.slug || p.id}">${t("btn.download")}</button>
-      </div>
-    </div>
-  `).join("");
-        const loadMoreHtml = `<div class="load-more-wrap"><button class="load-more-btn" ${modsOffset >= modsTotal ? "disabled" : ""}>${modsOffset >= modsTotal ? t("mods.allLoaded") : t("mods.showMore")}</button></div>`;
-        if (append) {
-          const oldWrap = grid.querySelector(".load-more-wrap");
-          if (oldWrap)
-            oldWrap.remove();
-          grid.insertAdjacentHTML("beforeend", cardsHtml + loadMoreHtml);
-        } else {
-          grid.innerHTML = cardsHtml + loadMoreHtml;
-        }
-        grid.querySelectorAll(".details-btn").forEach((btn) => {
-          btn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            const id = btn.getAttribute("data-modrinth-id");
-            if (id)
-              openModalDetails(id);
-          });
-        });
-        grid.querySelectorAll(".ai-ask-mod-btn").forEach((btn) => {
-          btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const id = btn.getAttribute("data-modrinth-id") || "";
-            const title = btn.getAttribute("data-modrinth-title") || id;
-            (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, id);
-          });
-        });
-        grid.querySelectorAll(".download-btn").forEach((btn) => {
-          btn.addEventListener("click", async (e) => {
-            e.stopPropagation();
-            const id = btn.getAttribute("data-modrinth-id");
-            if (!id)
-              return;
-            openModalVersionsForDownload(id);
-          });
-        });
-        const loadMoreBtn = grid.querySelector(".load-more-btn");
-        if (loadMoreBtn) {
-          loadMoreBtn.addEventListener("click", async () => {
-            loadMoreBtn.disabled = true;
-            await searchMods(modsQuery, currentCategory, true);
-          });
-        }
-      }
       var pendingDownloadVersionId = "";
       var pendingDownloadGameVersions = [];
-      function openModalVersionsForDownload(projectId) {
-        pendingDownloadVersionId = "";
-        pendingDownloadGameVersions = [];
-        pendingTargetProjectId = projectId;
-        const titleEl = document.getElementById("modal-versions-title");
-        const subEl = document.getElementById("modal-versions-sub");
+      var pendingVersionsAll = [];
+      var pendingProjectType = "mod";
+      var versionsUiMode = "quick";
+      var versionsPickGame = "";
+      var versionsPickLoader = "";
+      var versionsShowAll = false;
+      var versionsOpenDd = null;
+      function isReleaseGameVersion(v2) {
+        return /^\d+\.\d+(\.\d+)?$/.test(String(v2 || ""));
+      }
+      function collectVersionFacets(versions) {
+        const games = /* @__PURE__ */ new Set();
+        const loaders = /* @__PURE__ */ new Set();
+        for (const v2 of versions) {
+          for (const g2 of v2.game_versions || [])
+            games.add(String(g2));
+          for (const l3 of v2.loaders || []) {
+            const id = String(l3).toLowerCase();
+            if (id && id !== "minecraft")
+              loaders.add(id);
+          }
+        }
+        return {
+          gameVersions: [...games].sort((a, b2) => b2.localeCompare(a, void 0, { numeric: true })),
+          loaders: [...loaders]
+        };
+      }
+      function versionsSelectorConfig(projectType, loaders) {
+        const type = String(projectType || "mod");
+        if (type === "shader") {
+          return { showGame: true, showLoader: loaders.length > 0, loaderKind: "platform", loaders };
+        }
+        if (type === "mod") {
+          return { showGame: true, showLoader: loaders.length > 1, loaderKind: "loader", loaders };
+        }
+        return { showGame: true, showLoader: false, loaderKind: "loader", loaders: [] };
+      }
+      function preferredContentLoader(loaders) {
+        for (const id of ["fabric", "neoforge", "forge", "quilt", "iris", "optifine"]) {
+          if (loaders.includes(id))
+            return id;
+        }
+        return loaders[0] || "";
+      }
+      function filterGameVersionsList(all, showAll) {
+        if (showAll)
+          return all;
+        const releases = all.filter(isReleaseGameVersion);
+        return releases.length ? releases : all;
+      }
+      function findMatchingVersion(versions, gameVersion, loader, needLoader) {
+        return versions.find((v2) => {
+          if (gameVersion && !(v2.game_versions || []).includes(gameVersion))
+            return false;
+          if (needLoader && loader && !(v2.loaders || []).map((x2) => String(x2).toLowerCase()).includes(loader)) {
+            return false;
+          }
+          return true;
+        }) || null;
+      }
+      function formatBytesShort(n) {
+        if (!n)
+          return "";
+        const units = ["B", "KB", "MB", "GB"];
+        let i = 0;
+        let value = n;
+        while (value >= 1024 && i < units.length - 1) {
+          value /= 1024;
+          i += 1;
+        }
+        return `${value.toFixed(value < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+      }
+      function formatRelativeIso(iso) {
+        if (!iso)
+          return "";
+        const then = new Date(iso).getTime();
+        if (Number.isNaN(then))
+          return "";
+        const diffSec = Math.round((then - Date.now()) / 1e3);
+        const abs = Math.abs(diffSec);
+        if (abs < 3600)
+          return t("mods.dl.justNow");
+        if (abs < 86400)
+          return t("mods.dl.hoursAgo", { n: Math.round(abs / 3600) });
+        if (abs < 86400 * 7)
+          return t("mods.dl.daysAgo", { n: Math.round(abs / 86400) });
+        if (abs < 86400 * 30)
+          return t("mods.dl.weeksAgo", { n: Math.round(abs / (86400 * 7)) });
+        return new Date(iso).toLocaleDateString();
+      }
+      function versionTypeLabel(type) {
+        const key = `mods.versionType.${type}`;
+        const translated = t(key);
+        return translated === key ? type : translated;
+      }
+      function setVersionsMode(mode) {
+        versionsUiMode = mode;
+        if (mode !== "quick")
+          closeVersionsDropdown(false);
+        const quick = document.getElementById("versions-quick");
         const list = document.getElementById("versions-list");
         const confirmBtn = document.getElementById("modal-versions-confirm");
-        if (titleEl)
-          titleEl.textContent = t("mods.versionsTitle");
-        if (subEl)
-          subEl.textContent = t("mods.versionsLoading");
-        if (!list)
-          return;
+        const backBtn = document.getElementById("modal-versions-back");
+        const subEl = document.getElementById("modal-versions-sub");
+        if (quick)
+          quick.hidden = mode !== "quick";
+        if (list)
+          list.hidden = mode !== "list";
         if (confirmBtn)
-          confirmBtn.disabled = true;
-        list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t("common.loading") + "</div>";
-        openModal("modal-versions");
-        (async () => {
-          let versions = await api?.getModrinthVersions(projectId) || [];
-          if (versions.length === 0) {
-            list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t("mods.versionsNone") + "</div>";
-            if (subEl)
-              subEl.textContent = t("mods.versionsNoneShort");
-            return;
-          }
-          const versionFilter = modsVersion || "";
-          const loaderFilter = [...modsLoaders];
-          if (versionFilter || loaderFilter.length) {
-            const filtered = versions.filter((v2) => {
-              if (versionFilter && !(v2.game_versions || []).includes(versionFilter))
-                return false;
-              if (loaderFilter.length && !(v2.loaders || []).some((l3) => loaderFilter.includes(l3)))
-                return false;
-              return true;
-            });
-            if (filtered.length === 0) {
-              list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t("mods.versionsFilterEmpty") + "</div>";
-              if (subEl)
-                subEl.textContent = t("mods.versionsFilterEmpty");
-              return;
-            }
-            if (subEl)
-              subEl.textContent = t("mods.versionsFilteredCount", { n: filtered.length });
-            versions = filtered;
-          } else {
-            if (subEl)
-              subEl.textContent = t("mods.versionsCount", { n: versions.length });
-          }
-          list.innerHTML = versions.map((v2) => {
-            const loaders = (v2.loaders || []).map((l3) => `<span class="version-loader-tag">${l3}</span>`).join("");
-            const gv = versionFilter && (v2.game_versions || []).includes(versionFilter) ? versionFilter : v2.game_versions?.[0] || "";
-            return `<div class="version-item" data-version-id="${v2.id}">
-        <div class="version-item-name">${v2.name || v2.version_number || "\u2014"}</div>
-        <div class="version-item-loaders">${loaders}</div>
-        <div class="version-item-meta">${gv}</div>
-      </div>`;
-          }).join("");
-          list.querySelectorAll(".version-item").forEach((el) => {
-            el.addEventListener("click", () => {
-              list.querySelectorAll(".version-item.selected").forEach((e) => e.classList.remove("selected"));
-              el.classList.add("selected");
-              if (confirmBtn)
-                confirmBtn.disabled = false;
-              const vid = el.getAttribute("data-version-id");
-              const vobj = versions.find((v2) => v2.id === vid);
-              pendingDownloadGameVersions = vobj?.game_versions || [];
-            });
-          });
-        })();
+          confirmBtn.hidden = mode !== "list";
+        if (backBtn)
+          backBtn.hidden = mode !== "list";
+        if (subEl) {
+          subEl.textContent = mode === "list" ? t("mods.versionsSub") : t("mods.dl.title");
+        }
       }
-      document.getElementById("modal-versions-confirm")?.addEventListener("click", async () => {
-        const selected = document.querySelector("#versions-list .version-item.selected");
-        if (!selected || !pendingTargetProjectId)
+      async function confirmPendingVersionInstall() {
+        if (!pendingTargetProjectId || !pendingDownloadVersionId)
           return;
-        pendingDownloadVersionId = selected.getAttribute("data-version-id") || "";
+        closeVersionsDropdown(false);
         closeModal("modal-versions");
         const projectInfo = await api?.getModrinthProject(pendingTargetProjectId);
         if (projectInfo?.project_type === "modpack") {
@@ -35708,6 +40885,322 @@ buildId: ${id}` : ""));
         } else {
           openModalTargetBuildForDownload(pendingTargetProjectId);
         }
+      }
+      var VERSIONS_SELECT_CHEVRON = '<svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      var versionsPortalMenu = null;
+      var versionsPortalHost = null;
+      var versionsCloseAnimTimer = null;
+      function restoreVersionsPortalMenu() {
+        if (versionsCloseAnimTimer) {
+          clearTimeout(versionsCloseAnimTimer);
+          versionsCloseAnimTimer = null;
+        }
+        if (versionsPortalMenu && versionsPortalHost && versionsPortalMenu.isConnected) {
+          versionsPortalMenu.classList.remove("is-portal", "open", "closing");
+          versionsPortalMenu.style.cssText = "";
+          versionsPortalHost.appendChild(versionsPortalMenu);
+        } else if (versionsPortalMenu?.isConnected && versionsPortalMenu.parentElement === document.body) {
+          versionsPortalMenu.remove();
+        }
+        versionsPortalMenu = null;
+        versionsPortalHost = null;
+        document.querySelectorAll("#versions-quick .stngs-select-wrap.open").forEach((w2) => w2.classList.remove("open"));
+        versionsOpenDd = null;
+      }
+      function closeVersionsDropdown(animated = true) {
+        if (!versionsPortalMenu) {
+          document.querySelectorAll("#versions-quick .stngs-select-wrap.open").forEach((w2) => w2.classList.remove("open"));
+          versionsOpenDd = null;
+          return;
+        }
+        if (!animated) {
+          restoreVersionsPortalMenu();
+          return;
+        }
+        const menu = versionsPortalMenu;
+        menu.classList.remove("open");
+        menu.classList.add("closing");
+        if (versionsCloseAnimTimer)
+          clearTimeout(versionsCloseAnimTimer);
+        versionsCloseAnimTimer = setTimeout(() => {
+          restoreVersionsPortalMenu();
+        }, 130);
+      }
+      function openVersionsDropdown(kind) {
+        if (versionsOpenDd === kind) {
+          closeVersionsDropdown(true);
+          return;
+        }
+        closeVersionsDropdown(false);
+        const wrap = document.querySelector(`#versions-quick [data-vdd="${kind}"]`);
+        if (!wrap)
+          return;
+        const btn = wrap.querySelector(".stngs-select-btn");
+        const menu = wrap.querySelector(".stngs-select-menu");
+        if (!btn || !menu)
+          return;
+        versionsOpenDd = kind;
+        versionsPortalHost = wrap;
+        versionsPortalMenu = menu;
+        wrap.classList.add("open");
+        const rect = btn.getBoundingClientRect();
+        const width = Math.max(rect.width, 170);
+        let left = rect.left;
+        if (left + width > window.innerWidth - 8)
+          left = window.innerWidth - width - 8;
+        left = Math.max(8, left);
+        document.body.appendChild(menu);
+        menu.classList.add("is-portal");
+        menu.style.position = "fixed";
+        menu.style.left = `${left}px`;
+        menu.style.top = `${rect.bottom + 6}px`;
+        menu.style.minWidth = `${width}px`;
+        menu.style.right = "auto";
+        menu.style.zIndex = "20000";
+        menu.classList.remove("closing");
+        void menu.offsetWidth;
+        menu.classList.add("open");
+      }
+      function renderVersionsQuickPanel() {
+        closeVersionsDropdown(false);
+        const root = document.getElementById("versions-quick");
+        if (!root)
+          return;
+        const facets = collectVersionFacets(pendingVersionsAll);
+        const cfg = versionsSelectorConfig(pendingProjectType, facets.loaders);
+        const games = filterGameVersionsList(facets.gameVersions, versionsShowAll);
+        const matching = findMatchingVersion(pendingVersionsAll, versionsPickGame, versionsPickLoader, Boolean(versionsPickLoader));
+        const dd = (kind, placeholder, value, options, withShowAll) => {
+          const label = value ? kind === "game" ? value : value.charAt(0).toUpperCase() + value.slice(1) : placeholder;
+          const items = options.map((opt) => {
+            const text = kind === "game" ? opt : opt.charAt(0).toUpperCase() + opt.slice(1);
+            return `<div class="stngs-select-opt${opt === value ? " selected" : ""}" data-vdd-opt="${opt}" data-vdd-kind="${kind}">${text}</div>`;
+          }).join("");
+          const footer = withShowAll ? `<label class="versions-showall">
+           <input type="checkbox" id="versions-show-all"${versionsShowAll ? " checked" : ""} />
+           <span>${t("mods.dl.showAllVersions")}</span>
+         </label>` : "";
+          return `
+      <div class="stngs-select-wrap mods-select-wrap versions-select-wrap" data-vdd="${kind}">
+        <button type="button" class="stngs-select-btn${value ? "" : " is-placeholder"}" data-vdd-toggle="${kind}">
+          <span class="stngs-select-value">${label}</span>
+          ${VERSIONS_SELECT_CHEVRON}
+        </button>
+        <div class="stngs-select-menu select-scroll-menu">
+          ${items || `<div class="stngs-select-opt" style="opacity:.5;cursor:default">${t("mods.dl.noOptions")}</div>`}
+          ${footer}
+        </div>
+      </div>`;
+        };
+        let resultHtml = "";
+        if (!versionsPickGame && cfg.showGame) {
+          resultHtml = `<div class="dl-manual__status">${t("mods.dl.pickGame")}</div>`;
+        } else if (cfg.showLoader && !versionsPickLoader) {
+          resultHtml = `<div class="dl-manual__status">${cfg.loaderKind === "platform" ? t("mods.dl.pickPlatform") : t("mods.dl.pickLoader")}</div>`;
+        } else if (!matching) {
+          resultHtml = `<div class="dl-manual__status">${t("mods.dl.noMatch")}</div>`;
+        } else {
+          const title = matching.version_number || matching.name || "\u2014";
+          const type = matching.version_type || "release";
+          const size = matching.file?.size || matching.files?.[0]?.size || 0;
+          const meta = [formatRelativeIso(matching.date_published || ""), formatBytesShort(Number(size) || 0)].filter(Boolean).join(" \xB7 ");
+          resultHtml = `
+      <div class="dl-manual__card">
+        <div class="dl-manual__card-main">
+          <div class="dl-manual__card-title">
+            <strong>${title}</strong>
+            <span class="dl-manual__type dl-manual__type--${type}">${versionTypeLabel(type)}</span>
+          </div>
+          <div class="dl-manual__card-meta">${meta}</div>
+        </div>
+        <button type="button" class="stngs-btn primary dl-manual__install" data-vdd-install="${matching.id}">
+          ${t("btn.install")}
+        </button>
+      </div>`;
+        }
+        root.innerHTML = `
+    <div class="dl-manual__label">${t("mods.dl.title")}</div>
+    <div class="dl-manual__row${cfg.showLoader ? " has-two" : ""}">
+      ${cfg.showGame ? dd("game", t("mods.dl.selectGame"), versionsPickGame, games, true) : ""}
+      ${cfg.showLoader ? dd("loader", cfg.loaderKind === "platform" ? t("mods.dl.selectPlatform") : t("mods.dl.selectLoader"), versionsPickLoader, cfg.loaders, false) : ""}
+    </div>
+    <div class="dl-manual__result">${resultHtml}</div>
+    <button type="button" class="dl-manual__specific" data-vdd-specific>${t("mods.dl.specificVersion")}</button>`;
+      }
+      function renderVersionsListPanel(versions) {
+        const list = document.getElementById("versions-list");
+        const confirmBtn = document.getElementById("modal-versions-confirm");
+        const subEl = document.getElementById("modal-versions-sub");
+        if (!list)
+          return;
+        if (confirmBtn)
+          confirmBtn.disabled = true;
+        if (!versions.length) {
+          list.innerHTML = `<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">${t("mods.versionsNone")}</div>`;
+          if (subEl)
+            subEl.textContent = t("mods.versionsNoneShort");
+          return;
+        }
+        if (subEl)
+          subEl.textContent = t("mods.versionsCount", { n: versions.length });
+        list.innerHTML = versions.map((v2) => {
+          const loaders = (v2.loaders || []).map((l3) => `<span class="version-loader-tag">${l3}</span>`).join("");
+          const gv = (v2.game_versions || []).slice(0, 3).join(", ");
+          const type = v2.version_type || "release";
+          return `<div class="version-item" data-version-id="${v2.id}">
+        <div class="version-item-name">${v2.name || v2.version_number || "\u2014"}
+          <span class="dl-manual__type dl-manual__type--${type}">${versionTypeLabel(type)}</span>
+        </div>
+        <div class="version-item-loaders">${loaders}</div>
+        <div class="version-item-meta">${gv}</div>
+      </div>`;
+        }).join("");
+        list.querySelectorAll(".version-item").forEach((el) => {
+          el.addEventListener("click", () => {
+            list.querySelectorAll(".version-item.selected").forEach((e) => e.classList.remove("selected"));
+            el.classList.add("selected");
+            if (confirmBtn)
+              confirmBtn.disabled = false;
+            const vid = el.getAttribute("data-version-id");
+            const vobj = versions.find((v2) => v2.id === vid);
+            pendingDownloadGameVersions = vobj?.game_versions || [];
+          });
+        });
+      }
+      function openModalVersionsForDownload(projectId) {
+        pendingDownloadVersionId = "";
+        pendingDownloadGameVersions = [];
+        pendingTargetProjectId = projectId;
+        pendingVersionsAll = [];
+        pendingProjectType = "mod";
+        versionsUiMode = "quick";
+        versionsPickGame = modsVersion || "";
+        versionsPickLoader = modsLoaders.size === 1 ? [...modsLoaders][0] : "";
+        versionsShowAll = false;
+        versionsOpenDd = null;
+        const titleEl = document.getElementById("modal-versions-title");
+        const subEl = document.getElementById("modal-versions-sub");
+        const quick = document.getElementById("versions-quick");
+        const list = document.getElementById("versions-list");
+        const confirmBtn = document.getElementById("modal-versions-confirm");
+        if (titleEl)
+          titleEl.textContent = t("mods.versionsTitle");
+        if (subEl)
+          subEl.textContent = t("mods.dl.title");
+        if (quick)
+          quick.innerHTML = `<div class="dl-manual__status">${t("common.loading")}</div>`;
+        if (list)
+          list.innerHTML = "";
+        if (confirmBtn)
+          confirmBtn.disabled = true;
+        setVersionsMode("quick");
+        openModal("modal-versions");
+        void (async () => {
+          const [versions, projectInfo] = await Promise.all([
+            api?.getModrinthVersions(projectId) || Promise.resolve([]),
+            api?.getModrinthProject(projectId)
+          ]);
+          pendingVersionsAll = Array.isArray(versions) ? versions : [];
+          pendingProjectType = String(projectInfo?.project_type || "mod");
+          if (!pendingVersionsAll.length) {
+            if (quick)
+              quick.innerHTML = `<div class="dl-manual__status">${t("mods.versionsNone")}</div>`;
+            if (subEl)
+              subEl.textContent = t("mods.versionsNoneShort");
+            return;
+          }
+          const facets = collectVersionFacets(pendingVersionsAll);
+          const cfg = versionsSelectorConfig(pendingProjectType, facets.loaders);
+          const games = filterGameVersionsList(facets.gameVersions, versionsShowAll);
+          if (versionsPickGame && !games.includes(versionsPickGame))
+            versionsPickGame = "";
+          if (!versionsPickGame)
+            versionsPickGame = games[0] || "";
+          if (cfg.showLoader) {
+            if (versionsPickLoader && !cfg.loaders.includes(versionsPickLoader))
+              versionsPickLoader = "";
+            if (!versionsPickLoader)
+              versionsPickLoader = preferredContentLoader(cfg.loaders);
+          } else if ((pendingProjectType === "mod" || pendingProjectType === "shader") && facets.loaders.length === 1) {
+            versionsPickLoader = facets.loaders[0];
+          } else {
+            versionsPickLoader = "";
+          }
+          renderVersionsQuickPanel();
+        })();
+      }
+      document.getElementById("versions-quick")?.addEventListener("click", (e) => {
+        const target = e.target;
+        const toggle = target.closest("[data-vdd-toggle]");
+        if (toggle) {
+          e.stopPropagation();
+          const kind = toggle.getAttribute("data-vdd-toggle");
+          openVersionsDropdown(kind);
+          return;
+        }
+        if (target.closest("[data-vdd-specific]")) {
+          closeVersionsDropdown(false);
+          setVersionsMode("list");
+          renderVersionsListPanel(pendingVersionsAll);
+          return;
+        }
+        const installBtn = target.closest("[data-vdd-install]");
+        if (installBtn) {
+          closeVersionsDropdown(false);
+          pendingDownloadVersionId = installBtn.getAttribute("data-vdd-install") || "";
+          const vobj = pendingVersionsAll.find((v2) => v2.id === pendingDownloadVersionId);
+          pendingDownloadGameVersions = vobj?.game_versions || [];
+          void confirmPendingVersionInstall();
+        }
+      });
+      document.addEventListener("click", (e) => {
+        const target = e.target;
+        const opt = target.closest(".stngs-select-menu.is-portal [data-vdd-opt]");
+        if (opt) {
+          e.stopPropagation();
+          const kind = opt.getAttribute("data-vdd-kind");
+          const value = opt.getAttribute("data-vdd-opt") || "";
+          if (kind === "game")
+            versionsPickGame = value;
+          if (kind === "loader")
+            versionsPickLoader = value;
+          closeVersionsDropdown(true);
+          setTimeout(() => renderVersionsQuickPanel(), 140);
+          return;
+        }
+        if (versionsOpenDd && !target.closest("#versions-quick [data-vdd-toggle]") && !target.closest(".stngs-select-menu.is-portal")) {
+          closeVersionsDropdown(true);
+        }
+      });
+      document.addEventListener("change", (e) => {
+        const input = e.target;
+        if (input?.id !== "versions-show-all")
+          return;
+        versionsShowAll = !!input.checked;
+        const facets = collectVersionFacets(pendingVersionsAll);
+        const games = filterGameVersionsList(facets.gameVersions, versionsShowAll);
+        if (versionsPickGame && !games.includes(versionsPickGame)) {
+          versionsPickGame = games[0] || "";
+        }
+        const wasOpen = versionsOpenDd;
+        renderVersionsQuickPanel();
+        if (wasOpen === "game")
+          openVersionsDropdown("game");
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && versionsOpenDd)
+          closeVersionsDropdown(true);
+      });
+      document.getElementById("modal-versions-back")?.addEventListener("click", () => {
+        setVersionsMode("quick");
+        renderVersionsQuickPanel();
+      });
+      document.getElementById("modal-versions-confirm")?.addEventListener("click", async () => {
+        const selected = document.querySelector("#versions-list .version-item.selected");
+        if (!selected || !pendingTargetProjectId)
+          return;
+        pendingDownloadVersionId = selected.getAttribute("data-version-id") || "";
+        await confirmPendingVersionInstall();
       });
       function openModalTargetBuildForDownload(projectId) {
         const list = document.getElementById("target-build-list");
@@ -36190,10 +41683,18 @@ ${lines.join("\n")}${depsNote}`);
           await openShareImportModal(payload.id);
           return;
         }
+        if (payload.action === "join-group") {
+          switchTab("messenger");
+          await (0, ui_1.ensureMessengerTab)(true);
+          await (0, ui_1.openGroupInviteModal)(payload.token);
+          return;
+        }
         await handleDeepLinkInstall(payload);
       }
       async function handleDeepLinkInstall(payload) {
-        if (!payload || payload.action !== "install" || payload.source !== "modrinth")
+        if (!payload || payload.action !== "install")
+          return;
+        if (payload.source !== "modrinth" && payload.source !== "curseforge")
           return;
         if (deepLinkStage === "installing") {
           updateStatus(t("deeplink.busy"));
@@ -36294,6 +41795,104 @@ ${lines.join("\n")}${depsNote}`);
       }
       function shareBuildIconHtml(build) {
         return buildCardIconHtml(build);
+      }
+      var shareMenuBuild = null;
+      var exportBusy = false;
+      var shareMenuCloseTimer = null;
+      function hideBuildShareMenu() {
+        const menu = document.getElementById("build-share-menu");
+        shareMenuBuild = null;
+        if (!menu || menu.hidden)
+          return;
+        if (menu.classList.contains("closing"))
+          return;
+        if (shareMenuCloseTimer) {
+          clearTimeout(shareMenuCloseTimer);
+          shareMenuCloseTimer = null;
+        }
+        menu.classList.remove("open");
+        menu.classList.add("closing");
+        const finish = () => {
+          menu.classList.remove("closing");
+          menu.hidden = true;
+          shareMenuCloseTimer = null;
+        };
+        const onEnd = (e) => {
+          if (e.target !== menu)
+            return;
+          menu.removeEventListener("animationend", onEnd);
+          finish();
+        };
+        menu.addEventListener("animationend", onEnd);
+        shareMenuCloseTimer = setTimeout(() => {
+          menu.removeEventListener("animationend", onEnd);
+          finish();
+        }, 200);
+      }
+      function openBuildShareMenu(anchor, build) {
+        const menu = document.getElementById("build-share-menu");
+        if (!menu) {
+          void openShareModal(build);
+          return;
+        }
+        if (shareMenuCloseTimer) {
+          clearTimeout(shareMenuCloseTimer);
+          shareMenuCloseTimer = null;
+        }
+        shareMenuBuild = build;
+        menu.classList.remove("closing", "open");
+        menu.hidden = false;
+        const rect = anchor.getBoundingClientRect();
+        const menuW = Math.max(220, menu.offsetWidth || 220);
+        const menuH = menu.offsetHeight || 160;
+        let left = rect.left;
+        let top = rect.bottom + 6;
+        let placement = "below";
+        if (left + menuW > window.innerWidth - 8)
+          left = window.innerWidth - menuW - 8;
+        if (top + menuH > window.innerHeight - 8) {
+          top = rect.top - menuH - 6;
+          placement = "above";
+        }
+        menu.dataset.placement = placement;
+        menu.style.left = `${Math.max(8, left)}px`;
+        menu.style.top = `${Math.max(8, top)}px`;
+        void menu.offsetWidth;
+        menu.classList.add("open");
+      }
+      async function runInstanceExport(kind, build) {
+        if (exportBusy) {
+          updateStatus(t("share.exportBusy"));
+          return;
+        }
+        exportBusy = true;
+        updateStatus(t("share.exportPreparing"));
+        const off = api?.onInstanceExportProgress?.((data) => {
+          const phase = String(data?.phase || "");
+          const file = String(data?.filename || "");
+          if (phase === "pack" && file)
+            updateStatus(t("share.exportPacking", { file }));
+          else if (phase === "resolve" && file)
+            updateStatus(t("share.exportResolving", { file }));
+          else if (phase === "prepare")
+            updateStatus(t("share.exportPreparing"));
+        }) || null;
+        try {
+          const result = kind === "zip" ? await api?.exportInstanceZip?.(build.id) : await api?.exportInstanceMrpack?.(build.id);
+          if (!result?.ok) {
+            if (result?.error === "cancelled")
+              updateStatus(t("share.exportCancelled"));
+            else
+              updateStatus(t("share.exportFailed"));
+            return;
+          }
+          updateStatus(t("share.exportDone", { path: result.path || "" }));
+        } catch {
+          updateStatus(t("share.exportFailed"));
+        } finally {
+          off?.();
+          exportBusy = false;
+        }
       }
       async function openShareModal(build) {
         if (shareBusy) {
@@ -36675,6 +42274,26 @@ ${lines.join("\n")}${depsNote}`);
           openModsFiltersPopup();
         }
       });
+      document.getElementById("mods-view-toggle")?.addEventListener("click", () => {
+        setModsViewMode(getModsViewMode() === "cards" ? "list" : "cards");
+      });
+      applyModsViewModeUi();
+      function initToolbarSticky(tabId, toolbarId, sentinelId) {
+        const tab = document.getElementById(tabId);
+        const toolbar = document.getElementById(toolbarId);
+        const sentinel = document.getElementById(sentinelId);
+        if (!tab || !toolbar || !sentinel)
+          return;
+        const observer = new IntersectionObserver((entries) => {
+          const entry = entries[0];
+          if (!entry)
+            return;
+          toolbar.classList.toggle("is-stuck", !entry.isIntersecting);
+        }, { root: tab, threshold: 0, rootMargin: "0px" });
+        observer.observe(sentinel);
+      }
+      initToolbarSticky("tab-mods", "mods-search-bar", "mods-toolbar-sentinel");
+      initToolbarSticky("tab-servers", "servers-search-bar", "servers-toolbar-sentinel");
       document.addEventListener("click", (e) => {
         const wrap = document.getElementById("mods-filters-toggle")?.parentElement;
         if (!wrap || !modsFiltersPopup?.classList.contains("open"))
@@ -36688,6 +42307,13 @@ ${lines.join("\n")}${depsNote}`);
       });
       document.getElementById("mods-sort-select")?.addEventListener("change", (e) => {
         modsSort = e.target.value || "relevance";
+        refreshModsClearBtn();
+        modsSearchWithFilters();
+      });
+      document.getElementById("mods-source-select")?.addEventListener("change", (e) => {
+        const val = e.target.value || "both";
+        modsSource = val === "modrinth" || val === "curseforge" ? val : "both";
+        localStorage.setItem("Undefined Client-mods-source", modsSource);
         refreshModsClearBtn();
         modsSearchWithFilters();
       });
@@ -36722,12 +42348,17 @@ ${lines.join("\n")}${depsNote}`);
       });
       document.getElementById("mods-filters-clear")?.addEventListener("click", () => {
         modsSort = "relevance";
+        modsSource = "both";
+        localStorage.setItem("Undefined Client-mods-source", modsSource);
         modsVersion = "";
         modsLoaders.clear();
         modsTags.clear();
         const sortSel = document.getElementById("mods-sort-select");
         if (sortSel)
           sortSel.value = "relevance";
+        const sourceSel = document.getElementById("mods-source-select");
+        if (sourceSel)
+          sourceSel.value = "both";
         const verSel = document.getElementById("mods-version-select");
         if (verSel)
           verSel.value = "";
@@ -36751,23 +42382,34 @@ ${lines.join("\n")}${depsNote}`);
           return t("home.relative.yesterday");
         return t("home.relative.days", { n: days });
       }
+      function findBuildByLaunchId(lastId) {
+        const id = String(lastId || "").trim();
+        if (!id)
+          return null;
+        const direct = savedBuilds.find((b2) => b2.id === id);
+        if (direct)
+          return direct;
+        const slug = sanitizeBuildIdClient(id);
+        return savedBuilds.find((b2) => sanitizeBuildIdClient(b2.id) === slug) || null;
+      }
       function getHomeFeaturedBuild() {
-        const lastId = localStorage.getItem("last-launch-id");
-        if (lastId) {
-          const found = savedBuilds.find((b2) => b2.id === lastId);
-          if (found)
-            return found;
+        const byLast = findBuildByLaunchId(localStorage.getItem("last-launch-id"));
+        if (byLast)
+          return byLast;
+        if (!savedBuilds.length)
+          return null;
+        let best = savedBuilds[0];
+        for (const b2 of savedBuilds) {
+          if ((b2.playtime || 0) > (best.playtime || 0))
+            best = b2;
         }
-        return savedBuilds[0] || null;
+        return best;
       }
       function countInstalledMods() {
         return savedBuilds.reduce((sum, b2) => sum + (Array.isArray(b2.mods) ? b2.mods.length : 0), 0);
       }
       function getLastPlayedBuild() {
-        const lastId = localStorage.getItem("last-launch-id");
-        if (!lastId)
-          return null;
-        return savedBuilds.find((b2) => b2.id === lastId) || null;
+        return findBuildByLaunchId(localStorage.getItem("last-launch-id"));
       }
       function updateHomeWelcomeSub() {
         const el = document.getElementById("home-welcome-sub");
@@ -37017,9 +42659,8 @@ ${lines.join("\n")}${depsNote}`);
         const qlIcon = document.getElementById("quick-launch-icon");
         const qlName = document.getElementById("quick-launch-name");
         const qlVer = document.getElementById("quick-launch-version");
-        if (savedBuilds.length > 0) {
-          const lastId = localStorage.getItem("last-launch-id");
-          const build = savedBuilds.find((b2) => b2.id === lastId) || savedBuilds[0];
+        const build = getHomeFeaturedBuild();
+        if (build) {
           if (qlName)
             qlName.textContent = build.name;
           if (qlVer)
@@ -37071,11 +42712,23 @@ ${lines.join("\n")}${depsNote}`);
         updateHomeInsights();
       }
       var PRESENCE_MODALS = { "modal-settings": "settings", "modal-about": "about" };
+      var modalZCounter = 1500;
       function openModal(id) {
         const el = document.getElementById(id);
         if (!el)
           return;
         el.classList.remove("hidden", "closing");
+        let maxZ = modalZCounter;
+        document.querySelectorAll(".modal-overlay").forEach((node) => {
+          if (node === el || node.classList.contains("hidden"))
+            return;
+          const raw = node.style.zIndex || getComputedStyle(node).zIndex;
+          const z2 = parseInt(raw, 10);
+          if (Number.isFinite(z2) && z2 > maxZ)
+            maxZ = z2;
+        });
+        modalZCounter = maxZ + 1;
+        el.style.zIndex = String(modalZCounter);
         if (PRESENCE_MODALS[id])
           pushPresence(PRESENCE_MODALS[id]);
       }
@@ -37083,10 +42736,13 @@ ${lines.join("\n")}${depsNote}`);
         const el = document.getElementById(id);
         if (!el)
           return;
+        if (id === "modal-mod-details")
+          closeBeShotViewer();
         el.classList.add("closing");
         setTimeout(() => {
           el.classList.add("hidden");
           el.classList.remove("closing");
+          el.style.removeProperty("z-index");
         }, 120);
         if (PRESENCE_MODALS[id])
           pushPresence(presenceTab);
@@ -37200,20 +42856,29 @@ ${lines.join("\n")}${depsNote}`);
       document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape")
           return;
+        const shotViewer = document.getElementById("be-shot-viewer");
+        if (shotViewer && !shotViewer.classList.contains("hidden")) {
+          closeBeShotViewer();
+          return;
+        }
         if (accountPopup.classList.contains("open")) {
           closeAccountPopup();
           return;
         }
-        for (let i = ESC_CLOSEABLE_MODALS.length - 1; i >= 0; i--) {
-          const entry = ESC_CLOSEABLE_MODALS[i];
+        let top = null;
+        for (const entry of ESC_CLOSEABLE_MODALS) {
           const el = document.getElementById(entry.id);
-          if (el && !el.classList.contains("hidden") && !el.classList.contains("closing")) {
-            try {
-              entry.close();
-            } catch {
-              closeModal(entry.id);
-            }
-            break;
+          if (!el || el.classList.contains("hidden") || el.classList.contains("closing"))
+            continue;
+          const z2 = parseInt(getComputedStyle(el).zIndex, 10) || 0;
+          if (!top || z2 >= top.z)
+            top = { entry, z: z2 };
+        }
+        if (top) {
+          try {
+            top.entry.close();
+          } catch {
+            closeModal(top.entry.id);
           }
         }
       });
@@ -37226,6 +42891,8 @@ ${lines.join("\n")}${depsNote}`);
           tabEl.classList.add("active");
         if (panelEl)
           panelEl.classList.add("active");
+        if (tab !== "screenshots")
+          closeBeShotViewer();
         if (tab === "screenshots")
           loadBeScreenshots();
         if (tab === "worlds")
@@ -37300,8 +42967,27 @@ ${lines.join("\n")}${depsNote}`);
             versionSelect.value = build.gameVersion;
           if (loaderSelect)
             loaderSelect.value = build.loader;
-          if (loaderVerInput)
-            loaderVerInput.value = build.loaderVersion || "";
+          if (loaderVerInput) {
+            const lv = build.loaderVersion || "";
+            if (lv && !Array.from(loaderVerInput.options).some((o) => o.value === lv)) {
+              const opt = document.createElement("option");
+              opt.value = lv;
+              opt.textContent = lv;
+              loaderVerInput.appendChild(opt);
+              const menu = document.getElementById("modal-build-loader-ver-menu");
+              if (menu) {
+                const item = document.createElement("div");
+                item.className = "stngs-select-opt";
+                item.dataset.value = lv;
+                item.textContent = lv;
+                menu.appendChild(item);
+              }
+            }
+            loaderVerInput.value = lv;
+            const lvWrap = loaderVerInput.closest(".stngs-select-wrap");
+            if (lvWrap)
+              syncSelectUI(lvWrap);
+          }
           syncBuildVersionUI();
           const loaderWrap = loaderSelect?.closest(".stngs-select-wrap");
           if (loaderWrap)
@@ -37413,6 +43099,7 @@ ${lines.join("\n")}${depsNote}`);
       }
       function closeModalBuildModal() {
         stopWatchingInstance();
+        closeBeShotViewer();
         closeModal("modal-build");
       }
       var instanceWatchCleanup = null;
@@ -37437,6 +43124,9 @@ ${lines.join("\n")}${depsNote}`);
         if (editingBuildId && api?.unwatchInstance)
           api.unwatchInstance(editingBuildId);
       }
+      function contentFileBase(filename) {
+        return filename.replace(/\.disabled$/i, "").toLowerCase();
+      }
       function applyScannedData(data) {
         if (!editingBuild)
           return;
@@ -37452,28 +43142,42 @@ ${lines.join("\n")}${depsNote}`);
           const arr = buildKey ? editingBuild[buildKey] : null;
           if (!arr)
             continue;
-          const existingByFile = /* @__PURE__ */ new Map();
+          const existingByBase = /* @__PURE__ */ new Map();
           for (const item of arr) {
-            if (item.filename)
-              existingByFile.set(item.filename.toLowerCase(), item);
+            if (!item.filename)
+              continue;
+            const base = contentFileBase(item.filename);
+            if (!existingByBase.has(base))
+              existingByBase.set(base, item);
           }
+          const next = [];
+          const seen = /* @__PURE__ */ new Set();
           for (const item of scannedItems) {
-            const keyName = item.filename?.toLowerCase() || "";
-            const existing = existingByFile.get(keyName);
+            const base = contentFileBase(item.filename || "");
+            if (!base || seen.has(base))
+              continue;
+            seen.add(base);
+            const existing = existingByBase.get(base);
             if (existing) {
-              if (existing.name !== item.name || existing.version !== item.version || existing.description !== item.description || existing.projectId !== item.projectId || existing.iconUrl !== item.iconUrl) {
+              existing.filename = item.filename;
+              existing.enabled = item.enabled !== false;
+              if (item.name)
                 existing.name = item.name;
-                existing.version = item.version || existing.version;
-                existing.description = item.description || existing.description;
-                if (item.projectId) {
-                  existing.projectId = item.projectId;
-                  existing.iconUrl = item.iconUrl;
-                }
+              if (item.version)
+                existing.version = item.version;
+              if (item.description)
+                existing.description = item.description;
+              if (item.projectId) {
+                existing.projectId = item.projectId;
+                existing.iconUrl = item.iconUrl;
               }
+              next.push(existing);
             } else {
-              arr.push(item);
+              next.push(item);
             }
           }
+          arr.length = 0;
+          arr.push(...next);
           renderBeFileList(listId, arr);
         }
       }
@@ -37588,23 +43292,75 @@ ${lines.join("\n")}${depsNote}`);
           });
         });
         list.querySelectorAll(".be-file-toggle input").forEach((cb, i) => {
-          cb.addEventListener("change", () => {
+          cb.addEventListener("change", async () => {
             const buildKey = listIdToBuildKey(listId);
             const arr = buildKey && editingBuild ? editingBuild[buildKey] : null;
-            if (arr && arr[i])
-              arr[i].enabled = cb.checked;
+            const item = arr?.[i];
+            const wantEnabled = cb.checked;
+            if (!item)
+              return;
+            if (!editingBuildId || !item.filename || !api?.toggleInstanceFile) {
+              item.enabled = wantEnabled;
+              return;
+            }
+            const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+            if (!sub) {
+              item.enabled = wantEnabled;
+              return;
+            }
+            cb.disabled = true;
+            try {
+              const res = await api.toggleInstanceFile(editingBuildId, sub, item.filename, wantEnabled);
+              if (!res?.success) {
+                cb.checked = !wantEnabled;
+                updateStatus(t("be.toggleFailed"));
+                return;
+              }
+              item.enabled = !!res.enabled;
+              if (res.filename)
+                item.filename = res.filename;
+              const base = contentFileBase(item.filename || "");
+              for (let j2 = arr.length - 1; j2 >= 0; j2--) {
+                if (j2 === i)
+                  continue;
+                if (contentFileBase(arr[j2].filename || "") === base)
+                  arr.splice(j2, 1);
+              }
+              renderBeFileList(listId, arr);
+            } catch {
+              cb.checked = !wantEnabled;
+              updateStatus(t("be.toggleFailed"));
+            } finally {
+              cb.disabled = false;
+            }
           });
         });
         list.querySelectorAll(".be-file-del").forEach((btn) => {
-          btn.addEventListener("click", (e) => {
+          btn.addEventListener("click", async (e) => {
             e.stopPropagation();
             const idx = parseInt(btn.dataset.index || "", 10);
             const buildKey = listIdToBuildKey(listId);
             const arr = buildKey && editingBuild ? editingBuild[buildKey] : null;
-            if (arr) {
-              arr.splice(idx, 1);
-              renderBeFileList(listId, arr);
+            if (!arr || idx < 0 || idx >= arr.length)
+              return;
+            const item = arr[idx];
+            if (!await confirmAction(t("be.confirmDeleteFile", { name: item.name || item.filename || "" })))
+              return;
+            const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+            if (editingBuildId && item.filename && sub && api?.deleteInstanceFiles) {
+              try {
+                const res = await api.deleteInstanceFiles(editingBuildId, sub, [item.filename]);
+                if (!res?.success) {
+                  updateStatus(t("be.deleteFileFailed"));
+                  return;
+                }
+              } catch {
+                updateStatus(t("be.deleteFileFailed"));
+                return;
+              }
             }
+            arr.splice(idx, 1);
+            renderBeFileList(listId, arr);
           });
         });
         list.querySelectorAll(".be-file-details").forEach((btn) => {
@@ -38065,6 +43821,98 @@ ${lines.join("\n")}${depsNote}`);
       }
       document.getElementById("news-refresh-btn")?.addEventListener("click", () => void loadNews(true));
       var detailsProjectId = "";
+      var modDetailsTab = "desc";
+      function modGalleryFullUrl(item) {
+        const raw = String(item?.raw_url || "").trim();
+        if (raw)
+          return raw;
+        const url = String(item?.url || item || "").trim();
+        return url.replace(/_350(?=\.(webp|png|jpe?g|gif)(?:\?|$))/i, "");
+      }
+      function modProjectGallery(project) {
+        const out = [];
+        const seen = /* @__PURE__ */ new Set();
+        const push = (full, thumb, title) => {
+          const u = String(full || "").trim();
+          if (!u || seen.has(u))
+            return;
+          seen.add(u);
+          const t2 = String(thumb || "").trim();
+          out.push({
+            url: u,
+            thumb: t2 && t2 !== u ? t2 : void 0,
+            title: title ? String(title).trim() : void 0
+          });
+        };
+        const gallery = project?.gallery;
+        if (Array.isArray(gallery)) {
+          for (const item of gallery) {
+            if (typeof item === "string")
+              push(item, item);
+            else if (item && typeof item === "object") {
+              push(modGalleryFullUrl(item), item.url || item.raw_url, item.title);
+            }
+          }
+        } else if (typeof gallery === "string") {
+          push(gallery, gallery);
+        }
+        if (!out.length && typeof project?.featured_gallery === "string") {
+          push(project.featured_gallery, project.featured_gallery);
+        }
+        return out;
+      }
+      function setModDetailsTab(tab) {
+        modDetailsTab = tab;
+        const tabs2 = document.querySelectorAll("#modal-mod-tabs [data-mod-tab]");
+        tabs2.forEach((btn) => {
+          const active = btn.getAttribute("data-mod-tab") === tab;
+          btn.classList.toggle("is-active", active);
+          btn.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        const panels = document.querySelectorAll("#modal-mod-details [data-mod-panel]");
+        panels.forEach((panel) => {
+          const show = panel.getAttribute("data-mod-panel") === tab;
+          panel.classList.toggle("is-active", show);
+          panel.hidden = !show;
+        });
+      }
+      var modDetailsGalleryItems = [];
+      function renderModDetailsGallery(items) {
+        modDetailsGalleryItems = items;
+        const gallery = document.getElementById("modal-mod-gallery");
+        if (!gallery)
+          return;
+        if (!items.length) {
+          gallery.innerHTML = "";
+          return;
+        }
+        gallery.innerHTML = items.map((item, i) => {
+          const src = escapeHtml((0, apiBase_1.catalogImageUrl)(item.thumb || item.url));
+          const title = item.title ? escapeHtml(item.title) : "";
+          const cap = title ? `<span class="mod-details-gallery__cap">${title}</span>` : "";
+          return `<button type="button" class="mod-details-gallery__item" data-gallery-index="${i}" title="${title || escapeHtml(item.url)}">
+        <img src="${src}" alt="${title}" loading="lazy">
+        ${cap}
+      </button>`;
+        }).join("");
+        gallery.querySelectorAll("[data-gallery-index]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const idx = Number(btn.getAttribute("data-gallery-index"));
+            if (!Number.isFinite(idx))
+              return;
+            void openModGalleryViewer(idx);
+          });
+        });
+      }
+      function setupModDetailsTabs(hasShots) {
+        const tabsBar = document.getElementById("modal-mod-tabs");
+        const shotsTab = document.getElementById("modal-mod-tab-shots");
+        if (tabsBar)
+          tabsBar.hidden = !hasShots;
+        if (shotsTab)
+          shotsTab.hidden = !hasShots;
+        setModDetailsTab("desc");
+      }
       async function openModalDetails(projectId) {
         detailsProjectId = projectId;
         const icon = document.getElementById("modal-mod-icon");
@@ -38079,6 +43927,8 @@ ${lines.join("\n")}${depsNote}`);
         const dlBtn = document.getElementById("modal-mod-download-btn");
         if (!desc)
           return;
+        setupModDetailsTabs(false);
+        renderModDetailsGallery([]);
         desc.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t("common.loading") + "</div>";
         openModal("modal-mod-details");
         const project = await api?.getModrinthProject(projectId);
@@ -38099,27 +43949,54 @@ ${lines.join("\n")}${depsNote}`);
           updated.textContent = d2 ? t("mods.updated", { date: d2.toLocaleDateString() }) : "\u2014";
         }
         if (author) {
-          const authorName = project.author || project.team || "\u2014";
-          const authorUrl = `https://modrinth.com/user/${authorName}`;
-          author.innerHTML = `<a href="${authorUrl}" target="_blank">${authorName}</a>`;
+          const authorName = String(project.author || "").trim();
+          if (!authorName || authorName === "\u2014") {
+            author.textContent = "\u2014";
+          } else if (project.source === "curseforge" || String(project.id || "").startsWith("cf:")) {
+            author.textContent = authorName;
+          } else {
+            const authorUrl = `https://modrinth.com/user/${encodeURIComponent(authorName)}`;
+            author.innerHTML = `<a href="${authorUrl}" target="_blank" rel="noopener">${escapeHtml(authorName)}</a>`;
+          }
         }
         if (tags) {
           const categories = project.categories || project.client_side ? [project.client_side] : [];
           tags.innerHTML = categories.map((c) => `<span class="mod-details-tag">${c}</span>`).join("");
         }
         if (urlBtn) {
-          const projUrl = `https://modrinth.com/${project.project_type || "mod"}/${project.slug || project.id}`;
+          const isCf = project.source === "curseforge" || String(project.id || projectId).startsWith("cf:");
+          const projUrl = isCf ? project.curseforge_url || `https://www.curseforge.com/minecraft/mc-mods/${String(project.slug || "").replace(/^cf:/, "") || project.id}` : project.modrinth_url || `https://modrinth.com/${project.project_type || "mod"}/${project.slug || project.id}`;
+          const label = urlBtn.querySelector("span");
+          if (label)
+            label.textContent = isCf ? t("btn.openInCurseforge") : t("btn.openInModrinth");
           urlBtn.onclick = () => api?.openExternal(projUrl);
         }
         if (dlBtn) {
           dlBtn.onclick = () => {
             closeModal("modal-mod-details");
-            openModalVersionsForDownload(project.slug || project.id);
+            openModalVersionsForDownload(project.id || project.project_id || project.slug || projectId);
           };
         }
-        const bodyMd = project.body || "";
-        const bodyHtml = markedParse(bodyMd);
-        desc.innerHTML = sanitizeHtml(bodyHtml);
+        const galleryItems = modProjectGallery(project);
+        setupModDetailsTabs(galleryItems.length > 0);
+        renderModDetailsGallery(galleryItems);
+        if (project.body_html) {
+          desc.innerHTML = absolutizeCatalogHtml(project.body_html);
+        } else {
+          const bodyMd = project.body || project.description || "";
+          const bodyHtml = markedParse(bodyMd);
+          desc.innerHTML = absolutizeCatalogHtml(sanitizeHtml(bodyHtml));
+        }
+        desc.querySelectorAll("img").forEach((img) => {
+          const el = img;
+          const wAttr = el.getAttribute("width") || "";
+          if (wAttr.includes("%"))
+            el.removeAttribute("width");
+          el.style.height = "auto";
+          el.style.maxWidth = "100%";
+          if (el.style.width && el.style.width.includes("%"))
+            el.style.width = "";
+        });
         desc.querySelectorAll("a[href]").forEach((a) => {
           a.addEventListener("click", (e) => {
             e.preventDefault();
@@ -38151,8 +44028,10 @@ ${lines.join("\n")}${depsNote}`);
         });
       }
       document.getElementById("modal-mod-versions")?.addEventListener("click", () => {
-        if (detailsProjectId)
-          openModalVersionsForDownload(detailsProjectId);
+        if (!detailsProjectId)
+          return;
+        closeModal("modal-mod-details");
+        openModalVersionsForDownload(detailsProjectId);
       });
       var pendingImportPath = null;
       var SHARE_IMPORT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
@@ -38337,7 +44216,13 @@ ${lines.join("\n")}${depsNote}`);
           }
           await loadBuilds();
           const modsN = enriched.mods?.length || 0;
-          updateStatus(t("import.done", { name: res.build.name }) + (modsN ? ` \xB7 ${modsN}` : ""));
+          const skipN = Number(res.skipped || 0) + (Array.isArray(res.extractSkipped) ? res.extractSkipped.length : 0);
+          if (res.incomplete || skipN > 0) {
+            updateStatus(t("import.partial", { name: res.build.name, n: skipN || modsN }));
+            showAppToast(t("import.partialHint", { n: skipN || 1 }));
+          } else {
+            updateStatus(t("import.done", { name: res.build.name }) + (modsN ? ` \xB7 ${modsN}` : ""));
+          }
         } catch (e) {
           updateStatus(t("import.failed", { error: e?.message || "unknown" }));
         }
@@ -38381,30 +44266,238 @@ ${lines.join("\n")}${depsNote}`);
             countEl.textContent = "";
           return;
         }
-        grid.innerHTML = beScreenshots.map((s) => `
-    <div class="be-media-card${beSelScreenshots.has(s.name) ? " selected" : ""}" data-name="${s.name}">
-      ${s.thumb ? `<img class="be-media-thumb" src="${s.thumb}" loading="lazy">` : '<div class="be-media-thumb"></div>'}
-      <div class="be-media-text">
-        <div class="be-media-name">${s.name}</div>
-        <div class="be-media-info">${formatBeSize(s.size)}</div>
+        grid.className = "be-shots-grid";
+        grid.innerHTML = beScreenshots.map((s, i) => `
+    <button type="button" class="be-shot-card${beSelScreenshots.has(s.name) ? " selected" : ""}" data-name="${s.name}" data-index="${i}" style="animation-delay:${Math.min(i, 12) * 40}ms">
+      <div class="be-shot-card__media">
+        ${s.thumb ? `<img src="${s.thumb}" alt="" loading="lazy">` : '<div class="be-shot-card__placeholder"></div>'}
+        ${BE_MEDIA_CHECK_SVG}
+        <span class="be-shot-card__open">${t("be.shotOpen")}</span>
       </div>
-      ${BE_MEDIA_CHECK_SVG}
-    </div>
+      <div class="be-shot-card__meta">
+        <div class="be-shot-card__name">${s.name}</div>
+        <div class="be-shot-card__info">${formatBeSize(s.size)}</div>
+      </div>
+    </button>
   `).join("");
         if (countEl)
           countEl.textContent = beSelScreenshots.size > 0 ? t("be.selectedCount").replace("{n}", String(beSelScreenshots.size)) : "";
-        grid.querySelectorAll(".be-media-card").forEach((card) => {
-          card.addEventListener("click", () => {
-            const name = card.getAttribute("data-name");
-            if (!name)
-              return;
+        grid.querySelectorAll(".be-shot-card").forEach((card) => {
+          const name = card.getAttribute("data-name");
+          if (!name)
+            return;
+          const toggleSelect = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             if (beSelScreenshots.has(name))
               beSelScreenshots.delete(name);
             else
               beSelScreenshots.add(name);
             renderBeScreenshots();
+          };
+          card.querySelector(".be-media-check")?.addEventListener("click", toggleSelect);
+          card.addEventListener("click", (e) => {
+            if (e.ctrlKey || e.metaKey) {
+              toggleSelect(e);
+              return;
+            }
+            void openBeShotViewer(name);
           });
         });
+      }
+      var beShotViewerIndex = 0;
+      var beShotViewerMode = "instance";
+      function syncBeShotViewerActions() {
+        const isGallery = beShotViewerMode === "gallery";
+        const saveBtn = document.getElementById("be-shot-viewer-save");
+        const delBtn = document.getElementById("be-shot-viewer-delete");
+        saveBtn?.classList.toggle("hidden", isGallery);
+        delBtn?.classList.toggle("hidden", isGallery);
+        if (saveBtn)
+          saveBtn.hidden = isGallery;
+        if (delBtn)
+          delBtn.hidden = isGallery;
+      }
+      function closeBeShotViewer() {
+        const viewer = document.getElementById("be-shot-viewer");
+        if (!viewer || viewer.classList.contains("hidden"))
+          return;
+        viewer.classList.add("is-closing");
+        setTimeout(() => {
+          viewer.classList.add("hidden");
+          viewer.classList.remove("is-closing", "is-open");
+          viewer.setAttribute("aria-hidden", "true");
+          const img = document.getElementById("be-shot-viewer-img");
+          if (img)
+            img.removeAttribute("src");
+          beShotViewerMode = "instance";
+          syncBeShotViewerActions();
+        }, 180);
+      }
+      async function showBeShotViewer() {
+        const viewer = document.getElementById("be-shot-viewer");
+        if (!viewer)
+          return;
+        syncBeShotViewerActions();
+        viewer.classList.remove("hidden", "is-closing");
+        viewer.setAttribute("aria-hidden", "false");
+        requestAnimationFrame(() => viewer.classList.add("is-open"));
+        await loadBeShotViewerSlide();
+      }
+      async function openBeShotViewer(name) {
+        const idx = beScreenshots.findIndex((s) => s.name === name);
+        if (idx < 0)
+          return;
+        beShotViewerMode = "instance";
+        beShotViewerIndex = idx;
+        await showBeShotViewer();
+      }
+      async function openModGalleryViewer(index) {
+        if (index < 0 || index >= modDetailsGalleryItems.length)
+          return;
+        beShotViewerMode = "gallery";
+        beShotViewerIndex = index;
+        await showBeShotViewer();
+      }
+      async function loadBeShotViewerSlide() {
+        const img = document.getElementById("be-shot-viewer-img");
+        const nameEl = document.getElementById("be-shot-viewer-name");
+        const infoEl = document.getElementById("be-shot-viewer-info");
+        const loading = document.getElementById("be-shot-viewer-loading");
+        const errEl = document.getElementById("be-shot-viewer-error");
+        if (loading)
+          loading.classList.remove("hidden");
+        if (errEl)
+          errEl.classList.add("hidden");
+        if (img)
+          img.classList.remove("is-ready");
+        if (beShotViewerMode === "gallery") {
+          const item = modDetailsGalleryItems[beShotViewerIndex];
+          if (!item) {
+            if (loading)
+              loading.classList.add("hidden");
+            return;
+          }
+          if (nameEl)
+            nameEl.textContent = item.title || item.url.split("/").pop() || "\u2014";
+          if (infoEl)
+            infoEl.textContent = `${beShotViewerIndex + 1} / ${modDetailsGalleryItems.length}`;
+          if (!img) {
+            if (loading)
+              loading.classList.add("hidden");
+            return;
+          }
+          if (item.thumb)
+            img.src = (0, apiBase_1.catalogImageUrl)(item.thumb);
+          const src = (0, apiBase_1.catalogImageUrl)(item.url);
+          const slideIndex = beShotViewerIndex;
+          await new Promise((resolve) => {
+            img.onload = () => {
+              if (beShotViewerMode === "gallery" && beShotViewerIndex === slideIndex) {
+                img.classList.add("is-ready");
+              }
+              resolve();
+            };
+            img.onerror = () => resolve();
+            img.src = src;
+          });
+          if (loading)
+            loading.classList.add("hidden");
+          if (beShotViewerIndex === slideIndex && !img.classList.contains("is-ready") && errEl) {
+            errEl.classList.remove("hidden");
+          }
+          return;
+        }
+        const shot = beScreenshots[beShotViewerIndex];
+        if (!shot || !editingBuildId) {
+          if (loading)
+            loading.classList.add("hidden");
+          return;
+        }
+        if (nameEl)
+          nameEl.textContent = shot.name;
+        if (infoEl)
+          infoEl.textContent = `${beShotViewerIndex + 1} / ${beScreenshots.length} \xB7 ${formatBeSize(shot.size)}`;
+        if (img && shot.thumb)
+          img.src = shot.thumb;
+        let loaded = Boolean(shot.thumb);
+        if (api?.getScreenshot) {
+          try {
+            const res = await api.getScreenshot(editingBuildId, shot.name);
+            if (res?.success && res.dataUrl && img && beScreenshots[beShotViewerIndex]?.name === shot.name) {
+              img.onload = () => img.classList.add("is-ready");
+              img.src = res.dataUrl;
+              loaded = true;
+            }
+          } catch {
+          }
+        }
+        if (loading)
+          loading.classList.add("hidden");
+        if (!loaded && errEl)
+          errEl.classList.remove("hidden");
+      }
+      async function beShotViewerCopy() {
+        if (beShotViewerMode === "gallery") {
+          const item = modDetailsGalleryItems[beShotViewerIndex];
+          if (!item)
+            return;
+          const url = (0, apiBase_1.catalogImageUrl)(item.url);
+          try {
+            const res2 = await fetch(url);
+            const blob = await res2.blob();
+            if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+              await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+              showAppToast(t("be.shotCopied"));
+              return;
+            }
+          } catch {
+          }
+          try {
+            await navigator.clipboard.writeText(item.url);
+            showAppToast(t("be.shotCopied"));
+          } catch {
+            showAppToast(t("be.shotCopyFailed"));
+          }
+          return;
+        }
+        const shot = beScreenshots[beShotViewerIndex];
+        if (!shot || !editingBuildId || !api?.copyScreenshot)
+          return;
+        const res = await api.copyScreenshot(editingBuildId, shot.name);
+        showAppToast(res?.success ? t("be.shotCopied") : t("be.shotCopyFailed"));
+      }
+      async function beShotViewerSave() {
+        if (beShotViewerMode === "gallery")
+          return;
+        const shot = beScreenshots[beShotViewerIndex];
+        if (!shot || !editingBuildId)
+          return;
+        await beMediaSave("screenshots", /* @__PURE__ */ new Set([shot.name]));
+      }
+      async function beShotViewerDelete() {
+        if (beShotViewerMode === "gallery")
+          return;
+        const shot = beScreenshots[beShotViewerIndex];
+        if (!shot)
+          return;
+        const name = shot.name;
+        await beMediaDelete("screenshots", /* @__PURE__ */ new Set([name]), t("be.confirmDeleteScreenshot"));
+        if (!beScreenshots.some((s) => s.name === name)) {
+          if (beScreenshots.length === 0)
+            closeBeShotViewer();
+          else {
+            beShotViewerIndex = Math.min(beShotViewerIndex, beScreenshots.length - 1);
+            await loadBeShotViewerSlide();
+          }
+        }
+      }
+      function beShotViewerNav(delta) {
+        const total = beShotViewerMode === "gallery" ? modDetailsGalleryItems.length : beScreenshots.length;
+        if (total === 0)
+          return;
+        beShotViewerIndex = (beShotViewerIndex + delta + total) % total;
+        void loadBeShotViewerSlide();
       }
       function trParams(key, params) {
         let s = t(key);
@@ -38549,14 +44642,14 @@ ${lines.join("\n")}${depsNote}`);
         beSelWorlds = new Set([...beSelWorlds].filter((n) => names.has(n)));
         renderBeWorlds();
       }
-      async function beMediaDelete(sub, sel) {
+      async function beMediaDelete(sub, sel, confirmMsg) {
         if (sel.size === 0 || !editingBuildId || !api?.deleteInstanceFiles)
           return;
-        if (!await confirmAction(t("be.confirmDeleteFiles")))
+        if (!await confirmAction(confirmMsg || t("be.confirmDeleteFiles")))
           return;
         const res = await api.deleteInstanceFiles(editingBuildId, sub, [...sel]);
         if (res?.success) {
-          updateStatus(t("be.deletedOk").replace("{n}", String(res.deleted ?? 0)));
+          showAppToast(t("be.deletedOk").replace("{n}", String(res.deleted ?? 0)));
           sel.clear();
           if (sub === "screenshots")
             await loadBeScreenshots();
@@ -38578,6 +44671,31 @@ ${lines.join("\n")}${depsNote}`);
       document.getElementById("be-worlds-delete")?.addEventListener("click", () => beMediaDelete("saves", beSelWorlds));
       document.getElementById("be-screenshots-save")?.addEventListener("click", () => beMediaSave("screenshots", beSelScreenshots));
       document.getElementById("be-worlds-save")?.addEventListener("click", () => beMediaSave("saves", beSelWorlds));
+      document.getElementById("be-shot-viewer-backdrop")?.addEventListener("click", () => closeBeShotViewer());
+      document.getElementById("be-shot-viewer-close")?.addEventListener("click", () => closeBeShotViewer());
+      document.getElementById("be-shot-viewer-prev")?.addEventListener("click", () => beShotViewerNav(-1));
+      document.getElementById("be-shot-viewer-next")?.addEventListener("click", () => beShotViewerNav(1));
+      document.getElementById("be-shot-viewer-copy")?.addEventListener("click", () => void beShotViewerCopy());
+      document.getElementById("be-shot-viewer-save")?.addEventListener("click", () => void beShotViewerSave());
+      document.getElementById("be-shot-viewer-delete")?.addEventListener("click", () => void beShotViewerDelete());
+      document.addEventListener("keydown", (e) => {
+        const viewer = document.getElementById("be-shot-viewer");
+        if (!viewer || viewer.classList.contains("hidden"))
+          return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeBeShotViewer();
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          beShotViewerNav(-1);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          beShotViewerNav(1);
+        } else if (e.key === "c" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          void beShotViewerCopy();
+        }
+      });
       document.querySelectorAll(".be-tab").forEach((tab) => {
         tab.addEventListener("click", () => {
           const target = tab.getAttribute("data-be-tab");
@@ -38602,52 +44720,83 @@ ${lines.join("\n")}${depsNote}`);
         if (e.target === e.currentTarget)
           closeModalBuildModal();
       });
-      document.querySelectorAll(".be-add-btn:not(.be-scan-btn):not(.be-media-btn)").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          const listId = btn.closest(".be-panel")?.querySelector(".be-file-list")?.id;
-          if (!listId)
+      var BE_ADD_BTN_TO_LIST = {
+        "be-mods-add": "be-mods-list",
+        "be-rp-add": "be-rp-list",
+        "be-shaders-add": "be-shaders-list",
+        "be-dp-add": "be-dp-list"
+      };
+      async function runBeScanInstance() {
+        if (!editingBuildId) {
+          window.alert(t("be.importNeedSave"));
+          return;
+        }
+        if (!api?.scanInstance) {
+          window.alert(t("be.importUnavailable"));
+          return;
+        }
+        const scanId = editingBuildId;
+        updateStatus(t("be.scanning"));
+        try {
+          const result = await api.scanInstance(scanId);
+          if (editingBuildId !== scanId)
             return;
-          const sub = LIST_ID_TO_INSTANCE_SUB[listId];
-          if (!sub)
+          if (result)
+            applyScannedData(result);
+          else
+            renderBeFileListsFromBuild();
+          updateStatus(t("be.scanDone"));
+        } catch (err) {
+          console.error("Scan failed:", err);
+          if (editingBuildId === scanId)
+            renderBeFileListsFromBuild();
+          updateStatus(t("be.scanFailed"));
+        }
+      }
+      async function runBeImportFiles(listId) {
+        const sub = LIST_ID_TO_INSTANCE_SUB[listId];
+        if (!sub)
+          return;
+        if (!editingBuildId) {
+          window.alert(t("be.importNeedSave"));
+          return;
+        }
+        if (!api?.importInstanceFiles) {
+          console.error("[be-import] importInstanceFiles unavailable in preload");
+          window.alert(t("be.importUnavailable"));
+          return;
+        }
+        updateStatus(t("be.importPicking"));
+        try {
+          const result = await api.importInstanceFiles(editingBuildId, sub);
+          if (!result || result.canceled)
             return;
-          if (!editingBuildId) {
-            window.alert(t("be.importNeedSave"));
+          if (!result.success) {
+            console.error("[be-import] failed", result.error);
+            updateStatus(t("be.importFailed"));
+            window.alert(t("be.importFailed"));
             return;
           }
-          if (!api?.importInstanceFiles)
-            return;
-          try {
-            const result = await api.importInstanceFiles(editingBuildId, sub);
-            if (!result || result.canceled)
-              return;
-            if (!result.success) {
-              console.error("[be-import] failed", result.error);
-              return;
-            }
-            await autoScanBuildInstance();
-          } catch (e) {
-            console.error("[be-import] error", e);
-          }
+          updateStatus(t("be.importDone", { n: String(result.count ?? result.imported?.length ?? 0) }));
+          await autoScanBuildInstance();
+        } catch (err) {
+          console.error("[be-import] error", err);
+          updateStatus(t("be.importFailed"));
+          window.alert(t("be.importFailed"));
+        }
+      }
+      document.querySelectorAll("#modal-build .be-scan-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void runBeScanInstance();
         });
       });
-      document.querySelectorAll(".be-scan-btn").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          if (!editingBuildId || !api?.scanInstance)
-            return;
-          const scanId = editingBuildId;
-          try {
-            const result = await api.scanInstance(scanId);
-            if (editingBuildId !== scanId)
-              return;
-            if (result)
-              applyScannedData(result);
-            else
-              renderBeFileListsFromBuild();
-          } catch (e) {
-            console.error("Scan failed:", e);
-            if (editingBuildId === scanId)
-              renderBeFileListsFromBuild();
-          }
+      Object.keys(BE_ADD_BTN_TO_LIST).forEach((btnId) => {
+        document.getElementById(btnId)?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void runBeImportFiles(BE_ADD_BTN_TO_LIST[btnId]);
         });
       });
       void ensureInstanceIconGrid();
@@ -38748,11 +44897,19 @@ ${lines.join("\n")}${depsNote}`);
         closeModal("modal-server-build");
         void launchBuild(build, { ip: pendingServerBuild.ip, port: pendingServerBuild.port, name: pendingServerBuild.name });
       });
-      document.getElementById("modal-versions-close")?.addEventListener("click", () => closeModal("modal-versions"));
-      document.getElementById("modal-versions-cancel")?.addEventListener("click", () => closeModal("modal-versions"));
+      document.getElementById("modal-versions-close")?.addEventListener("click", () => {
+        closeVersionsDropdown(false);
+        closeModal("modal-versions");
+      });
+      document.getElementById("modal-versions-cancel")?.addEventListener("click", () => {
+        closeVersionsDropdown(false);
+        closeModal("modal-versions");
+      });
       document.getElementById("modal-versions")?.addEventListener("click", (e) => {
-        if (e.target === e.currentTarget)
+        if (e.target === e.currentTarget) {
+          closeVersionsDropdown(false);
           closeModal("modal-versions");
+        }
       });
       document.getElementById("modal-news-close")?.addEventListener("click", () => closeModal("modal-news-details"));
       document.getElementById("modal-news-close2")?.addEventListener("click", () => closeModal("modal-news-details"));
@@ -38765,6 +44922,14 @@ ${lines.join("\n")}${depsNote}`);
       document.getElementById("modal-mod-details")?.addEventListener("click", (e) => {
         if (e.target === e.currentTarget)
           closeModal("modal-mod-details");
+      });
+      document.getElementById("modal-mod-tabs")?.addEventListener("click", (e) => {
+        const btn = e.target?.closest?.("[data-mod-tab]");
+        if (!btn || btn.hidden)
+          return;
+        const tab = btn.getAttribute("data-mod-tab");
+        if (tab === "desc" || tab === "shots")
+          setModDetailsTab(tab);
       });
       document.getElementById("modal-mod-ask-agent")?.addEventListener("click", () => {
         const title = document.getElementById("modal-mod-title")?.textContent?.trim() || detailsProjectId || "";
@@ -38878,6 +45043,24 @@ ${lines.join("\n")}${depsNote}`);
       function showAiAccessDeniedModal() {
         openModal("modal-ai-access");
       }
+      function showMessengerOfflineModal() {
+        openModal("modal-msgr-offline");
+      }
+      function showSkinsOfflineModal() {
+        openModal("modal-skins-offline");
+      }
+      function applyOnlineOnlyTabsVisibility() {
+        const online = !isOfflineAccount();
+        document.querySelectorAll('.tab-btn[data-tab="messenger"]').forEach((el) => {
+          el.style.display = online ? "" : "none";
+        });
+        document.querySelectorAll('.tab-btn[data-tab="skins"]').forEach((el) => {
+          el.style.display = online ? "" : "none";
+        });
+        if (!online && (presenceTab === "messenger" || presenceTab === "skins")) {
+          switchTab("home");
+        }
+      }
       function openAiKeyModal(opts) {
         const input = document.getElementById("modal-ai-key-input");
         const status = document.getElementById("modal-ai-key-status");
@@ -38943,6 +45126,34 @@ ${lines.join("\n")}${depsNote}`);
           return false;
         const code = String(result.code || result.reason || result.error || "").toLowerCase();
         return code.includes("access_denied") || code === "missing_key";
+      }
+      function formatAiChatError(result) {
+        const code = String(result?.code || result?.reason || "").toLowerCase();
+        if (code === "insufficient_balance" || code === "insufficient_quota" || code === "provider_unavailable" || code === "upstream_error") {
+          return t("ai.error.providerOutage");
+        }
+        let raw = result?.error;
+        if (raw && typeof raw === "object") {
+          raw = raw.message || JSON.stringify(raw);
+        }
+        const text = String(raw || "unknown");
+        if (/insufficient\s*balance|insufficient\s*funds|недостаточно средств|технические сбои|provider_unavailable/i.test(text)) {
+          return t("ai.error.providerOutage");
+        }
+        const jsonMatch = text.match(/\d{3}\s+(\{[\s\S]*\})\s*$/);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[1]);
+            const msg = String(parsed?.error?.message || parsed?.message || "").trim();
+            if (/insufficient\s*balance|insufficient\s*funds/i.test(msg)) {
+              return t("ai.error.providerOutage");
+            }
+            if (msg)
+              return msg;
+          } catch {
+          }
+        }
+        return text;
       }
       function handleAiAccessDenied() {
         aiAccessOk = false;
@@ -39492,9 +45703,58 @@ ${summary}`
         }
         return caret;
       }
+      var UC_CARET_W = 2;
+      var UC_CARET_H = 16;
+      var ucCaretMeasureCtx = null;
+      function measureCaretTextWidth(text, style) {
+        if (!ucCaretMeasureCtx) {
+          const c = document.createElement("canvas");
+          ucCaretMeasureCtx = c.getContext("2d");
+        }
+        const ctx = ucCaretMeasureCtx;
+        if (!ctx)
+          return 0;
+        ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`.replace(/\s+/g, " ").trim();
+        let w2 = ctx.measureText(text).width;
+        const ls = style.letterSpacing;
+        if (ls && ls !== "normal" && text.length > 1) {
+          const n = parseFloat(ls);
+          if (Number.isFinite(n))
+            w2 += n * (text.length - 1);
+        }
+        return w2;
+      }
       function getTextFieldCaretOffset(el) {
         const style = window.getComputedStyle(el);
         const isTextarea = el instanceof HTMLTextAreaElement;
+        const pos = el.selectionEnd ?? 0;
+        const isPassword = el instanceof HTMLInputElement && el.type === "password";
+        const before = isPassword ? "\u2022".repeat(pos) : el.value.slice(0, pos);
+        const borderTop = parseFloat(style.borderTopWidth) || 0;
+        const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+        const padTop = parseFloat(style.paddingTop) || 0;
+        const padBot = parseFloat(style.paddingBottom) || 0;
+        const padLeft = parseFloat(style.paddingLeft) || 0;
+        const padRight = parseFloat(style.paddingRight) || 0;
+        const height = UC_CARET_H;
+        if (!isTextarea) {
+          const contentW = Math.max(0, el.clientWidth - padLeft - padRight);
+          const contentH = Math.max(0, el.clientHeight - padTop - padBot);
+          const textW = measureCaretTextWidth(before, style);
+          const full = isPassword ? "\u2022".repeat(el.value.length) : el.value;
+          const fullW = measureCaretTextWidth(full, style);
+          const align = style.textAlign;
+          let xInContent = textW;
+          if (align === "center")
+            xInContent = (contentW - fullW) / 2 + textW;
+          else if (align === "right" || align === "end")
+            xInContent = contentW - fullW + textW;
+          if (style.direction === "rtl")
+            xInContent = contentW - xInContent;
+          const top2 = borderTop + padTop + Math.max(0, (contentH - height) / 2);
+          const left2 = borderLeft + padLeft + xInContent - el.scrollLeft;
+          return { top: top2, left: left2, height };
+        }
         const mirror = document.createElement("div");
         const copyProps = [
           "boxSizing",
@@ -39526,31 +45786,20 @@ ${summary}`
           "tabSize",
           "whiteSpace",
           "wordWrap",
-          "wordBreak"
+          "wordBreak",
+          "direction"
         ];
         mirror.style.position = "absolute";
         mirror.style.visibility = "hidden";
         mirror.style.pointerEvents = "none";
         mirror.style.top = "0";
         mirror.style.left = "-9999px";
-        if (isTextarea) {
-          mirror.style.whiteSpace = "pre-wrap";
-          mirror.style.overflowWrap = "break-word";
-        } else {
-          mirror.style.whiteSpace = "pre";
-          mirror.style.height = "auto";
-          mirror.style.width = `${el.clientWidth}px`;
-          mirror.style.overflow = "hidden";
-        }
+        mirror.style.whiteSpace = "pre-wrap";
+        mirror.style.overflowWrap = "break-word";
         for (const prop of copyProps) {
           mirror.style[prop] = style[prop];
         }
-        if (!isTextarea) {
-          mirror.style.width = `${Math.max(el.clientWidth, el.scrollWidth)}px`;
-        }
-        const pos = el.selectionEnd ?? 0;
-        const isPassword = el instanceof HTMLInputElement && el.type === "password";
-        const before = isPassword ? "\u2022".repeat(pos) : el.value.slice(0, pos);
+        mirror.style.width = style.width;
         mirror.textContent = before;
         const marker = document.createElement("span");
         marker.textContent = "\u200B";
@@ -39565,27 +45814,9 @@ ${summary}`
           }
           return parseFloat(style.fontSize) * 1.2 || 16;
         })();
-        let top;
-        let left;
-        let height;
-        if (isTextarea) {
-          left = marker.offsetLeft - el.scrollLeft;
-          if (el.id === "ai-input") {
-            height = 16;
-            top = marker.offsetTop - el.scrollTop + 1;
-          } else {
-            height = Math.max(12, Math.min(lineH, el.clientHeight - 2));
-            top = marker.offsetTop - el.scrollTop;
-          }
-        } else {
-          const padTop = parseFloat(style.paddingTop) || 0;
-          const padBot = parseFloat(style.paddingBottom) || 0;
-          const borderTop = parseFloat(style.borderTopWidth) || 0;
-          const contentH = el.clientHeight - padTop - padBot;
-          height = Math.max(12, Math.min(16, contentH - 2));
-          top = borderTop + padTop + Math.max(0, (contentH - height) / 2);
-          left = marker.offsetLeft - el.scrollLeft;
-        }
+        const left = borderLeft + marker.offsetLeft - el.scrollLeft;
+        const rowTop = marker.offsetTop - el.scrollTop;
+        const top = rowTop + Math.max(0, (lineH - height) / 2);
         mirror.remove();
         return { top, left, height };
       }
@@ -39620,7 +45851,8 @@ ${summary}`
           return;
         }
         caret.hidden = false;
-        caret.style.height = `${height}px`;
+        caret.style.width = `${UC_CARET_W}px`;
+        caret.style.height = `${UC_CARET_H}px`;
         caret.style.transform = `translate(${Math.round(rect.left + left)}px, ${Math.round(rect.top + top)}px)`;
         caret.style.animation = "none";
         void caret.offsetWidth;
@@ -40200,7 +46432,7 @@ ${summary}`
               handleAiAccessDenied();
               break;
             }
-            appendAiText("system", t("ai.error", { error: result?.error || "unknown" }));
+            appendAiText("system", t("ai.error", { error: formatAiChatError(result) }));
             break;
           }
           const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
@@ -40575,7 +46807,7 @@ ${summary}`
                 if (!found)
                   result = { ok: false, error: "account_not_found" };
                 else {
-                  applyAccount(found);
+                  await selectAccount(found);
                   result = {
                     ok: true,
                     uuid: found.uuid || found.id || null,
@@ -40856,7 +47088,30 @@ ${summary}`
           const tab = document.querySelector('.stngs-sidebar [data-settings-tab="agent"]');
           tab?.click();
         });
+        const closeMsgrOffline = () => closeModal("modal-msgr-offline");
+        document.getElementById("modal-msgr-offline-close")?.addEventListener("click", closeMsgrOffline);
+        document.getElementById("modal-msgr-offline-ok")?.addEventListener("click", closeMsgrOffline);
+        document.getElementById("modal-msgr-offline")?.addEventListener("click", (e) => {
+          if (e.target === e.currentTarget)
+            closeMsgrOffline();
+        });
+        document.getElementById("modal-msgr-offline-accounts")?.addEventListener("click", () => {
+          closeMsgrOffline();
+          openAccountPopup();
+        });
+        const closeSkinsOffline = () => closeModal("modal-skins-offline");
+        document.getElementById("modal-skins-offline-close")?.addEventListener("click", closeSkinsOffline);
+        document.getElementById("modal-skins-offline-ok")?.addEventListener("click", closeSkinsOffline);
+        document.getElementById("modal-skins-offline")?.addEventListener("click", (e) => {
+          if (e.target === e.currentTarget)
+            closeSkinsOffline();
+        });
+        document.getElementById("modal-skins-offline-accounts")?.addEventListener("click", () => {
+          closeSkinsOffline();
+          openAccountPopup();
+        });
         applyAiTabVisibility();
+        applyOnlineOnlyTabsVisibility();
       }
       void init();
     }

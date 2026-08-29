@@ -1,5 +1,5 @@
 import type { Config } from 'eml-lib';
-import { BrowserWindow, ipcMain, dialog, nativeImage } from 'electron';
+import { BrowserWindow, ipcMain, dialog, nativeImage, clipboard } from 'electron';
 import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -17,7 +17,19 @@ import {
   installModWithDependencies,
   type ModInstallOptions,
 } from './modDependencies';
-import { skinImageUrl, skinProfileUrl } from '../shared/apiBase';
+import { skinImageUrl, skinProfileUrl, getApiBase } from '../shared/apiBase';
+import {
+  clearRunningGameMarker,
+  detectRunningMinecraft,
+  findJavaForBuild,
+  getAdoptedWatch,
+  isPidAlive,
+  loadRunningGameMarker,
+  saveRunningGameMarker,
+  startAdoptedGameWatch,
+  stopAdoptedGameWatch,
+  type DetectedGame,
+} from './game-process';
 
 // ===== Ленивая загрузка тяжёлых зависимостей =====
 // require этих пакетов стоит заметного времени (discord-rpc ~200 мс,
@@ -52,6 +64,8 @@ export function addProgressSink(sink: ProgressSink): void {
 
 let launcherInstance: any = null;
 let launchInProgress = false;
+/** buildId текущего/усыновлённого MC — для маркера и launch_close */
+let activeGameBuildId: string | null = null;
 let discordClient: any = null;
 let discordConnectPromise: Promise<void> | null = null;
 let discordRpcEnabled = true;
@@ -65,7 +79,14 @@ function logPhase(name: string): void {
 const DISCORD_CLIENT_ID = '1532393186591375390'; // Undefined Client Discord App
 const DISCORD_LARGE_IMAGE = 'logo'; // ключ арта, загруженного в Rich Presence приложения
 let rpcLang: string = 'ru';
-let currentPresence: { name: string; gameVersion: string; loader: string } | null = null;
+type GamePresence = {
+  name: string;
+  gameVersion: string;
+  loader: string;
+  serverName?: string;
+  serverHost?: string;
+};
+let currentPresence: GamePresence | null = null;
 // Начало отсчёта времени в презенсе. Обновляется только при смене сборки, иначе
 // каждый переход по вкладкам сбрасывал бы таймер «в игре» на ноль.
 let presenceStartedAt = Date.now();
@@ -174,9 +195,27 @@ function sendDiscordPresence(): void {
     .catch((e: any) => console.log('Discord setActivity error:', e));
 }
 
-function setDiscordPresence(build: { name: string; gameVersion: string; loader: string } | null): void {
+function setDiscordPresence(build: GamePresence | null): void {
   if ((currentPresence?.name ?? null) !== (build?.name ?? null)) presenceStartedAt = Date.now();
   currentPresence = build;
+  // Параллельно шлём activity в MC Messenger (сборка / версия / сервер)
+  try {
+    const { pushMessengerActivity } = require('./messenger-api') as typeof import('./messenger-api');
+    if (build) {
+      pushMessengerActivity({
+        buildName: build.name,
+        gameVersion: build.gameVersion,
+        loader: build.loader,
+        serverName: build.serverName,
+        serverHost: build.serverHost,
+        playing: true,
+      });
+    } else {
+      pushMessengerActivity({ playing: false });
+    }
+  } catch {
+    /* messenger ещё не готов */
+  }
   if (discordClient?.user) {
     sendDiscordPresence();
     return;
@@ -384,6 +423,106 @@ async function patchEMLCache(): Promise<void> {
           return origGetJava.call(this);
         };
       }
+      // GitHub releases часто недоступны без VPN — берём authlib-injector с зеркал
+      const origGetInjector = FilesManager.prototype.getInjector;
+      if (typeof origGetInjector === 'function') {
+        FilesManager.prototype.getInjector = async function () {
+          if (this.config?.account?.meta?.type !== 'yggdrasil') {
+            return { injector: [], files: [] };
+          }
+          const knownSize = 344477; // authlib-injector-1.2.7.jar
+          const localPath = path.join(String(this.config?.root || ''), 'libraries', 'authlib-injector.jar');
+          if (fs.existsSync(localPath)) {
+            try {
+              const st = fs.statSync(localPath);
+              if (st.size > 10000) {
+                return {
+                  injector: [
+                    {
+                      name: 'authlib-injector.jar',
+                      path: 'libraries/',
+                      url: '',
+                      sha1: '',
+                      size: st.size,
+                      type: 'LIBRARY',
+                    },
+                  ],
+                  files: [
+                    {
+                      name: 'authlib-injector.jar',
+                      path: 'libraries/',
+                      url: '',
+                      sha1: '',
+                      size: st.size,
+                      type: 'LIBRARY',
+                    },
+                  ],
+                };
+              }
+            } catch {
+              /* download again */
+            }
+          }
+
+          const metaUrls = [
+            'https://bmclapi2.bangbang93.com/mirrors/authlib-injector/artifact/55.json',
+            'https://authlib-injector.yushi.moe/artifact/55.json',
+          ];
+          const jarFallbacks = [
+            'https://bmclapi2.bangbang93.com/mirrors/authlib-injector/artifact/55/authlib-injector-1.2.7.jar',
+            'https://authlib-injector.yushi.moe/artifact/55/authlib-injector-1.2.7.jar',
+            'https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.7/authlib-injector-1.2.7.jar',
+          ];
+
+          let downloadUrl = jarFallbacks[0];
+          for (const metaUrl of metaUrls) {
+            try {
+              const res = await fetch(metaUrl, {
+                headers: { 'User-Agent': 'Undefined-Client', Accept: 'application/json' },
+              });
+              if (!res.ok) continue;
+              const data = (await res.json()) as { download_url?: string };
+              if (data?.download_url) {
+                downloadUrl = String(data.download_url);
+                break;
+              }
+            } catch {
+              /* next mirror */
+            }
+          }
+
+          let size = knownSize;
+          for (const tryUrl of [downloadUrl, ...jarFallbacks]) {
+            try {
+              const head = await fetch(tryUrl, {
+                method: 'HEAD',
+                headers: { 'User-Agent': 'Undefined-Client', Connection: 'close' },
+              });
+              if (!head.ok) continue;
+              const len = Number(head.headers.get('Content-Length') || 0);
+              if (len > 0) {
+                size = len;
+                downloadUrl = tryUrl;
+                break;
+              }
+            } catch {
+              /* next */
+            }
+          }
+
+          const injector = [
+            {
+              name: 'authlib-injector.jar',
+              path: 'libraries/',
+              url: downloadUrl,
+              sha1: '',
+              size,
+              type: 'LIBRARY',
+            },
+          ];
+          return { injector, files: injector };
+        };
+      }
       const origExtractNatives = FilesManager.prototype.extractNatives;
       if (typeof origExtractNatives === 'function') {
         FilesManager.prototype.extractNatives = async function (libraries: any[]) {
@@ -400,7 +539,6 @@ async function patchEMLCache(): Promise<void> {
                 try { st = fs.statSync(zipPath); } catch { return false; }
                 return entry[path.relative(String(this.config?.root || ''), zipPath)] === st.mtimeMs;
               });
-              const anyFile = fs.readdirSync(nativesFolder).some((f: string) => f.endsWith('.dll') || f.endsWith('.so') || f.endsWith('.dylib') || f === '.native-cache.json');
               if (hit) return { files: [] };
             }
           } catch {}
@@ -456,6 +594,7 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   // ни то, ни другое не нужно, а запуск игры дожидается патча явно.
   setTimeout(() => {
     void ensureDownloaderPatched();
+    void patchEMLCache();
     void initDiscordRPC();
   }, 2000);
 
@@ -503,26 +642,33 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     return c;
   }
 
-  /* ===== MODRINTH ===== */
+  /* ===== КАТАЛОГ (через сайт: Modrinth + CurseForge) ===== */
 
-  ipcMain.handle('modrinth:search', async (_event, query: string, type: string, offset: number = 0, limit: number = 20, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string }) => {
+  ipcMain.handle('modrinth:search', async (_event, query: string, type: string, offset: number = 0, limit: number = 20, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string; source?: string }) => {
     const params = new URLSearchParams();
     if (query) params.set('query', query);
-    const facets: string[][] = [];
-    if (type) facets.push([`project_type:${type}`]);
-    if (opts?.categories?.length) facets.push(opts.categories.map(c => `categories:${c}`));
-    if (opts?.loaders?.length) facets.push(opts.loaders.map(l => `categories:${l}`));
-    if (opts?.version) facets.push([`versions:${opts.version}`]);
-    if (facets.length) params.set('facets', JSON.stringify(facets));
+    if (type) params.set('type', type);
+    if (opts?.categories?.length) params.set('categories', opts.categories.join(','));
+    if (opts?.loaders?.length) params.set('loaders', opts.loaders.join(','));
+    if (opts?.version) params.set('versions', opts.version);
     if (opts?.index) params.set('index', opts.index);
     params.set('limit', String(limit));
     params.set('offset', String(offset));
-    const url = `https://api.modrinth.com/v2/search?${params.toString()}`;
+    params.set('source', opts?.source || 'both');
+    const url = `${getApiBase()}/api/catalog/search?${params.toString()}`;
     try {
       const res = await fetch(url);
-      if (!res.ok) return { error: `Modrinth API ${res.status}` };
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { error: body?.error || `Catalog API ${res.status}` };
+      }
       const data = await res.json();
-      return { hits: data.hits || [], total_hits: data.total_hits || 0 };
+      return {
+        hits: data.hits || [],
+        total_hits: data.total_hits || 0,
+        source: data.source,
+        sources: data.sources,
+      };
     } catch (e: any) {
       return { error: e?.message || 'Network error' };
     }
@@ -530,17 +676,19 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('modrinth:project', async (_event, projectId: string) => {
     try {
-      const res = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
+      const res = await fetch(`${getApiBase()}/api/catalog/project/${encodeURIComponent(projectId)}`);
       if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json();
+      return data?.project || data || null;
     } catch { return null; }
   });
 
   ipcMain.handle('modrinth:versions', async (_event, projectId: string) => {
     try {
-      const res = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`);
+      const res = await fetch(`${getApiBase()}/api/catalog/project/${encodeURIComponent(projectId)}/version`);
       if (!res.ok) return [];
-      return await res.json();
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data?.versions || []);
     } catch { return []; }
   });
 
@@ -1069,6 +1217,7 @@ export function initLauncher(mainWindow: BrowserWindow): void {
           ? builds.find((b: any) => b?.id === buildId)
           : null;
         const instanceDir = getInstanceRoot(buildId);
+
         const installedIds = collectInstalledProjectIds(instanceDir, build);
         // Корневой проект не считаем «уже установленным» — разрешаем переустановку/смену версии
         installedIds.delete(String(projectId));
@@ -1357,6 +1506,31 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   /* ===== ACCOUNTS ===== */
 
   const accountsPath = path.join(appDataDir, 'accounts.json');
+  const activeAccountPath = path.join(appDataDir, 'active-account.json');
+
+  function readActiveAccountUuid(): string | null {
+    try {
+      if (!fs.existsSync(activeAccountPath)) return null;
+      const raw = fs.readFileSync(activeAccountPath, 'utf-8');
+      const data = JSON.parse(raw);
+      const uuid = String(data?.uuid || '').trim();
+      return uuid || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeActiveAccountUuid(uuid: string | null): void {
+    if (!uuid) {
+      try {
+        if (fs.existsSync(activeAccountPath)) fs.unlinkSync(activeAccountPath);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    writeJSON(activeAccountPath, { uuid: String(uuid) });
+  }
 
   ipcMain.handle('launcher:account:save', async (_event, account: any) => {
     const accounts = readJSON(accountsPath);
@@ -1374,7 +1548,22 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   ipcMain.handle('launcher:account:remove', async (_event, uuid: string) => {
     const accounts = readJSON(accountsPath).filter((a: any) => a.uuid !== uuid);
     writeJSON(accountsPath, accounts);
+    if (readActiveAccountUuid() === uuid) {
+      writeActiveAccountUuid(accounts.length ? accounts[accounts.length - 1].uuid : null);
+    }
     return true;
+  });
+
+  // ===== Последний выбранный аккаунт (не путать с порядком добавления) =====
+  ipcMain.handle('launcher:account:setActive', async (_event, uuid: string) => {
+    const id = String(uuid || '').trim();
+    if (!id) return { ok: false };
+    writeActiveAccountUuid(id);
+    return { ok: true };
+  });
+
+  ipcMain.handle('launcher:account:getActive', async () => {
+    return readActiveAccountUuid();
   });
 
   /* ===== BUILDS ===== */
@@ -1446,13 +1635,26 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     const cached = elyWornSkinCache.get(nickname);
     if (!force && cached && Date.now() - cached.ts < 60 * 1000) return cached.url;
     let url: string | null = null;
-    try {
-      const res = await fetch(`https://skinsystem.ely.by/textures/${encodeURIComponent(nickname)}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      url = data?.SKIN?.url || null;
-    } catch (err) {
-      console.error('[ely] worn skin fetch error:', err);
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(`https://skinsystem.ely.by/textures/${encodeURIComponent(nickname)}`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        url = data?.SKIN?.url || null;
+        break;
+      } catch (err) {
+        const code = (err as any)?.cause?.code || (err as any)?.code;
+        const retryable = code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'UND_ERR_CONNECT_TIMEOUT';
+        if (attempt < maxAttempts && retryable) {
+          await new Promise((r) => setTimeout(r, 250 * attempt));
+          continue;
+        }
+        console.error('[ely] worn skin fetch error:', err);
+        break;
+      }
     }
     elyWornSkinCache.set(nickname, { url, ts: Date.now() });
     return url;
@@ -2773,6 +2975,115 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     }
   }
 
+  function loadBuildsList(): any[] {
+    return readJSON(path.join(appDataDir, 'builds.json'));
+  }
+
+  function adoptDetectedGame(game: DetectedGame, emitLaunching: boolean): void {
+    activeGameBuildId = game.buildId;
+    saveRunningGameMarker(appDataDir, {
+      buildId: game.buildId,
+      name: game.name,
+      gameVersion: game.gameVersion,
+      loader: game.loader,
+      startedAt: game.startedAt,
+      pid: game.pid,
+    });
+    startAdoptedGameWatch(game, ({ buildId }) => {
+      clearRunningGameMarker(appDataDir);
+      activeGameBuildId = null;
+      sendProgress({ kind: 'close', key: 'smp.closed', params: { code: 0 }, code: 0, adopted: true, buildId });
+      setDiscordPresence(null);
+    });
+    if (emitLaunching) {
+      sendProgress({
+        kind: 'launching',
+        key: 'smp.launchingMc',
+        adopted: true,
+        buildId: game.buildId,
+        name: game.name,
+        gameVersion: game.gameVersion,
+        loader: game.loader,
+        pid: game.pid,
+        startedAt: game.startedAt,
+      });
+    }
+    if (game.name) {
+      setDiscordPresence({
+        name: game.name,
+        gameVersion: game.gameVersion || '?',
+        loader: game.loader || 'vanilla',
+      });
+    }
+  }
+
+  async function detectAndAdoptRunningGame(opts?: { emit?: boolean }): Promise<{
+    ok: boolean;
+    running: boolean;
+    buildId?: string;
+    name?: string;
+    gameVersion?: string;
+    loader?: string;
+    pid?: number;
+    startedAt?: number;
+  }> {
+    if (launcherInstance || launchInProgress) {
+      const marker = loadRunningGameMarker(appDataDir);
+      return {
+        ok: true,
+        running: Boolean(marker?.buildId || activeGameBuildId),
+        buildId: activeGameBuildId || marker?.buildId,
+        name: marker?.name,
+        gameVersion: marker?.gameVersion,
+        loader: marker?.loader,
+        pid: marker?.pid || undefined,
+        startedAt: marker?.startedAt,
+      };
+    }
+    const existing = getAdoptedWatch();
+    if (existing && isPidAlive(existing.pid)) {
+      const marker = loadRunningGameMarker(appDataDir);
+      return {
+        ok: true,
+        running: true,
+        buildId: existing.buildId,
+        name: marker?.name,
+        gameVersion: marker?.gameVersion,
+        loader: marker?.loader,
+        pid: existing.pid,
+        startedAt: marker?.startedAt,
+      };
+    }
+
+    const builds = loadBuildsList();
+    const detected = await detectRunningMinecraft({
+      appDataDir,
+      builds: builds.map((b: any) => ({
+        id: String(b.id || ''),
+        name: b.name,
+        gameVersion: b.gameVersion,
+        loader: b.loader,
+      })),
+    });
+    if (!detected) {
+      clearRunningGameMarker(appDataDir);
+      stopAdoptedGameWatch();
+      activeGameBuildId = null;
+      return { ok: true, running: false };
+    }
+    adoptDetectedGame(detected, opts?.emit !== false);
+    return {
+      ok: true,
+      running: true,
+      buildId: detected.buildId,
+      name: detected.name,
+      gameVersion: detected.gameVersion,
+      loader: detected.loader,
+      pid: detected.pid,
+      startedAt: detected.startedAt,
+    };
+  }
+
   async function resolveJavaVersion(gameVersion: string): Promise<number> {
     const staticMapping: Record<string, number> = {
       'latest_release': 25,
@@ -3091,13 +3402,15 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     const items = fs.readdirSync(dir, { withFileTypes: true });
     for (const item of items) {
       const fullPath = path.join(dir, item.name);
-      const extLower = path.extname(item.name).toLowerCase();
+      // foo.jar.disabled → логическое имя foo.jar (иначе extname = .disabled и файл пропускается)
+      const disabled = /\.disabled$/i.test(item.name);
+      const logicalName = disabled ? item.name.replace(/\.disabled$/i, '') : item.name;
+      const extLower = path.extname(logicalName).toLowerCase();
       if (item.isFile() && ext.includes(extLower)) {
-        let name = item.name.replace(/\.[^.]+(?:\.disabled)?$/i, '');
+        let name = logicalName.replace(/\.[^.]+$/i, '');
         let version = '';
         const verMatch = name.match(/-(\d+(?:\.\d+)*)/);
         if (verMatch) { version = verMatch[1]; name = name.replace(/-?\d+(?:\.\d+)*$/, '').trim(); }
-        const disabled = item.name.toLowerCase().endsWith('.disabled');
         let id = '';
         let description = '';
         if (contentType === 'mod') {
@@ -3416,12 +3729,20 @@ export function initLauncher(mainWindow: BrowserWindow): void {
           : [];
 
         if (!paths.length) {
-          const win = BrowserWindow.getFocusedWindow() || mainWindow;
-          const result = await dialog.showOpenDialog(win, {
+          // Всегда главное окно: getFocusedWindow() может указать на консоль —
+          // тогда диалог открывается «невидимо» за управлением сборкой.
+          const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : BrowserWindow.getFocusedWindow();
+          if (win && !win.isDestroyed()) {
+            try { win.focus(); } catch { /* */ }
+          }
+          const dialogOpts = {
             title: 'Импорт в сборку',
-            properties: ['openFile', 'multiSelections'],
+            properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
             filters: IMPORT_FILTERS[sub] || [{ name: 'All files', extensions: ['*'] }],
-          });
+          };
+          const result = (win && !win.isDestroyed())
+            ? await dialog.showOpenDialog(win, dialogOpts)
+            : await dialog.showOpenDialog(dialogOpts);
           if (result.canceled || !result.filePaths.length) {
             return { success: false, canceled: true };
           }
@@ -3456,18 +3777,105 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     },
   );
 
+  const DELETABLE_SUBDIRS = new Set([
+    'screenshots', 'saves', 'mods', 'resourcepacks', 'shaderpacks', 'datapacks',
+  ]);
+  const TOGGLEABLE_SUBDIRS = new Set(['mods', 'resourcepacks', 'shaderpacks', 'datapacks']);
+
+  /** Включить/выключить контент суффиксом .disabled (как AI toggle_mod). */
+  ipcMain.handle(
+    'launcher:toggle-instance-file',
+    async (_event, buildId: string, sub: string, filename: string, enabled?: boolean) => {
+      try {
+        if (typeof buildId !== 'string' || !/^[a-z0-9-]+$/i.test(buildId)) {
+          return { success: false, error: 'invalid_build' };
+        }
+        if (!TOGGLEABLE_SUBDIRS.has(sub) || typeof filename !== 'string' || !filename) {
+          return { success: false, error: 'invalid_request' };
+        }
+        const baseName = filename.replace(/\.disabled$/i, '');
+        if (!baseName || baseName !== path.basename(baseName) || baseName.includes('..')) {
+          return { success: false, error: 'invalid_name' };
+        }
+        const instanceRoot = getInstanceRoot(buildId);
+        const enabledPath = safeSubPath(instanceRoot, sub, baseName);
+        const disabledPath = safeSubPath(instanceRoot, sub, `${baseName}.disabled`);
+        if (!enabledPath || !disabledPath) {
+          return { success: false, error: 'invalid_path' };
+        }
+        const currentlyEnabled = fs.existsSync(enabledPath);
+        const currentlyDisabled = fs.existsSync(disabledPath);
+        if (!currentlyEnabled && !currentlyDisabled) {
+          return { success: false, error: 'file_not_found' };
+        }
+        const targetEnabled = enabled == null ? !currentlyEnabled : !!enabled;
+        if (targetEnabled && currentlyDisabled) {
+          fs.renameSync(disabledPath, enabledPath);
+        } else if (!targetEnabled && currentlyEnabled) {
+          fs.renameSync(enabledPath, disabledPath);
+        }
+        return {
+          success: true,
+          filename: targetEnabled ? baseName : `${baseName}.disabled`,
+          enabled: targetEnabled,
+        };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
   ipcMain.handle('launcher:delete-instance-files', async (_event, buildId: string, sub: string, names: string[]) => {
-    if (!['screenshots', 'saves'].includes(sub) || !Array.isArray(names)) {
+    if (!DELETABLE_SUBDIRS.has(sub) || !Array.isArray(names)) {
       return { success: false, error: 'invalid request' };
     }
     const instanceRoot = getInstanceRoot(buildId);
     let deleted = 0;
     for (const name of names) {
-      const target = safeSubPath(instanceRoot, sub, name);
-      if (!target) continue;
-      try { fs.rmSync(target, { recursive: true, force: true }); deleted++; } catch { /* skip */ }
+      const variants = [name];
+      // При удалении мода/пака снимаем и .disabled-вариант
+      if (TOGGLEABLE_SUBDIRS.has(sub)) {
+        if (/\.disabled$/i.test(name)) variants.push(name.replace(/\.disabled$/i, ''));
+        else variants.push(`${name}.disabled`);
+      }
+      for (const variant of variants) {
+        const target = safeSubPath(instanceRoot, sub, variant);
+        if (!target || !fs.existsSync(target)) continue;
+        try { fs.rmSync(target, { recursive: true, force: true }); deleted++; } catch { /* skip */ }
+      }
     }
     return { success: true, deleted };
+  });
+
+  /** Полный data URL скриншота для просмотрщика. */
+  ipcMain.handle('launcher:get-screenshot', async (_event, buildId: string, name: string) => {
+    try {
+      const target = safeSubPath(getInstanceRoot(buildId), 'screenshots', name);
+      if (!target || !fs.existsSync(target) || !/\.png$/i.test(name)) {
+        return { success: false, error: 'not_found' };
+      }
+      const img = nativeImage.createFromPath(target);
+      if (img.isEmpty()) return { success: false, error: 'invalid_image' };
+      return { success: true, dataUrl: img.toDataURL(), size: fs.statSync(target).size };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  /** Копирование скриншота в системный буфер обмена. */
+  ipcMain.handle('launcher:copy-screenshot', async (_event, buildId: string, name: string) => {
+    try {
+      const target = safeSubPath(getInstanceRoot(buildId), 'screenshots', name);
+      if (!target || !fs.existsSync(target) || !/\.png$/i.test(name)) {
+        return { success: false, error: 'not_found' };
+      }
+      const img = nativeImage.createFromPath(target);
+      if (img.isEmpty()) return { success: false, error: 'invalid_image' };
+      clipboard.writeImage(img);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
   });
 
   ipcMain.handle('launcher:save-instance-files', async (_event, buildId: string, sub: string, names: string[]) => {
@@ -3596,7 +4004,7 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     logPhase('launch start');
     skipServerDownloads = !!(config?.server && config.server.ip);
     await ensureDownloaderPatched();
-    void patchEMLCache();
+    await patchEMLCache();
 
     const eml = await loadEML();
     let account: any;
@@ -3811,6 +4219,10 @@ export function initLauncher(mainWindow: BrowserWindow): void {
           name: presenceName || RPC_TEXT[rpcLang]?.build || RPC_TEXT.ru.build,
           gameVersion: mcConfig.version || '?',
           loader: config.minecraft?.loader?.loader || 'vanilla',
+          serverName: config.server?.name ? String(config.server.name) : undefined,
+          serverHost: config.server?.ip
+            ? `${String(config.server.ip).trim()}${config.server.port ? `:${Number(config.server.port) || 25565}` : ''}`
+            : undefined,
         }
       : null;
 
@@ -3912,7 +4324,26 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
     launcherInstance.on('launch_launch', (resolved: any) => {
       logPhase('launching MC');
-      sendProgress({ kind: 'launching', key: 'smp.launchingMc', data: resolved });
+      const launchBuildId = String(config.buildId || '');
+      activeGameBuildId = launchBuildId || null;
+      stopAdoptedGameWatch();
+      if (launchBuildId) {
+        const marker = {
+          buildId: launchBuildId,
+          name: presenceName || undefined,
+          gameVersion: mcConfig.version || undefined,
+          loader: config.minecraft?.loader?.loader || undefined,
+          startedAt: Date.now(),
+          pid: null as number | null,
+        };
+        saveRunningGameMarker(appDataDir, marker);
+        // PID появляется чуть позже spawn — догоняем
+        void findJavaForBuild(launchBuildId).then((hit) => {
+          if (!hit || activeGameBuildId !== launchBuildId) return;
+          saveRunningGameMarker(appDataDir, { ...marker, pid: hit.pid });
+        });
+      }
+      sendProgress({ kind: 'launching', key: 'smp.launchingMc', data: resolved, buildId: launchBuildId });
       if (buildInfo) setDiscordPresence(buildInfo);
     });
 
@@ -3925,18 +4356,44 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     });
 
     launcherInstance.on('launch_close', (code: number | null) => {
-      sendProgress({ kind: 'close', key: 'smp.closed', params: { code }, code });
+      const closedBuildId = activeGameBuildId || String(config.buildId || '');
       launcherInstance = null;
       launchInProgress = false;
       skipServerDownloads = false;
-      setDiscordPresence(null);
+      // Child отвалился, но java инстанса может ещё жить (закрыли лаунчер / detach)
+      void (async () => {
+        if (closedBuildId) {
+          const still = await findJavaForBuild(closedBuildId);
+          if (still) {
+            adoptDetectedGame(
+              {
+                ...still,
+                name: presenceName || undefined,
+                gameVersion: mcConfig.version || undefined,
+                loader: config.minecraft?.loader?.loader || undefined,
+                startedAt: loadRunningGameMarker(appDataDir)?.startedAt || Date.now(),
+              },
+              false,
+            );
+            return;
+          }
+        }
+        clearRunningGameMarker(appDataDir);
+        activeGameBuildId = null;
+        stopAdoptedGameWatch();
+        sendProgress({ kind: 'close', key: 'smp.closed', params: { code }, code });
+        setDiscordPresence(null);
+      })();
     });
 
     launcherInstance.on('launch_crash', (crash: any) => {
-      sendProgress({ kind: 'crash', key: 'smp.crashed', params: { code: crash.code }, data: crash });
       launcherInstance = null;
       launchInProgress = false;
       skipServerDownloads = false;
+      clearRunningGameMarker(appDataDir);
+      activeGameBuildId = null;
+      stopAdoptedGameWatch();
+      sendProgress({ kind: 'crash', key: 'smp.crashed', params: { code: crash.code }, data: crash });
       setDiscordPresence(null);
     });
 
@@ -4025,47 +4482,93 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
   function scanAndNotify(buildId: string): void {
     const root = getInstanceRoot(buildId);
-    if (!fs.existsSync(root)) return;
-    const cache = loadCache(root);
+    if (!fs.existsSync(root) || !mainWindow || mainWindow.isDestroyed()) return;
     const result: Record<string, any[]> = { mods: [], resourcepacks: [], shaders: [], datapacks: [] };
     result.mods = scanFolder(path.join(root, 'mods'), ['.jar', '.litemod'], 'mod');
     result.resourcepacks = scanFolder(path.join(root, 'resourcepacks'), ['.zip'], 'resourcepack');
     result.shaders = scanFolder(path.join(root, 'shaderpacks'), ['.zip'], 'shader');
     result.datapacks = scanFolder(path.join(root, 'datapacks'), ['.zip'], 'datapack');
+
+    // Сразу в UI (без ожидания Modrinth) — «на лету» при ручном копировании
+    const payloadQuick = JSON.parse(JSON.stringify(result, (k, v) => (k === 'fullPath' ? undefined : v)));
+    try {
+      mainWindow.webContents.send('launcher:instance-changed', buildId, payloadQuick);
+    } catch { /* */ }
+
+    const cache = loadCache(root);
     const allItems = [...result.mods, ...result.resourcepacks, ...result.shaders, ...result.datapacks];
     Promise.all(allItems.map(item => enrichWithModrinth(item, item.contentType, cache))).then(() => {
       saveCache(root, cache);
-      mainWindow.webContents.send('launcher:instance-changed', buildId, result);
-    });
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const payload = JSON.parse(JSON.stringify(result, (k, v) => (k === 'fullPath' ? undefined : v)));
+      try {
+        mainWindow.webContents.send('launcher:instance-changed', buildId, payload);
+      } catch { /* */ }
+    }).catch(() => { /* ignore enrich errors */ });
   }
 
   ipcMain.handle('launcher:watch-instance', async (_event, buildId: string) => {
-    if (instanceWatchers.has(buildId)) return;
+    // Переподписка: закрыть старые вотчеры
+    const prev = instanceWatchers.get(buildId);
+    if (prev) {
+      for (const w of prev.watchers) {
+        try { w.close(); } catch { /* */ }
+      }
+      if (prev.timer) clearTimeout(prev.timer);
+      instanceWatchers.delete(buildId);
+    }
+
     const root = getInstanceRoot(buildId);
     if (!fs.existsSync(root)) return;
+
     const subDirs = ['mods', 'resourcepacks', 'shaderpacks', 'datapacks'];
     const watchers: fs.FSWatcher[] = [];
-    let debounceTimer: any = null;
+    const entry: { watchers: fs.FSWatcher[]; timer: ReturnType<typeof setTimeout> | null } = {
+      watchers,
+      timer: null,
+    };
+
+    const scheduleScan = (): void => {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        entry.timer = null;
+        scanAndNotify(buildId);
+      }, 350);
+    };
+
     for (const sub of subDirs) {
       const dirPath = path.join(root, sub);
+      try {
+        fs.mkdirSync(dirPath, { recursive: true });
+      } catch { /* */ }
       if (!fs.existsSync(dirPath)) continue;
       try {
-        const w = fs.watch(dirPath, (eventType, filename) => {
-          if (!filename) return;
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => scanAndNotify(buildId), 500);
-        });
+        // recursive: лучше ловит rename/move на Windows
+        const w = fs.watch(dirPath, { persistent: true }, () => scheduleScan());
+        w.on('error', () => { /* папка могла исчезнуть */ });
         watchers.push(w);
-      } catch {}
+      } catch { /* */ }
     }
-    instanceWatchers.set(buildId, { watchers, timer: debounceTimer });
+
+    instanceWatchers.set(buildId, entry);
+    // Первичный снимок на случай ручных правок до открытия UI
+    scheduleScan();
   });
+
+  ipcMain.handle('launcher:detect-running-game', async () => detectAndAdoptRunningGame({ emit: true }));
+
+  // После старта окна — подхватить MC, оставшийся с прошлого запуска лаунчера
+  setTimeout(() => {
+    void detectAndAdoptRunningGame({ emit: true }).catch(() => {
+      /* ignore */
+    });
+  }, 2500);
 
   ipcMain.handle('launcher:unwatch-instance', async (_event, buildId: string) => {
     const entry = instanceWatchers.get(buildId);
     if (!entry) return;
     for (const w of entry.watchers) {
-      try { w.close(); } catch {}
+      try { w.close(); } catch { /* */ }
     }
     if (entry.timer) clearTimeout(entry.timer);
     instanceWatchers.delete(buildId);

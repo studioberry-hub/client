@@ -5,7 +5,12 @@ import { BrowserWindow, ipcMain } from 'electron';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getApiBase } from '../shared/apiBase';
+import {
+  catalogCfFileUrl,
+  catalogFingerprintsUrl,
+  getApiBase,
+  isCurseForgeProjectId,
+} from '../shared/apiBase';
 import {
   INSTANCE_SHARE_SCHEMA,
   SHARE_ID_RE,
@@ -19,6 +24,7 @@ import {
   type ShareContentType,
 } from '../shared/instanceShare';
 import { downloadModrinthFile, runWithConcurrency, PROXY_MAX_CONCURRENT_DOWNLOADS } from './modrinthDownload';
+import { curseforgeFingerprintFile } from './curseforgeFingerprint';
 import { getInstanceRoot } from './launcher';
 
 // ===== Лимиты =====
@@ -118,6 +124,50 @@ async function lookupModrinthByHash(
   }
 }
 
+/** Пакетный резолв CF fingerprint через наш сайт (ключ API только на сервере). */
+async function lookupCurseForgeByFingerprints(
+  fingerprints: number[],
+): Promise<Map<number, { projectId: string; versionId: string }>> {
+  const out = new Map<number, { projectId: string; versionId: string }>();
+  const unique = [...new Set(fingerprints.filter((n) => Number.isFinite(n) && n > 0))];
+  if (!unique.length) return out;
+
+  // CF принимает пачки; режем по 100 на запрос
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 25_000);
+    try {
+      const res = await fetch(catalogFingerprintsUrl(), {
+        method: 'POST',
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fingerprints: chunk }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) continue;
+      const data = await res.json() as {
+        hits?: Record<string, { projectId?: string; versionId?: string }>;
+      };
+      for (const [fp, hit] of Object.entries(data.hits || {})) {
+        if (!hit?.projectId || !hit?.versionId) continue;
+        out.set(Number(fp), {
+          projectId: String(hit.projectId),
+          versionId: String(hit.versionId),
+        });
+      }
+    } catch {
+      /* следующий чанк / без CF */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return out;
+}
+
 function listContentFiles(instanceRoot: string): Omit<LocalShareFile, 'sha1' | 'size' | 'projectId' | 'versionId' | 'hosted'>[] {
   const out: Omit<LocalShareFile, 'sha1' | 'size' | 'projectId' | 'versionId' | 'hosted'>[] = [];
   for (const dir of CONTENT_DIRS) {
@@ -156,8 +206,12 @@ async function collectShareFiles(
   const listed = listContentFiles(root);
   if (listed.length > MAX_FILES) return { files: [], error: 'too_many_files' };
 
-  const files: LocalShareFile[] = [];
-  let hostedBytes = 0;
+  type Pending = Omit<LocalShareFile, 'hosted' | 'projectId' | 'versionId'> & {
+    fingerprint?: number;
+    projectId?: string;
+    versionId?: string;
+  };
+  const pending: Pending[] = [];
   let done = 0;
 
   for (const item of listed) {
@@ -177,22 +231,61 @@ async function collectShareFiles(
     });
 
     const { sha1, size } = await sha1File(item.fullPath);
-    const mr = await lookupModrinthByHash(sha1);
-    const hosted = !mr;
-    if (hosted) {
-      hostedBytes += size;
-      if (hostedBytes > MAX_HOSTED_BYTES) return { files: [], error: 'hosted_too_large' };
-    }
+    let fingerprint: number | undefined;
+    try {
+      fingerprint = await curseforgeFingerprintFile(item.fullPath);
+    } catch { /* ignore */ }
 
-    files.push({
+    // Сначала Modrinth по SHA1
+    const mr = await lookupModrinthByHash(sha1);
+    pending.push({
       ...item,
       sha1,
       size,
       projectId: mr?.projectId,
       versionId: mr?.versionId,
-      hosted,
+      fingerprint: mr ? undefined : fingerprint,
     });
     done += 1;
+  }
+
+  // Не найденные на Modrinth — пакетно через CurseForge fingerprints
+  const needCf = pending.filter((p) => !p.projectId && p.fingerprint);
+  if (needCf.length) {
+    sendProgress(win, { phase: 'resolve_cf', current: 0, total: needCf.length });
+    const cfMap = await lookupCurseForgeByFingerprints(
+      needCf.map((p) => p.fingerprint!).filter(Boolean),
+    );
+    for (const p of needCf) {
+      const hit = p.fingerprint ? cfMap.get(p.fingerprint) : undefined;
+      if (!hit) continue;
+      p.projectId = hit.projectId;
+      p.versionId = hit.versionId;
+    }
+  }
+
+  const files: LocalShareFile[] = [];
+  let hostedBytes = 0;
+  for (const p of pending) {
+    const hosted = !p.projectId || !p.versionId;
+    if (hosted) {
+      hostedBytes += p.size;
+      if (hostedBytes > MAX_HOSTED_BYTES) return { files: [], error: 'hosted_too_large' };
+    }
+    files.push({
+      fileId: p.fileId,
+      contentType: p.contentType,
+      filename: p.filename,
+      enabled: p.enabled,
+      name: p.name,
+      version: p.version,
+      sha1: p.sha1,
+      size: p.size,
+      fullPath: p.fullPath,
+      projectId: p.projectId,
+      versionId: p.versionId,
+      hosted,
+    });
   }
 
   return { files };
@@ -466,6 +559,28 @@ async function importShare(
 
     try {
       if (file.projectId && file.versionId && !file.hosted) {
+        // CurseForge: конкретный fileId через каталог сайта
+        if (isCurseForgeProjectId(file.projectId)) {
+          const verRes = await fetch(catalogCfFileUrl(file.projectId, file.versionId), {
+            headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+          });
+          if (!verRes.ok) throw new Error('cf_file_fetch');
+          const version = await verRes.json() as {
+            file?: { url?: string; filename?: string; size?: number; hashes?: { sha1?: string } };
+          };
+          if (!version?.file?.url) throw new Error('no_file_url');
+          const target = path.join(destDir, path.basename(version.file.filename || file.filename));
+          await downloadModrinthFile(version.file.url, target, {
+            reason: 'modpack',
+            expectedSize: version.file.size,
+            sha1: version.file.hashes?.sha1 || file.sha1,
+          });
+          if (!file.enabled && !target.toLowerCase().endsWith('.disabled')) {
+            await fs.promises.rename(target, `${target}.disabled`);
+          }
+          return;
+        }
+
         const verRes = await fetch(`https://api.modrinth.com/v2/version/${file.versionId}`, {
           headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
         });
@@ -547,7 +662,8 @@ export function registerInstanceShareIpc(getWindow: () => BrowserWindow | null):
         deepLink: `uclient://import-instance?id=${encodeURIComponent(uploaded.id)}`,
         counts: body.counts,
         hostedFiles: collected.files.filter((f) => f.hosted).length,
-        modrinthFiles: collected.files.filter((f) => !f.hosted).length,
+        modrinthFiles: collected.files.filter((f) => !f.hosted && f.projectId && !isCurseForgeProjectId(f.projectId)).length,
+        curseforgeFiles: collected.files.filter((f) => !f.hosted && isCurseForgeProjectId(f.projectId)).length,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

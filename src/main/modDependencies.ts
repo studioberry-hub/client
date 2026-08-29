@@ -1,10 +1,16 @@
-// ===== Резолв и установка зависимостей модов (Modrinth), по аналогии с Prism Launcher =====
+// ===== Резолв и установка зависимостей модов (Modrinth + CurseForge), по аналогии с Prism =====
 // required — качаем транзитивно; optional — только предлагаем; incompatible — конфликт;
 // embedded — пропускаем (уже внутри файла).
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { downloadModrinthFile, runWithConcurrency, PROXY_MAX_CONCURRENT_DOWNLOADS } from './modrinthDownload';
+import {
+  catalogProjectUrl,
+  catalogVersionsUrl,
+  catalogCfFileUrl,
+  isCurseForgeProjectId,
+} from '../shared/apiBase';
 
 const UA = 'Undefined-Client/mod-deps';
 const CONTENT_SUBDIRS: Record<string, string> = {
@@ -163,8 +169,12 @@ export function pickCompatibleModrinthVersion(
 }
 
 function primaryFile(version: any): any | null {
-  if (!version?.files?.length) return null;
-  return version.files.find((f: any) => f.primary) || version.files[0] || null;
+  if (Array.isArray(version?.files) && version.files.length) {
+    return version.files.find((f: any) => f.primary) || version.files[0] || null;
+  }
+  // CurseForge через каталог сайта: плоское поле file
+  if (version?.file?.url && version?.file?.filename) return version.file;
+  return null;
 }
 
 function projectTitle(project: any, fallback: string): string {
@@ -212,21 +222,41 @@ export function collectInstalledProjectIds(
   return ids;
 }
 
+async function fetchCatalogProject(projectId: string): Promise<any | null> {
+  const data = await modrinthJson(catalogProjectUrl(projectId));
+  return data?.project || data || null;
+}
+
 async function fetchProject(projectId: string, cache: ProjectCache): Promise<any | null> {
   const key = String(projectId);
   if (cache.has(key)) return cache.get(key);
-  const data = await modrinthJson(`https://api.modrinth.com/v2/project/${encodeURIComponent(key)}`);
+  let data: any | null = null;
+  if (isCurseForgeProjectId(key)) {
+    data = await fetchCatalogProject(key);
+  } else {
+    data = await modrinthJson(`https://api.modrinth.com/v2/project/${encodeURIComponent(key)}`);
+  }
   cache.set(key, data);
   return data;
 }
 
-/** Пакетная загрузка проектов — один запрос вместо N. */
+/** Пакетная загрузка проектов — один запрос вместо N (Modrinth); CF — по одному через каталог. */
 async function fetchProjectsBatch(ids: string[], cache: ProjectCache): Promise<void> {
   const missing = [...new Set(ids.map(String).filter(Boolean))].filter((id) => !cache.has(id));
   if (!missing.length) return;
-  // Modrinth: до ~100 id за раз
-  for (let i = 0; i < missing.length; i += 80) {
-    const chunk = missing.slice(i, i + 80);
+
+  const cfIds = missing.filter((id) => isCurseForgeProjectId(id));
+  const mrIds = missing.filter((id) => !isCurseForgeProjectId(id));
+
+  await Promise.all(
+    cfIds.map(async (id) => {
+      const data = await fetchCatalogProject(id);
+      cache.set(id, data);
+    }),
+  );
+
+  for (let i = 0; i < mrIds.length; i += 80) {
+    const chunk = mrIds.slice(i, i + 80);
     const data = await modrinthJson(
       `https://api.modrinth.com/v2/projects?ids=${encodeURIComponent(JSON.stringify(chunk))}`,
     );
@@ -241,9 +271,22 @@ async function fetchProjectsBatch(ids: string[], cache: ProjectCache): Promise<v
   }
 }
 
-async function fetchVersionById(versionId: string, cache: VersionCache): Promise<any | null> {
+async function fetchVersionById(
+  versionId: string,
+  cache: VersionCache,
+  projectIdHint?: string,
+): Promise<any | null> {
   const key = String(versionId);
   if (cache.has(key)) return cache.get(key);
+
+  if (projectIdHint && isCurseForgeProjectId(projectIdHint)) {
+    const data = await modrinthJson(catalogCfFileUrl(projectIdHint, key));
+    if (data) {
+      cache.set(key, data);
+      return data;
+    }
+  }
+
   const data = await modrinthJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(key)}`);
   if (data) cache.set(key, data);
   return data;
@@ -252,8 +295,10 @@ async function fetchVersionById(versionId: string, cache: VersionCache): Promise
 async function fetchVersionsBatch(ids: string[], cache: VersionCache): Promise<void> {
   const missing = [...new Set(ids.map(String).filter(Boolean))].filter((id) => !cache.has(id));
   if (!missing.length) return;
-  for (let i = 0; i < missing.length; i += 80) {
-    const chunk = missing.slice(i, i + 80);
+  // Пакетный запрос — только Modrinth; CF-версии резолвятся по project через список
+  const mrIds = missing.filter((id) => !/^cf:/i.test(id));
+  for (let i = 0; i < mrIds.length; i += 80) {
+    const chunk = mrIds.slice(i, i + 80);
     const data = await modrinthJson(
       `https://api.modrinth.com/v2/versions?ids=${encodeURIComponent(JSON.stringify(chunk))}`,
     );
@@ -266,8 +311,8 @@ async function fetchVersionsBatch(ids: string[], cache: VersionCache): Promise<v
 }
 
 /**
- * Список версий с фильтром на стороне Modrinth.
- * Без фильтра Fabric API отдаёт тысячи версий — это и тормозило установку.
+ * Список версий с фильтром на стороне API.
+ * CF — через каталог сайта; Modrinth — напрямую.
  */
 async function fetchProjectVersions(
   projectId: string,
@@ -280,6 +325,13 @@ async function fetchProjectVersions(
   if (gv) params.set('game_versions', JSON.stringify([gv]));
   if (ld && ld !== 'vanilla') params.set('loaders', JSON.stringify([ld]));
   const qs = params.toString();
+
+  if (isCurseForgeProjectId(projectId)) {
+    const url = catalogVersionsUrl(projectId) + (qs ? `?${qs}` : '');
+    const data = await modrinthJson(url);
+    return Array.isArray(data) ? data : [];
+  }
+
   const url =
     `https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version` +
     (qs ? `?${qs}` : '');
@@ -296,8 +348,20 @@ async function resolveVersionForProject(
   versionCache: VersionCache,
 ): Promise<any | null> {
   if (preferredVersionId) {
-    const v = await fetchVersionById(preferredVersionId, versionCache);
-    if (v) return v;
+    if (isCurseForgeProjectId(projectId)) {
+      const list = await fetchProjectVersions(projectId, gameVersion, loader);
+      const found = list.find((v) => String(v?.id) === String(preferredVersionId));
+      if (found?.id) {
+        versionCache.set(String(found.id), found);
+        return found;
+      }
+      // Файл может быть старше лимита списка — тянем точечно
+      const byId = await fetchVersionById(preferredVersionId, versionCache, projectId);
+      if (byId) return byId;
+    } else {
+      const v = await fetchVersionById(preferredVersionId, versionCache);
+      if (v) return v;
+    }
   }
   const list = await fetchProjectVersions(projectId, gameVersion, loader);
   const picked = pickCompatibleModrinthVersion(list, gameVersion, loader, projectType);

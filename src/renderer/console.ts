@@ -1,3 +1,4 @@
+// ===== Консоль разработчика: лог по блокам (секторам) =====
 interface ConsoleAPI {
   windowMinimize: () => void;
   windowMaximize: () => void;
@@ -7,6 +8,7 @@ interface ConsoleAPI {
   getConsoleHistory: () => Promise<any[]>;
   saveConsoleLog: (logContent: string) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
   onConsoleLog: (callback: (data: any) => void) => () => void;
+  onThemeChanged?: (callback: (accent: string) => void) => () => void;
 }
 
 const api = (window as unknown as { electronAPI?: ConsoleAPI }).electronAPI;
@@ -31,21 +33,21 @@ function t(key: string, params?: Record<string, string | number>): string {
 }
 
 function applyStaticI18n(): void {
-  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach(el => {
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
     const key = el.getAttribute('data-i18n');
     if (!key) return;
     if (el.querySelector('*')) {
-      el.childNodes.forEach(node => {
+      el.childNodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) node.textContent = tr(key);
       });
     } else {
       el.textContent = tr(key);
     }
   });
-  document.querySelectorAll<HTMLInputElement>('[data-i18n-ph]').forEach(el => {
+  document.querySelectorAll<HTMLInputElement>('[data-i18n-ph]').forEach((el) => {
     el.placeholder = tr(el.getAttribute('data-i18n-ph') || '');
   });
-  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach(el => {
+  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((el) => {
     el.title = tr(el.getAttribute('data-i18n-title') || '');
   });
 }
@@ -55,13 +57,17 @@ async function setLang(lang: string): Promise<void> {
   if (api?.loadLocale) {
     try {
       json = await api.loadLocale(lang);
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   if (!json) {
     try {
       const res = await fetch(`locales/${lang}.json`);
       if (res.ok) json = await res.json();
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   if (!json && lang !== 'ru') {
     await setLang('ru');
@@ -73,62 +79,258 @@ async function setLang(lang: string): Promise<void> {
   applyStaticI18n();
 }
 
-/* ===== LOG ===== */
+/* ===== ЛОГ ===== */
 
-interface LogLine {
-  text: string;
-  cls: string;
+type LogLevel = 'info' | 'warn' | 'error' | 'run' | 'done' | 'exit';
+
+interface LogEntry {
+  id: number;
+  time: string;
+  message: string;
+  level: LogLevel;
 }
 
 const MAX_ENTRIES = 2000;
-
-const lines: LogLine[] = [];
+const entries: LogEntry[] = [];
+let nextEntryId = 1;
 let filter = 'all';
 let search = '';
 let autoscroll = true;
+let selectedId: number | null = null;
 
 const body = document.getElementById('console-body') as HTMLElement;
 const statusEl = document.getElementById('console-status') as HTMLElement;
 
-function classifyLogLine(line: string): string {
-  if (/(error|fail(ed)?|crash|exception|ошиб|упал|xatа|ҡата)/i.test(line)) return 'error';
-  if (/(warn(ing)?|предупрежд|аваз|ескерту)/i.test(line)) return 'warn';
+const ICON_WARN =
+  '<svg class="clog-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="#f0b429" d="M8.87 1.5a1 1 0 0 0-1.74 0L1.2 12.2A1 1 0 0 0 2.07 13.7h11.86a1 1 0 0 0 .87-1.5L8.87 1.5ZM8 5.2a.7.7 0 0 1 .7.7v3.2a.7.7 0 1 1-1.4 0V5.9A.7.7 0 0 1 8 5.2Zm0 6.6a.85.85 0 1 1 0-1.7.85.85 0 0 1 0 1.7Z"/></svg>';
+const ICON_ERROR =
+  '<svg class="clog-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#ef4444"/><path fill="#fff" d="M5.2 5.2a.7.7 0 0 1 1 0L8 6.99l1.8-1.8a.7.7 0 1 1 1 1L9 8l1.8 1.8a.7.7 0 1 1-1 1L8 9.01l-1.8 1.8a.7.7 0 1 1-1-1L6.99 8 5.2 6.2a.7.7 0 0 1 0-1Z"/></svg>';
+const ICON_RUN =
+  '<svg class="clog-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#3b82f6"/><path fill="#fff" d="M6.4 4.6a.7.7 0 0 1 1.08-.58l5 3.4a.7.7 0 0 1 0 1.16l-5 3.4A.7.7 0 0 1 6.4 11.4V4.6Z"/></svg>';
+const ICON_DONE =
+  '<svg class="clog-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#22c55e"/><path fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M4.8 8.2 6.9 10.3 11.2 5.8"/></svg>';
+const ICON_EXIT =
+  '<svg class="clog-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#a855f7"/><path fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" d="M5 8h6M9.2 5.8 11.4 8 9.2 10.2"/></svg>';
+const ICON_COPY =
+  '<img class="clog-copy__icon" src="../../assets/icons/copy.svg" width="14" height="14" alt="" aria-hidden="true">';
+
+/**
+ * Явный уровень из формата Minecraft/Log4j:
+ * [main/INFO]: …  |  [Worker/WARN]: …  |  [ERROR]: …
+ */
+function parseExplicitLevel(text: string): LogLevel | null {
+  const bracket = text.match(
+    /\[(?:[^\]/\n]+\/)?(FATAL|SEVERE|ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE|SUCCESS)\]/i,
+  );
+  const tagged = bracket || text.match(
+    /(?<![A-Za-z])(FATAL|SEVERE|ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\s*:/i,
+  );
+  if (!tagged) return null;
+  const lvl = tagged[1].toUpperCase();
+  if (lvl === 'FATAL' || lvl === 'SEVERE' || lvl === 'ERROR') return 'error';
+  if (lvl === 'WARN' || lvl === 'WARNING') return 'warn';
+  if (lvl === 'SUCCESS') return 'run';
+  // INFO / DEBUG / TRACE
+  return 'info';
+}
+
+function isDoneMessage(text: string): boolean {
+  return (
+    /minecraft\s+запущен/i.test(text)
+    || /minecraft\s+started/i.test(text)
+    || /minecraft\s+запущено/i.test(text)
+    || /minecraft\s+іске\s+қосылды/i.test(text)
+    || /minecraft\s+эшләтеп/i.test(text)
+  );
+}
+
+function isExitMessage(text: string): boolean {
+  // Успешное закрытие (код 0) или формулировка без кода
+  if (/minecraft\s+(закрыт|закрито|жабылды|ябылды|closed|зэхуэщӀащ)/i.test(text)) {
+    const codeMatch = text.match(/код[уа]?\s*[:：]?\s*(-?\d+)/i)
+      || text.match(/code\s*[:：]?\s*(-?\d+)/i);
+    if (!codeMatch) return true;
+    return Number(codeMatch[1]) === 0;
+  }
+  return false;
+}
+
+function isRunMessage(text: string): boolean {
+  return (
+    /launching\s+minecraft\b/i.test(text)
+    || /\bwith\s+args\b/i.test(text)
+    || /запуск\s+minecraft/i.test(text)
+    || /\bjava\s+command\b/i.test(text)
+    || /\bclasspath\b.*\bjavaw?\b/i.test(text)
+  );
+}
+
+function classifyLogLine(line: string): LogLevel {
+  const text = String(line || '');
+
+  // 1) Явный уровень в логе — главный источник правды
+  const explicit = parseExplicitLevel(text);
+  if (explicit) return explicit;
+
+  // 2) Успешный старт / выход
+  if (isDoneMessage(text)) return 'done';
+  if (isExitMessage(text)) return 'exit';
+
+  // 3) Запуск / аргументы JVM (без явного уровня)
+  if (isRunMessage(text)) return 'run';
+
+  // 4) Ключевые слова — только целые слова
+  if (
+    /\b(errors?|failed|failure|crashed|exception|ошибк[аиеу]|упал)\b/i.test(text)
+    || /\bcrash\s+report\b/i.test(text)
+  ) {
+    return 'error';
+  }
+  if (/\b(warnings?|warn|предупрежд\w*)\b/i.test(text)) return 'warn';
+
+  return 'info';
+}
+
+function levelLabel(level: LogLevel): string {
+  if (level === 'error') return t('console.level.error');
+  if (level === 'warn') return t('console.level.warn');
+  if (level === 'run') return t('console.level.run');
+  if (level === 'done') return t('console.level.done');
+  if (level === 'exit') return t('console.level.exit');
+  return t('console.level.info');
+}
+
+function levelIcon(level: LogLevel): string {
+  if (level === 'error') return ICON_ERROR;
+  if (level === 'warn') return ICON_WARN;
+  if (level === 'run') return ICON_RUN;
+  if (level === 'done') return ICON_DONE;
+  if (level === 'exit') return ICON_EXIT;
   return '';
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Сжимает лишние отступы в многострочных логах (stack trace и т.п.). */
+function formatMessageForDisplay(message: string): string {
+  const lines = String(message || '').replace(/\r\n/g, '\n').split('\n');
+  if (lines.length <= 1) return lines[0] || '';
+
+  const out: string[] = [];
+  let blankStreak = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    let line = lines[i].replace(/\t/g, '  ').replace(/\s+$/g, '');
+    if (!line.trim()) {
+      blankStreak += 1;
+      if (blankStreak <= 1 && out.length > 0) out.push('');
+      continue;
+    }
+    blankStreak = 0;
+
+    if (i === 0) {
+      out.push(line.trimStart());
+      continue;
+    }
+
+    // Кадры стека: оставляем короткий отступ
+    const stack = line.match(/^\s*(at\s.+)$/);
+    if (stack) {
+      out.push(`  ${stack[1]}`);
+      continue;
+    }
+    // Остальные продолжения — не больше двух пробелов
+    out.push(line.replace(/^\s+/, (ws) => (ws.length > 2 ? '  ' : ws)));
+  }
+  return out.join('\n');
+}
+
+function entryCopyText(entry: LogEntry): string {
+  return `[${entry.time}] ${levelLabel(entry.level)}: ${entry.message}`;
+}
+
+function createEntryElement(entry: LogEntry): HTMLElement {
+  const el = document.createElement('article');
+  const multiline = entry.message.includes('\n');
+  el.className = `clog-entry clog-entry--${entry.level}${multiline ? ' is-multiline' : ''}${selectedId === entry.id ? ' is-selected' : ''}`;
+  el.dataset.entryId = String(entry.id);
+  el.tabIndex = 0;
+  el.setAttribute('role', 'listitem');
+  el.title = t('console.copyBlockHint');
+
+  const msgHtml = escapeHtml(formatMessageForDisplay(entry.message)).replace(/\n/g, '<br>');
+  const icon = levelIcon(entry.level);
+  el.innerHTML = `
+    <div class="clog-head">
+      <div class="clog-lead">
+        ${icon}
+        <span class="clog-time">${escapeHtml(entry.time)}</span>
+      </div>
+      <div class="clog-level">${escapeHtml(levelLabel(entry.level))}:</div>
+      <button type="button" class="clog-copy" data-clog-copy="${entry.id}" title="${escapeHtml(t('console.copyBlock'))}">
+        ${ICON_COPY}
+      </button>
+    </div>
+    <div class="clog-msg">${msgHtml}</div>`;
+  return el;
+}
+
+function entryMatches(entry: LogEntry): boolean {
+  if (filter === 'error' && entry.level !== 'error') return false;
+  if (search) {
+    const hay = `${entry.time} ${entry.message} ${levelLabel(entry.level)}`.toLowerCase();
+    if (!hay.includes(search.toLowerCase())) return false;
+  }
+  return true;
 }
 
 function renderBody(): void {
   body.innerHTML = '';
-  const q = search.toLowerCase();
-  for (const line of lines) {
-    if (filter === 'error' && line.cls !== 'error') continue;
-    if (q && !line.text.toLowerCase().includes(q)) continue;
-    const div = document.createElement('div');
-    div.textContent = line.text;
-    if (line.cls) div.classList.add('log-' + line.cls);
-    body.appendChild(div);
+  body.setAttribute('role', 'list');
+  for (const entry of entries) {
+    if (!entryMatches(entry)) continue;
+    body.appendChild(createEntryElement(entry));
   }
   if (autoscroll) body.scrollTop = body.scrollHeight;
 }
 
-function addLine(text: string): void {
-  const time = new Date().toLocaleTimeString();
-  const lineText = `[${time}] ${text}`;
-  lines.push({ text: lineText, cls: classifyLogLine(lineText) });
-  if (lines.length > MAX_ENTRIES) lines.shift();
-  if (filter !== 'all' || (search && !lineText.toLowerCase().includes(search.toLowerCase()))) {
+function addEntry(message: string, forcedLevel?: LogLevel): void {
+  const time = new Date().toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const level = forcedLevel || classifyLogLine(message);
+  const entry: LogEntry = {
+    id: nextEntryId++,
+    time,
+    message: String(message || '').trim() || '—',
+    level,
+  };
+  entries.push(entry);
+  if (entries.length > MAX_ENTRIES) entries.shift();
+
+  if (!entryMatches(entry)) return;
+
+  // При активном поиске/фильтре проще перерисовать
+  if (filter !== 'all' || search) {
     renderBody();
     return;
   }
-  const div = document.createElement('div');
-  div.textContent = lineText;
-  if (lines[lines.length - 1].cls) div.classList.add('log-' + lines[lines.length - 1].cls);
-  body.appendChild(div);
-  if (body.childElementCount > 500) body.removeChild(body.firstChild as ChildNode);
+
+  body.appendChild(createEntryElement(entry));
+  while (body.childElementCount > 500) body.removeChild(body.firstChild as ChildNode);
   if (autoscroll) body.scrollTop = body.scrollHeight;
 }
 
 function msgOf(data: any): string {
-  return data?.key ? t(data.key, data.params) : (data?.message || '');
+  return data?.key ? t(data.key, data.params) : data?.message || '';
 }
 
 function handleProgress(data: any): void {
@@ -137,37 +339,77 @@ function handleProgress(data: any): void {
     case 'info':
     case 'debug':
     case 'log':
-    case 'close':
-      addLine(msgOf(data));
+      addEntry(msgOf(data), data.kind === 'info' ? 'info' : undefined);
       break;
+    case 'close': {
+      const code = Number(data?.code ?? data?.params?.code);
+      const msg = msgOf(data);
+      if (Number.isFinite(code) && code !== 0) addEntry(msg, 'warn');
+      else addEntry(msg, 'exit');
+      break;
+    }
     case 'launching':
-      addLine(t('status.minecraftStarted'));
+      // Синий Run: «Launching Minecraft…», не зелёный Done
+      addEntry(msgOf(data) || t('smp.launchingMc'), 'run');
       break;
     case 'crash':
-      addLine(t('log.error', { msg: msgOf(data) }));
+      addEntry(t('log.error', { msg: msgOf(data) }), 'error');
       break;
     case 'error':
-      addLine(msgOf(data));
+      addEntry(msgOf(data), 'error');
+      break;
+    default:
+      if (data.message || data.key) addEntry(msgOf(data));
       break;
   }
 }
 
-/* ===== FEEDBACK ===== */
+/* ===== ОБРАТНАЯ СВЯЗЬ ===== */
 
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
+let statusHideTimer: ReturnType<typeof setTimeout> | null = null;
 
-function showStatus(text: string): void {
+function showStatus(text: string, ms = 2200): void {
+  if (!statusEl) return;
+  statusEl.hidden = false;
   statusEl.textContent = text;
-  statusEl.classList.remove('hidden');
+  // Перезапуск анимации при повторном показе
+  statusEl.classList.remove('is-visible');
+  void statusEl.offsetWidth;
+  statusEl.classList.add('is-visible');
   if (statusTimer) clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => statusEl.classList.add('hidden'), 3000);
+  if (statusHideTimer) clearTimeout(statusHideTimer);
+  statusTimer = setTimeout(() => {
+    statusEl.classList.remove('is-visible');
+    statusHideTimer = setTimeout(() => {
+      statusEl.hidden = true;
+      statusHideTimer = null;
+    }, 220);
+    statusTimer = null;
+  }, ms);
 }
 
 function fullLogText(): string {
-  return lines.map(l => l.text).join('\n');
+  return entries.map((e) => entryCopyText(e)).join('\n');
 }
 
-/* ===== ACTIONS ===== */
+async function copyText(text: string, okKey: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    showStatus(t(okKey));
+  } catch {
+    showStatus(t('console.copyError'));
+  }
+}
+
+function selectEntry(id: number | null): void {
+  selectedId = id;
+  body.querySelectorAll<HTMLElement>('.clog-entry').forEach((el) => {
+    el.classList.toggle('is-selected', Number(el.dataset.entryId) === id);
+  });
+}
+
+/* ===== ДЕЙСТВИЯ ===== */
 
 document.getElementById('btn-min')?.addEventListener('click', () => api?.windowMinimize());
 document.getElementById('btn-max')?.addEventListener('click', () => api?.windowMaximize());
@@ -178,9 +420,9 @@ document.getElementById('console-search')?.addEventListener('input', (e) => {
   renderBody();
 });
 
-document.querySelectorAll<HTMLElement>('.console-filter-btn').forEach(btn => {
+document.querySelectorAll<HTMLElement>('.console-filter-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll<HTMLElement>('.console-filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll<HTMLElement>('.console-filter-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     filter = btn.dataset.consoleFilter || 'all';
     renderBody();
@@ -188,7 +430,8 @@ document.querySelectorAll<HTMLElement>('.console-filter-btn').forEach(btn => {
 });
 
 document.getElementById('console-clear')?.addEventListener('click', () => {
-  lines.length = 0;
+  entries.length = 0;
+  selectedId = null;
   body.innerHTML = '';
 });
 
@@ -198,12 +441,14 @@ document.getElementById('console-autoscroll')?.addEventListener('change', (e) =>
 });
 
 document.getElementById('console-copy')?.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(fullLogText());
-    showStatus(t('console.copied'));
-  } catch {
-    showStatus(t('console.copyError'));
+  if (selectedId != null) {
+    const entry = entries.find((e) => e.id === selectedId);
+    if (entry) {
+      await copyText(entryCopyText(entry), 'console.blockCopied');
+      return;
+    }
   }
+  await copyText(fullLogText(), 'console.copied');
 });
 
 document.getElementById('console-save')?.addEventListener('click', async () => {
@@ -216,15 +461,123 @@ document.getElementById('console-save')?.addEventListener('click', async () => {
   }
 });
 
+body.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  const copyBtn = target.closest('[data-clog-copy]') as HTMLElement | null;
+  if (copyBtn) {
+    e.stopPropagation();
+    const id = Number(copyBtn.getAttribute('data-clog-copy'));
+    const entry = entries.find((x) => x.id === id);
+    if (entry) void copyText(entryCopyText(entry), 'console.blockCopied');
+    return;
+  }
+  const entryEl = target.closest('.clog-entry') as HTMLElement | null;
+  if (!entryEl) return;
+  selectEntry(Number(entryEl.dataset.entryId));
+});
+
+body.addEventListener('dblclick', (e) => {
+  const entryEl = (e.target as HTMLElement).closest('.clog-entry') as HTMLElement | null;
+  if (!entryEl) return;
+  const id = Number(entryEl.dataset.entryId);
+  const entry = entries.find((x) => x.id === id);
+  if (entry) void copyText(entryCopyText(entry), 'console.blockCopied');
+});
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selectedId != null) {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim()) return; // обычное выделение текста
+    const entry = entries.find((x) => x.id === selectedId);
+    if (entry) {
+      e.preventDefault();
+      void copyText(entryCopyText(entry), 'console.blockCopied');
+    }
+  }
+});
+
+/* ===== Тема / акцент (как в основном окне) ===== */
+
+const THEME_ACCENTS: Record<string, string> = {
+  '#70ADDF': 'ocean', '#5b8ed4': 'midnight', '#a78bfa': 'purple', '#4ade80': 'forest',
+};
+
+function darkenColor(hex: string, amount: number): string {
+  const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - amount);
+  const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - amount);
+  const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - amount);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function applyAccent(accent: string): void {
+  document.documentElement.style.setProperty('--accent', accent);
+  document.documentElement.style.setProperty('--accent-hover', darkenColor(accent, 20));
+  const r = parseInt(accent.slice(1, 3), 16);
+  const g = parseInt(accent.slice(3, 5), 16);
+  const b = parseInt(accent.slice(5, 7), 16);
+  document.documentElement.style.setProperty('--accent-rgb', `${r},${g},${b}`);
+  const lum = relativeLuminance(r, g, b);
+  const onAccent = lum > 0.48 ? '#0d1421' : '#ffffff';
+  const onRgb = onAccent === '#ffffff' ? '255,255,255' : '13,20,33';
+  document.documentElement.style.setProperty('--on-accent', onAccent);
+  document.documentElement.style.setProperty('--on-accent-rgb', onRgb);
+  document.documentElement.setAttribute('data-accent-fg', lum > 0.48 ? 'dark' : 'light');
+  const theme = THEME_ACCENTS[accent];
+  if (theme) document.documentElement.setAttribute('data-theme', theme);
+  else document.documentElement.removeAttribute('data-theme');
+}
+
+function loadTheme(): void {
+  const theme = localStorage.getItem('Undefined Client-theme') || 'ocean';
+  const accent = localStorage.getItem('Undefined Client-accent') || '#70ADDF';
+  if (theme !== 'custom') {
+    const themeAccents: Record<string, string> = {
+      ocean: '#70ADDF', midnight: '#5b8ed4', purple: '#a78bfa', forest: '#4ade80',
+    };
+    applyAccent(themeAccents[theme] || '#70ADDF');
+  } else {
+    applyAccent(accent);
+  }
+}
+
+/** Живое обновление акцента из основного окна */
+function bindThemeSync(): void {
+  api?.onThemeChanged?.((accent) => {
+    const color = String(accent || '').trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+      loadTheme();
+      return;
+    }
+    applyAccent(color);
+  });
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'Undefined Client-accent' || e.key === 'Undefined Client-theme') {
+      loadTheme();
+    }
+  });
+}
+
 /* ===== INIT ===== */
 
 void (async () => {
+  loadTheme();
+  bindThemeSync();
   await setLang(localStorage.getItem('Undefined Client-language') || 'ru');
   if (api?.getConsoleHistory) {
     try {
       const history = await api.getConsoleHistory();
       for (const data of history) handleProgress(data);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   api?.onConsoleLog((data) => handleProgress(data));
   if (autoscroll) body.scrollTop = body.scrollHeight;

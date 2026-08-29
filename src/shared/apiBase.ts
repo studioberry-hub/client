@@ -51,27 +51,51 @@ export function absoluteApiUrl(pathOrUrl: string | null | undefined): string {
   }
 }
 
-// ===== Прокси каталога Modrinth =====
+// ===== Прокси каталога (Modrinth + CurseForge CDN) =====
 
-/** Единственный хост, который принимает прокси на сервере. */
-const CDN_HOST = 'cdn.modrinth.com';
+/** Хосты, которые принимает прокси файлов/картинок на сервере. */
+const CATALOG_CDN_HOSTS = new Set([
+  'cdn.modrinth.com',
+  'media.forgecdn.net',
+  'mediafilez.forgecdn.net',
+  'edge.forgecdn.net',
+  'www.curseforge.com',
+]);
 
 /** Причина загрузки: сервер передаёт её в Modrinth для статистики авторов. */
 export type DownloadReason = 'standalone' | 'dependency' | 'modpack' | 'update';
 
+export type CatalogSource = 'both' | 'modrinth' | 'curseforge';
+
+/** true, если id проекта — CurseForge (`cf:12345`). */
+export function isCurseForgeProjectId(id: string | null | undefined): boolean {
+  return /^cf:\d+$/i.test(String(id || '').trim());
+}
+
 /**
- * true, если адрес указывает на CDN Modrinth. Проверка повторяет серверную:
+ * true, если адрес указывает на CDN каталога. Проверка повторяет серверную:
  * прокси отвергает всё остальное, поэтому чужие хосты даже не пробуем.
  */
-export function isModrinthCdnUrl(raw: string | null | undefined): boolean {
+export function isCatalogCdnUrl(raw: string | null | undefined): boolean {
   const text = String(raw ?? '').trim();
   if (!text || text.length > 1024) return false;
   try {
     const url = new URL(text);
-    return url.protocol === 'https:' && url.hostname === CDN_HOST && !url.port;
+    if (url.protocol !== 'https:' || url.port || !CATALOG_CDN_HOSTS.has(url.hostname)) {
+      return false;
+    }
+    if (url.hostname === 'www.curseforge.com') {
+      return /^\/api\/v1\/mods\/\d+\/files\/\d+\/download\/?$/i.test(url.pathname);
+    }
+    return true;
   } catch {
     return false;
   }
+}
+
+/** @deprecated используйте isCatalogCdnUrl */
+export function isModrinthCdnUrl(raw: string | null | undefined): boolean {
+  return isCatalogCdnUrl(raw);
 }
 
 /**
@@ -79,7 +103,7 @@ export function isModrinthCdnUrl(raw: string | null | undefined): boolean {
  * проксировать произвольный домен сервер всё равно откажется.
  */
 export function catalogFileUrl(rawUrl: string, reason?: DownloadReason): string {
-  if (!isModrinthCdnUrl(rawUrl)) return rawUrl;
+  if (!isCatalogCdnUrl(rawUrl)) return rawUrl;
   const qs = new URLSearchParams({ url: rawUrl });
   if (reason) qs.set('reason', reason);
   return `${apiBase}/api/catalog/file?${qs.toString()}`;
@@ -88,8 +112,36 @@ export function catalogFileUrl(rawUrl: string, reason?: DownloadReason): string 
 /** Адрес картинки (иконка проекта, галерея, аватар) через наш прокси. */
 export function catalogImageUrl(rawUrl: string | null | undefined): string {
   const text = String(rawUrl ?? '').trim();
-  if (!isModrinthCdnUrl(text)) return text;
+  if (!text) return '';
+  // Уже наш прокси / относительный путь с сайта
+  if (text.startsWith('/client/api/catalog/') || text.includes('/api/catalog/image')) {
+    return absoluteApiUrl(text);
+  }
+  if (!isCatalogCdnUrl(text)) return absoluteApiUrl(text);
   return `${apiBase}/api/catalog/image?${new URLSearchParams({ url: text }).toString()}`;
+}
+
+/** Поиск в каталоге сайта (Modrinth / CurseForge / оба). */
+export function catalogSearchUrl(params: URLSearchParams): string {
+  return `${apiBase}/api/catalog/search?${params.toString()}`;
+}
+
+export function catalogProjectUrl(projectId: string): string {
+  return `${apiBase}/api/catalog/project/${encodeURIComponent(projectId)}`;
+}
+
+export function catalogVersionsUrl(projectId: string): string {
+  return `${apiBase}/api/catalog/project/${encodeURIComponent(projectId)}/version`;
+}
+
+/** Конкретный файл CurseForge (`cf:123` + fileId). */
+export function catalogCfFileUrl(projectId: string, fileId: string | number): string {
+  return `${apiBase}/api/catalog/project/${encodeURIComponent(projectId)}/file/${encodeURIComponent(String(fileId))}`;
+}
+
+/** Пакетный резолв CF fingerprint → project/file. */
+export function catalogFingerprintsUrl(): string {
+  return `${apiBase}/api/catalog/fingerprints`;
 }
 
 // ===== Прокси скинов =====
@@ -99,7 +151,13 @@ export function catalogImageUrl(rawUrl: string | null | undefined): string {
 // роуты с разными зонами доверия.
 
 /** Хосты, которые принимает роут /api/skin/image. Повторяет серверный список. */
-const SKIN_HOSTS = new Set(['mc-heads.net', 'mineskin.eu', 'textures.minecraft.net']);
+const SKIN_HOSTS = new Set([
+  'mc-heads.net',
+  'mineskin.eu',
+  'textures.minecraft.net',
+  'skinsystem.ely.by',
+  'ely.by',
+]);
 
 /**
  * Приводит адрес текстуры к https. Профиль Mojang исторически отдаёт ссылки на

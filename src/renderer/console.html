@@ -46,13 +46,13 @@
           <button class="console-filter-btn active" data-console-filter="all" data-i18n="console.filterAll">Все</button>
           <button class="console-filter-btn" data-console-filter="error" data-i18n="console.filterErrors">Ошибки</button>
         </div>
-        <button class="stngs-btn ghost" id="console-copy" data-i18n="console.copy">Копировать</button>
+        <button class="stngs-btn ghost" id="console-copy" data-i18n="console.copy" title="" data-i18n-title="console.copyHint">Копировать</button>
         <button class="stngs-btn ghost" id="console-save" data-i18n="console.save">Сохранить</button>
         <button class="stngs-btn ghost" id="console-clear" data-i18n="btn.clear">Очистить</button>
         <label class="console-check"><input type="checkbox" id="console-autoscroll" checked><span class="toggle-track"></span><span data-i18n="console.autoScroll">Автопрокрутка</span></label>
       </div>
       <div id="console-body" class="console-body"></div>
-      <div id="console-status" class="hidden"></div>
+      <div id="console-status" class="console-status-pill" role="status" aria-live="polite" hidden></div>
     </div>
   </div>
   <script src="console.js"></script>
