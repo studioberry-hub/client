@@ -1,6 +1,6 @@
 {
   "name": "uclient",
-  "version": "1.0.4-beta",
+  "version": "1.0.5-beta",
   "description": "Minecraft Launcher",
   "license": "GPL-3.0-only",
   "main": "dist/main/main.js",

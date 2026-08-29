@@ -5,7 +5,6 @@ import {
   AmbientLight,
   Box3,
   CanvasTexture,
-  CircleGeometry,
   Color,
   DirectionalLight,
   DoubleSide,
@@ -32,49 +31,56 @@ export const FLOOR_Y = -16;
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
-/** Дефолтные значения key-света (сверху-слева — заметные self-shadows на торсе/руках) */
-export const DEFAULT_KEY_AZIMUTH_DEG = 58;
-export const DEFAULT_KEY_ELEVATION_DEG = 40;
+/** Key: сверху-спереди-слева — как на референсе (форма без жёсткого блика) */
+export const DEFAULT_KEY_AZIMUTH_DEG = 38;
+export const DEFAULT_KEY_ELEVATION_DEG = 42;
 export const DEFAULT_KEY_DISTANCE = 55;
 
-/** Исходный снимок освещения после первого апгрейда графики */
+/**
+ * Яркий мягкий студийный свет: читаемая форма, сочные midtones, без «грязи».
+ */
 export const DEFAULT_LIGHT_SETTINGS: LightSettings = {
   keyAzimuthDeg: DEFAULT_KEY_AZIMUTH_DEG,
   keyElevationDeg: DEFAULT_KEY_ELEVATION_DEG,
-  keyIntensity: 1.75,
-  ambientIntensity: 0.28,
-  fillIntensity: 0.32,
-  shadowRadius: 5.5,
-  shadowIntensity: 0.82,
+  keyIntensity: 1.48,
+  ambientIntensity: 0.58,
+  fillIntensity: 0.55,
+  shadowRadius: 11,
+  shadowIntensity: 0.26,
   castShadows: true,
 };
 
-/** Пластик inner: усиленный envMap, albedo сохраняем */
-const SKIN_ROUGHNESS_INNER = 0.32;
-const SKIN_METALNESS_INNER = 0.08;
-const SKIN_ENV_MAP_INTENSITY_INNER = 1.05;
+/** Чуть сочнее матовый skin — лёгкий блик, цвета не серые */
+const SKIN_ROUGHNESS_INNER = 0.52;
+const SKIN_METALNESS_INNER = 0.04;
+const SKIN_ENV_MAP_INTENSITY_INNER = 0.28;
 
-/** Outer: только PBR-блик — cutout/DoubleSide/polygonOffset не трогаем */
-const SKIN_ROUGHNESS_OUTER = 0.34;
-const SKIN_METALNESS_OUTER = 0.06;
-const SKIN_ENV_MAP_INTENSITY_OUTER = 0.9;
-/** IBL-сцена — дополняет envMap на материалах */
-const SCENE_ENV_INTENSITY = 0.62;
+/** Outer: только лёгкий PBR — cutout/DoubleSide/polygonOffset не трогаем */
+const SKIN_ROUGHNESS_OUTER = 0.55;
+const SKIN_METALNESS_OUTER = 0.03;
+const SKIN_ENV_MAP_INTENSITY_OUTER = 0.22;
+/** IBL даёт «сочность» белым/цветным пикселям без жёсткого пластика */
+const SCENE_ENV_INTENSITY = 0.22;
+/** Hemisphere — поднимает теневую сторону, белое не уходит в серое */
+const HEMI_INTENSITY = 0.72;
+/** Rim — лёгкий объём силуэта */
+const RIM_INTENSITY = 0.3;
 
 /** Настройка shadow map + ACES tone mapping */
 export function configureProductRenderer(renderer: WebGLRenderer): void {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.08;
+  // Выше 1.0 — белые пиксели снова белые, цвета сочнее
+  renderer.toneMappingExposure = 1.18;
   renderer.outputColorSpace = SRGBColorSpace;
 }
 
-/** RoomEnvironment + PMREM — компактная IBL для пластикового блика */
+/** RoomEnvironment + PMREM — мягкий IBL для сочности */
 export function createPlasticEnvironment(renderer: WebGLRenderer): Texture {
   const pmrem = new PMREMGenerator(renderer);
   pmrem.compileEquirectangularShader();
-  const texture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const texture = pmrem.fromScene(new RoomEnvironment(), 0.28).texture;
   pmrem.dispose();
   return texture;
 }
@@ -298,10 +304,10 @@ export class ProductLighting {
     this.ambient = new AmbientLight(0xf0f2f8, DEFAULT_LIGHT_SETTINGS.ambientIntensity);
     scene.add(this.ambient);
 
-    this.hemi = new HemisphereLight(0xe8eef8, 0x2a2a30, 0.42);
+    this.hemi = new HemisphereLight(0xe8eef8, 0x3a3a42, HEMI_INTENSITY);
     scene.add(this.hemi);
 
-    this.key = new DirectionalLight(0xfff6ec, DEFAULT_LIGHT_SETTINGS.keyIntensity);
+    this.key = new DirectionalLight(0xfff4e8, DEFAULT_LIGHT_SETTINGS.keyIntensity);
     this.keyDistance = DEFAULT_KEY_DISTANCE;
     this.applyKeySpherical(
       DEFAULT_LIGHT_SETTINGS.keyAzimuthDeg,
@@ -318,12 +324,14 @@ export class ProductLighting {
     scene.add(this.key);
     scene.add(this.key.target);
 
-    this.fill = new DirectionalLight(0xc8d4f0, DEFAULT_LIGHT_SETTINGS.fillIntensity);
-    this.fill.position.set(14, 10, -12);
+    this.fill = new DirectionalLight(0xd8e0f0, DEFAULT_LIGHT_SETTINGS.fillIntensity);
+    // Fill спереди-справа — смягчает тень от key, без «второго солнца»
+    this.fill.position.set(-18, 8, 14);
     scene.add(this.fill);
 
-    this.rim = new DirectionalLight(0xb8c8ff, 0.55);
-    this.rim.position.set(-20, 12, -24);
+    // Лёгкий rim сзади-справа — кромка силуэта как на референсе
+    this.rim = new DirectionalLight(0xc8d4ff, RIM_INTENSITY);
+    this.rim.position.set(-18, 14, -22);
     scene.add(this.rim);
   }
 
@@ -448,29 +456,35 @@ export function setupProductLighting(scene: Scene): ProductLighting {
   return new ProductLighting(scene);
 }
 
-/** Диск-пол + shadow catcher + мягкая контактная тень под ногами */
+/** Пол (опционально) + shadow catcher + мягкая контактная тень под ногами */
 export function createFloorAndContactShadow(scene: Scene): {
   floor: Mesh;
   contactShadow: Mesh;
   ground: Mesh;
 } {
+  const groundSize = 420;
+  const groundTex = createFadingGroundTexture();
   const ground = new Mesh(
-    new CircleGeometry(48, 64),
+    new PlaneGeometry(groundSize, groundSize),
     new MeshStandardMaterial({
-      color: 0x121214,
-      roughness: 0.88,
-      metalness: 0.12,
-      envMapIntensity: 0.35,
+      map: groundTex,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.96,
+      metalness: 0,
+      envMapIntensity: 0.05,
     }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = FLOOR_Y - 0.04;
   ground.receiveShadow = true;
+  // Как на референсе: плоскости пола нет, только мягкая тень под ногами
+  ground.visible = false;
   scene.add(ground);
 
   const floor = new Mesh(
-    new PlaneGeometry(200, 200),
-    new ShadowMaterial({ opacity: 0.24, color: 0x000000 }),
+    new PlaneGeometry(groundSize, groundSize),
+    new ShadowMaterial({ opacity: 0.12, color: 0x000000 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
@@ -481,6 +495,37 @@ export function createFloorAndContactShadow(scene: Scene): {
   scene.add(contactShadow);
 
   return { floor, contactShadow, ground };
+}
+
+/**
+ * Текстура пола: серый центр → прозрачные края,
+ * чтобы плоскость вдали плавно растворялась в фоне.
+ */
+function createFadingGroundTexture(): CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Canvas 2D недоступен для текстуры пола");
+  }
+
+  const c = size / 2;
+  // Широкое пятно: плоскость читается как пол, края растворяются в фоне
+  const g = ctx.createRadialGradient(c, c, size * 0.12, c, c, size * 0.5);
+  g.addColorStop(0, "rgba(40, 40, 40, 1)");
+  g.addColorStop(0.28, "rgba(36, 36, 36, 0.95)");
+  g.addColorStop(0.55, "rgba(34, 34, 34, 0.55)");
+  g.addColorStop(0.78, "rgba(32, 32, 32, 0.18)");
+  g.addColorStop(1, "rgba(32, 32, 32, 0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 /** Радиальный декаль-тень под ступнями (мягче, чем shadow map) */
@@ -496,8 +541,8 @@ function createContactShadowBlob(): Mesh {
 
   const center = size / 2;
   const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-  gradient.addColorStop(0, "rgba(0, 0, 0, 0.22)");
-  gradient.addColorStop(0.25, "rgba(0, 0, 0, 0.12)");
+  gradient.addColorStop(0, "rgba(0, 0, 0, 0.18)");
+  gradient.addColorStop(0.28, "rgba(0, 0, 0, 0.1)");
   gradient.addColorStop(0.55, "rgba(0, 0, 0, 0.04)");
   gradient.addColorStop(0.82, "rgba(0, 0, 0, 0.01)");
   gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
@@ -511,16 +556,17 @@ function createContactShadowBlob(): Mesh {
     depthWrite: false,
   });
 
-  const mesh = new Mesh(new PlaneGeometry(58, 36), material);
+  // Мягкое овальное пятно как на референсе — не жёсткий диск
+  const mesh = new Mesh(new PlaneGeometry(48, 28), material);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(0, FLOOR_Y + 0.05, 0.5);
   mesh.renderOrder = 1;
   return mesh;
 }
 
-/** Сплошной фон #222 как на референсе */
+/** Сплошной фон #202020 как у панелей лаунчера */
 export function createProductBackground(): Color {
-  return new Color(0x222222);
+  return new Color(0x202020);
 }
 
 /** IBL-сцена и envMap для материалов скина */

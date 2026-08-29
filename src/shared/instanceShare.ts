@@ -19,7 +19,7 @@ export interface InstanceShareFile {
   version?: string;
   sha1: string;
   size: number;
-  /** Если файл есть на Modrinth — ставим по project/version, без загрузки на наш сервер. */
+  /** Если файл есть на Modrinth или CurseForge (`cf:…`) — ставим по project/version, без загрузки на наш сервер. */
   projectId?: string;
   versionId?: string;
   /** true: бинарник лежит на нашем сервере (кастомный мод и т.п.). */

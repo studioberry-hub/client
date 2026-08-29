@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://uprojects.site https://mc-heads.net https://ely.by https://cdn.modrinth.com http: https:; font-src 'self'; script-src 'self' 'unsafe-inline'; media-src 'self' blob: https://live.lofiradio.ru https://air.radioart.com">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://uprojects.site https://mc-heads.net https://ely.by https://skinsystem.ely.by https://cdn.modrinth.com http: https:; font-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://uprojects.site wss://uprojects.site https://mc-heads.net https://ely.by https://skinsystem.ely.by https://cdn.modrinth.com https: http:; media-src 'self' blob: data: https://uprojects.site https://live.lofiradio.ru https://air.radioart.com https: http:">
   <title>Undefined Client</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="ai-access-modal.css">
@@ -176,7 +176,17 @@
                 <rect x="8" y="15" width="4" height="1" rx="0.5" fill="currentColor"/>
               </svg>
             </span>
-            <div class="tab-btn-title" data-i18n="tab.ai">?????</div>
+            <div class="tab-btn-title" data-i18n="tab.ai">Агент</div>
+          </div>
+          <div class="tab-btn" data-tab="messenger">
+            <span class="tab-btn-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M13 1H3C1.89543 1 1 1.89543 1 3V8C1 9.10457 1.89543 10 3 10H4.2002C4.64187 9.99989 4.99989 9.64187 5 9.2002C5 7.98517 5.98517 7 7.2002 7H15V3C15 1.89543 14.1046 1 13 1Z" stroke="currentColor" stroke-opacity="0.5" stroke-width="2"/>
+                <path d="M7 7H17C18.1046 7 19 7.89543 19 9V14C19 15.1046 18.1046 16 17 16H14.5312L14.2314 16.3594L12.624 18.2891L12.9482 17.3164L13.3877 16H7C5.89543 16 5 15.1046 5 14V9C5 7.89543 5.89543 7 7 7Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </span>
+            <div class="tab-btn-title" data-i18n="tab.messenger">MC Messenger</div>
+            <span class="tab-btn-badge" id="msgr-tab-badge" hidden aria-hidden="true">0</span>
           </div>
         </div>
 
@@ -237,7 +247,6 @@
           </div>
         </div>
 
-        <!-- LastWorld / placeholder for future use -->
         </div>
 
         <!-- Download Progress -->
@@ -419,103 +428,130 @@
             </div>
           </div>
 
+          <!-- Sentinel: когда уходит из вида — панель поиска становится «прилипшей» -->
+          <div id="mods-toolbar-sentinel" class="mods-toolbar-sentinel" aria-hidden="true"></div>
+
           <!-- Search bar -->
-          <div id="mods-search-bar">
-            <div class="search-input-wrapper">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-                <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-              <input type="text" id="mods-search-input" class="search-input" placeholder="" data-i18n-ph="mods.searchPlaceholder">
-            </div>
-            <div id="mods-categories" class="categories-row">
-              <button class="category-btn active" data-category="all" data-i18n="mods.cat.all">???</button>
-              <button class="category-btn" data-category="mod" data-i18n="mods.cat.mod">????</button>
-              <button class="category-btn" data-category="modpack" data-i18n="mods.cat.modpack">???????</button>
-              <button class="category-btn" data-category="resourcepack" data-i18n="mods.cat.resourcepack">????????</button>
-              <button class="category-btn" data-category="shader" data-i18n="mods.cat.shader">???????</button>
-              <button class="category-btn" data-category="datapack" data-i18n="mods.cat.datapack">????-????</button>
-            </div>
-            <div id="mods-filters-bar">
-              <div class="mods-filters-row">
-                <div class="stngs-select-wrap mods-select-wrap">
-                  <select class="stngs-select-hidden" id="mods-sort-select" title="" data-i18n-title="mods.filter.sort">
-                    <option value="relevance" data-i18n="mods.filter.sortRelevance">?? ?????????????</option>
-                    <option value="downloads" data-i18n="mods.filter.sortDownloads">?? ???????????</option>
-                    <option value="follows" data-i18n="mods.filter.sortFollows">?? ?????????</option>
-                    <option value="newest" data-i18n="mods.filter.sortNewest">?? ???????</option>
-                    <option value="updated" data-i18n="mods.filter.sortUpdated">?? ???????????</option>
-                  </select>
-                  <button type="button" class="stngs-select-btn">
-                    <span class="stngs-select-value">?? ?????????????</span>
-                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="stngs-select-menu">
-                    <div class="stngs-select-opt" data-value="relevance" data-i18n="mods.filter.sortRelevance">?? ?????????????</div>
-                    <div class="stngs-select-opt" data-value="downloads" data-i18n="mods.filter.sortDownloads">?? ???????????</div>
-                    <div class="stngs-select-opt" data-value="follows" data-i18n="mods.filter.sortFollows">?? ?????????</div>
-                    <div class="stngs-select-opt" data-value="newest" data-i18n="mods.filter.sortNewest">?? ???????</div>
-                    <div class="stngs-select-opt" data-value="updated" data-i18n="mods.filter.sortUpdated">?? ???????????</div>
+          <div id="mods-search-bar" class="mods-toolbar">
+            <div class="mods-toolbar__panel">
+              <div class="search-input-wrapper">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <input type="text" id="mods-search-input" class="search-input" placeholder="" data-i18n-ph="mods.searchPlaceholder">
+              </div>
+              <div id="mods-categories" class="categories-row">
+                <button class="category-btn active" data-category="all" data-i18n="mods.cat.all">???</button>
+                <button class="category-btn" data-category="mod" data-i18n="mods.cat.mod">????</button>
+                <button class="category-btn" data-category="modpack" data-i18n="mods.cat.modpack">???????</button>
+                <button class="category-btn" data-category="resourcepack" data-i18n="mods.cat.resourcepack">????????</button>
+                <button class="category-btn" data-category="shader" data-i18n="mods.cat.shader">???????</button>
+                <button class="category-btn" data-category="datapack" data-i18n="mods.cat.datapack">????-????</button>
+              </div>
+              <div id="mods-filters-bar">
+                <div class="mods-filters-row">
+                  <div class="stngs-select-wrap mods-select-wrap">
+                    <select class="stngs-select-hidden" id="mods-source-select" title="" data-i18n-title="mods.filter.source">
+                      <option value="both" data-i18n="mods.filter.sourceBoth">Оба источника</option>
+                      <option value="modrinth" data-i18n="mods.filter.sourceModrinth">Modrinth</option>
+                      <option value="curseforge" data-i18n="mods.filter.sourceCurseforge">CurseForge</option>
+                    </select>
+                    <button type="button" class="stngs-select-btn">
+                      <span class="stngs-select-value" data-i18n="mods.filter.sourceBoth">Оба источника</span>
+                      <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div class="stngs-select-menu">
+                      <div class="stngs-select-opt" data-value="both" data-i18n="mods.filter.sourceBoth">Оба источника</div>
+                      <div class="stngs-select-opt" data-value="modrinth" data-i18n="mods.filter.sourceModrinth">Modrinth</div>
+                      <div class="stngs-select-opt" data-value="curseforge" data-i18n="mods.filter.sourceCurseforge">CurseForge</div>
+                    </div>
                   </div>
-                </div>
-                <div class="stngs-select-wrap mods-select-wrap">
-                  <select class="stngs-select-hidden" id="mods-version-select" title="" data-i18n-title="mods.filter.version">
-                    <option value="" data-i18n="mods.filter.allVersions">??? ??????</option>
-                  </select>
-                  <button type="button" class="stngs-select-btn">
-                    <span class="stngs-select-value" data-i18n="mods.filter.allVersions">??? ??????</span>
-                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="stngs-select-menu select-scroll-menu" id="mods-version-menu">
-                    <div class="stngs-select-opt" data-value="" data-i18n="mods.filter.allVersions">??? ??????</div>
+                  <div class="stngs-select-wrap mods-select-wrap">
+                    <select class="stngs-select-hidden" id="mods-sort-select" title="" data-i18n-title="mods.filter.sort">
+                      <option value="relevance" data-i18n="mods.filter.sortRelevance">По релевантности</option>
+                      <option value="downloads" data-i18n="mods.filter.sortDownloads">По скачиваниям</option>
+                      <option value="follows" data-i18n="mods.filter.sortFollows">По подпискам</option>
+                      <option value="newest" data-i18n="mods.filter.sortNewest">По новизне</option>
+                      <option value="updated" data-i18n="mods.filter.sortUpdated">По обновлениям</option>
+                    </select>
+                    <button type="button" class="stngs-select-btn">
+                      <span class="stngs-select-value">По релевантности</span>
+                      <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div class="stngs-select-menu">
+                      <div class="stngs-select-opt" data-value="relevance" data-i18n="mods.filter.sortRelevance">По релевантности</div>
+                      <div class="stngs-select-opt" data-value="downloads" data-i18n="mods.filter.sortDownloads">По скачиваниям</div>
+                      <div class="stngs-select-opt" data-value="follows" data-i18n="mods.filter.sortFollows">По подпискам</div>
+                      <div class="stngs-select-opt" data-value="newest" data-i18n="mods.filter.sortNewest">По новизне</div>
+                      <div class="stngs-select-opt" data-value="updated" data-i18n="mods.filter.sortUpdated">По обновлениям</div>
+                    </div>
                   </div>
-                </div>
-                <div class="mods-filters-pop">
-                  <button class="mods-filter-btn" id="mods-filters-toggle" title="" data-i18n-title="mods.filter.toggle">
-                    <span data-i18n="mods.filter.btn">???????</span>
-                    <span class="mods-filter-count" id="mods-filters-count" style="display:none">0</span>
-                    <svg class="mods-filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="mods-filters-popup" id="mods-filters-popup">
-                    <div class="mods-filter-block">
-                      <span class="mods-filter-label" data-i18n="mods.filter.loaders">??????????</span>
-                      <div class="mods-chip-group" id="mods-loader-chips">
-                        <button class="mods-chip" data-loader="fabric">Fabric</button>
-                        <button class="mods-chip" data-loader="forge">Forge</button>
-                        <button class="mods-chip" data-loader="neoforge">NeoForge</button>
-                        <button class="mods-chip" data-loader="quilt">Quilt</button>
+                  <div class="stngs-select-wrap mods-select-wrap">
+                    <select class="stngs-select-hidden" id="mods-version-select" title="" data-i18n-title="mods.filter.version">
+                      <option value="" data-i18n="mods.filter.allVersions">??? ??????</option>
+                    </select>
+                    <button type="button" class="stngs-select-btn">
+                      <span class="stngs-select-value" data-i18n="mods.filter.allVersions">??? ??????</span>
+                      <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div class="stngs-select-menu select-scroll-menu" id="mods-version-menu">
+                      <div class="stngs-select-opt" data-value="" data-i18n="mods.filter.allVersions">??? ??????</div>
+                    </div>
+                  </div>
+                  <div class="mods-filters-pop">
+                    <button class="mods-filter-btn" id="mods-filters-toggle" title="" data-i18n-title="mods.filter.toggle">
+                      <span data-i18n="mods.filter.btn">???????</span>
+                      <span class="mods-filter-count" id="mods-filters-count" style="display:none">0</span>
+                      <svg class="mods-filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div class="mods-filters-popup" id="mods-filters-popup">
+                      <div class="mods-filter-block">
+                        <span class="mods-filter-label" data-i18n="mods.filter.loaders">??????????</span>
+                        <div class="mods-chip-group" id="mods-loader-chips">
+                          <button class="mods-chip" data-loader="fabric">Fabric</button>
+                          <button class="mods-chip" data-loader="forge">Forge</button>
+                          <button class="mods-chip" data-loader="neoforge">NeoForge</button>
+                          <button class="mods-chip" data-loader="quilt">Quilt</button>
+                        </div>
+                      </div>
+                      <div class="mods-filter-block">
+                        <span class="mods-filter-label" data-i18n="mods.filter.tags">?????</span>
+                        <div class="mods-chip-group" id="mods-tag-chips">
+                          <button class="mods-chip" data-tag="performance" data-i18n="mods.filter.tag.performance">??????????????????</button>
+                          <button class="mods-chip" data-tag="worldgen" data-i18n="mods.filter.tag.worldgen">????????? ????</button>
+                          <button class="mods-chip" data-tag="technology" data-i18n="mods.filter.tag.technology">??????????</button>
+                          <button class="mods-chip" data-tag="magic" data-i18n="mods.filter.tag.magic">?????</button>
+                          <button class="mods-chip" data-tag="adventure" data-i18n="mods.filter.tag.adventure">???????????</button>
+                          <button class="mods-chip" data-tag="decoration" data-i18n="mods.filter.tag.decoration">?????</button>
+                          <button class="mods-chip" data-tag="food" data-i18n="mods.filter.tag.food">???</button>
+                          <button class="mods-chip" data-tag="game-mechanics" data-i18n="mods.filter.tag.mechanics">????????</button>
+                          <button class="mods-chip" data-tag="library" data-i18n="mods.filter.tag.library">??????????</button>
+                          <button class="mods-chip" data-tag="utility" data-i18n="mods.filter.tag.utility">???????</button>
+                          <button class="mods-chip" data-tag="storage" data-i18n="mods.filter.tag.storage">?????????</button>
+                          <button class="mods-chip" data-tag="combat" data-i18n="mods.filter.tag.combat">???</button>
+                        </div>
+                      </div>
+                      <div class="mods-filter-actions">
+                        <button class="mods-clear-btn" id="mods-filters-clear">
+                          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+                          <span data-i18n="mods.filter.clear">????????</span>
+                        </button>
                       </div>
                     </div>
-                    <div class="mods-filter-block">
-                      <span class="mods-filter-label" data-i18n="mods.filter.tags">?????</span>
-                      <div class="mods-chip-group" id="mods-tag-chips">
-                        <button class="mods-chip" data-tag="performance" data-i18n="mods.filter.tag.performance">??????????????????</button>
-                        <button class="mods-chip" data-tag="worldgen" data-i18n="mods.filter.tag.worldgen">????????? ????</button>
-                        <button class="mods-chip" data-tag="technology" data-i18n="mods.filter.tag.technology">??????????</button>
-                        <button class="mods-chip" data-tag="magic" data-i18n="mods.filter.tag.magic">?????</button>
-                        <button class="mods-chip" data-tag="adventure" data-i18n="mods.filter.tag.adventure">???????????</button>
-                        <button class="mods-chip" data-tag="decoration" data-i18n="mods.filter.tag.decoration">?????</button>
-                        <button class="mods-chip" data-tag="food" data-i18n="mods.filter.tag.food">???</button>
-                        <button class="mods-chip" data-tag="game-mechanics" data-i18n="mods.filter.tag.mechanics">????????</button>
-                        <button class="mods-chip" data-tag="library" data-i18n="mods.filter.tag.library">??????????</button>
-                        <button class="mods-chip" data-tag="utility" data-i18n="mods.filter.tag.utility">???????</button>
-                        <button class="mods-chip" data-tag="storage" data-i18n="mods.filter.tag.storage">?????????</button>
-                        <button class="mods-chip" data-tag="combat" data-i18n="mods.filter.tag.combat">???</button>
-                      </div>
-                    </div>
-                    <div class="mods-filter-actions">
-                      <button class="mods-clear-btn" id="mods-filters-clear">
-                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
-                        <span data-i18n="mods.filter.clear">????????</span>
-                      </button>
-                    </div>
                   </div>
+                  <button type="button" class="mods-view-toggle" id="mods-view-toggle" aria-pressed="false" title="" data-i18n-title="mods.view.toggleToCards">
+                    <img class="mods-view-toggle__icon mods-view-toggle__icon--cards" src="../../assets/icons/cards.svg" width="16" height="16" alt="" aria-hidden="true">
+                    <img class="mods-view-toggle__icon mods-view-toggle__icon--list" src="../../assets/icons/list.svg" width="16" height="16" alt="" aria-hidden="true">
+                  </button>
                 </div>
               </div>
             </div>
@@ -546,89 +582,94 @@
             </div>
           </div>
 
-          <!-- Search bar -->
-          <div id="servers-search-bar">
-            <div class="search-input-wrapper">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-                <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-              <input type="text" id="servers-search-input" class="search-input" placeholder="" data-i18n-ph="servers.searchPlaceholder">
-            </div>
-            <div id="servers-categories" class="categories-row">
-              <button class="category-btn active" data-category="all" data-i18n="servers.cat.all">???</button>
-              <button class="category-btn" data-category="survival" data-i18n="servers.cat.survival">??????????</button>
-              <button class="category-btn" data-category="pvp" data-i18n="servers.cat.pvp">PvP</button>
-              <button class="category-btn" data-category="anarchy" data-i18n="servers.cat.anarchy">??????</button>
-              <button class="category-btn" data-category="skyblock" data-i18n="servers.cat.skyblock">SkyBlock</button>
-              <button class="category-btn" data-category="minigames" data-i18n="servers.cat.minigames">????-????</button>
-              <button class="category-btn" data-category="vanilla" data-i18n="servers.cat.vanilla">????????</button>
-              <button class="category-btn" data-category="mine" data-i18n="servers.cat.mine">??? ????????</button>
-            </div>
-            <div id="servers-filters-bar">
-              <div class="mods-filters-row">
-                <div class="stngs-select-wrap mods-select-wrap">
-                  <select class="stngs-select-hidden" id="servers-sort-select" title="" data-i18n-title="servers.filter.sortTitle">
-                    <option value="players" data-i18n="servers.filter.sortPlayers">?? ????????</option>
-                    <option value="name" data-i18n="servers.filter.sortName">?? ?????</option>
-                    <option value="online" data-i18n="servers.filter.sortOnline">?????? ???????</option>
-                  </select>
-                  <button type="button" class="stngs-select-btn">
-                    <span class="stngs-select-value" data-i18n="servers.filter.sortPlayers">?? ?????????</span>
-                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="stngs-select-menu">
-                    <div class="stngs-select-opt" data-value="players" data-i18n="servers.filter.sortPlayers">?? ???????</div>
-                    <div class="stngs-select-opt" data-value="name" data-i18n="servers.filter.sortName">?? ?????</div>
-                    <div class="stngs-select-opt" data-value="online" data-i18n="servers.filter.sortOnline">?????? ???????</div>
+          <!-- Sentinel: когда уходит из вида — панель поиска становится «прилипшей» -->
+          <div id="servers-toolbar-sentinel" class="mods-toolbar-sentinel" aria-hidden="true"></div>
+
+          <!-- Search bar (как у каталога модов) -->
+          <div id="servers-search-bar" class="mods-toolbar">
+            <div class="mods-toolbar__panel">
+              <div class="search-input-wrapper">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <input type="text" id="servers-search-input" class="search-input" placeholder="" data-i18n-ph="servers.searchPlaceholder">
+              </div>
+              <div id="servers-categories" class="categories-row">
+                <button class="category-btn active" data-category="all" data-i18n="servers.cat.all">???</button>
+                <button class="category-btn" data-category="survival" data-i18n="servers.cat.survival">??????????</button>
+                <button class="category-btn" data-category="pvp" data-i18n="servers.cat.pvp">PvP</button>
+                <button class="category-btn" data-category="anarchy" data-i18n="servers.cat.anarchy">??????</button>
+                <button class="category-btn" data-category="skyblock" data-i18n="servers.cat.skyblock">SkyBlock</button>
+                <button class="category-btn" data-category="minigames" data-i18n="servers.cat.minigames">????-????</button>
+                <button class="category-btn" data-category="vanilla" data-i18n="servers.cat.vanilla">????????</button>
+                <button class="category-btn" data-category="mine" data-i18n="servers.cat.mine">??? ????????</button>
+              </div>
+              <div id="servers-filters-bar">
+                <div class="mods-filters-row">
+                  <div class="stngs-select-wrap mods-select-wrap">
+                    <select class="stngs-select-hidden" id="servers-sort-select" title="" data-i18n-title="servers.filter.sortTitle">
+                      <option value="players" data-i18n="servers.filter.sortPlayers">?? ????????</option>
+                      <option value="name" data-i18n="servers.filter.sortName">?? ?????</option>
+                      <option value="online" data-i18n="servers.filter.sortOnline">?????? ???????</option>
+                    </select>
+                    <button type="button" class="stngs-select-btn">
+                      <span class="stngs-select-value" data-i18n="servers.filter.sortPlayers">?? ?????????</span>
+                      <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div class="stngs-select-menu">
+                      <div class="stngs-select-opt" data-value="players" data-i18n="servers.filter.sortPlayers">?? ???????</div>
+                      <div class="stngs-select-opt" data-value="name" data-i18n="servers.filter.sortName">?? ?????</div>
+                      <div class="stngs-select-opt" data-value="online" data-i18n="servers.filter.sortOnline">?????? ???????</div>
+                    </div>
                   </div>
-                </div>
-                <div class="mods-filters-pop">
-                  <button class="mods-filter-btn" id="servers-filters-toggle" title="" data-i18n-title="servers.filter.title">
-                    <span data-i18n="servers.filter.btn">???????</span>
-                    <span class="mods-filter-count" id="servers-filters-count" style="display:none">0</span>
-                    <svg class="mods-filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                  </button>
-                  <div class="mods-filters-popup" id="servers-filters-popup">
-                    <div class="mods-filter-block">
-                      <span class="mods-filter-label" data-i18n="servers.filter.region">? ?????</span>
-                      <div class="mods-chip-group" id="servers-region-chips">
-                        <button class="mods-chip active" data-region="all" data-i18n="servers.filter.regionAll">??? ??????</button>
-                        <button class="mods-chip" data-region="europe" data-i18n="servers.filter.regionEurope">?????</button>
-                        <button class="mods-chip" data-region="cis" data-i18n="servers.filter.regionCis">???</button>
-                        <button class="mods-chip" data-region="north" data-i18n="servers.filter.regionNorth">???????? ????????</button>
-                        <button class="mods-chip" data-region="south" data-i18n="servers.filter.regionSouth">??? ? ???????????</button>
-                        <button class="mods-chip" data-region="asia" data-i18n="servers.filter.regionAsia">????</button>
-                      </div>
-                    </div>
-<div class="mods-filter-block">
-                      <span class="mods-filter-label" data-i18n="servers.filter.status">????????</span>
-                      <div class="mods-chip-group">
-                        <button class="mods-chip" id="servers-online-chip" data-i18n="servers.filter.online">???????? ? ???????</button>
-                      </div>
-                    </div>
-                    <div class="mods-filter-block">
-                      <span class="mods-filter-label" data-i18n="servers.filter.version">?? ????</span>
-                      <div class="stngs-select-wrap mods-select-wrap">
-                        <select class="stngs-select-hidden" id="servers-version-select" title="" data-i18n-title="servers.filter.version">
-                          <option value="" data-i18n="servers.filter.versionAll">??? ???????</option>
-                        </select>
-                        <button type="button" class="stngs-select-btn">
-                          <span class="stngs-select-value" data-i18n="servers.filter.versionAll">??? ???????</span>
-                          <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                        </button>
-                        <div class="stngs-select-menu">
+                  <div class="mods-filters-pop">
+                    <button class="mods-filter-btn" id="servers-filters-toggle" title="" data-i18n-title="servers.filter.title">
+                      <span data-i18n="servers.filter.btn">???????</span>
+                      <span class="mods-filter-count" id="servers-filters-count" style="display:none">0</span>
+                      <svg class="mods-filter-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div class="mods-filters-popup" id="servers-filters-popup">
+                      <div class="mods-filter-block">
+                        <span class="mods-filter-label" data-i18n="servers.filter.region">? ?????</span>
+                        <div class="mods-chip-group" id="servers-region-chips">
+                          <button class="mods-chip active" data-region="all" data-i18n="servers.filter.regionAll">??? ??????</button>
+                          <button class="mods-chip" data-region="europe" data-i18n="servers.filter.regionEurope">?????</button>
+                          <button class="mods-chip" data-region="cis" data-i18n="servers.filter.regionCis">???</button>
+                          <button class="mods-chip" data-region="north" data-i18n="servers.filter.regionNorth">???????? ????????</button>
+                          <button class="mods-chip" data-region="south" data-i18n="servers.filter.regionSouth">??? ? ???????????</button>
+                          <button class="mods-chip" data-region="asia" data-i18n="servers.filter.regionAsia">????</button>
                         </div>
                       </div>
-                    </div>
-                    <div class="mods-filter-actions">
-                      <button class="mods-clear-btn" id="servers-filters-clear" data-i18n="servers.filter.clear">?????????</button>
+                      <div class="mods-filter-block">
+                        <span class="mods-filter-label" data-i18n="servers.filter.status">????????</span>
+                        <div class="mods-chip-group">
+                          <button class="mods-chip" id="servers-online-chip" data-i18n="servers.filter.online">???????? ? ???????</button>
+                        </div>
+                      </div>
+                      <div class="mods-filter-block">
+                        <span class="mods-filter-label" data-i18n="servers.filter.version">?? ????</span>
+                        <div class="stngs-select-wrap mods-select-wrap">
+                          <select class="stngs-select-hidden" id="servers-version-select" title="" data-i18n-title="servers.filter.version">
+                            <option value="" data-i18n="servers.filter.versionAll">??? ???????</option>
+                          </select>
+                          <button type="button" class="stngs-select-btn">
+                            <span class="stngs-select-value" data-i18n="servers.filter.versionAll">??? ???????</span>
+                            <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                              <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                          </button>
+                          <div class="stngs-select-menu">
+                          </div>
+                        </div>
+                      </div>
+                      <div class="mods-filter-actions">
+                        <button class="mods-clear-btn" id="servers-filters-clear" data-i18n="servers.filter.clear">?????????</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -962,6 +1003,160 @@
             </section>
           </div>
         </div>
+
+        <!-- MC Messenger -->
+        <div class="tab-view" id="tab-messenger">
+          <div class="msgr-gate" id="msgr-gate" hidden>
+            <div class="msgr-gate__card">
+              <div class="msgr-gate__title" data-i18n="msgr.needAccount">Нужен аккаунт Microsoft или Ely.by</div>
+              <div class="msgr-gate__hint" data-i18n="msgr.needAccountHint"></div>
+              <button type="button" class="msgr-gate__retry hidden" id="msgr-retry" data-i18n="msgr.retry">Повторить</button>
+            </div>
+          </div>
+          <div class="msgr-shell" id="msgr-shell">
+            <aside class="msgr-rail" aria-label="Chats">
+              <div class="msgr-rail__head">
+                <div class="msgr-rail__brand">
+                  <span class="msgr-rail__icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M13 1H3C1.89543 1 1 1.89543 1 3V8C1 9.10457 1.89543 10 3 10H4.2002C4.64187 9.99989 4.99989 9.64187 5 9.2002C5 7.98517 5.98517 7 7.2002 7H15V3C15 1.89543 14.1046 1 13 1Z" stroke="currentColor" stroke-opacity="0.5" stroke-width="2"/>
+                      <path d="M7 7H17C18.1046 7 19 7.89543 19 9V14C19 15.1046 18.1046 16 17 16H14.5312L14.2314 16.3594L12.624 18.2891L12.9482 17.3164L13.3877 16H7C5.89543 16 5 15.1046 5 14V9C5 7.89543 5.89543 7 7 7Z" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                  </span>
+                  <span class="msgr-rail__title" data-i18n="msgr.brand">MC Messenger</span>
+                </div>
+                <div class="msgr-presence-wrap">
+                  <button type="button" class="msgr-presence is-connecting" id="msgr-presence" aria-haspopup="menu" aria-expanded="false">
+                    <span class="msgr-presence__dot" aria-hidden="true"></span>
+                    <span class="msgr-presence__label" data-i18n="msgr.connecting">Подключение…</span>
+                  </button>
+                  <div class="msgr-presence-menu hidden" id="msgr-presence-menu" role="menu" aria-hidden="true">
+                    <button type="button" class="msgr-presence-menu__item" data-presence="online" role="menuitem">
+                      <span class="msgr-presence__dot is-online" aria-hidden="true"></span>
+                      <span data-i18n="msgr.statusOnline">В сети</span>
+                    </button>
+                    <button type="button" class="msgr-presence-menu__item" data-presence="busy" role="menuitem">
+                      <span class="msgr-presence__dot is-busy" aria-hidden="true"></span>
+                      <span data-i18n="msgr.statusBusy">Занят</span>
+                    </button>
+                    <button type="button" class="msgr-presence-menu__item" data-presence="dnd" role="menuitem">
+                      <span class="msgr-presence__dot is-dnd" aria-hidden="true"></span>
+                      <span data-i18n="msgr.statusDnd">Не беспокоить</span>
+                    </button>
+                    <button type="button" class="msgr-presence-menu__item" data-presence="offline" role="menuitem">
+                      <span class="msgr-presence__dot is-offline" aria-hidden="true"></span>
+                      <span data-i18n="msgr.statusOffline">Оффлайн</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="msgr-search-wrap">
+                <div class="search-input-wrapper">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  <input type="search" id="msgr-search" class="search-input" data-i18n-ph="msgr.searchPlaceholder" placeholder="Search" autocomplete="off">
+                </div>
+                <div class="msgr-search-results" id="msgr-search-results" hidden></div>
+              </div>
+              <div class="msgr-rail__actions">
+                <div class="msgr-rail__tabs" id="msgr-rail-tabs" role="tablist" data-active="chats">
+                  <span class="msgr-rail__tabs-pill" id="msgr-rail-tabs-pill" aria-hidden="true"></span>
+                  <button type="button" class="msgr-rail-tab is-active" id="msgr-tab-chats" data-rail-tab="chats" role="tab" aria-selected="true" data-i18n="msgr.tabChats">Чаты</button>
+                  <button type="button" class="msgr-rail-tab" id="msgr-tab-friends" data-rail-tab="friends" role="tab" aria-selected="false" data-i18n="msgr.tabFriends">Друзья</button>
+                  <button type="button" class="msgr-rail-tab" id="msgr-tab-worlds" data-rail-tab="worlds" role="tab" aria-selected="false" data-i18n="msgr.tabWorlds">Миры</button>
+                </div>
+                <button type="button" class="msgr-rail-btn" id="msgr-new-group" data-i18n="msgr.newGroup">Новая группа</button>
+                <div class="msgr-rail__hint" id="msgr-rail-hint" hidden aria-live="polite"></div>
+              </div>
+              <div class="msgr-rail__pages" id="msgr-rail-pages">
+                <div class="msgr-rail__page is-active" id="msgr-chat-list" data-rail-page="chats"></div>
+                <div class="msgr-rail__page msgr-friends-list" id="msgr-friends-list" data-rail-page="friends" hidden></div>
+                <div class="msgr-rail__page msgr-worlds-list" id="msgr-worlds-list" data-rail-page="worlds" hidden></div>
+              </div>
+            </aside>
+            <section class="msgr-stage" aria-label="Chat">
+              <div class="msgr-stage__head-row" id="msgr-stage-head-row" hidden>
+                <div class="msgr-stage__head" id="msgr-stage-head" role="button" tabindex="0">
+                  <div class="msgr-avatar" id="msgr-peer-avatar"></div>
+                  <div class="msgr-stage__peer">
+                    <div class="msgr-stage__name" id="msgr-peer-name" data-i18n="msgr.selectChat">Выберите чат</div>
+                    <div class="msgr-stage__meta" id="msgr-peer-meta"></div>
+                  </div>
+                </div>
+                <button type="button" class="msgr-stage__more" id="msgr-stage-more" hidden aria-label="More" title="">
+                  <span aria-hidden="true">···</span>
+                </button>
+              </div>
+              <div class="msgr-stage-empty" id="msgr-stage-empty">
+                <div class="msgr-stage-empty__title" data-i18n="msgr.emptyTitle">Начните переписку</div>
+                <div class="msgr-stage-empty__hint" data-i18n="msgr.emptyHint">Найдите игрока по нику в поиске слева</div>
+              </div>
+              <div class="msgr-thread" id="msgr-thread" hidden>
+                <div class="msgr-messages" id="msgr-messages"></div>
+              </div>
+              <div class="ai-composer-bar msgr-composer-bar" id="msgr-composer-bar" hidden>
+                <div class="msgr-reply-bar" id="msgr-reply-bar" hidden>
+                  <div class="msgr-reply-bar__body">
+                    <div class="msgr-reply-bar__label" id="msgr-reply-label"></div>
+                    <div class="msgr-reply-bar__text" id="msgr-reply-text"></div>
+                  </div>
+                  <button type="button" class="msgr-reply-bar__close" id="msgr-reply-clear" aria-label="Cancel reply">×</button>
+                </div>
+                <form class="ai-composer" id="msgr-form">
+                  <div class="ai-attach-chips msgr-attach-chips" id="msgr-attach-chips" hidden></div>
+                  <div class="ai-composer__input-wrap">
+                    <textarea id="msgr-input" class="ai-composer__input" rows="1" data-i18n-ph="msgr.placeholder" placeholder="Напишите сообщение…"></textarea>
+                  </div>
+                  <div class="ai-composer__toolbar ai-composer-meta">
+                    <div class="ai-composer__toolbar-left">
+                      <div class="ai-attach-wrap msgr-attach-wrap">
+                        <button type="button" class="ai-composer__attach" id="msgr-attach" data-i18n-title="msgr.attach" title="Прикрепить" aria-label="Attach">
+                          <span class="ai-rail-btn__icon ai-rail-btn__icon--plus" aria-hidden="true"></span>
+                        </button>
+                        <div class="ai-attach-menu msgr-attach-menu hidden" id="msgr-attach-menu" role="menu" aria-hidden="true">
+                          <div class="ai-attach-menu__panel">
+                            <div class="ai-attach-menu__head">
+                              <div class="ai-attach-menu__title" data-i18n="msgr.attach">Прикрепить</div>
+                            </div>
+                            <div class="ai-attach-menu__list">
+                              <button type="button" class="ai-attach-menu__row" data-msgr-attach="media" role="menuitem">
+                                <span class="ai-attach-menu__ico ai-attach-badge--media" aria-hidden="true">
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="8.5" cy="10" r="1.5" fill="currentColor"/><path d="M21 16l-5.5-5.5L9 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                                <span class="ai-attach-menu__row-main">
+                                  <span class="ai-attach-menu__row-title" data-i18n="msgr.attachMedia">Фото или видео</span>
+                                  <span class="ai-attach-menu__row-hint" data-i18n="msgr.attachMediaHint">до 12 МБ</span>
+                                </span>
+                              </button>
+                              <button type="button" class="ai-attach-menu__row" data-msgr-attach="file" role="menuitem">
+                                <span class="ai-attach-menu__ico ai-attach-badge--file" aria-hidden="true">
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 2v6h6M12 18v-6M9 15h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                </span>
+                                <span class="ai-attach-menu__row-main">
+                                  <span class="ai-attach-menu__row-title" data-i18n="msgr.attachFile">Файл</span>
+                                  <span class="ai-attach-menu__row-hint" data-i18n="msgr.attachFileHint">до 12 МБ</span>
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="ai-composer__toolbar-right">
+                      <button type="submit" class="ai-composer__send" id="msgr-send" data-i18n-title="msgr.send" title="Отправить" aria-label="Send">
+                        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M6 10V2M6 2L2.5 5.5M6 2L9.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1027,22 +1222,255 @@
           </svg>
         </div>
         <div class="modal-header-text">
-          <div class="modal-header-title" data-i18n="ai.accessDenied.title">? ??? ??? ??????? ? ????????????? UAgent</div>
-          <div class="modal-header-sub" data-i18n="ai.accessDenied.sub">????? ??????????? ??? ????????????</div>
+          <div class="modal-header-title" data-i18n="ai.accessDenied.title">Нет доступа к UAgent</div>
+          <div class="modal-header-sub" data-i18n="ai.accessDenied.sub">Нужен ключ тестировщика</div>
         </div>
         <button class="modal-close" id="modal-ai-access-close" type="button" aria-label="Close">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
         </button>
       </div>
       <div class="modal-body">
-        <div class="modal-ai-access__message" data-i18n="ai.accessDenied.message">???? ???????????? ???????????, ???????? ??? ????? ???????????????. ?????????? ? ??????? Undefined Client ??? ??????? ??????????? ??? ? ??????????.</div>
+        <div class="modal-ai-access__message" data-i18n="ai.accessDenied.message">Доступ ограничен.</div>
       </div>
       <div class="modal-footer">
-        <button class="stngs-btn ghost" type="button" id="modal-ai-access-settings" data-i18n="ai.accessDenied.settings">??????? ?????????</button>
-        <button class="stngs-btn primary" type="button" id="modal-ai-access-ok" data-i18n="ai.accessDenied.ok">???????</button>
+        <button class="stngs-btn ghost" type="button" id="modal-ai-access-settings" data-i18n="ai.accessDenied.settings">Открыть настройки</button>
+        <button class="stngs-btn primary" type="button" id="modal-ai-access-ok" data-i18n="ai.accessDenied.ok">Понятно</button>
       </div>
     </div>
   </div>
+
+  <div id="modal-msgr-offline" class="modal-overlay hidden">
+    <div class="modal-window md modal-msgr-offline">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+            <rect width="36" height="36" rx="9" fill="#7BD4B7"/>
+            <path d="M10 12h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-3.2L15 25v-3H10a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="msgr.offlineModal.title">Чаты недоступны</div>
+          <div class="modal-header-sub" data-i18n="msgr.offlineModal.sub">Нужен Microsoft или Ely.by</div>
+        </div>
+        <button class="modal-close" id="modal-msgr-offline-close" type="button" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-msgr-offline__message" data-i18n="msgr.offlineModal.message">MC Messenger доступен только для аккаунтов Microsoft и Ely.by. Офлайн-аккаунт нельзя использовать для чатов — войдите через Microsoft или Ely.by.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" type="button" id="modal-msgr-offline-accounts" data-i18n="msgr.offlineModal.accounts">Аккаунты</button>
+        <button class="stngs-btn primary" type="button" id="modal-msgr-offline-ok" data-i18n="msgr.offlineModal.ok">Понятно</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-skins-offline" class="modal-overlay hidden">
+    <div class="modal-window md modal-msgr-offline">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+            <rect width="36" height="36" rx="9" fill="#70ADDF"/>
+            <path d="M18 10a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm-7 16.5c0-3.6 3.1-6.5 7-6.5s7 2.9 7 6.5V28H11v-1.5Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="skins.offlineModal.title">Скины недоступны</div>
+          <div class="modal-header-sub" data-i18n="skins.offlineModal.sub">Нужен Microsoft или Ely.by</div>
+        </div>
+        <button class="modal-close" id="modal-skins-offline-close" type="button" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-msgr-offline__message" data-i18n="skins.offlineModal.message">Скины и плащи доступны только для аккаунтов Microsoft и Ely.by — у офлайн-аккаунта нет данных авторизации для синхронизации косметики. Войдите через Microsoft или Ely.by.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" type="button" id="modal-skins-offline-accounts" data-i18n="skins.offlineModal.accounts">Аккаунты</button>
+        <button class="stngs-btn primary" type="button" id="modal-skins-offline-ok" data-i18n="skins.offlineModal.ok">Понятно</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Приглашение в группу по ссылке -->
+  <div id="modal-msgr-invite" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-window sm msgr-invite-window" role="dialog" aria-modal="true" aria-labelledby="msgr-invite-title">
+      <button class="modal-close" id="msgr-invite-close" type="button" aria-label="Close">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+      </button>
+      <div class="msgr-invite">
+        <div class="msgr-invite__head">
+          <div class="msgr-avatar msgr-invite__avatar" id="msgr-invite-avatar"></div>
+          <div class="msgr-invite__who">
+            <div class="msgr-invite__title" id="msgr-invite-title">…</div>
+            <div class="msgr-invite__sub" data-i18n="msgr.inviteSub">Вас пригласили в группу MC Messenger</div>
+          </div>
+        </div>
+        <p class="msgr-invite__body" id="msgr-invite-body"></p>
+        <div class="msgr-invite__actions">
+          <button type="button" class="stngs-btn primary" id="msgr-invite-join" data-i18n="msgr.inviteJoin">Вступить в группу</button>
+          <button type="button" class="stngs-btn danger" id="msgr-invite-decline" data-i18n="msgr.inviteDecline">Отказаться</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-msgr-group" class="modal-overlay hidden">
+    <div class="modal-window sm modal-msgr-group">
+      <div class="modal-header">
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="msgr.groupTitlePrompt">Название группы</div>
+          <div class="modal-header-sub" data-i18n="msgr.newGroup">Новая группа</div>
+        </div>
+        <button class="modal-close" id="modal-msgr-group-close" type="button" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <input type="text" id="modal-msgr-group-input" maxlength="64" autocomplete="off" spellcheck="false" data-i18n-ph="msgr.groupTitlePrompt" placeholder="Название группы">
+        </div>
+        <div class="modal-field">
+          <input type="search" id="modal-msgr-group-search" autocomplete="off" data-i18n-ph="msgr.addMembersSearch" placeholder="Добавить участников…">
+        </div>
+        <div class="msgr-group-pick" id="modal-msgr-group-picked"></div>
+        <div class="msgr-group-search-results" id="modal-msgr-group-results"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" type="button" id="modal-msgr-group-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary" type="button" id="modal-msgr-group-ok" data-i18n="msgr.newGroup">Новая группа</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Карточка профиля / группы MC Messenger -->
+  <div id="modal-msgr-profile" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-window xl msgr-profile-window" role="dialog" aria-modal="true">
+      <button class="modal-close" id="msgr-profile-close" type="button" aria-label="Close">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+      </button>
+      <div class="msgr-profile">
+        <div class="msgr-profile__skin" id="msgr-profile-skin">
+          <canvas id="msgr-profile-canvas" width="280" height="420"></canvas>
+          <div class="msgr-profile__skin-fallback" id="msgr-profile-skin-fallback" hidden></div>
+        </div>
+        <div class="msgr-profile__panel">
+          <div class="msgr-profile__top">
+            <div class="msgr-profile__identity">
+              <div class="msgr-avatar msgr-profile__avatar" id="msgr-profile-avatar"></div>
+              <div class="msgr-profile__who">
+                <div class="msgr-profile__name-row">
+                  <div class="msgr-profile__title" id="msgr-profile-title"></div>
+                  <div class="msgr-profile__badges" id="msgr-profile-badges"></div>
+                </div>
+                <div class="msgr-profile__status" id="msgr-profile-status"></div>
+              </div>
+            </div>
+          </div>
+          <div class="msgr-profile__tabs" id="msgr-profile-tabs" hidden role="tablist">
+            <span class="msgr-profile__tabs-pill" id="msgr-profile-tabs-pill" aria-hidden="true"></span>
+            <button type="button" class="msgr-profile__tab is-active" id="msgr-profile-tab-info" data-profile-tab="info" role="tab" aria-selected="true" data-i18n="msgr.profileTabInfo">Инфо</button>
+            <button type="button" class="msgr-profile__tab" id="msgr-profile-tab-members" data-profile-tab="members" role="tab" aria-selected="false" data-i18n="msgr.profileTabMembers">Участники</button>
+          </div>
+          <div class="msgr-profile__pages" id="msgr-profile-pages">
+            <div class="msgr-profile__page is-active" id="msgr-profile-info" data-profile-page="info">
+              <div class="msgr-profile__cards" id="msgr-profile-rows"></div>
+              <div class="msgr-profile__actions" id="msgr-profile-actions"></div>
+            </div>
+            <div class="msgr-profile__page" id="msgr-profile-members-page" data-profile-page="members" hidden>
+              <div class="msgr-profile__members" id="msgr-profile-members"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-msgr-media" class="modal-overlay msgr-media-overlay hidden" aria-hidden="true">
+    <div class="msgr-media-viewer" role="dialog" aria-modal="true">
+      <button type="button" class="modal-close msgr-media-viewer__close" id="msgr-media-close" aria-label="Close">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+      </button>
+      <div class="msgr-media-viewer__stage" id="msgr-media-stage">
+        <img id="msgr-media-img" class="msgr-media-viewer__img" alt="" hidden draggable="false">
+        <video id="msgr-media-video" class="msgr-media-viewer__video" playsinline hidden></video>
+      </div>
+      <div class="msgr-media-viewer__bar" id="msgr-media-bar-photo" hidden>
+        <button type="button" class="stngs-btn ghost" id="msgr-media-zoom-out" title="-">−</button>
+        <span class="msgr-media-viewer__zoom" id="msgr-media-zoom-label">100%</span>
+        <button type="button" class="stngs-btn ghost" id="msgr-media-zoom-in" title="+">+</button>
+        <button type="button" class="stngs-btn ghost" id="msgr-media-zoom-reset" data-i18n="msgr.mediaZoomReset">Сброс</button>
+      </div>
+      <div class="msgr-media-viewer__bar msgr-media-viewer__bar--video" id="msgr-media-bar-video" hidden>
+        <button type="button" class="msgr-media-viewer__play" id="msgr-media-play" aria-label="Play">
+          <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 1.5v9l7-4.5L3 1.5z" fill="currentColor"/></svg>
+        </button>
+        <input type="range" class="msgr-media-viewer__seek" id="msgr-media-seek" min="0" max="1000" value="0" step="1">
+        <span class="msgr-media-viewer__time" id="msgr-media-time">0:00 / 0:00</span>
+        <button type="button" class="msgr-media-viewer__mute" id="msgr-media-mute" aria-label="Mute">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-msgr-prompt" class="modal-overlay hidden">
+    <div class="modal-window sm modal-msgr-prompt">
+      <div class="modal-header">
+        <div class="modal-header-text">
+          <div class="modal-header-title" id="modal-msgr-prompt-title">…</div>
+          <div class="modal-header-sub" id="modal-msgr-prompt-sub"></div>
+        </div>
+        <button class="modal-close" id="modal-msgr-prompt-close" type="button" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <input type="text" id="modal-msgr-prompt-input" maxlength="64" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="msgr-group-search-results" id="modal-msgr-prompt-results" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" type="button" id="modal-msgr-prompt-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary" type="button" id="modal-msgr-prompt-ok" data-i18n="btn.save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-msgr-cover" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-window md modal-msgr-cover" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div class="modal-header-text">
+          <div class="modal-header-title" data-i18n="msgr.coverTitle">Обложка чата</div>
+          <div class="modal-header-sub" data-i18n="msgr.coverHint">Масштаб колёсиком, положение — перетаскиванием</div>
+        </div>
+        <button class="modal-close" id="modal-msgr-cover-close" type="button" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="msgr-cover-stage" id="msgr-cover-stage">
+          <div class="msgr-cover-frame" id="msgr-cover-frame">
+            <img id="msgr-cover-img" class="msgr-cover-img" alt="" draggable="false">
+          </div>
+        </div>
+        <div class="msgr-cover-tools">
+          <label class="msgr-cover-zoom-label" data-i18n="msgr.coverZoom">Масштаб</label>
+          <div class="stngs-ram-control msgr-cover-zoom-wrap">
+            <input type="range" id="msgr-cover-zoom" min="100" max="300" value="100" step="1">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="stngs-btn ghost" type="button" id="modal-msgr-cover-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary" type="button" id="modal-msgr-cover-ok" data-i18n="btn.save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="msgr-ctx" class="msgr-ctx hidden" role="menu"></div>
 
   <div id="modal-acc-req" class="modal-overlay hidden">
     <div class="modal-window sm">
@@ -1187,7 +1615,7 @@
   <div id="ctx-menu">
       <div class="ctx-item" id="ctx-settings">
         <img class="ctx-item-icon" src="../../assets/icons/SettingsTab.svg" alt="" />
-        <span data-i18n="ctx.settings">?????????</span>
+        <span data-i18n="ctx.settings">Настройки</span>
       </div>
     <div class="ctx-sep"></div>
     <div class="ctx-item" id="ctx-about">
@@ -1195,8 +1623,24 @@
         <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>
         <path d="M8 7v5M8 5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
-      <span data-i18n="ctx.about">? ?????????</span>
+      <span data-i18n="ctx.about">О клиенте</span>
     </div>
+  </div>
+
+  <!-- Меню «Поделиться» на карточке сборки -->
+  <div id="build-share-menu" class="build-share-menu" hidden>
+    <button type="button" class="build-share-menu__item" data-share-action="zip">
+      <span class="build-share-menu__title" data-i18n="share.menu.zip">Экспорт в ZIP</span>
+      <span class="build-share-menu__hint" data-i18n="share.menu.zipHint">Для других лаунчеров</span>
+    </button>
+    <button type="button" class="build-share-menu__item" data-share-action="mrpack">
+      <span class="build-share-menu__title" data-i18n="share.menu.mrpack">Экспорт в .mrpack</span>
+      <span class="build-share-menu__hint" data-i18n="share.menu.mrpackHint">Для Modrinth App</span>
+    </button>
+    <button type="button" class="build-share-menu__item" data-share-action="link">
+      <span class="build-share-menu__title" data-i18n="share.menu.link">Поделиться по ссылке</span>
+      <span class="build-share-menu__hint" data-i18n="share.menu.linkHint">Через сайт Undefined Client</span>
+    </button>
   </div>
 
   <!-- ===== ABOUT MODAL ===== -->
@@ -1903,10 +2347,18 @@
                   </div>
                 </div>
               </div>
-              <div class="be-field" style="flex:1;">
+              <div class="be-field" id="modal-build-loader-ver-field" style="flex:1;">
                 <label data-i18n="be.loaderVersion">?????? ??????????</label>
-                <input type="text" id="modal-build-loader-ver" placeholder="0.15.11" list="modal-loader-versions">
-                <datalist id="modal-loader-versions"></datalist>
+                <div class="stngs-select-wrap be-select-wrap">
+                  <select class="stngs-select-hidden" id="modal-build-loader-ver"></select>
+                  <button type="button" class="stngs-select-btn">
+                    <span class="stngs-select-value">—</span>
+                    <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <div class="stngs-select-menu select-scroll-menu" id="modal-build-loader-ver-menu"></div>
+                </div>
               </div>
             </div>
             <div class="be-field">
@@ -1932,11 +2384,11 @@
             <div class="be-panel-title-row">
               <div class="be-panel-title" data-i18n="be.tabMods">????</div>
               <div class="be-panel-actions">
-                <button class="be-add-btn be-scan-btn" data-panel="mods">
+                <button type="button" class="be-add-btn be-scan-btn" data-panel="mods">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   <span data-i18n="btn.scan">???????????</span>
                 </button>
-                <button class="be-add-btn" id="be-mods-add">
+                <button type="button" class="be-add-btn" id="be-mods-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   <span data-i18n="btn.installMod">?????????? ???</span>
                 </button>
@@ -1951,11 +2403,11 @@
             <div class="be-panel-title-row">
               <div class="be-panel-title" data-i18n="be.tabTextures">????????</div>
               <div class="be-panel-actions">
-                <button class="be-add-btn be-scan-btn" data-panel="resourcepacks">
+                <button type="button" class="be-add-btn be-scan-btn" data-panel="resourcepacks">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   <span data-i18n="btn.scan">???????????</span>
                 </button>
-                <button class="be-add-btn" id="be-rp-add">
+                <button type="button" class="be-add-btn" id="be-rp-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   <span data-i18n="btn.add">????????</span>
                 </button>
@@ -1970,11 +2422,11 @@
             <div class="be-panel-title-row">
               <div class="be-panel-title" data-i18n="be.tabShaders">???????</div>
               <div class="be-panel-actions">
-                <button class="be-add-btn be-scan-btn" data-panel="shaders">
+                <button type="button" class="be-add-btn be-scan-btn" data-panel="shaders">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   <span data-i18n="btn.scan">???????????</span>
                 </button>
-                <button class="be-add-btn" id="be-shaders-add">
+                <button type="button" class="be-add-btn" id="be-shaders-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   <span data-i18n="btn.add">????????</span>
                 </button>
@@ -1989,11 +2441,11 @@
             <div class="be-panel-title-row">
               <div class="be-panel-title" data-i18n="be.tabDatapacks">????-????</div>
               <div class="be-panel-actions">
-                <button class="be-add-btn be-scan-btn" data-panel="datapacks">
+                <button type="button" class="be-add-btn be-scan-btn" data-panel="datapacks">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                   <span data-i18n="btn.scan">???????????</span>
                 </button>
-                <button class="be-add-btn" id="be-dp-add">
+                <button type="button" class="be-add-btn" id="be-dp-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   <span data-i18n="btn.add">????????</span>
                 </button>
@@ -2009,21 +2461,21 @@
               <div class="be-panel-title" data-i18n="be.tabScreenshots">?????????</div>
               <div class="be-panel-actions">
                 <span class="be-sel-count" id="be-screenshots-count"></span>
-                <button class="be-add-btn be-media-btn" id="be-screenshots-refresh">
+                <button type="button" class="be-add-btn be-media-btn" id="be-screenshots-refresh">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                   <span data-i18n="be.refresh">????????</span>
                 </button>
-                <button class="be-add-btn be-media-btn" id="be-screenshots-save">
+                <button type="button" class="be-add-btn be-media-btn" id="be-screenshots-save">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>
                   <span data-i18n="be.saveToFolder">????????? ? ?????</span>
                 </button>
-                <button class="be-add-btn be-media-btn danger" id="be-screenshots-delete">
+                <button type="button" class="be-add-btn be-media-btn danger" id="be-screenshots-delete">
                   <svg width="14" height="14" viewBox="0 0 12 12" fill="none"><path d="M1.5 3h9M4.5 1.5h3M2 3v7.5a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3M5 4.5v4.5M7 4.5v4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
                   <span data-i18n="be.deleteSelected">??????? ?????????</span>
                 </button>
               </div>
             </div>
-            <div class="be-media-list" id="be-screenshots-grid">
+            <div class="be-shots-grid" id="be-screenshots-grid">
               <div class="be-file-empty" data-i18n="be.screenshotsEmpty">?????????? ???? ???</div>
             </div>
           </div>
@@ -2119,6 +2571,36 @@
       <div class="build-editor-footer">
         <button class="stngs-btn ghost" id="build-form-cancel" data-i18n="btn.cancel">??????</button>
         <button class="stngs-btn primary" id="build-form-submit" data-i18n="btn.create">???????</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Просмотрщик скриншотов на всё окно лаунчера -->
+  <div id="be-shot-viewer" class="be-shot-viewer hidden" aria-hidden="true">
+    <button type="button" class="be-shot-viewer__backdrop" id="be-shot-viewer-backdrop" aria-label="Close"></button>
+    <div class="be-shot-viewer__frame">
+      <button type="button" class="be-shot-viewer__nav prev" id="be-shot-viewer-prev" aria-label="Prev">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="be-shot-viewer__stage">
+        <img id="be-shot-viewer-img" class="be-shot-viewer__img" alt="">
+        <div id="be-shot-viewer-loading" class="be-shot-viewer__loading hidden"></div>
+        <div id="be-shot-viewer-error" class="be-shot-viewer__error hidden" data-i18n="be.shotLoadFailed">Не удалось загрузить</div>
+      </div>
+      <button type="button" class="be-shot-viewer__nav next" id="be-shot-viewer-next" aria-label="Next">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="be-shot-viewer__bar">
+      <div class="be-shot-viewer__meta">
+        <div class="be-shot-viewer__name" id="be-shot-viewer-name">—</div>
+        <div class="be-shot-viewer__info" id="be-shot-viewer-info"></div>
+      </div>
+      <div class="be-shot-viewer__actions">
+        <button type="button" class="be-add-btn be-media-btn" id="be-shot-viewer-copy" data-i18n="be.shotCopy">?????????</button>
+        <button type="button" class="be-add-btn be-media-btn" id="be-shot-viewer-save" data-i18n="be.shotExport">????????</button>
+        <button type="button" class="be-add-btn be-media-btn danger" id="be-shot-viewer-delete" data-i18n="be.shotDelete">???????</button>
+        <button type="button" class="be-add-btn be-media-btn" id="be-shot-viewer-close" data-i18n="btn.close">???????</button>
       </div>
     </div>
   </div>
@@ -2394,7 +2876,7 @@
     </div>
   </div>
 
-  <!-- ===== MODAL: Version picker ===== -->
+  <!-- ===== MODAL: Version picker (Modrinth-style) ===== -->
   <div id="modal-versions" class="modal-overlay hidden">
     <div class="modal-window md">
       <div class="modal-header">
@@ -2406,19 +2888,21 @@
           </svg>
         </div>
         <div class="modal-header-text">
-          <div class="modal-header-title" id="modal-versions-title" data-i18n="mods.versionsTitle">???????? ??????</div>
-          <div class="modal-header-sub" id="modal-versions-sub" data-i18n="mods.versionsSub">???????? ?????????? ??????</div>
+          <div class="modal-header-title" id="modal-versions-title" data-i18n="mods.versionsTitle">Выберите версию</div>
+          <div class="modal-header-sub" id="modal-versions-sub" data-i18n="mods.dl.title">Скачать вручную</div>
         </div>
         <button class="modal-close" id="modal-versions-close">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
         </button>
       </div>
       <div class="modal-body compact">
-        <div id="versions-list" class="version-list"></div>
+        <div id="versions-quick" class="dl-manual"></div>
+        <div id="versions-list" class="version-list" hidden></div>
       </div>
       <div class="modal-footer">
-        <button class="stngs-btn ghost" id="modal-versions-cancel" data-i18n="btn.cancel">??????</button>
-        <button class="stngs-btn primary" id="modal-versions-confirm" disabled data-i18n="btn.select">???????</button>
+        <button class="stngs-btn ghost" id="modal-versions-back" hidden data-i18n="btn.back">Назад</button>
+        <button class="stngs-btn ghost" id="modal-versions-cancel" data-i18n="btn.cancel">Отмена</button>
+        <button class="stngs-btn primary" id="modal-versions-confirm" disabled hidden data-i18n="btn.select">Выбрать</button>
       </div>
     </div>
   </div>
@@ -2509,8 +2993,17 @@
         </div>
         <div class="mod-details-meta-tags" id="modal-mod-tags"></div>
       </div>
+      <div class="mod-details-tabs" id="modal-mod-tabs" hidden role="tablist">
+        <button type="button" class="mod-details-tab is-active" id="modal-mod-tab-desc" data-mod-tab="desc" role="tab" aria-selected="true" data-i18n="mods.tabDescription">Описание</button>
+        <button type="button" class="mod-details-tab" id="modal-mod-tab-shots" data-mod-tab="shots" role="tab" aria-selected="false" hidden data-i18n="mods.tabScreenshots">Скриншоты</button>
+      </div>
       <div class="modal-body">
-        <div id="modal-mod-description" class="mod-details-body"></div>
+        <div class="mod-details-panel is-active" id="modal-mod-panel-desc" data-mod-panel="desc" role="tabpanel">
+          <div id="modal-mod-description" class="mod-details-body"></div>
+        </div>
+        <div class="mod-details-panel" id="modal-mod-panel-shots" data-mod-panel="shots" role="tabpanel" hidden>
+          <div id="modal-mod-gallery" class="mod-details-gallery"></div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="mdl-btn" id="modal-mod-open-url">
@@ -2605,41 +3098,51 @@
 
   <!-- Crash Modal -->
   <div id="modal-crash" class="modal-overlay hidden">
-    <div class="modal-window crash-modal-window">
+    <div class="modal-window md crash-modal-window" role="dialog" aria-modal="true" aria-labelledby="modal-crash-title">
       <div class="modal-header">
-        <div class="modal-header-icon">
-          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-            <rect width="36" height="36" rx="9" fill="#FF4D4D"/>
-            <rect x="24.3633" y="8.80664" width="4" height="22" rx="1" transform="rotate(45 24.3633 8.80664)" fill="white"/>
-            <rect x="8.80664" y="11.6367" width="4" height="22" rx="1" transform="rotate(-45 8.80664 11.6367)" fill="white"/>
+        <div class="modal-header-icon crash-modal-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+            <rect width="36" height="36" rx="9" fill="#E5484D"/>
+            <path d="M8 26.382C8 26.1308 8.05848 25.883 8.17082 25.6584L16.5528 8.89443C16.8269 8.34626 17.3871 8 18 8C18.6129 8 19.1731 8.34626 19.4472 8.89443L27.8292 25.6584C27.9415 25.883 28 26.1308 28 26.382C28 27.2756 27.2756 28 26.382 28H9.61803C8.72442 28 8 27.2756 8 26.382Z" fill="white"/>
+            <path d="M16.5926 14.4971C16.5419 13.6858 17.1862 13 17.9991 13C18.8119 13 19.4562 13.6858 19.4055 14.4971L19.0615 20.0019C19.0264 20.563 18.5612 21 17.9991 21C17.437 21 16.9718 20.563 16.9367 20.0019L16.5926 14.4971Z" fill="#E5484D"/>
+            <path d="M17 24C17 23.4477 17.4477 23 18 23C18.5523 23 19 23.4477 19 24C19 24.5523 18.5523 25 18 25C17.4477 25 17 24.5523 17 24Z" fill="#E5484D"/>
           </svg>
         </div>
         <div class="modal-header-text">
-          <div class="modal-header-title" data-i18n="crash.title">Minecraft ????</div>
-          <div class="modal-header-sub" id="modal-crash-sub" data-i18n="crash.sub">?????? ??????????? ? ???????</div>
+          <div class="modal-header-title" id="modal-crash-title" data-i18n="crash.title">Проблема при запуске</div>
+          <div class="modal-header-sub" id="modal-crash-sub" data-i18n="crash.sub">Сборка завершилась с ошибкой</div>
         </div>
-        <button class="modal-close" id="modal-crash-close">
+        <button class="modal-close" id="modal-crash-close" type="button" aria-label="Close">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
         </button>
       </div>
       <div class="modal-body crash-modal-body">
-        <p class="crash-modal-message" id="modal-crash-message" data-i18n="crash.message">
-          ????????? ???????? ??? ??????? ??????: ????? ??????? ????????? ???????? ??? ??????? ????????
-        </p>
-        <div class="crash-actions">
-          <button type="button" class="stngs-btn ghost crash-action-btn" id="modal-crash-folder">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5C2 3.67157 2.67157 3 3.5 3H6L7.5 4.5H12.5C13.3284 4.5 14 5.17157 14 6V11.5C14 12.3284 13.3284 13 12.5 13H3.5C2.67157 13 2 12.3284 2 11.5V4.5Z"/></svg>
-            <span data-i18n="btn.openFolder">??????? ????? ??????</span>
+        <div class="crash-log-preview" id="modal-crash-log-wrap" hidden>
+          <div class="crash-log-preview__head">
+            <span data-i18n="crash.logPreview">Фрагмент лога</span>
+          </div>
+          <pre class="crash-log-preview__body" id="modal-crash-log-preview"></pre>
+        </div>
+        <div class="crash-actions" role="group">
+          <button type="button" class="crash-action-row" id="modal-crash-folder">
+            <span class="crash-action-row__icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4.5C2 3.67157 2.67157 3 3.5 3H6L7.5 4.5H12.5C13.3284 4.5 14 5.17157 14 6V11.5C14 12.3284 13.3284 13 12.5 13H3.5C2.67157 13 2 12.3284 2 11.5V4.5Z"/></svg>
+            </span>
+            <span class="crash-action-row__title" data-i18n="btn.openFolder">Открыть папку сборки</span>
           </button>
-          <button type="button" class="stngs-btn ghost crash-action-btn" id="modal-crash-log">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1H4C2.89543 1 2 1.89543 2 3V13C2 14.1046 2.89543 15 4 15H12C13.1046 15 14 14.1046 14 13V3C14 1.89543 13.1046 1 12 1Z"/><path d="M5 5H11M5 8H11M5 11H8"/></svg>
-            <span data-i18n="crash.openLaunchLog">??????? ??? ???????</span>
-          </button>
-          <button type="button" class="stngs-btn primary crash-action-btn" id="modal-crash-agent">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5L9.2 5.2L13 6L9.2 6.8L8 10.5L6.8 6.8L3 6L6.8 5.2L8 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
-            <span data-i18n="crash.fixWithAgent">?????? ???????? ? ???????</span>
+          <button type="button" class="crash-action-row" id="modal-crash-log">
+            <span class="crash-action-row__icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1H4C2.89543 1 2 1.89543 2 3V13C2 14.1046 2.89543 15 4 15H12C13.1046 15 14 14.1046 14 13V3C14 1.89543 13.1046 1 12 1Z"/><path d="M5 5H11M5 8H11M5 11H8"/></svg>
+            </span>
+            <span class="crash-action-row__title" data-i18n="crash.openLaunchLog">Открыть лог запуска</span>
           </button>
         </div>
+      </div>
+      <div class="modal-footer crash-modal-footer">
+        <button type="button" class="stngs-btn primary crash-agent-btn" id="modal-crash-agent">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5L9.2 5.2L13 6L9.2 6.8L8 10.5L6.8 6.8L3 6L6.8 5.2L8 1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <span data-i18n="crash.fixWithAgent">Решить проблему с агентом</span>
+        </button>
       </div>
     </div>
   </div>
@@ -2672,6 +3175,7 @@
     </div>
   </div>
 
+  <div id="app-toast" class="app-toast" role="status" aria-live="polite" hidden></div>
   <script src="app.js"></script>
   </div>
 </body>

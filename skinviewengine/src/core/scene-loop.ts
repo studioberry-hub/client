@@ -14,6 +14,7 @@ import {
   CameraHelper,
   CanvasTexture,
   Clock,
+  Color,
   ColorManagement,
   DirectionalLightHelper,
   GridHelper,
@@ -28,9 +29,11 @@ import {
   Vector2,
   Vector3,
   WebGLRenderer,
+  NoToneMapping,
   type Material,
   type Object3D,
   type Texture,
+  type ToneMapping,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { MOUSE } from "three";
@@ -123,6 +126,11 @@ function toSkin3dModelType(type: SkinModelType): "default" | "slim" {
 }
 
 /**
+ * ACESFilmic затемняет Color-фон относительно CSS — для flat UI не используем.
+ * Фон модалки рисует CSS; WebGL очищается с alpha=0.
+ */
+
+/**
  * Главный класс движка.
  * Геометрия/UV — skin3d; визуал — продуктовый three-quarter shot.
  */
@@ -158,6 +166,10 @@ export class SkinViewEngine {
   private _animation: SkinAnimation | null;
   private _freeLegs = false;
   private _transparent = false;
+  /** Сохранённый environmentIntensity до flat UI-режима */
+  private _savedEnvIntensity: number | null = null;
+  /** Tone mapping до flat UI (ACES ломает совпадение с CSS) */
+  private _savedToneMapping: ToneMapping | null = null;
   private _presentation: PresentationMode = "full";
   /** Кроссфейд между анимациями */
   private _blendFrom: PoseSnapshot | null = null;
@@ -247,7 +259,8 @@ export class SkinViewEngine {
     ColorManagement.enabled = true;
     this.scene = new Scene();
     this._atmosphere = new StudioAtmosphere();
-    this.scene.background = this._atmosphere.backgroundTexture;
+    // Сплошной Color — не CanvasTexture 64×64 (banding выглядит как «нет сглаживания»)
+    this.scene.background = this._atmosphere.backgroundColor.clone();
     this.scene.add(this._atmosphere.group);
     this.lighting = setupProductLighting(this.scene);
     const floorParts = createFloorAndContactShadow(this.scene);
@@ -463,15 +476,65 @@ export class SkinViewEngine {
       this._atmosphere.setVisible(false);
       this._postFx?.setBloomBoost(0);
     } else {
-      this.scene.background = this._atmosphere.backgroundTexture;
+      this.scene.background = this._atmosphere.backgroundColor.clone();
       this.renderer.setClearColor(STUDIO_CLEAR_COLOR, 1);
       if (this._debugEnabled) this._applySceneVisibility();
       else {
         this._floor.visible = true;
-        this._ground.visible = true;
+        // Плоскость пола скрыта — как на референсе, только мягкая тень
+        this._ground.visible = false;
         this._contactShadow.visible = true;
         this._atmosphere.setVisible(true);
       }
+    }
+  }
+
+  /**
+   * Фон под UI-модалку: точный CSS-цвет панели.
+   * Без ACES (иначе midtones уезжают) и без transparent (OutputPass даёт чёрный).
+   * PostFX/SMAA остаются — _transparent не трогаем.
+   */
+  setUiFlatBackground(hex: number | null): void {
+    if (hex == null) {
+      if (this._savedEnvIntensity != null) {
+        this.scene.environmentIntensity = this._savedEnvIntensity;
+        this._savedEnvIntensity = null;
+      }
+      if (this._savedToneMapping != null) {
+        this.renderer.toneMapping = this._savedToneMapping;
+        this._savedToneMapping = null;
+      }
+      this._postFx?.resetBloomStrength();
+      this.setTransparentBackground(false);
+      this.resetLighting();
+      return;
+    }
+    // Свет задаём только при первом входе в UI-flat — иначе перетираем mood (offline dim)
+    const firstEnter = this._savedToneMapping == null;
+    if (firstEnter) {
+      this._savedToneMapping = this.renderer.toneMapping;
+    }
+    // Без ACES цвет 1:1 с --bg-base модалки
+    this.renderer.toneMapping = NoToneMapping;
+    this.scene.background = new Color(hex);
+    this.renderer.setClearColor(hex, 1);
+    this._floor.visible = false;
+    this._ground.visible = false;
+    this._contactShadow.visible = false;
+    this._atmosphere.setVisible(false);
+    if (this._savedEnvIntensity == null) {
+      this._savedEnvIntensity = this.scene.environmentIntensity;
+    }
+    this.scene.environmentIntensity = 0.2;
+    if (firstEnter) {
+      this.lighting.applySettings({
+        keyIntensity: 1.25,
+        ambientIntensity: 0.72,
+        fillIntensity: 0.62,
+        shadowIntensity: 0.2,
+        shadowRadius: 12,
+      });
+      this._postFx?.setBloomStrength(0.05);
     }
   }
 
@@ -1181,7 +1244,7 @@ export class SkinViewEngine {
     // elytra остаётся как есть (обычно скрыта)
     if (!this._transparent) {
       this._floor.visible = true;
-      this._ground.visible = true;
+      this._ground.visible = false;
       this._contactShadow.visible = true;
       this._atmosphere.setVisible(true);
     }
@@ -1395,14 +1458,14 @@ export class SkinViewEngine {
   }
 
   /**
-   * Основной вьювер — composer (bloom + SMAA).
+   * Основной вьювер — composer (SMAA; bloom опционален).
    * Transparent/превью — прямой рендер.
+   * postFx из отладки учитывается только при включённой панели — иначе
+   * старый localStorage postFx=false навсегда убивал сглаживание.
    */
   private _renderFrame(): void {
-    // postFx из _debugOpts учитывается всегда — иначе в браузере
-    // нельзя отключить сломанный composer без включения панели отладки.
-    const usePost =
-      !!this._postFx && !this._transparent && !!this._debugOpts.postFx;
+    const postFxAllowed = !this._debugEnabled || this._debugOpts.postFx;
+    const usePost = !!this._postFx && !this._transparent && postFxAllowed;
     if (usePost) {
       this._postFx!.render();
       return;

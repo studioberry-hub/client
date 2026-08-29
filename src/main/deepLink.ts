@@ -26,14 +26,16 @@ const ALLOWED_LOADERS = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'];
 
 /** Slug или id проекта Modrinth. Запрещены слэши, `%`, `?`, `#` и пробелы. */
 const PROJECT_RE = /^[A-Za-z0-9_.+!'()-]{1,64}$/;
-/** Идентификатор версии Modrinth — base62. */
+/** Id CurseForge в каталоге: `cf:238222`. */
+const CF_PROJECT_RE = /^cf:\d{1,12}$/i;
+/** Идентификатор версии Modrinth — base62; у CF — числовой fileId. */
 const VERSION_RE = /^[A-Za-z0-9]{1,32}$/;
 /** Версия игры: `1.20.1`, `24w14a`, `1.21-pre1`. */
 const GAME_VERSION_RE = /^[A-Za-z0-9_.-]{1,32}$/;
 
 export interface DeepLinkInstall {
   action: 'install';
-  source: 'modrinth';
+  source: 'modrinth' | 'curseforge';
   type: DeepLinkContentType;
   project: string;
   /** Пустая строка означает «поставить последнюю подходящую версию». */
@@ -49,7 +51,13 @@ export interface DeepLinkImportInstance {
   id: string;
 }
 
-export type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance;
+/** Вступление в группу мессенджера по токену приглашения. */
+export interface DeepLinkJoinGroup {
+  action: 'join-group';
+  token: string;
+}
+
+export type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup;
 
 /** Причина отказа — только для лога: пользователю о чужих ссылках сообщать нечего. */
 export type DeepLinkRejectReason =
@@ -62,7 +70,8 @@ export type DeepLinkRejectReason =
   | 'unsupported_type'
   | 'bad_project'
   | 'bad_version'
-  | 'bad_share_id';
+  | 'bad_share_id'
+  | 'bad_invite_token';
 
 export type DeepLinkParseResult =
   | { ok: true; payload: DeepLinkPayload }
@@ -92,7 +101,9 @@ function readStr(value: unknown, max: number): string {
  */
 export function validateInstallParams(get: (key: string) => unknown): DeepLinkParseResult {
   const source = readStr(get('source'), 32).toLowerCase();
-  if (source !== 'modrinth') return { ok: false, reason: 'unsupported_source' };
+  if (source !== 'modrinth' && source !== 'curseforge') {
+    return { ok: false, reason: 'unsupported_source' };
+  }
 
   const type = readStr(get('type'), 32).toLowerCase();
   if (!(ALLOWED_TYPES as readonly string[]).includes(type)) {
@@ -100,7 +111,9 @@ export function validateInstallParams(get: (key: string) => unknown): DeepLinkPa
   }
 
   const project = readStr(get('project'), MAX_PROJECT_LENGTH);
-  if (!PROJECT_RE.test(project)) return { ok: false, reason: 'bad_project' };
+  const projectOk =
+    source === 'curseforge' ? CF_PROJECT_RE.test(project) : PROJECT_RE.test(project);
+  if (!projectOk) return { ok: false, reason: 'bad_project' };
 
   // Версия необязательна, но если она передана — молча подменять её на «последнюю»
   // нельзя: пользователь ждёт именно ту версию, что была на сайте.
@@ -120,7 +133,7 @@ export function validateInstallParams(get: (key: string) => unknown): DeepLinkPa
     ok: true,
     payload: {
       action: 'install',
-      source: 'modrinth',
+      source: source as 'modrinth' | 'curseforge',
       type: type as DeepLinkContentType,
       project,
       version,
@@ -138,6 +151,12 @@ function validateImportInstanceParams(get: (key: string) => unknown): DeepLinkPa
   const id = readStr(get('id'), 64);
   if (!SHARE_ID_RE.test(id)) return { ok: false, reason: 'bad_share_id' };
   return { ok: true, payload: { action: 'import-instance', id } };
+}
+
+function validateJoinGroupParams(get: (key: string) => unknown): DeepLinkParseResult {
+  const token = readStr(get('token'), 64);
+  if (!SHARE_ID_RE.test(token)) return { ok: false, reason: 'bad_invite_token' };
+  return { ok: true, payload: { action: 'join-group', token } };
 }
 
 /** Разбор ссылки вида `uclient://install?...` или `uclient://import-instance?id=...`. */
@@ -167,6 +186,9 @@ export function parseDeepLink(raw: unknown): DeepLinkParseResult {
   }
   if (action === 'import-instance') {
     return validateImportInstanceParams((key) => url.searchParams.get(key));
+  }
+  if (action === 'join-group') {
+    return validateJoinGroupParams((key) => url.searchParams.get(key));
   }
   return { ok: false, reason: 'unknown_action' };
 }
@@ -326,7 +348,8 @@ function toProject(raw: any, payload: DeepLinkInstall, iconUrl: string): DeepLin
 }
 
 /**
- * Проект: сначала наш сервер, при его недоступности — Modrinth напрямую.
+ * Проект: сначала наш сервер, при его недоступности — Modrinth напрямую
+ * (только для source=modrinth; CurseForge без ключа на клиенте недоступен).
  * `not_found` считаем окончательным ответом и резервный путь не пробуем.
  */
 async function loadProject(
@@ -342,6 +365,8 @@ async function loadProject(
     return { ok: true, project: toProject(raw, payload, absoluteApiUrl(raw?.icon_url)) };
   }
   if (viaProxy.code === 'not_found') return { ok: false, code: 'not_found' };
+
+  if (payload.source === 'curseforge') return { ok: false, code: 'network' };
 
   const direct = await modrinthGet(`/project/${slug}`);
   if (!direct.ok) return { ok: false, code: direct.code };
@@ -375,6 +400,8 @@ async function loadVersions(
     }
   }
   if (collected.length > 0) return { ok: true, versions: collected };
+
+  if (payload.source === 'curseforge') return { ok: false, code: 'network' };
 
   const direct = await modrinthGet(`/project/${slug}/version`);
   if (!direct.ok) return { ok: false, code: direct.code };
