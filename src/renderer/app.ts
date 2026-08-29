@@ -1710,8 +1710,8 @@ let downloadPrevTime = 0;
 
 const SPLASH_MIN_MS = 600;
 const SPLASH_SAFETY_MS = 6000;
-/** Показ AI-анонса и welcome один раз для 1.0.4-beta */
-const STARTUP_AI_SEEN_KEY = 'Undefined Client-seen-startup-ai-1.0.4-beta';
+/** Показ AI-анонса и welcome один раз для 1.0.5-beta */
+const STARTUP_AI_SEEN_KEY = 'Undefined Client-seen-startup-ai-1.0.5-beta';
 
 let initStartedAt = performance.now();
 let splashClosed = false;
@@ -1783,7 +1783,7 @@ function bindSplashWelcomeWizard(): void {
   const headerFor = (s: WelcomeStep): { title: string; sub: string } => {
     switch (s) {
       case '1':
-        return { title: t('splash.welcomeTitle'), sub: t('splash.welcomeSub', { ver: '1.0.4-beta' }) };
+        return { title: t('splash.welcomeTitle'), sub: t('splash.welcomeSub', { ver: '1.0.5-beta' }) };
       case '2':
         return { title: t('splash.welcome.p2.header'), sub: t('splash.welcome.p2.headerSub') };
       case '3':

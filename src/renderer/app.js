@@ -35874,7 +35874,7 @@ buildId: ${id}` : ""));
       var downloadPrevTime = 0;
       var SPLASH_MIN_MS = 600;
       var SPLASH_SAFETY_MS = 6e3;
-      var STARTUP_AI_SEEN_KEY = "Undefined Client-seen-startup-ai-1.0.4-beta";
+      var STARTUP_AI_SEEN_KEY = "Undefined Client-seen-startup-ai-1.0.5-beta";
       var initStartedAt = performance.now();
       var splashClosed = false;
       var splashAwaitingWelcome = false;
@@ -35938,7 +35938,7 @@ buildId: ${id}` : ""));
         const headerFor = (s) => {
           switch (s) {
             case "1":
-              return { title: t("splash.welcomeTitle"), sub: t("splash.welcomeSub", { ver: "1.0.4-beta" }) };
+              return { title: t("splash.welcomeTitle"), sub: t("splash.welcomeSub", { ver: "1.0.5-beta" }) };
             case "2":
               return { title: t("splash.welcome.p2.header"), sub: t("splash.welcome.p2.headerSub") };
             case "3":

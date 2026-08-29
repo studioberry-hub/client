@@ -1248,11 +1248,11 @@ class InstallerApp:
                 self.download_status(total - done_bytes, speed),
             ))
         if self.preview_skin == "uninstall":
-            summary = self.uninstall_summary("1.0.4-beta", 186 * 1024 ** 2)
+            summary = self.uninstall_summary("1.0.5-beta", 186 * 1024 ** 2)
         else:
             summary = self.install_summary(
-                "1.0.4-beta", 186 * 1024 ** 2, 42.0, None,
-                previous="1.0.3-beta" if self.preview_skin == "updater" else None,
+                "1.0.5-beta", 186 * 1024 ** 2, 42.0, None,
+                previous="1.0.4-beta" if self.preview_skin == "updater" else None,
             )
         self.emit_done(summary)
 
