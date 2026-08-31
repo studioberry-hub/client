@@ -1,6 +1,6 @@
 {
   "name": "skinviewengine",
-  "version": "0.2.0",
+  "version": "1.0.1",
   "description": "Three.js-движок рендеринга Minecraft-скинов на базе skin3d с улучшенной графикой",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:lib": "tsc",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "convert:spemotes": "node scripts/convert-spemotes.mjs"
   },
   "dependencies": {
     "skin3d": "^0.1.3",

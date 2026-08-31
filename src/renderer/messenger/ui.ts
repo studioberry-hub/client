@@ -1,7 +1,7 @@
 // ===== UI MC Messenger: диалоги, группы, reply, профиль, SSE =====
 
-import { createSkinAnimation, SkinViewEngine } from 'skinviewengine';
-import { getApiBase, skinImageUrl } from '../../shared/apiBase';
+import { createSkinAnimation, locatorColorFromUuid, SkinViewEngine } from 'skinviewengine';
+import { getApiBase, skinImageUrl, DEFAULT_ACCOUNT_SKIN_URL } from '../../shared/apiBase';
 
 export type MessengerActivity = {
   build?: string | null;
@@ -38,6 +38,10 @@ export type MessengerUser = {
   blockedByMe?: boolean;
   /** none | outgoing | incoming | friends */
   friendship?: string;
+  /** Когда участник последний раз прочитал чат */
+  lastReadAt?: number | null;
+  /** Мут модератора в группе (until=null — навсегда) */
+  mute?: { until: number | null } | null;
 };
 
 export type MessengerLauncherStats = {
@@ -74,13 +78,17 @@ export type MessengerMessage = {
   } | null;
   attachment?: MessengerAttachment | null;
   deleted?: boolean;
+  reactions?: { emoji: string; count: number; me?: boolean }[];
 };
 
 export type MessengerConversation = {
   id: string;
   type: 'dm' | 'group';
   title: string;
+  /** Официальный «Чат проекта» — всегда сверху, нельзя выйти/удалить */
+  isProject?: boolean;
   description?: string | null;
+  rules?: string | null;
   avatarUrl?: string | null;
   /** Обложка группы (левая панель профиля), отдельно от аватара */
   coverUrl?: string | null;
@@ -90,6 +98,12 @@ export type MessengerConversation = {
   peer?: MessengerUser | null;
   members?: MessengerUser[];
   myRole?: string | null;
+  memberCount?: number;
+  onlineCount?: number;
+  pinnedMessageId?: string | null;
+  pinnedMessage?: MessengerMessage | null;
+  /** Мут модератора для текущего пользователя */
+  myMute?: { until: number | null } | null;
   lastMessage?: MessengerMessage | null;
   unreadCount?: number;
   updatedAt?: number;
@@ -108,6 +122,10 @@ export type MessengerHost = {
   getAccount: () => any;
   openModal?: (id: string) => void;
   closeModal?: (id: string) => void;
+  /** Открыть вкладку настроек лаунчера (например updates) */
+  openSettingsTab?: (tab: string) => void;
+  /** Markdown → безопасный HTML (как в новостях) */
+  renderMarkdown?: (md: string) => string;
   getLauncherStats?: () => MessengerLauncherStats;
   /** Иконка сборки по имени (локальный каталог лаунчера) */
   resolveBuildIcon?: (name: string | null | undefined) => string | null;
@@ -192,6 +210,8 @@ export type MessengerHost = {
 const ONLINE_MS = 2 * 60 * 1000;
 const POLL_FALLBACK_MS = 20000;
 const AVATAR_SIZE = 64;
+/** Разрешённые эмодзи реакций (серверный whitelist) */
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '👀'] as const;
 
 let host: MessengerHost | null = null;
 let inited = false;
@@ -200,7 +220,14 @@ let sessionToken: string | null = null;
 let conversations: MessengerConversation[] = [];
 let activeId: string | null = null;
 let messages: MessengerMessage[] = [];
+/** Есть ли ещё более старые сообщения на сервере */
+let messagesHasMore = true;
+let messagesLoadingOlder = false;
 let replyTo: MessengerMessage | null = null;
+/** Кто сейчас печатает в активном чате (userId → untilTs) */
+const typingPeers = new Map<string, { name: string; until: number }>();
+let typingSendTimer: ReturnType<typeof setTimeout> | null = null;
+let typingUiTimer: ReturnType<typeof setInterval> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let groupSearchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -215,12 +242,14 @@ let openProfileUser: MessengerUser | null = null;
 /** Файлы, выбранные к отправке (до сабмита) */
 let pendingFiles: MessengerPendingFile[] = [];
 /** Вкладка сайдбара: чаты / друзья / миры / блоки */
-let railTab: 'chats' | 'friends' | 'worlds' | 'blocked' = 'chats';
+let railTab: 'chats' | 'friends' | 'worlds' | 'blocked' | 'users' = 'chats';
 let friendsBundle: {
   friends: MessengerUser[];
   incoming: MessengerUser[];
   outgoing: MessengerUser[];
 } = { friends: [], incoming: [], outgoing: [] };
+let directoryUsers: MessengerUser[] = [];
+let directoryTotal = 0;
 let blockedUsers: MessengerUser[] = [];
 /** Ручной статус присутствия текущего пользователя */
 let myPresenceStatus: 'online' | 'busy' | 'dnd' | 'offline' = 'online';
@@ -411,6 +440,7 @@ function openMuteMenu(convId: string, x: number, y: number, onDone?: () => void)
 }
 
 async function hideOrLeaveConversation(conv: MessengerConversation): Promise<void> {
+  if (conv.isProject) return;
   const id = conv.id;
   if (conv.type === 'group' && conv.myRole === 'owner') {
     await req(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -473,16 +503,18 @@ function chatActionItems(conv: MessengerConversation): { label: string; action: 
       },
     });
   }
-  items.push({
-    label:
-      conv.type === 'group'
-        ? conv.myRole === 'owner'
-          ? host.t('msgr.actionDeleteGroup')
-          : host.t('msgr.actionLeave')
-        : host.t('msgr.actionDeleteChat'),
-    danger: true,
-    action: () => void hideOrLeaveConversation(conv),
-  });
+  if (!conv.isProject) {
+    items.push({
+      label:
+        conv.type === 'group'
+          ? conv.myRole === 'owner'
+            ? host.t('msgr.actionDeleteGroup')
+            : host.t('msgr.actionLeave')
+          : host.t('msgr.actionDeleteChat'),
+      danger: true,
+      action: () => void hideOrLeaveConversation(conv),
+    });
+  }
   return items;
 }
 
@@ -536,26 +568,39 @@ const DEFAULT_SERVER_ICON = '../../assets/icons/serverIcon.png';
 const ICON_ELY = '../../assets/icons/elyby.svg';
 const ICON_MS = '../../assets/icons/microsoft.svg';
 const ICON_JOINED = '../../assets/icons/userregistered.svg';
+const ICON_UACC = '../../assets/icons/undefinedacc.svg';
+/** Канонический скин системного бота Undefined Studio */
+const PROJECT_BOT_SKIN_URL = 'https://s.namemc.com/i/d1d81be1a4cf9aa3.png';
+const PROJECT_BOT_UACC_ID = 'uacc_id1';
 const LOCAL_FILE_KEY = 'msgr-local-files';
 
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
 }
 
+function isProjectBotUser(user?: { id?: string; provider?: string } | null): boolean {
+  if (!user) return false;
+  return user.provider === 'bot' || String(user.id || '').startsWith('bot:');
+}
+
 function providerLabel(provider: string): string {
+  if (provider === 'bot') return host?.t('msgr.botBadge') || 'BOT';
   return provider === 'ely' ? 'Ely.by' : 'MS';
 }
 
 /** Полное имя провайдера для карточки «тип аккаунта» */
 function providerLabelFull(provider: string): string {
+  if (provider === 'bot') return host?.t('msgr.botAccountType') || 'Undefined ID';
   return provider === 'ely' ? 'Ely.by' : 'Microsoft';
 }
 
 function providerIconUrl(provider: string): string {
+  if (provider === 'bot') return ICON_UACC;
   return provider === 'ely' ? ICON_ELY : ICON_MS;
 }
 
 function providerClass(provider: string): string {
+  if (provider === 'bot') return 'msgr-badge--bot';
   return provider === 'ely' ? 'msgr-badge--ely' : 'msgr-badge--ms';
 }
 
@@ -1038,6 +1083,45 @@ function shareLanServerName(nick?: string | null): string {
   return host?.t('msgr.shareLanLabel', { name }) || `Мир игрока ${name}`;
 }
 
+/** Отправить ссылку на шаринг сборки в активный чат */
+async function shareBuildFromChat(): Promise<void> {
+  if (!host || !activeId) return;
+  const builds = host.listLocalBuilds?.() || [];
+  if (!builds.length) {
+    toast(host.t('msgr.attachBuildEmpty'));
+    return;
+  }
+  const items = builds.slice(0, 24).map((b) => ({
+    label: b.name,
+    action: () => {
+      void (async () => {
+        toast(host!.t('msgr.attachBuildPreparing'));
+        const res = await host!.createInstanceShare?.(b.id);
+        if (!res?.ok || !res.url) {
+          toast(host!.t('msgr.attachBuildFailed'));
+          return;
+        }
+        const body = host!.t('msgr.attachBuildBody', { name: b.name, url: res.url });
+        await sendMessage(body);
+      })();
+    },
+  }));
+  const btn = $('msgr-attach');
+  const r = btn?.getBoundingClientRect();
+  showCtx(r?.left || 120, (r?.bottom || 160) + 4, items);
+}
+
+/** Пригласить в LAN-мир из композера */
+async function shareWorldFromChat(): Promise<void> {
+  if (!host) return;
+  if (hostRelaySession) {
+    toast(host.t('msgr.shareAlreadyOn'));
+    setRailTab('worlds');
+    return;
+  }
+  await shareLanWithFriends();
+}
+
 async function shareLanWithFriends(): Promise<void> {
   if (!host) return;
   const running = host.getRunningBuild?.();
@@ -1316,18 +1400,34 @@ function normalizePresenceStatus(raw?: string | null): 'online' | 'busy' | 'dnd'
 }
 
 /** Эффективный статус: ручной offline всегда offline; иначе с учётом lastSeen */
-function resolvePresence(user?: { lastSeenAt?: number | null; presenceStatus?: string | null } | null): 'online' | 'busy' | 'dnd' | 'offline' {
+function resolvePresence(user?: {
+  lastSeenAt?: number | null;
+  presenceStatus?: string | null;
+  id?: string;
+  provider?: string;
+} | null): 'online' | 'busy' | 'dnd' | 'offline' {
+  if (isProjectBotUser(user)) return 'online';
   const manual = normalizePresenceStatus(user?.presenceStatus);
   if (manual === 'offline') return 'offline';
   if (!user?.lastSeenAt || Date.now() - Number(user.lastSeenAt) >= ONLINE_MS) return 'offline';
   return manual;
 }
 
-function presenceClass(user?: { lastSeenAt?: number | null; presenceStatus?: string | null } | null): string {
+function presenceClass(user?: {
+  lastSeenAt?: number | null;
+  presenceStatus?: string | null;
+  id?: string;
+  provider?: string;
+} | null): string {
   return `is-${resolvePresence(user)}`;
 }
 
-function isOnline(user?: { lastSeenAt?: number | null; presenceStatus?: string | null } | null): boolean {
+function isOnline(user?: {
+  lastSeenAt?: number | null;
+  presenceStatus?: string | null;
+  id?: string;
+  provider?: string;
+} | null): boolean {
   const p = resolvePresence(user);
   return p === 'online' || p === 'busy' || p === 'dnd';
 }
@@ -1360,6 +1460,8 @@ function restoreAccountCache(key: string | null): void {
   activeId = null;
   friendsBundle = { friends: [], incoming: [], outgoing: [] };
   blockedUsers = [];
+  directoryUsers = [];
+  directoryTotal = 0;
   pendingFiles = [];
   replyTo = null;
   if (!key) return;
@@ -1414,9 +1516,9 @@ function cropSkinHead(skinUrl: string, size = AVATAR_SIZE): Promise<string | nul
 function rawSkinUrl(user: MessengerUser): string {
   const toHttps = (u: string) => String(u || '').replace(/^http:\/\//i, 'https://');
   if (user.provider === 'ely') {
-    const byName = `https://skinsystem.ely.by/skins/${encodeURIComponent(user.username)}.png`;
-    const candidate = user.skinUrl ? toHttps(user.skinUrl) : byName;
-    return skinImageUrl(candidate) || skinImageUrl(byName) || candidate;
+    // Без своего скина — дефолтная текстура (skinsystem/{nick}.png часто 404)
+    const candidate = user.skinUrl ? toHttps(user.skinUrl) : DEFAULT_ACCOUNT_SKIN_URL;
+    return skinImageUrl(candidate) || candidate;
   }
   if (user.skinUrl) {
     const https = toHttps(user.skinUrl);
@@ -1429,16 +1531,18 @@ function rawSkinUrl(user: MessengerUser): string {
       `${getApiBase()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/avatar/${uuid}/64`)}`
     );
   }
-  return '';
+  return skinImageUrl(DEFAULT_ACCOUNT_SKIN_URL) || DEFAULT_ACCOUNT_SKIN_URL;
 }
 
 /** Полная текстура скина для SkinViewEngine (не аватар-голова). */
 function fullSkinTextureUrl(user: MessengerUser): string {
+  if (isProjectBotUser(user)) {
+    return skinImageUrl(PROJECT_BOT_SKIN_URL) || PROJECT_BOT_SKIN_URL;
+  }
   const toHttps = (u: string) => String(u || '').replace(/^http:\/\//i, 'https://');
   if (user.provider === 'ely') {
-    const byName = `https://skinsystem.ely.by/skins/${encodeURIComponent(user.username)}.png`;
-    const candidate = user.skinUrl ? toHttps(user.skinUrl) : byName;
-    return skinImageUrl(candidate) || skinImageUrl(byName) || candidate;
+    const candidate = user.skinUrl ? toHttps(user.skinUrl) : DEFAULT_ACCOUNT_SKIN_URL;
+    return skinImageUrl(candidate) || candidate;
   }
   if (user.skinUrl && /textures\.minecraft\.net|skin/i.test(user.skinUrl)) {
     const https = toHttps(user.skinUrl);
@@ -1468,6 +1572,10 @@ function avatarUrlSync(user?: MessengerUser | null): string {
   if (!user) return '';
   const cached = avatarCache.get(user.id);
   if (cached) return cached;
+  // Кастомный аватар бота (не голова со скина)
+  if (isProjectBotUser(user) && user.skinUrl) {
+    return resolveMsgrMediaUrl(user.skinUrl);
+  }
   if (user.provider === 'msa') {
     const uuid = String(user.uuid || '').replace(/-/g, '');
     if (uuid) {
@@ -1481,7 +1589,17 @@ function avatarUrlSync(user?: MessengerUser | null): string {
 }
 
 function ensureAvatar(user: MessengerUser): void {
-  if (!user?.id || avatarCache.has(user.id) || avatarInflight.has(user.id)) return;
+  if (!user?.id) return;
+  // Аватар бота — загруженный файл из настроек (skin_url), не кроп скина NameMC
+  if (isProjectBotUser(user)) {
+    const url = user.skinUrl ? resolveMsgrMediaUrl(user.skinUrl) : '';
+    if (url && avatarCache.get(user.id) !== url) {
+      avatarCache.set(user.id, url);
+      applyAvatarsInDom(user.id);
+    }
+    return;
+  }
+  if (avatarCache.has(user.id) || avatarInflight.has(user.id)) return;
   const raw = rawSkinUrl(user);
   if (!raw) return;
   const task = (async () => {
@@ -1614,7 +1732,7 @@ function setProfileSkinPanel(
 }
 
 /**
- * Кадрирование обложки: только масштаб и положение в рамке ~300×560.
+ * Кадрирование обложки: только масштаб и положение в рамке панели профиля (~300×680).
  * Возвращает JPEG data URL или null при отмене.
  */
 function openCoverCropEditor(file: File): Promise<string | null> {
@@ -2003,6 +2121,9 @@ function renderConversationList(): void {
   }
   const prefs = pruneExpiredMutes(loadMsgrPrefs());
   const ordered = [...conversations].sort((a, b) => {
+    const aProj = a.isProject ? 0 : 1;
+    const bProj = b.isProject ? 0 : 1;
+    if (aProj !== bProj) return aProj - bProj;
     const ap = prefs.pinned.includes(a.id) ? 0 : 1;
     const bp = prefs.pinned.includes(b.id) ? 0 : 1;
     if (ap !== bp) return ap - bp;
@@ -2012,13 +2133,18 @@ function renderConversationList(): void {
     .map((c) => {
       const user = c.type === 'dm' ? c.peer : null;
       if (user) ensureAvatar(user);
-      const title = host!.escapeHtml(c.title || 'Chat');
+      const title = host!.escapeHtml(
+        c.isProject ? host!.t('msgr.projectChat') : c.title || 'Chat',
+      );
       const preview = host!.escapeHtml(previewText(c));
-      const badge = user
-        ? `<span class="msgr-badge ${providerClass(user.provider)}">${host!.escapeHtml(providerLabel(user.provider))}</span>`
-        : `<span class="msgr-badge msgr-badge--group">${host!.escapeHtml(host!.t('msgr.group'))}</span>`;
+      const badge = c.isProject
+        ? `<span class="msgr-badge msgr-badge--project">${host!.escapeHtml(host!.t('msgr.projectChatBadge'))}</span>`
+        : user
+          ? `<span class="msgr-badge ${providerClass(user.provider)}">${host!.escapeHtml(providerLabel(user.provider))}</span>`
+          : `<span class="msgr-badge msgr-badge--group">${host!.escapeHtml(host!.t('msgr.group'))}</span>`;
       const online = user ? presenceClass(user) : '';
       const active = c.id === activeId ? 'is-active' : '';
+      const projectCls = c.isProject ? ' msgr-chat-item--project' : '';
       const unread =
         c.unreadCount && c.id !== activeId ? `<span class="msgr-unread">${c.unreadCount}</span>` : '';
       const marks =
@@ -2031,7 +2157,7 @@ function renderConversationList(): void {
           ? groupAvatarHtml(c, 40)
           : avatarImgHtml(user || undefined, 40, (c.title || '?').slice(0, 1));
       return `
-        <button type="button" class="msgr-chat-item ${active}" data-id="${host!.escapeHtml(c.id)}">
+        <button type="button" class="msgr-chat-item${projectCls} ${active}" data-id="${host!.escapeHtml(c.id)}">
           <span class="msgr-avatar ${online}">${av}</span>
           <span class="msgr-chat-item__body">
             <span class="msgr-chat-item__top">
@@ -2107,29 +2233,66 @@ function renderFriendsList(): void {
   list.innerHTML = parts.join('');
 }
 
-function setRailTab(tab: 'chats' | 'friends' | 'worlds' | 'blocked'): void {
+function renderUsersDirectory(opts?: { failed?: boolean }): void {
+  const list = $('msgr-users-list');
+  if (!list || !host) return;
+  const count =
+    directoryTotal > 0
+      ? `<div class="msgr-friends-section">${host.escapeHtml(host.t('msgr.browseUsersCount', { n: String(directoryTotal) }))}</div>`
+      : '';
+  const body = opts?.failed
+    ? `<div class="msgr-empty-list">${host.escapeHtml(host.t('msgr.browseUsersFailed'))}</div>`
+    : directoryUsers.length
+      ? directoryUsers.map((u) => friendRowHtml(u, 'friend')).join('')
+      : `<div class="msgr-empty-list">${host.escapeHtml(host.t('msgr.browseUsersEmpty'))}</div>`;
+  list.innerHTML = `
+    <div class="msgr-friends-head">
+      <button type="button" class="msgr-mini-btn" data-user-dir-act="back-chats">${host.escapeHtml(host.t('msgr.backToChats'))}</button>
+      <div class="msgr-friends-title">${host.escapeHtml(host.t('msgr.browseUsersTitle'))}</div>
+    </div>
+    ${count}
+    ${body}`;
+}
+
+async function refreshUsersDirectory(): Promise<void> {
+  const res = await req('/users/directory', { query: { limit: 200, offset: 0 } });
+  if (!res?.ok) {
+    directoryUsers = [];
+    directoryTotal = 0;
+    renderUsersDirectory({ failed: true });
+    return;
+  }
+  directoryUsers = Array.isArray(res.data?.users) ? res.data.users : [];
+  directoryTotal = Number(res.data?.total || directoryUsers.length) || 0;
+  renderUsersDirectory();
+}
+
+function setRailTab(tab: 'chats' | 'friends' | 'worlds' | 'blocked' | 'users'): void {
   const next = tab === 'blocked' ? 'blocked' : tab;
   const prev = railTab;
   railTab = next;
   const chatsList = $('msgr-chat-list');
   const friendsList = $('msgr-friends-list');
   const worldsList = $('msgr-worlds-list');
+  const usersList = $('msgr-users-list');
   const pages = $('msgr-rail-pages');
   const tabs = $('msgr-rail-tabs');
   const newGroup = $('msgr-new-group');
+  const browseUsers = $('msgr-browse-users');
   const tabChats = $('msgr-tab-chats');
   const tabFriends = $('msgr-tab-friends');
   const tabWorlds = $('msgr-tab-worlds');
   const showChats = railTab === 'chats';
   const showFriends = railTab === 'friends' || railTab === 'blocked';
   const showWorlds = railTab === 'worlds';
+  const showUsers = railTab === 'users';
   const dir =
     prev === 'chats' && !showChats ? 'left' : prev !== 'chats' && showChats ? 'right' : showChats ? 'right' : 'left';
   if (pages) pages.setAttribute('data-dir', dir);
   if (tabs) {
     tabs.setAttribute(
       'data-active',
-      showChats ? 'chats' : showWorlds ? 'worlds' : 'friends',
+      showChats || showUsers ? 'chats' : showWorlds ? 'worlds' : 'friends',
     );
   }
   if (chatsList) {
@@ -2144,7 +2307,12 @@ function setRailTab(tab: 'chats' | 'friends' | 'worlds' | 'blocked'): void {
     worldsList.hidden = false;
     worldsList.classList.toggle('is-active', showWorlds);
   }
+  if (usersList) {
+    usersList.hidden = false;
+    usersList.classList.toggle('is-active', showUsers);
+  }
   if (newGroup) newGroup.hidden = !showChats;
+  if (browseUsers) browseUsers.hidden = !showChats;
   tabChats?.classList.toggle('is-active', showChats);
   tabFriends?.classList.toggle('is-active', showFriends);
   tabWorlds?.classList.toggle('is-active', showWorlds);
@@ -2153,6 +2321,7 @@ function setRailTab(tab: 'chats' | 'friends' | 'worlds' | 'blocked'): void {
   tabWorlds?.setAttribute('aria-selected', showWorlds ? 'true' : 'false');
   if (showChats) renderConversationList();
   else if (showWorlds) void refreshWorldsRail();
+  else if (showUsers) void refreshUsersDirectory();
   else void refreshFriendsRail();
 }
 
@@ -2168,8 +2337,134 @@ async function refreshWorldsRail(): Promise<void> {
   renderWorldsList();
 }
 
-type ProfilePanelTab = 'info' | 'members';
+type ProfilePanelTab = 'info' | 'members' | 'media';
+const PROFILE_TAB_ORDER: ProfilePanelTab[] = ['info', 'members', 'media'];
 let profilePanelTab: ProfilePanelTab = 'info';
+
+/** Групповой статус: онлайн + участники */
+function groupOnlineMembersLabel(conv: MessengerConversation): string {
+  if (!host) return '';
+  const members = conv.memberCount ?? conv.members?.length ?? 0;
+  const online = conv.onlineCount ?? 0;
+  return host.t('msgr.onlineAndMembers', { online, members });
+}
+
+/** Блокировка композера при модераторском муте */
+function applyComposerMuteState(): void {
+  if (!host) return;
+  const input = $('msgr-input') as HTMLTextAreaElement | null;
+  const send = $('msgr-send') as HTMLButtonElement | null;
+  const attach = $('msgr-attach') as HTMLButtonElement | null;
+  const conv = conversations.find((c) => c.id === activeId) || null;
+  const mute = conv?.myMute;
+  const muted = Boolean(mute);
+  if (input) {
+    input.disabled = muted;
+    if (muted) {
+      if (mute!.until == null) {
+        input.placeholder = host.t('msgr.mutedForever');
+      } else {
+        const n = Math.max(1, Math.ceil((mute!.until - Date.now()) / 60_000));
+        input.placeholder = host.t('msgr.mutedForMinutes', { n });
+      }
+    } else {
+      input.placeholder = host.t('msgr.placeholder');
+    }
+  }
+  if (send) send.disabled = muted;
+  if (attach) {
+    attach.disabled = muted;
+    if (muted) setAttachMenuOpen(false);
+  }
+}
+
+/** Панель закреплённого сообщения над лентой */
+function renderPinBar(): void {
+  const bar = $('msgr-pin-bar');
+  const label = $('msgr-pin-bar-label');
+  const text = $('msgr-pin-bar-text');
+  const unpin = $('msgr-pin-bar-unpin');
+  if (!bar || !host) return;
+  const conv = conversations.find((c) => c.id === activeId) || null;
+  const pin = conv?.pinnedMessage;
+  if (!conv || !pin || pin.deleted) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  if (label) label.textContent = host.t('msgr.pinnedMessage');
+  if (text) {
+    text.textContent = pin.attachment
+      ? pin.attachment.name
+      : String(pin.body || '').slice(0, 120) || '…';
+  }
+  const canMod = conv.myRole === 'owner' || conv.myRole === 'admin';
+  if (unpin) unpin.hidden = !canMod;
+}
+
+function scrollToMessageId(msgId: string): void {
+  const thread = $('msgr-messages');
+  if (!thread) return;
+  const row = Array.from(thread.querySelectorAll('[data-msg-id]')).find(
+    (el) => el.getAttribute('data-msg-id') === msgId,
+  ) as HTMLElement | undefined;
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.classList.add('is-flash');
+  window.setTimeout(() => row.classList.remove('is-flash'), 1200);
+}
+
+async function clearPinnedMessage(): Promise<void> {
+  if (!activeId) return;
+  const res = await req(`/conversations/${encodeURIComponent(activeId)}`, {
+    method: 'PATCH',
+    body: { clearPinned: true },
+  });
+  if (res?.ok && res.data?.conversation) {
+    const idx = conversations.findIndex((c) => c.id === activeId);
+    if (idx >= 0) conversations[idx] = res.data.conversation;
+    renderPinBar();
+    renderConversationList();
+  }
+}
+
+async function pinMessage(msgId: string): Promise<void> {
+  if (!activeId) return;
+  const res = await req(`/conversations/${encodeURIComponent(activeId)}`, {
+    method: 'PATCH',
+    body: { pinnedMessageId: msgId },
+  });
+  if (res?.ok && res.data?.conversation) {
+    const idx = conversations.findIndex((c) => c.id === activeId);
+    if (idx >= 0) conversations[idx] = res.data.conversation;
+    renderPinBar();
+    toast(host?.t('msgr.pinnedOk') || '');
+  }
+}
+
+/** Переключить реакцию на сообщении */
+async function toggleReaction(msgId: string, emoji: string): Promise<void> {
+  if (!activeId || !(REACTION_EMOJIS as readonly string[]).includes(emoji)) return;
+  const msg = messages.find((m) => m.id === msgId);
+  const mine = Boolean(msg?.reactions?.some((r) => r.emoji === emoji && r.me));
+  const path = `/conversations/${encodeURIComponent(activeId)}/messages/${encodeURIComponent(msgId)}/reactions`;
+  const res = await req(path, {
+    method: mine ? 'DELETE' : 'POST',
+    body: { emoji },
+  });
+  if (res?.ok && res.data?.message) upsertIncomingMessage(res.data.message);
+}
+
+function renderReactionsHtml(m: MessengerMessage): string {
+  if (m.deleted || !m.reactions?.length || !host) return '';
+  const chips = m.reactions
+    .map(
+      (r) =>
+        `<button type="button" class="msgr-react-chip${r.me ? ' is-me' : ''}" data-react-emoji="${host!.escapeHtml(r.emoji)}" data-msg-id="${host!.escapeHtml(m.id)}" title="${host!.escapeHtml(host!.t('msgr.react'))}">${host!.escapeHtml(r.emoji)}<span>${r.count}</span></button>`,
+    )
+    .join('');
+  return `<div class="msgr-react-row">${chips}</div>`;
+}
 
 function setProfilePanelTab(tab: ProfilePanelTab, animate = true): void {
   const prev = profilePanelTab;
@@ -2178,11 +2473,14 @@ function setProfilePanelTab(tab: ProfilePanelTab, animate = true): void {
   const pages = $('msgr-profile-pages');
   const info = $('msgr-profile-info');
   const membersPage = $('msgr-profile-members-page');
+  const mediaPage = $('msgr-profile-media');
   const tabInfo = $('msgr-profile-tab-info');
   const tabMembers = $('msgr-profile-tab-members');
+  const tabMedia = $('msgr-profile-tab-media');
   if (animate && pages) {
-    const dir = prev === 'info' && tab === 'members' ? 'left' : 'right';
-    pages.setAttribute('data-dir', dir);
+    const pi = PROFILE_TAB_ORDER.indexOf(prev);
+    const ti = PROFILE_TAB_ORDER.indexOf(tab);
+    pages.setAttribute('data-dir', ti >= pi ? 'left' : 'right');
   }
   if (tabs) tabs.setAttribute('data-active', tab);
   if (info) {
@@ -2193,10 +2491,47 @@ function setProfilePanelTab(tab: ProfilePanelTab, animate = true): void {
     membersPage.hidden = false;
     membersPage.classList.toggle('is-active', tab === 'members');
   }
+  if (mediaPage) {
+    mediaPage.hidden = false;
+    mediaPage.classList.toggle('is-active', tab === 'media');
+  }
   tabInfo?.classList.toggle('is-active', tab === 'info');
   tabMembers?.classList.toggle('is-active', tab === 'members');
+  tabMedia?.classList.toggle('is-active', tab === 'media');
   tabInfo?.setAttribute('aria-selected', tab === 'info' ? 'true' : 'false');
   tabMembers?.setAttribute('aria-selected', tab === 'members' ? 'true' : 'false');
+  tabMedia?.setAttribute('aria-selected', tab === 'media' ? 'true' : 'false');
+  if (tab === 'media') void loadProfileMedia();
+}
+
+async function loadProfileMedia(): Promise<void> {
+  const grid = $('msgr-profile-media-grid');
+  if (!grid || !host || !activeId) return;
+  grid.innerHTML = '';
+  const res = await req(`/conversations/${encodeURIComponent(activeId)}/media`, {
+    query: { limit: 60 },
+  });
+  const items: MessengerMessage[] = Array.isArray(res?.data?.items) ? res.data.items : [];
+  if (!items.length) {
+    grid.innerHTML = `<div class="msgr-profile__media-empty">${host.escapeHtml(host.t('msgr.mediaEmpty'))}</div>`;
+    return;
+  }
+  grid.innerHTML = items
+    .map((m) => {
+      if (!m.attachment) return '';
+      const kind = isVideoAttachment(m.attachment) ? 'video' : 'image';
+      const url = attachmentMediaUrl(m.id);
+      if (kind === 'video') {
+        return `<button type="button" class="msgr-profile__media-item" data-msgr-media="video" data-msg-id="${host!.escapeHtml(m.id)}">
+          <video src="${host!.escapeHtml(url)}" muted preload="metadata" playsinline></video>
+        </button>`;
+      }
+      return `<button type="button" class="msgr-profile__media-item" data-msgr-media="image" data-msg-id="${host!.escapeHtml(m.id)}">
+        <img src="${host!.escapeHtml(url)}" alt="" loading="lazy">
+      </button>`;
+    })
+    .filter(Boolean)
+    .join('');
 }
 
 function setProfileTabsVisible(visible: boolean): void {
@@ -2252,6 +2587,8 @@ function renderPeerHeader(): void {
     if (head) head.classList.remove('is-clickable');
     if (headRow) headRow.hidden = true;
     if (moreBtn) moreBtn.hidden = true;
+    applyComposerMuteState();
+    renderPinBar();
     return;
   }
   if (empty) empty.hidden = true;
@@ -2263,12 +2600,15 @@ function renderPeerHeader(): void {
     moreBtn.hidden = false;
     moreBtn.title = host.t('msgr.moreActions');
   }
-  if (nameEl) nameEl.textContent = conv.title;
+  if (nameEl) nameEl.textContent = conv.isProject ? host.t('msgr.projectChat') : conv.title;
   const peer = conv.peer;
   if (metaEl) {
     if (conv.type === 'group') {
-      metaEl.innerHTML = `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t('msgr.group'))}</span>
-        <span class="msgr-peer-status">${host.escapeHtml(host.t('msgr.members', { n: String(conv.members?.length || 0) }))}</span>`;
+      const groupBadge = conv.isProject
+        ? `<span class="msgr-badge msgr-badge--project">${host.escapeHtml(host.t('msgr.projectChatBadge'))}</span>`
+        : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t('msgr.group'))}</span>`;
+      metaEl.innerHTML = `${groupBadge}
+        <span class="msgr-peer-status">${host.escapeHtml(groupOnlineMembersLabel(conv))}</span>`;
     } else if (peer) {
       const act = activityLine(peer);
       const p = resolvePresence(peer);
@@ -2295,6 +2635,8 @@ function renderPeerHeader(): void {
         ? groupAvatarHtml(conv, 36)
         : avatarImgHtml(peer || undefined, 36, (conv.title || '?').slice(0, 1));
   }
+  applyComposerMuteState();
+  renderPinBar();
 }
 
 function renderReplyBar(): void {
@@ -2320,18 +2662,148 @@ function setReplyTo(msg: MessengerMessage | null): void {
   renderReplyBar();
 }
 
-function renderMessages(): void {
+function isMessagesNearBottom(thread: HTMLElement, thresholdPx = 96): boolean {
+  return thread.scrollHeight - thread.scrollTop - thread.clientHeight <= thresholdPx;
+}
+
+/** В DOM уже есть пузыри текущего activeId (кеш мог восстановиться до появления me). */
+function isMessagesThreadPainted(): boolean {
   const thread = $('msgr-messages');
-  if (!thread || !host || !me) return;
+  if (!thread) return false;
+  if (!messages.length) return true;
+  return Boolean(thread.querySelector('[data-msg-id]'));
+}
+
+/** lastReadAt собеседника (DM) или null в группах */
+function peerLastReadAt(conv: MessengerConversation | undefined): number | null {
+  if (!conv || conv.type !== 'dm' || !me) return null;
+  const peer =
+    conv.peer ||
+    conv.members?.find((m) => m.id !== me!.id) ||
+    null;
+  const ts = peer?.lastReadAt;
+  return typeof ts === 'number' && ts > 0 ? ts : null;
+}
+
+function readReceiptHtml(m: MessengerMessage, conv: MessengerConversation | undefined): string {
+  if (!host || !me || m.senderId !== me.id || m.deleted) return '';
+  const peerRead = peerLastReadAt(conv);
+  const seen = peerRead != null && m.createdAt <= peerRead;
+  const label = seen ? host.t('msgr.read') : host.t('msgr.sent');
+  const cls = seen ? 'msgr-bubble__read is-read' : 'msgr-bubble__read is-sent';
+  return `<span class="${cls}" title="${host.escapeHtml(label)}">${seen ? '✓✓' : '✓'}</span>`;
+}
+
+function clearTypingState(): void {
+  typingPeers.clear();
+  renderTypingIndicator();
+}
+
+function renderTypingIndicator(): void {
+  const el = $('msgr-typing');
+  if (!el || !host) return;
+  const now = Date.now();
+  for (const [id, info] of [...typingPeers.entries()]) {
+    if (info.until < now) typingPeers.delete(id);
+  }
+  if (!activeId || typingPeers.size === 0) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  const names = [...typingPeers.values()].map((v) => v.name).filter(Boolean);
+  el.hidden = false;
+  if (names.length === 1) {
+    el.textContent = host.t('msgr.typingOne', { name: names[0] });
+  } else if (names.length === 2) {
+    el.textContent = host.t('msgr.typingTwo', { a: names[0], b: names[1] });
+  } else {
+    el.textContent = host.t('msgr.typingMany', { n: names.length });
+  }
+}
+
+function notePeerTyping(payload: { conversationId?: string; userId?: string; username?: string }): void {
+  if (!payload?.conversationId || payload.conversationId !== activeId) return;
+  if (!payload.userId || payload.userId === me?.id) return;
+  typingPeers.set(payload.userId, {
+    name: String(payload.username || host?.t('msgr.someone') || '…'),
+    until: Date.now() + 3500,
+  });
+  renderTypingIndicator();
+  if (!typingUiTimer) {
+    typingUiTimer = setInterval(() => renderTypingIndicator(), 800);
+  }
+}
+
+function sendTypingPulse(): void {
+  if (!activeId || !sessionToken) return;
+  void req(`/conversations/${encodeURIComponent(activeId)}/typing`, {
+    method: 'POST',
+    body: {},
+  });
+}
+
+function scheduleTypingPulse(): void {
+  if (typingSendTimer) return;
+  typingSendTimer = setTimeout(() => {
+    typingSendTimer = null;
+    sendTypingPulse();
+  }, 900);
+}
+
+async function loadOlderMessages(): Promise<void> {
+  if (!activeId || messagesLoadingOlder || !messagesHasMore || !messages.length) return;
+  const before = messages[0]?.createdAt;
+  if (!before) return;
+  messagesLoadingOlder = true;
+  const thread = $('msgr-messages');
+  const prevHeight = thread?.scrollHeight || 0;
+  const prevTop = thread?.scrollTop || 0;
+  try {
+    const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
+      query: { limit: 50, before: String(before) },
+    });
+    if (!res?.ok) return;
+    const older: MessengerMessage[] = Array.isArray(res.data?.messages) ? res.data.messages : [];
+    if (older.length < 50) messagesHasMore = false;
+    if (!older.length) return;
+    const seen = new Set(messages.map((m) => m.id));
+    const add = older.filter((m) => m?.id && !seen.has(m.id));
+    if (!add.length) {
+      messagesHasMore = false;
+      return;
+    }
+    messages = [...add, ...messages];
+    renderMessages({ forceScrollBottom: false });
+    if (thread) {
+      thread.scrollTop = Math.max(0, thread.scrollHeight - prevHeight + prevTop);
+    }
+  } finally {
+    messagesLoadingOlder = false;
+  }
+}
+
+function renderMessages(opts?: { forceScrollBottom?: boolean }): void {
+  const thread = $('msgr-messages');
+  // me может ещё не быть (восстановление кеша до messengerSession) — всё равно рисуем ленту
+  if (!thread || !host) return;
   const conv = conversations.find((c) => c.id === activeId);
+  const stickBottom = Boolean(opts?.forceScrollBottom) || isMessagesNearBottom(thread);
+  const savedScrollTop = thread.scrollTop;
   thread.innerHTML = messages
     .map((m) => {
-      const mine = m.senderId === me!.id;
+      const mine = Boolean(me?.id && m.senderId === me.id);
+      const senderUser = conv?.members?.find((u) => u.id === m.senderId) || null;
       const sender =
-        conv?.members?.find((u) => u.id === m.senderId)?.username || (mine ? me!.username : '');
+        senderUser?.username || (mine ? (me!.username || '') : '');
+      const isBot =
+        senderUser?.provider === 'bot' || String(m.senderId || '').startsWith('bot:');
+      if (isBot && !m.deleted) {
+        return renderBotPostHtml(m, senderUser, sender, conv);
+      }
       const showName = conv?.type === 'group' && !mine;
       const reply = m.replyTo
-        ? `<div class="msgr-bubble__reply">
+        ? `<button type="button" class="msgr-bubble__reply" data-reply-to="${host!.escapeHtml(m.replyTo.id || '')}">
             <div class="msgr-bubble__reply-name">${host!.escapeHtml(
               conv?.members?.find((u) => u.id === m.replyTo!.senderId)?.username || '',
             )}</div>
@@ -2342,7 +2814,7 @@ function renderMessages(): void {
                   ? m.replyTo.attachment.name
                   : m.replyTo.body,
             )}</div>
-          </div>`
+          </button>`
         : '';
       const fileBlock = renderAttachmentBlock(m);
       const invite =
@@ -2353,6 +2825,10 @@ function renderMessages(): void {
             })
           : null;
       const inviteBlock = invite ? renderInviteCardHtml(invite, m.id) : '';
+      const updateBlock =
+        !m.deleted && m.kind === 'client_update'
+          ? `<button type="button" class="stngs-btn ghost msgr-update-btn" data-msgr-open-updates>${host!.escapeHtml(host!.t('msgr.updateClient'))}</button>`
+          : '';
       const textBody =
         m.deleted
           ? `<div class="msgr-bubble__text is-deleted">${host!.escapeHtml(host!.t('msgr.messageDeleted'))}</div>`
@@ -2361,23 +2837,86 @@ function renderMessages(): void {
             : m.body && (!m.attachment || m.body !== m.attachment.name)
               ? `<div class="msgr-bubble__text">${host!.escapeHtml(m.body)}</div>`
               : '';
+      const reactions = renderReactionsHtml(m);
       return `
         <div class="msgr-bubble-row ${mine ? 'is-mine' : 'is-theirs'}" data-msg-id="${host!.escapeHtml(m.id)}">
           <div class="msgr-bubble ${m.deleted ? 'is-deleted' : ''}${m.attachment && isMediaAttachment(m.attachment) ? ' has-media' : ''}${invite ? ' has-invite' : ''}">
             ${showName ? `<div class="msgr-bubble__name">${host!.escapeHtml(sender)}</div>` : ''}
             ${reply}
             ${inviteBlock}
+            ${updateBlock}
             ${textBody}
             ${fileBlock}
             <div class="msgr-bubble__meta">
               <span>${host!.escapeHtml(formatMsgTime(m.createdAt))}</span>
-              ${mine && !m.deleted ? `<span class="msgr-bubble__read">${host!.escapeHtml(host!.t('msgr.read'))}</span>` : ''}
+              ${readReceiptHtml(m, conv)}
             </div>
+            ${reactions}
           </div>
         </div>`;
     })
     .join('');
-  thread.scrollTop = thread.scrollHeight;
+  if (stickBottom) thread.scrollTop = thread.scrollHeight;
+  else thread.scrollTop = savedScrollTop;
+}
+
+/** Сообщение бота: без пузыря — аватар, имя, бейдж БОТ, Markdown */
+function renderBotPostHtml(
+  m: MessengerMessage,
+  senderUser: MessengerUser | null | undefined,
+  senderName: string,
+  conv: MessengerConversation | undefined,
+): string {
+  if (!host) return '';
+  if (senderUser) ensureAvatar(senderUser);
+  const name = senderName || host.t('msgr.botDefaultName');
+  const av = avatarImgHtml(senderUser, 28, name.slice(0, 1));
+  const reply = m.replyTo
+    ? `<div class="msgr-bot-post__quote">
+        <div class="msgr-bot-post__quote-name">${host.escapeHtml(
+          conv?.members?.find((u) => u.id === m.replyTo!.senderId)?.username || '',
+        )}</div>
+        <div class="msgr-bot-post__quote-text">${host.escapeHtml(
+          m.replyTo.deleted
+            ? host.t('msgr.messageDeleted')
+            : m.replyTo.attachment
+              ? m.replyTo.attachment.name
+              : m.replyTo.body,
+        )}</div>
+      </div>`
+    : '';
+  const updateBlock =
+    m.kind === 'client_update'
+      ? `<button type="button" class="stngs-btn ghost msgr-update-btn" data-msgr-open-updates>${host.escapeHtml(host.t('msgr.updateClient'))}</button>`
+      : '';
+  const bodyRaw = m.body && (!m.attachment || m.body !== m.attachment.name) ? m.body : '';
+  const bodyHtml = bodyRaw
+    ? host.renderMarkdown
+      ? `<div class="msgr-bot-post__md ai-md">${host.renderMarkdown(bodyRaw)}</div>`
+      : `<div class="msgr-bot-post__md">${host.escapeHtml(bodyRaw)}</div>`
+    : '';
+  const fileBlock = renderAttachmentBlock(m);
+  const reactions = renderReactionsHtml(m);
+  return `
+    <div class="msgr-bubble-row is-bot is-theirs" data-msg-id="${host.escapeHtml(m.id)}">
+      <article class="msgr-bot-post">
+        <header class="msgr-bot-post__head">
+          <span class="msgr-avatar msgr-bot-post__avatar">${av}</span>
+          <span class="msgr-bot-post__name">${host.escapeHtml(name)}</span>
+          <span class="msgr-badge msgr-badge--bot">${host.escapeHtml(host.t('msgr.botBadge'))}</span>
+        </header>
+        <div class="msgr-bot-post__content">
+          ${reply}
+          ${bodyHtml}
+          ${fileBlock}
+          ${updateBlock}
+          <div class="msgr-bot-post__meta">
+            <span>${host.escapeHtml(formatMsgTime(m.createdAt))}</span>
+          </div>
+          ${reactions}
+        </div>
+      </article>
+    </div>`;
 }
 
 function renderPendingFiles(): void {
@@ -2484,12 +3023,15 @@ async function handleFileAction(messageId: string, act: string): Promise<void> {
 function upsertIncomingMessage(message: MessengerMessage): void {
   if (!message?.id) return;
   const idx = messages.findIndex((m) => m.id === message.id);
+  const isNew = idx < 0;
   if (idx >= 0) {
     messages[idx] = message;
   } else {
     messages = [...messages, message];
   }
-  renderMessages();
+  // Свои новые сообщения — к низу; чужие/правки — только если уже у низа
+  const forceBottom = isNew && Boolean(me?.id && message.senderId === me.id);
+  renderMessages({ forceScrollBottom: forceBottom });
 }
 
 function applyActivityToUsers(userId: string, data: any): void {
@@ -2598,16 +3140,39 @@ async function loadConversations(): Promise<void> {
   conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
   renderConversationList();
   renderPeerHeader();
+  applyComposerMuteState();
+  renderPinBar();
   persistAccountCache();
 }
 
-async function loadMessages(conversationId: string): Promise<void> {
+async function loadMessages(conversationId: string, opts?: { forceScrollBottom?: boolean }): Promise<void> {
   const res = await req(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
     query: { limit: 80 },
   });
   if (!res?.ok) return;
-  messages = Array.isArray(res.data?.messages) ? res.data.messages : [];
-  renderMessages();
+  const next: MessengerMessage[] = Array.isArray(res.data?.messages) ? res.data.messages : [];
+  // Поллинг не должен перерисовывать идентичную ленту (иначе сбивает просмотр истории).
+  // Но если DOM пуст (ранний render без me / гейт loading) — обязательно нарисовать.
+  const painted = isMessagesThreadPainted();
+  const unchanged =
+    painted &&
+    !opts?.forceScrollBottom &&
+    next.length === messages.length &&
+    next.every((m, i) => {
+      const cur = messages[i];
+      if (!cur || cur.id !== m.id) return false;
+      if (Boolean(cur.deleted) !== Boolean(m.deleted)) return false;
+      if (cur.body !== m.body) return false;
+      if ((cur.attachment?.id || '') !== (m.attachment?.id || '')) return false;
+      return JSON.stringify(cur.reactions || null) === JSON.stringify(m.reactions || null);
+    });
+  messages = next;
+  messagesHasMore = next.length >= 80;
+  if (!unchanged) {
+    renderMessages({
+      forceScrollBottom: opts?.forceScrollBottom || !painted,
+    });
+  }
   persistAccountCache();
   await req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST', body: {} });
 }
@@ -2615,24 +3180,32 @@ async function loadMessages(conversationId: string): Promise<void> {
 async function openConversation(id: string): Promise<void> {
   activeId = id;
   setReplyTo(null);
+  clearTypingState();
+  messagesHasMore = true;
   pendingFiles = [];
   renderPendingFiles();
   setAttachMenuOpen(false);
   renderConversationList();
   renderPeerHeader();
+  applyComposerMuteState();
+  renderPinBar();
   messages = [];
-  renderMessages();
-  await loadMessages(id);
+  renderMessages({ forceScrollBottom: true });
+  await loadMessages(id, { forceScrollBottom: true });
   const res = await req('/conversations');
   if (res?.ok) {
     conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
     renderConversationList();
     renderPeerHeader();
+    applyComposerMuteState();
+    renderPinBar();
   }
 }
 
 async function sendMessage(text: string): Promise<void> {
   if (!activeId || busy) return;
+  const conv = conversations.find((c) => c.id === activeId);
+  if (conv?.myMute) return;
   const body = text.trim();
   const files = [...pendingFiles];
   if (!body && !files.length) return;
@@ -2987,7 +3560,7 @@ function fitProfileViewer(): void {
 
 function applyProfilePresenceMood(online: boolean): void {
   if (!profileViewer || profileViewer.disposed) return;
-  profileViewer.setAnimation(createSkinAnimation(online ? 'idle' : 'sad'));
+  profileViewer.setAnimation(createSkinAnimation(online ? 'idle' : 'sleep'));
   profileViewer.setCursorFollow(online);
   if (!online) profileViewer.setCursorAim(0, 0);
   // Не вызываем resetLighting — студийный key снова сделает блики резкими
@@ -2997,7 +3570,11 @@ function applyProfilePresenceMood(online: boolean): void {
   profileViewer.lighting.rim.intensity = online ? PROFILE_RIM_ONLINE : PROFILE_RIM_OFFLINE;
 }
 
-async function ensureProfileViewer(skinUrl: string | null, online = true): Promise<void> {
+async function ensureProfileViewer(
+  skinUrl: string | null,
+  online = true,
+  locatorUuid?: string | null,
+): Promise<void> {
   const canvas = $('msgr-profile-canvas') as HTMLCanvasElement | null;
   const fallback = $('msgr-profile-skin-fallback');
   if (!canvas) return;
@@ -3036,6 +3613,7 @@ async function ensureProfileViewer(skinUrl: string | null, online = true): Promi
       await profileViewer.setSkin(skinUrl);
       profileSkinLoaded = skinUrl;
     }
+    profileViewer.setLocatorUuid(locatorUuid ?? null);
     applyProfilePresenceMood(online);
     requestAnimationFrame(() => {
       profileViewer?.setUiFlatBackground(readModalBgHex());
@@ -3074,7 +3652,13 @@ function profileCardIconHtml(opts?: {
   title?: string;
   /** Размер иконки в px (для img) */
   iconSize?: number;
+  /** Сплошной цвет (Locator Bar swatch) */
+  iconColor?: string | null;
 }): string {
+  const color = opts?.iconColor?.trim();
+  if (color) {
+    return `<div class="msgr-profile-card__icon msgr-profile-card__icon--locator" style="--locator-color:${host!.escapeHtml(color)}"></div>`;
+  }
   const url = opts?.iconUrl?.trim();
   const size = opts?.iconSize && opts.iconSize > 0 ? opts.iconSize : null;
   if (url) {
@@ -3094,6 +3678,7 @@ function profileCardHtml(
     iconUrl?: string | null;
     iconText?: string;
     iconSize?: number;
+    iconColor?: string | null;
     clickAct?: string;
     cardKey?: string;
   },
@@ -3104,7 +3689,13 @@ function profileCardHtml(
   const clickClass = opts?.clickAct ? ' is-clickable' : '';
   const key = opts?.cardKey ? ` data-profile-card="${host!.escapeHtml(opts.cardKey)}"` : '';
   return `<div class="msgr-profile-card${clickClass}"${click}${key}>
-    ${profileCardIconHtml({ iconUrl: opts?.iconUrl, iconText: opts?.iconText, title, iconSize: opts?.iconSize })}
+    ${profileCardIconHtml({
+      iconUrl: opts?.iconUrl,
+      iconText: opts?.iconText,
+      title,
+      iconSize: opts?.iconSize,
+      iconColor: opts?.iconColor,
+    })}
     <div class="msgr-profile-card__meta">
       <div class="msgr-profile-card__label">${host!.escapeHtml(label)}</div>
       <div class="msgr-profile-card__title">${host!.escapeHtml(title)}</div>
@@ -3190,6 +3781,8 @@ function askPromptText(opts: {
   searchUsers?: boolean;
   pickBuild?: boolean;
   maxLength?: number;
+  /** Многострочный Markdown / длинный текст */
+  multiline?: boolean;
   /** Выделить текст в поле (для копирования ссылки) */
   selectAll?: boolean;
 }): Promise<string | null> {
@@ -3198,30 +3791,45 @@ function askPromptText(opts: {
     const titleEl = $('modal-msgr-prompt-title');
     const subEl = $('modal-msgr-prompt-sub');
     const input = $('modal-msgr-prompt-input') as HTMLInputElement | null;
+    const textarea = $('modal-msgr-prompt-textarea') as HTMLTextAreaElement | null;
     const resultsEl = $('modal-msgr-prompt-results');
     const ok = $('modal-msgr-prompt-ok');
     const cancel = $('modal-msgr-prompt-cancel');
     const closeBtn = $('modal-msgr-prompt-close');
-    if (!overlay || !input || !ok || !cancel) {
+    const win = overlay?.querySelector('.modal-msgr-prompt') as HTMLElement | null;
+    const field = opts.multiline ? textarea : input;
+    if (!overlay || !field || !ok || !cancel || !input) {
       resolve(null);
       return;
     }
     if (titleEl) titleEl.textContent = opts.title;
     if (subEl) subEl.textContent = opts.sub || '';
     if (ok) ok.textContent = opts.okLabel || host?.t('btn.save') || 'OK';
-    input.value = opts.value || '';
-    input.placeholder = opts.placeholder || '';
-    input.readOnly = Boolean(opts.selectAll);
-    const maxLen = opts.maxLength || (opts.searchUsers ? 32 : opts.pickBuild ? 200 : 64);
+    const maxLen =
+      opts.maxLength ||
+      (opts.multiline ? 12000 : opts.searchUsers ? 32 : opts.pickBuild ? 200 : 64);
+    input.hidden = Boolean(opts.multiline);
+    if (textarea) {
+      textarea.hidden = !opts.multiline;
+      textarea.maxLength = maxLen;
+      textarea.value = opts.multiline ? opts.value || '' : '';
+      textarea.placeholder = opts.multiline ? opts.placeholder || '' : '';
+    }
+    input.value = opts.multiline ? '' : opts.value || '';
+    input.placeholder = opts.multiline ? '' : opts.placeholder || '';
+    input.readOnly = Boolean(opts.selectAll) && !opts.multiline;
     input.maxLength = maxLen;
+    win?.classList.toggle('is-multiline', Boolean(opts.multiline));
     if (resultsEl) {
       resultsEl.hidden = !(opts.searchUsers || opts.pickBuild);
       resultsEl.innerHTML = '';
     }
     openOverlay('modal-msgr-prompt');
     setTimeout(() => {
-      input.focus();
-      if (opts.selectAll) input.select();
+      field.focus();
+      if (opts.selectAll && !opts.multiline && 'select' in field) {
+        (field as HTMLInputElement).select();
+      }
     }, 40);
 
     let pickedUserId: string | null = null;
@@ -3252,12 +3860,15 @@ function askPromptText(opts: {
     const finish = (value: string | null) => {
       closeOverlay('modal-msgr-prompt');
       input.readOnly = false;
+      input.hidden = false;
+      if (textarea) textarea.hidden = true;
+      win?.classList.remove('is-multiline');
       ok.removeEventListener('click', onOk);
       cancel.removeEventListener('click', onCancel);
       closeBtn?.removeEventListener('click', onCancel);
       overlay.removeEventListener('click', onBackdrop);
-      input.removeEventListener('keydown', onKey);
-      input.removeEventListener('input', onInput);
+      field.removeEventListener('keydown', onKey);
+      field.removeEventListener('input', onInput);
       resultsEl?.removeEventListener('click', onResultClick);
       if (searchTimerLocal) clearTimeout(searchTimerLocal);
       resolve(value);
@@ -3271,20 +3882,36 @@ function askPromptText(opts: {
         finish(pickedBuildId || input.value.trim() || null);
         return;
       }
-      const v = input.value.trim().slice(0, maxLen);
+      const v = field.value.trim().slice(0, maxLen);
+      // Пустые правила разрешены (очистка)
+      if (opts.multiline) {
+        finish(v);
+        return;
+      }
       finish(v || null);
     };
     const onCancel = () => finish(null);
     const onBackdrop = (e: Event) => {
       if (e.target === overlay) onCancel();
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        onOk();
-      } else if (e.key === 'Escape') {
+    const onKey = (e: Event) => {
+      const ke = e as KeyboardEvent;
+      if (ke.key === 'Escape') {
         e.preventDefault();
         onCancel();
+        return;
+      }
+      if (ke.key === 'Enter') {
+        if (opts.multiline) {
+          // Enter — новая строка; Ctrl/Cmd+Enter — сохранить
+          if (ke.ctrlKey || ke.metaKey) {
+            e.preventDefault();
+            onOk();
+          }
+          return;
+        }
+        e.preventDefault();
+        onOk();
       }
     };
     const onInput = () => {
@@ -3341,8 +3968,8 @@ function askPromptText(opts: {
     cancel.addEventListener('click', onCancel);
     closeBtn?.addEventListener('click', onCancel);
     overlay.addEventListener('click', onBackdrop);
-    input.addEventListener('keydown', onKey);
-    input.addEventListener('input', onInput);
+    field.addEventListener('keydown', onKey);
+    field.addEventListener('input', onInput);
     resultsEl?.addEventListener('click', onResultClick);
   });
 }
@@ -3373,11 +4000,13 @@ async function fillDmProfile(
   if (!host) return;
   openProfileUser = profile;
   const { titleEl, badgesEl, statusEl, avatarEl, rowsEl, membersEl, actionsEl, fallback } = els;
+  const isBot = isProjectBotUser(profile);
+  const badgeProvider = isBot ? 'bot' : profile.provider;
   titleEl.textContent = profile.username;
-  badgesEl.innerHTML = `<span class="msgr-badge ${providerClass(profile.provider)}">${host.escapeHtml(providerLabel(profile.provider))}</span>`;
+  badgesEl.innerHTML = `<span class="msgr-badge ${providerClass(badgeProvider)}">${host.escapeHtml(providerLabel(badgeProvider))}</span>`;
   avatarEl.innerHTML = avatarImgHtml(profile, 44, profile.username.slice(0, 1));
-  const online = isOnline(profile);
-  const p = resolvePresence(profile);
+  const online = isBot ? true : isOnline(profile);
+  const p = isBot ? 'online' : resolvePresence(profile);
   statusEl.className = `msgr-profile__status ${online ? 'is-online' : ''}`;
   if (!online) {
     statusEl.textContent = formatLastSeen(profile.lastSeenAt);
@@ -3387,6 +4016,66 @@ async function fillDmProfile(
     statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t('msgr.statusDnd'))}`;
   } else {
     statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t('msgr.online'))}`;
+  }
+
+  if (isBot) {
+    const locator = locatorColorFromUuid(profile.uuid);
+    const locatorHex = locator ? `#${locator.renderedHex.toUpperCase()}` : '';
+    const locatorCard = locator
+      ? profileCardHtml(host.t('msgr.profileLocatorBar'), locatorHex, host.t('msgr.profileLocatorBarSub'), {
+          iconColor: locatorHex,
+          clickAct: 'copy-locator-color',
+          cardKey: 'locator',
+        })
+      : '';
+    rowsEl.innerHTML =
+      `<div class="msgr-profile-bot-banner">
+        <div class="msgr-profile-bot-banner__title">${host.escapeHtml(host.t('msgr.botProfileTitle'))}</div>
+        <div class="msgr-profile-bot-banner__text">${host.escapeHtml(host.t('msgr.botProfileDesc'))}</div>
+      </div>` +
+      profileCardHtml(host.t('msgr.profileLastSeen'), host.t('msgr.online'), host.t('msgr.botAlwaysOnline'), {
+        iconText: 'ON',
+        cardKey: 'lastSeen',
+      }) +
+      locatorCard +
+      `<div class="msgr-profile__cards-row">` +
+      profileCardHtml(host.t('msgr.profileAccountType'), host.t('msgr.botAccountType'), PROJECT_BOT_UACC_ID, {
+        iconUrl: ICON_UACC,
+        iconSize: 24,
+      }) +
+      profileCardHtml(
+        host.t('msgr.profileJoined'),
+        formatJoined(profile.createdAt),
+        profile.sharedChats != null
+          ? host.t('msgr.profileShared', { n: String(profile.sharedChats) })
+          : undefined,
+        { iconUrl: ICON_JOINED, iconSize: 30 },
+      ) +
+      `</div>`;
+
+    rowsEl.onclick = async (e) => {
+      const card = (e.target as HTMLElement).closest('[data-card-act]') as HTMLElement | null;
+      const act = card?.getAttribute('data-card-act');
+      if (act === 'copy-locator-color' && locatorHex) {
+        try {
+          await navigator.clipboard.writeText(locatorHex);
+          toast(host!.t('msgr.profileLocatorCopied', { color: locatorHex }));
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    membersEl.hidden = false;
+    membersEl.innerHTML = '';
+    setProfileTabsVisible(false);
+    setProfileSkinPanel('dm');
+    if (fallback) fallback.textContent = profile.username.slice(0, 1).toUpperCase();
+    await ensureProfileViewer(fullSkinTextureUrl(profile), true, profile.uuid);
+
+    actionsEl.innerHTML = '';
+    actionsEl.hidden = true;
+    return;
   }
 
   const a = profile.activity;
@@ -3408,6 +4097,15 @@ async function fillDmProfile(
   const accountTitle = providerLabelFull(profile.provider);
   const accountSub = shortUuid(profile.uuid);
   const playingIcon = a?.playing && a.build ? resolveBuildCardIcon(a.build, true) : null;
+  const locator = locatorColorFromUuid(profile.uuid);
+  const locatorHex = locator ? `#${locator.renderedHex.toUpperCase()}` : '';
+  const locatorCard = locator
+    ? profileCardHtml(host.t('msgr.profileLocatorBar'), locatorHex, host.t('msgr.profileLocatorBarSub'), {
+        iconColor: locatorHex,
+        clickAct: 'copy-locator-color',
+        cardKey: 'locator',
+      })
+    : '';
   rowsEl.innerHTML =
     profileCardHtml(host.t('msgr.profileLastSeen'), formatLastSeen(profile.lastSeenAt), undefined, {
       iconText: online ? 'ON' : 'OFF',
@@ -3430,6 +4128,7 @@ async function fillDmProfile(
       iconUrl: resolveBuildCardIcon(favRaw, Boolean(favRaw)),
       iconText: fav,
     }) +
+    locatorCard +
     `<div class="msgr-profile__cards-row">` +
     profileCardHtml(host.t('msgr.profileAccountType'), accountTitle, accountSub, {
       iconUrl: providerIconUrl(profile.provider),
@@ -3445,12 +4144,25 @@ async function fillDmProfile(
     ) +
     `</div>`;
 
+  rowsEl.onclick = async (e) => {
+    const card = (e.target as HTMLElement).closest('[data-card-act]') as HTMLElement | null;
+    const act = card?.getAttribute('data-card-act');
+    if (act === 'copy-locator-color' && locatorHex) {
+      try {
+        await navigator.clipboard.writeText(locatorHex);
+        toast(host!.t('msgr.profileLocatorCopied', { color: locatorHex }));
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
   membersEl.hidden = false;
   membersEl.innerHTML = '';
   setProfileTabsVisible(false);
   setProfileSkinPanel('dm');
   if (fallback) fallback.textContent = profile.username.slice(0, 1).toUpperCase();
-  await ensureProfileViewer(fullSkinTextureUrl(profile), online);
+  await ensureProfileViewer(fullSkinTextureUrl(profile), online, profile.uuid);
 
   const blocked = Boolean(profile.blockedByMe);
   const fs = String(profile.friendship || 'none');
@@ -3501,6 +4213,7 @@ async function fillDmProfile(
     .filter(Boolean)
     .join('');
 
+  actionsEl.hidden = false;
   actionsEl.innerHTML = renderProfileActionsBar(primaryBtns, menuItems);
 
   bindProfileActionsBar(actionsEl, async (act) => {
@@ -3700,18 +4413,33 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
 
   // Группа
   openProfileUser = null;
-  titleEl.textContent = conv.title;
-  badgesEl.innerHTML = `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t('msgr.group'))}</span>`;
+  const projectTitle = conv.isProject ? host.t('msgr.projectChat') : conv.title;
+  titleEl.textContent = projectTitle;
+  badgesEl.innerHTML = conv.isProject
+    ? `<span class="msgr-badge msgr-badge--project">${host.escapeHtml(host.t('msgr.projectChatBadge'))}</span>`
+    : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t('msgr.group'))}</span>`;
   avatarEl.innerHTML = groupAvatarHtml(conv, 44);
   statusEl.className = 'msgr-profile__status';
-  statusEl.textContent = host.t('msgr.members', { n: String(conv.members?.length || 0) });
+  statusEl.textContent = groupOnlineMembersLabel(conv);
 
   const aboutCard = profileCardHtml(
     host.t('msgr.profileAbout'),
     conv.description || host.t('msgr.profileNoAbout'),
     conv.myRole || 'member',
-    { iconText: conv.title },
+    { iconText: projectTitle },
   );
+  const rulesMd = conv.rules?.trim() || '';
+  const rulesBody = rulesMd
+    ? host.renderMarkdown
+      ? host.renderMarkdown(rulesMd)
+      : host.escapeHtml(rulesMd)
+    : host.escapeHtml(host.t('msgr.profileNoRules'));
+  const rulesCard = `<div class="msgr-profile-card msgr-profile-card--rules">
+    <div class="msgr-profile-card__meta msgr-profile-card__meta--wide">
+      <div class="msgr-profile-card__label">${host.escapeHtml(host.t('msgr.profileRules'))}</div>
+      <div class="msgr-md ai-md">${rulesBody}</div>
+    </div>
+  </div>`;
   const buildName = conv.groupBuildName || '';
   const buildCard = buildName
     ? profileCardHtml(host.t('msgr.profileGroupBuild'), buildName, conv.groupBuildMeta || undefined, {
@@ -3720,7 +4448,7 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
         clickAct: 'open-group-build',
       })
     : '';
-  rowsEl.innerHTML = aboutCard + buildCard;
+  rowsEl.innerHTML = aboutCard + rulesCard + buildCard;
   rowsEl.onclick = (e) => {
     const card = (e.target as HTMLElement).closest('[data-card-act]') as HTMLElement | null;
     const act = card?.getAttribute('data-card-act');
@@ -3769,6 +4497,18 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
         menuItems.push(
           `<button type="button" class="is-danger" data-kick="${host!.escapeHtml(m.id)}">${host!.escapeHtml(host!.t('msgr.actionKick'))}</button>`,
         );
+        if (m.mute) {
+          menuItems.push(
+            `<button type="button" data-unmute="${host!.escapeHtml(m.id)}">${host!.escapeHtml(host!.t('msgr.actionUnmuteMember'))}</button>`,
+          );
+        } else {
+          menuItems.push(
+            `<button type="button" data-mute-member="${host!.escapeHtml(m.id)}" data-mute-min="15">${host!.escapeHtml(host!.t('msgr.actionMuteMember'))}: ${host!.escapeHtml(host!.t('msgr.mute15m'))}</button>`,
+            `<button type="button" data-mute-member="${host!.escapeHtml(m.id)}" data-mute-min="60">${host!.escapeHtml(host!.t('msgr.actionMuteMember'))}: ${host!.escapeHtml(host!.t('msgr.mute1h'))}</button>`,
+            `<button type="button" data-mute-member="${host!.escapeHtml(m.id)}" data-mute-min="1440">${host!.escapeHtml(host!.t('msgr.actionMuteMember'))}: ${host!.escapeHtml(host!.t('msgr.mute24h'))}</button>`,
+            `<button type="button" data-mute-member="${host!.escapeHtml(m.id)}" data-mute-forever="1">${host!.escapeHtml(host!.t('msgr.actionMuteMember'))}: ${host!.escapeHtml(host!.t('msgr.muteForever'))}</button>`,
+          );
+        }
       }
       const more = menuItems.length
         ? `<div class="msgr-profile__member-more">
@@ -3830,18 +4570,48 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
       void openProfileModal().then(() => setProfilePanelTab('members', false));
       return;
     }
-    // Клик по участнику → его карточка
+    const unmuteBtn = (e.target as HTMLElement).closest('[data-unmute]') as HTMLElement | null;
+    const unmuteUid = unmuteBtn?.getAttribute('data-unmute');
+    if (unmuteUid) {
+      await req(
+        `/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(unmuteUid)}/mute`,
+        { method: 'DELETE', body: {} },
+      );
+      await loadConversations();
+      void openProfileModal().then(() => setProfilePanelTab('members', false));
+      return;
+    }
+    const muteBtn = (e.target as HTMLElement).closest('[data-mute-member]') as HTMLElement | null;
+    const muteUid = muteBtn?.getAttribute('data-mute-member');
+    if (muteUid) {
+      const forever = muteBtn?.getAttribute('data-mute-forever') === '1';
+      const minutes = Number(muteBtn?.getAttribute('data-mute-min') || 60);
+      await req(
+        `/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(muteUid)}/mute`,
+        {
+          method: 'POST',
+          body: forever ? { forever: true } : { minutes },
+        },
+      );
+      await loadConversations();
+      void openProfileModal().then(() => setProfilePanelTab('members', false));
+      return;
+    }
+    // Клик по участнику → его карточка (без close: иначе closeModal через 120мс снова скроет окно)
     if ((e.target as HTMLElement).closest('.msgr-profile__member-menu')) return;
     const row = (e.target as HTMLElement).closest('.msgr-profile__member[data-user-id]') as HTMLElement | null;
     const userId = row?.getAttribute('data-user-id');
     if (!userId) return;
-    closeProfileModal();
-    void openProfileByUserId(userId);
+    e.preventDefault();
+    e.stopPropagation();
+    void openProfileModal({ userId });
   };
 
   const menuItems: ProfileMenuItem[] = [];
   if (canMod) {
-    menuItems.push({ act: 'rename', label: host.t('msgr.actionRename') });
+    if (!conv.isProject) {
+      menuItems.push({ act: 'rename', label: host.t('msgr.actionRename') });
+    }
     menuItems.push({ act: 'description', label: host.t('msgr.actionDescription') });
     menuItems.push({
       act: 'group-build',
@@ -3866,6 +4636,15 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
     }
     menuItems.push({ act: 'add', label: host.t('msgr.actionAddMembers') });
     menuItems.push({ act: 'invite-link', label: host.t('msgr.actionInviteLink') });
+    menuItems.push({ act: 'rules', label: host.t('msgr.actionRules') });
+    if (conv.isProject) {
+      menuItems.push({ act: 'bot-toggle', label: host.t('msgr.botToggle') });
+      menuItems.push({ act: 'bot-name', label: host.t('msgr.botName') });
+      menuItems.push({ act: 'bot-avatar', label: host.t('msgr.botAvatar') });
+      menuItems.push({ act: 'bot-broadcast', label: host.t('msgr.botBroadcast') });
+      menuItems.push({ act: 'bot-command', label: host.t('msgr.botAddCommand') });
+      menuItems.push({ act: 'bot-schedule', label: host.t('msgr.botAddSchedule') });
+    }
   }
   menuItems.push({
     act: 'mute',
@@ -3885,14 +4664,15 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
     label: host.t(isConvPinned(conv.id) ? 'msgr.actionUnpin' : 'msgr.actionPin'),
   });
   menuItems.push({ act: 'copy-title', label: host.t('msgr.actionCopyGroupName') });
-  if (conv.myRole === 'owner') {
+  if (conv.myRole === 'owner' && !conv.isProject) {
     menuItems.push({ act: 'delete', label: host.t('msgr.actionDeleteGroup'), danger: true });
   }
 
-  actionsEl.innerHTML = renderProfileActionsBar(
-    `<button type="button" class="stngs-btn danger" data-act="leave">${host.escapeHtml(host.t('msgr.actionLeave'))}</button>`,
-    menuItems,
-  );
+  const leaveBtn = conv.isProject
+    ? ''
+    : `<button type="button" class="stngs-btn danger" data-act="leave">${host.escapeHtml(host.t('msgr.actionLeave'))}</button>`;
+  actionsEl.hidden = false;
+  actionsEl.innerHTML = renderProfileActionsBar(leaveBtn, menuItems);
 
   bindProfileActionsBar(actionsEl, async (act) => {
     if (act === 'rename') {
@@ -3927,6 +4707,166 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
       });
       await loadConversations();
       void openProfileModal();
+      return;
+    }
+    if (act === 'rules') {
+      const rules = await askPromptText({
+        title: host!.t('msgr.actionRules'),
+        sub: host!.t('msgr.rulesMarkdownHint'),
+        value: conv.rules || '',
+        placeholder: host!.t('msgr.rulesMarkdownPlaceholder'),
+        okLabel: host!.t('btn.save'),
+        maxLength: 12000,
+        multiline: true,
+      });
+      if (rules == null) return;
+      await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+        method: 'PATCH',
+        body: { rules },
+      });
+      await loadConversations();
+      void openProfileModal();
+      return;
+    }
+    // ===== Управление ботом «Чата проекта» =====
+    if (act === 'bot-toggle' || act === 'bot-name' || act === 'bot-avatar' || act === 'bot-broadcast' || act === 'bot-command' || act === 'bot-schedule') {
+      try {
+        if (act === 'bot-toggle') {
+          const cur = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`);
+          const enabled = Boolean(cur?.data?.bot?.enabled);
+          const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`, {
+            method: 'PATCH',
+            body: { enabled: !enabled },
+          });
+          toast(host!.t(res?.ok ? 'msgr.botOk' : 'msgr.botFailed', { msg: res?.error || '' }));
+          return;
+        }
+        if (act === 'bot-name') {
+          const cur = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`);
+          const name = await askPromptText({
+            title: host!.t('msgr.botName'),
+            value: String(cur?.data?.bot?.displayName || ''),
+            okLabel: host!.t('btn.save'),
+            maxLength: 64,
+          });
+          if (!name?.trim()) return;
+          const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`, {
+            method: 'PATCH',
+            body: { displayName: name.trim() },
+          });
+          toast(host!.t(res?.ok ? 'msgr.botOk' : 'msgr.botFailed', { msg: res?.error || '' }));
+          return;
+        }
+        if (act === 'bot-avatar') {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/png,image/jpeg,image/webp';
+          input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+              const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`, {
+                method: 'PATCH',
+                body: { avatarDataUrl: String(reader.result || '') },
+              });
+              if (res?.ok) {
+                const botId = 'bot:project';
+                avatarCache.delete(botId);
+                avatarInflight.delete(botId);
+                const avatarUrl = res.data?.bot?.avatarUrl as string | null | undefined;
+                if (avatarUrl) {
+                  for (const c of conversations) {
+                    const member = c.members?.find((u) => u.id === botId);
+                    if (member) member.skinUrl = avatarUrl;
+                    if (c.peer?.id === botId) c.peer.skinUrl = avatarUrl;
+                  }
+                  avatarCache.set(botId, resolveMsgrMediaUrl(avatarUrl, Date.now()));
+                  applyAvatarsInDom(botId);
+                }
+                toast(host!.t('msgr.botOk'));
+              } else {
+                toast(host!.t('msgr.botFailed', { msg: res?.error || '' }));
+              }
+            };
+            reader.readAsDataURL(file);
+          };
+          input.click();
+          return;
+        }
+        if (act === 'bot-broadcast') {
+          const body = await askPromptText({
+            title: host!.t('msgr.botBroadcast'),
+            placeholder: host!.t('msgr.botBroadcastHint'),
+            okLabel: host!.t('msgr.botBroadcast'),
+            maxLength: 2000,
+          });
+          if (!body?.trim()) return;
+          const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot/broadcast`, {
+            method: 'POST',
+            body: { body: body.trim() },
+          });
+          if (res?.ok && res.data?.message) {
+            if (activeId === conv.id) upsertIncomingMessage(res.data.message);
+            toast(host!.t('msgr.botOk'));
+          } else {
+            toast(host!.t('msgr.botFailed', { msg: res?.error || '' }));
+          }
+          return;
+        }
+        if (act === 'bot-command') {
+          const name = await askPromptText({
+            title: host!.t('msgr.botAddCommand'),
+            sub: host!.t('msgr.botCommandName'),
+            placeholder: 'help',
+            okLabel: host!.t('btn.save'),
+            maxLength: 32,
+          });
+          if (!name?.trim()) return;
+          const response = await askPromptText({
+            title: host!.t('msgr.botAddCommand'),
+            sub: host!.t('msgr.botCommandResponse'),
+            okLabel: host!.t('btn.save'),
+            maxLength: 2000,
+          });
+          if (response == null) return;
+          const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot/commands`, {
+            method: 'POST',
+            body: { name: name.trim().replace(/^\//, ''), response },
+          });
+          toast(host!.t(res?.ok ? 'msgr.botOk' : 'msgr.botFailed', { msg: res?.error || '' }));
+          return;
+        }
+        if (act === 'bot-schedule') {
+          const time = await askPromptText({
+            title: host!.t('msgr.botAddSchedule'),
+            sub: host!.t('msgr.botScheduleTime'),
+            placeholder: '09:00',
+            okLabel: 'OK',
+            maxLength: 5,
+          });
+          if (!time?.trim() || !/^\d{1,2}:\d{2}$/.test(time.trim())) {
+            toast(host!.t('msgr.botFailed', { msg: 'HH:MM' }));
+            return;
+          }
+          const body = await askPromptText({
+            title: host!.t('msgr.botAddSchedule'),
+            sub: host!.t('msgr.botScheduleBody'),
+            okLabel: host!.t('btn.save'),
+            maxLength: 2000,
+          });
+          if (!body?.trim()) return;
+          const hhmm = time.trim().replace(/^(\d):/, '0$1:');
+          const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot/schedules`, {
+            method: 'POST',
+            body: { time: hhmm, body: body.trim() },
+          });
+          toast(host!.t(res?.ok ? 'msgr.botOk' : 'msgr.botFailed', { msg: res?.error || '' }));
+          return;
+        }
+      } catch (e: any) {
+        toast(host!.t('msgr.botFailed', { msg: e?.message || 'error' }));
+      }
       return;
     }
     if (act === 'group-build') {
@@ -4135,6 +5075,7 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
       return;
     }
     if (act === 'leave' && me) {
+      if (conv.isProject) return;
       await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(me.id)}`, {
         method: 'DELETE',
       });
@@ -4147,6 +5088,7 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
       return;
     }
     if (act === 'delete') {
+      if (conv.isProject) return;
       await req(`/conversations/${encodeURIComponent(conv.id)}`, { method: 'DELETE' });
       closeProfileModal();
       activeId = null;
@@ -4181,6 +5123,34 @@ function onRealtimePayload(eventName: string, data: any): void {
     void loadConversations();
     return;
   }
+  if (eventName === 'reaction' && data?.message) {
+    const msg = data.message as MessengerMessage;
+    if (msg.conversationId === activeId) upsertIncomingMessage(msg);
+    return;
+  }
+  if (
+    (eventName === 'member_muted' || eventName === 'member_unmuted') &&
+    data?.conversationId
+  ) {
+    if (data.conversation) {
+      const idx = conversations.findIndex((c) => c.id === data.conversationId);
+      if (idx >= 0) conversations[idx] = data.conversation;
+      else void loadConversations();
+    } else {
+      void loadConversations();
+    }
+    if (data.conversationId === activeId) {
+      applyComposerMuteState();
+      renderPeerHeader();
+      const overlay = $('modal-msgr-profile');
+      if (overlay && !overlay.classList.contains('hidden')) {
+        void openProfileModal().then(() => setProfilePanelTab(profilePanelTab, false));
+      }
+    } else {
+      renderConversationList();
+    }
+    return;
+  }
   if (eventName === 'friend') {
     if (railTab !== 'chats') void refreshFriendsRail();
     if (data?.type === 'request' && data?.from?.username) {
@@ -4201,6 +5171,10 @@ function onRealtimePayload(eventName: string, data: any): void {
   if (eventName === 'activity' && data?.userId) {
     applyActivityToUsers(data.userId, data);
     if (railTab === 'worlds') renderWorldsList();
+    return;
+  }
+  if (eventName === 'typing') {
+    notePeerTyping(data || {});
     return;
   }
   if (eventName === 'game_invite' && data?.from?.id) {
@@ -4280,7 +5254,18 @@ function onRealtimePayload(eventName: string, data: any): void {
         renderMessages();
       }
     }
-    void loadConversations();
+    if (data?.conversation && data.conversationId) {
+      const idx = conversations.findIndex((c) => c.id === data.conversationId);
+      if (idx >= 0) conversations[idx] = data.conversation;
+    }
+    void loadConversations().then(() => {
+      applyComposerMuteState();
+      renderPinBar();
+      // Обновляем галочки «прочитано» без сброса скролла
+      if (activeId && (eventName === 'read' || eventName === 'conversation_updated')) {
+        renderMessages();
+      }
+    });
   }
 }
 
@@ -4326,12 +5311,16 @@ function connectStream(token: string): void {
   stream.addEventListener('conversation', handle('conversation'));
   stream.addEventListener('conversation_updated', handle('conversation_updated'));
   stream.addEventListener('member_changed', handle('member_changed'));
+  stream.addEventListener('member_muted', handle('member_muted'));
+  stream.addEventListener('member_unmuted', handle('member_unmuted'));
+  stream.addEventListener('reaction', handle('reaction'));
   stream.addEventListener('activity', handle('activity'));
   stream.addEventListener('presence', handle('presence'));
   stream.addEventListener('read', handle('read'));
   stream.addEventListener('friend', handle('friend'));
   stream.addEventListener('game_invite', handle('game_invite'));
   stream.addEventListener('game_invite_ended', handle('game_invite_ended'));
+  stream.addEventListener('typing', handle('typing'));
   stream.onerror = () => {
     /* EventSource переподключится сам */
   };
@@ -4375,7 +5364,43 @@ function bindUi(): void {
   });
   $('msgr-reply-clear')?.addEventListener('click', () => setReplyTo(null));
 
+  $('msgr-pin-bar-main')?.addEventListener('click', () => {
+    const conv = conversations.find((c) => c.id === activeId);
+    const id = conv?.pinnedMessageId || conv?.pinnedMessage?.id;
+    if (id) scrollToMessageId(id);
+  });
+  $('msgr-pin-bar-unpin')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void clearPinnedMessage();
+  });
+
   const messagesEl = $('msgr-messages');
+  messagesEl?.addEventListener('scroll', () => {
+    if (!messagesEl || messagesLoadingOlder || !messagesHasMore) return;
+    if (messagesEl.scrollTop <= 48) void loadOlderMessages();
+  });
+  messagesEl?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-msgr-open-updates]')) {
+      e.preventDefault();
+      host?.openSettingsTab?.('updates');
+      return;
+    }
+    const replyBtn = (e.target as HTMLElement).closest('[data-reply-to]') as HTMLElement | null;
+    const replyId = replyBtn?.getAttribute('data-reply-to');
+    if (replyId) {
+      e.preventDefault();
+      scrollToMessageId(replyId);
+      return;
+    }
+    const reactBtn = (e.target as HTMLElement).closest('[data-react-emoji]') as HTMLElement | null;
+    const emoji = reactBtn?.getAttribute('data-react-emoji');
+    const reactMsgId = reactBtn?.getAttribute('data-msg-id');
+    if (emoji && reactMsgId) {
+      e.preventDefault();
+      void toggleReaction(reactMsgId, emoji);
+    }
+  });
   messagesEl?.addEventListener('contextmenu', (e) => {
     const row = (e.target as HTMLElement).closest('.msgr-bubble-row') as HTMLElement | null;
     const msgId = row?.getAttribute('data-msg-id');
@@ -4402,10 +5427,24 @@ function bindUi(): void {
         },
       },
     ];
+    // Быстрые реакции в контекстном меню
+    for (const emoji of REACTION_EMOJIS) {
+      items.push({
+        label: `${host.t('msgr.react')} ${emoji}`,
+        action: () => void toggleReaction(msg.id, emoji),
+      });
+    }
     if (conv?.type === 'group' && msg.senderId && msg.senderId !== me?.id) {
       items.push({
         label: host.t('msgr.actionOpenProfile'),
         action: () => void openProfileByUserId(msg.senderId),
+      });
+    }
+    if (conv && (conv.myRole === 'owner' || conv.myRole === 'admin')) {
+      const isPinned = conv.pinnedMessageId === msg.id;
+      items.push({
+        label: host.t(isPinned ? 'msgr.unpinMessage' : 'msgr.pinMessage'),
+        action: () => void (isPinned ? clearPinnedMessage() : pinMessage(msg.id)),
       });
     }
     if (canDelete) {
@@ -4464,9 +5503,11 @@ function bindUi(): void {
     if (!input) return;
     input.style.height = 'auto';
     input.style.height = `${Math.min(160, input.scrollHeight)}px`;
+    if (input.value.trim()) scheduleTypingPulse();
   });
 
   $('msgr-new-group')?.addEventListener('click', () => void createGroup());
+  $('msgr-browse-users')?.addEventListener('click', () => setRailTab('users'));
   $('msgr-retry')?.addEventListener('click', () => void ensureMessengerTab(true));
 
   $('msgr-tab-chats')?.addEventListener('click', () => setRailTab('chats'));
@@ -4477,6 +5518,16 @@ function bindUi(): void {
   });
   $('msgr-profile-tab-info')?.addEventListener('click', () => setProfilePanelTab('info'));
   $('msgr-profile-tab-members')?.addEventListener('click', () => setProfilePanelTab('members'));
+  $('msgr-profile-tab-media')?.addEventListener('click', () => setProfilePanelTab('media'));
+  $('msgr-profile-media-grid')?.addEventListener('click', (e) => {
+    const mediaBtn = (e.target as HTMLElement).closest('[data-msgr-media]') as HTMLElement | null;
+    const mediaKind = mediaBtn?.getAttribute('data-msgr-media');
+    const mediaMsgId = mediaBtn?.getAttribute('data-msg-id');
+    if (mediaMsgId && (mediaKind === 'image' || mediaKind === 'video')) {
+      e.preventDefault();
+      openMediaViewer(mediaMsgId, mediaKind);
+    }
+  });
   // Начальное положение pill у «Чаты»
   $('msgr-rail-tabs')?.setAttribute('data-active', 'chats');
   $('msgr-rail-pages')?.setAttribute('data-dir', 'right');
@@ -4490,6 +5541,11 @@ function bindUi(): void {
   if (worldsInit) {
     worldsInit.hidden = false;
     worldsInit.classList.remove('is-active');
+  }
+  const usersInit = $('msgr-users-list');
+  if (usersInit) {
+    usersInit.hidden = false;
+    usersInit.classList.remove('is-active');
   }
 
   // Делегирование: панель хоста и список миров перерисовываются динамически
@@ -4604,6 +5660,23 @@ function bindUi(): void {
     })();
   });
 
+  $('msgr-users-list')?.addEventListener('click', (e) => {
+    const dirBtn = (e.target as HTMLElement).closest('[data-user-dir-act]') as HTMLElement | null;
+    const dirAct = dirBtn?.getAttribute('data-user-dir-act');
+    if (dirAct === 'back-chats') {
+      setRailTab('chats');
+      return;
+    }
+    const btn = (e.target as HTMLElement).closest('[data-friend-act]') as HTMLElement | null;
+    const act = btn?.getAttribute('data-friend-act');
+    const userId = btn?.getAttribute('data-user-id') || '';
+    if (!act || !userId) return;
+    void (async () => {
+      if (act === 'write') await startDm(userId);
+      else if (act === 'profile') await openProfileByUserId(userId);
+    })();
+  });
+
   // ===== Вложения: меню «+», чипы, скачивание / открытие =====
   const attachBtn = $('msgr-attach');
   attachBtn?.addEventListener('click', (e) => {
@@ -4618,6 +5691,14 @@ function bindUi(): void {
     const kind = item?.getAttribute('data-msgr-attach');
     if (kind === 'file') void pickMessengerFiles();
     if (kind === 'media') void pickMessengerFiles({ media: true });
+    if (kind === 'build') {
+      setAttachMenuOpen(false);
+      void shareBuildFromChat();
+    }
+    if (kind === 'world') {
+      setAttachMenuOpen(false);
+      void shareWorldFromChat();
+    }
   });
   $('msgr-attach-chips')?.addEventListener('click', (e) => {
     const chip = (e.target as HTMLElement).closest('[data-pending-idx]') as HTMLElement | null;
@@ -4966,8 +6047,12 @@ export async function ensureMessengerTab(force = false): Promise<void> {
     renderPresence(myPresenceStatus === 'offline' ? 'offline' : 'online');
     if (!pollTimer) startPolling();
     void loadConversations();
-    if (activeId) void loadMessages(activeId);
-    else renderPeerHeader();
+    if (activeId) {
+      void loadMessages(activeId, { forceScrollBottom: !isMessagesThreadPainted() });
+      renderPeerHeader();
+    } else {
+      renderPeerHeader();
+    }
     updateSharePanel();
     return;
   }
@@ -5007,8 +6092,13 @@ export async function ensureMessengerTab(force = false): Promise<void> {
   if (sessionToken) connectStream(sessionToken);
   await syncLauncherStats();
   await loadConversations();
-  if (activeId) await loadMessages(activeId);
-  else renderPeerHeader();
+  if (activeId) {
+    // После сессии me появился — если лента ещё не в DOM, нарисовать и прокрутить вниз
+    await loadMessages(activeId, { forceScrollBottom: true });
+    renderPeerHeader();
+  } else {
+    renderPeerHeader();
+  }
   updateSharePanel();
   startPolling();
 }

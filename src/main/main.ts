@@ -19,6 +19,14 @@ import { registerInstanceShareIpc } from './instanceShare';
 import { registerInstanceExportIpc } from './exportInstance';
 import { listAiToolSchemas, registerAiToolIpc } from './ai-tools';
 
+// ===== GPU / DirectX (ANGLE) до app.ready =====
+// На Windows Chromium рисует WebGL через ANGLE→D3D11 — стабильный путь для
+// суперсэмплинга и композитинга skinviewengine. Обязательно до whenReady().
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('use-angle', 'd3d11');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+}
+
 // ===== Ленивая загрузка модуля просмотра мира =====
 // worldViewer тянет prismarine-nbt (~100 мс на require), а нужен только при
 // открытии окна мира или запросе списка миров. Подключаем при первом обращении
@@ -335,10 +343,10 @@ function createWorldWindow(worldPath = ''): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1028,
-    height: 710,
-    minWidth: 1028,
-    minHeight: 710,
+    width: 1100,
+    height: 800,
+    minWidth: 1100,
+    minHeight: 800,
     frame: false,
     transparent: false,
     backgroundColor: '#2A2A2A',

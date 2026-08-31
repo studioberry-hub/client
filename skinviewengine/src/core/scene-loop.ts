@@ -22,10 +22,13 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  NearestFilter,
   PerspectiveCamera,
   Raycaster,
   Scene,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -53,6 +56,10 @@ import {
 import { applyStockLegPose } from "./skin-leg-stock.js";
 import { OuterVoxelLayers } from "./skin-outer-voxel.js";
 import {
+  locatorColorFromUuid,
+  type LocatorColor,
+} from "./locator-color.js";
+import {
   animationControlsLegs,
   applyPose,
   blendPoses,
@@ -62,6 +69,7 @@ import {
   easeOutCubic,
   HeroIdleAnimation,
   resetLimbPose,
+  SleepAnimation,
   type PoseSnapshot,
   type ShotPresetId,
   type SkinAnimation,
@@ -99,11 +107,23 @@ export { DEFAULT_SKIN_DEBUG_OPTIONS };
 /** Имя движка в оверлее отладки лаунчера */
 export const ENGINE_DISPLAY_NAME = "Mine3D Embedded";
 /** Версия движка для HUD отладки */
-export const ENGINE_VERSION = "0.2.0";
+export const ENGINE_VERSION = "1.0.1";
 
-/** Верхняя граница devicePixelRatio — баланс резкости и производительности */
-/** Чуть выше 2 — SMAA лучше цепляет края на HiDPI */
-const MAX_PIXEL_RATIO = 2.5;
+/** Верхняя граница devicePixelRatio / суперсэмплинга */
+const MAX_PIXEL_RATIO = 3;
+/**
+ * Минимум для продуктового вьювера.
+ * При 100% DPI Windows (devicePixelRatio=1) без этого силуэт — чистая «лесенка»:
+ * backing-store 1:1 и браузер не даунскейлит.
+ */
+const MIN_PRODUCT_PIXEL_RATIO = 2;
+
+/** Эффективный pixelRatio: не ниже минимума на основном вьювере с эффектами */
+function resolveProductPixelRatio(enableEffects: boolean): number {
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const floor = enableEffects ? MIN_PRODUCT_PIXEL_RATIO : 1;
+  return Math.min(MAX_PIXEL_RATIO, Math.max(dpr, floor));
+}
 
 /** Ближняя/дальняя плоскости камеры; модель ~32 units, орбита ≥ 18 units */
 const CAMERA_NEAR = 1;
@@ -174,8 +194,8 @@ export class SkinViewEngine {
   /** Кроссфейд между анимациями */
   private _blendFrom: PoseSnapshot | null = null;
   private _blendElapsed = 0;
-  /** Короткий кроссфейд — смена анимации ощущается почти мгновенной */
-  private readonly _blendDuration = 0.12;
+  /** Кроссфейд при смене анимации — чуть мягче */
+  private readonly _blendDuration = 0.22;
   /** Взгляд за курсором (только поверх idle) */
   private _cursorFollow = false;
   private _cursorAimX = 0;
@@ -229,6 +249,12 @@ export class SkinViewEngine {
   private _shotPreset: ShotPresetId | null = null;
   /** Частицы / «переоделся» — выкл. на мини-превью */
   private readonly _enableEffects: boolean;
+  /** Маркер Locator Bar над головой */
+  private _locatorMarker: Sprite | null = null;
+  private _locatorTexture: CanvasTexture | null = null;
+  private _locatorUuid: string | null = null;
+  private _locatorColor: LocatorColor | null = null;
+  private _locatorVisible = true;
 
   constructor(canvas: HTMLCanvasElement, options: EngineOptions = {}) {
     this.canvas = canvas;
@@ -273,14 +299,17 @@ export class SkinViewEngine {
     this.camera = new PerspectiveCamera(this._fov, 1, CAMERA_NEAR, CAMERA_FAR);
 
     // alpha всегда включён — прозрачный режим переключается setClearColor/background
+    // При post-FX MSAA канваса выключаем: с NearestFilter он даёт кайму по UV,
+    // силуэт сглаживает суперсэмплинг (pixelRatio≥2); blur кадра не используем.
+    const useCanvasAA = options.antialias ?? !this._enableEffects;
     this.renderer = new WebGLRenderer({
       canvas: this.canvas,
-      antialias: options.antialias ?? true,
+      antialias: useCanvasAA,
       alpha: true,
       premultipliedAlpha: false,
       powerPreference: "high-performance",
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+    this.renderer.setPixelRatio(resolveProductPixelRatio(this._enableEffects));
     this.renderer.setClearColor(0x222222, 1);
     this.renderer.sortObjects = true;
     configureProductRenderer(this.renderer);
@@ -288,10 +317,12 @@ export class SkinViewEngine {
 
     this._envMap = setupSceneEnvironment(this.scene, this.renderer);
 
-    // Постпроцессинг: bloom + SMAA (не MSAA — с NearestFilter даёт чёрные/белые полосы)
+    // Постпроцессинг: суперсэмплинг + soft downsample (+ bloom)
     if (this._enableEffects) {
       this._postFx = new StudioPostFx(this.renderer, this.scene, this.camera);
       this._postFx.setPixelRatio(this.renderer.getPixelRatio());
+      const initSize = this.renderer.getSize(new Vector2());
+      this._postFx.setSize(initSize.width, initSize.height);
     }
 
     // ===== Модель игрока (skin3d) =====
@@ -406,6 +437,108 @@ export class SkinViewEngine {
   }
 
   /**
+   * UUID игрока → цвет маркера Locator Bar над головой.
+   * null — скрыть маркер (offline / нет UUID).
+   */
+  setLocatorUuid(uuid: string | null): void {
+    this._locatorUuid = uuid;
+    this._locatorColor = locatorColorFromUuid(uuid);
+    this._syncLocatorMarker();
+  }
+
+  get locatorUuid(): string | null {
+    return this._locatorUuid;
+  }
+
+  get locatorColor(): LocatorColor | null {
+    return this._locatorColor;
+  }
+
+  /** Показать/скрыть маркер без сброса UUID */
+  setLocatorVisible(visible: boolean): void {
+    this._locatorVisible = visible;
+    this._syncLocatorMarker();
+  }
+
+  get locatorVisible(): boolean {
+    return this._locatorVisible;
+  }
+
+  /** Маркер не показываем на пресетах под скриншот/рендер */
+  private _shouldShowLocator(): boolean {
+    return Boolean(this._locatorColor) && this._locatorVisible && !this._shotPreset;
+  }
+
+  private _syncLocatorMarker(): void {
+    if (!this._shouldShowLocator()) {
+      if (this._locatorMarker) this._locatorMarker.visible = false;
+      return;
+    }
+    if (!this._locatorMarker) {
+      this._locatorMarker = this._createLocatorMarker();
+      (this.playerObject as any).add(this._locatorMarker);
+    }
+    this._paintLocatorTexture(this._locatorColor!);
+    this._locatorMarker.visible = true;
+  }
+
+  private _createLocatorMarker(): Sprite {
+    const canvas = document.createElement("canvas");
+    canvas.width = 32;
+    canvas.height = 32;
+    const tex = new CanvasTexture(canvas);
+    tex.magFilter = NearestFilter;
+    tex.minFilter = NearestFilter;
+    this._locatorTexture = tex;
+    const mat = new SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    });
+    const sprite = new Sprite(mat);
+    sprite.name = "locator-bar-marker";
+    // Над головой (модель ~32 u; макушка ≈ 8–10)
+    sprite.position.set(0, 13.2, 0);
+    sprite.scale.set(2.4, 2.4, 1);
+    sprite.renderOrder = 20;
+    return sprite;
+  }
+
+  private _paintLocatorTexture(color: LocatorColor): void {
+    const tex = this._locatorTexture;
+    if (!tex) return;
+    const canvas = tex.image as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const s = canvas.width;
+    ctx.clearRect(0, 0, s, s);
+    // Квадратный маркер «вблизи» как на Locator Bar
+    const pad = 5;
+    const size = s - pad * 2;
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(pad - 1, pad - 1, size + 2, size + 2);
+    ctx.fillStyle = `#${color.renderedHex}`;
+    ctx.fillRect(pad, pad, size, size);
+    // Лёгкий блик сверху
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fillRect(pad, pad, size, Math.max(2, size * 0.22));
+    tex.needsUpdate = true;
+  }
+
+  private _disposeLocatorMarker(): void {
+    if (this._locatorMarker) {
+      this._locatorMarker.removeFromParent();
+      const mat = this._locatorMarker.material as SpriteMaterial;
+      mat.map = null;
+      mat.dispose();
+      this._locatorMarker = null;
+    }
+    this._locatorTexture?.dispose();
+    this._locatorTexture = null;
+  }
+
+  /**
    * Цель взгляда относительно сцены: центр = 0, y вверх.
    * Допускаем чуть больше ±1 — курсор на боковых панелях тоже тянет взгляд.
    */
@@ -447,6 +580,16 @@ export class SkinViewEngine {
     else this.setAnimation(new HeroIdleAnimation());
 
     this.resetCameraPose();
+    this._syncLocatorMarker();
+  }
+
+  /** Бюст-кадр: presentation=bust или пресеты bust/discord (ноги скрыты). */
+  private _isBustLikeFrame(): boolean {
+    return (
+      this._presentation === "bust" ||
+      this._shotPreset === "bust" ||
+      this._shotPreset === "discord"
+    );
   }
 
   /** Сброс пресета скриншота (ноги/yaw) — анимацию задаёт вызывающий код */
@@ -458,6 +601,7 @@ export class SkinViewEngine {
       this.playerObject.skin.rightLeg.visible = true;
     }
     this.setPlayerYaw(0);
+    this._syncLocatorMarker();
   }
 
   get transparentBackground(): boolean {
@@ -661,7 +805,6 @@ export class SkinViewEngine {
     this._modelType = type;
     this.playerObject.skin.modelType = toSkin3dModelType(type);
     this._applySkinUVInsets();
-    // Listeners skin3d сбрасывают scale рук — пересобираем 3D outer
     this._rebuildOuterVoxels();
     this._syncIdleModelSlim();
   }
@@ -725,7 +868,7 @@ export class SkinViewEngine {
       programs,
       postFx:
         this._postFx && !this._transparent && this._debugOpts.postFx
-          ? "bloom+SMAA"
+          ? "ssaa+bloom"
           : "direct",
       skinType: this._modelType,
       hasCape: !!(this.capeTexture && this.playerObject.cape.visible),
@@ -750,6 +893,23 @@ export class SkinViewEngine {
 
   get playerYaw(): number {
     return this.playerObject.rotation.y;
+  }
+
+  /** Доступ для инструментов (anim editor / отладка) */
+  get player(): PlayerObject {
+    return this.playerObject;
+  }
+
+  get threeScene(): Scene {
+    return this.scene;
+  }
+
+  get threeCamera(): PerspectiveCamera {
+    return this.camera;
+  }
+
+  get threeRenderer(): WebGLRenderer {
+    return this.renderer;
   }
 
   get disposed(): boolean {
@@ -896,14 +1056,20 @@ export class SkinViewEngine {
     // Стабильный кадр: без root-offset анимаций и без бленда
     this._blendFrom = null;
     resetLimbPose(this.playerObject);
-    if (this._presentation === "bust") {
-      const bust = new BustPoseAnimation(0);
+    const bustLike = this._isBustLikeFrame();
+    if (bustLike) {
+      // Важно: не применять stock-ноги — иначе presentation=full снова
+      // показывает ноги и кадр «ныряет» в конечности на пресетах bust/discord
+      const variant = this._shotPreset === "discord" ? 1 : 0;
+      const bust = new BustPoseAnimation(variant);
       bust.progress = 0.8;
       bust.update(this.playerObject, 0);
+      this.playerObject.skin.leftLeg.visible = false;
+      this.playerObject.skin.rightLeg.visible = false;
     } else {
       applyStockLegPose(this.playerObject.skin);
+      this._applyPresentationVisibility();
     }
-    this._applyPresentationVisibility();
 
     const result = fitObjectToFrame(this.playerWrapper, this.camera, this.lookTarget, {
       ...options,
@@ -916,7 +1082,12 @@ export class SkinViewEngine {
     if (this._animation) this._animation.progress = savedProgress;
     this._blendFrom = savedBlend;
     this._blendElapsed = savedBlendElapsed;
-    this._applyPresentationVisibility();
+    if (bustLike) {
+      this.playerObject.skin.leftLeg.visible = false;
+      this.playerObject.skin.rightLeg.visible = false;
+    } else {
+      this._applyPresentationVisibility();
+    }
 
     if (!result) return null;
 
@@ -1006,6 +1177,7 @@ export class SkinViewEngine {
     this._postFx = null;
     this._resizeObserver?.disconnect();
     this._outerVoxels.dispose(this.playerObject.skin);
+    this._disposeLocatorMarker();
     this.controls.dispose();
     this.skinTexture?.dispose();
     this.capeTexture?.dispose();
@@ -1458,7 +1630,7 @@ export class SkinViewEngine {
   }
 
   /**
-   * Основной вьювер — composer (SMAA; bloom опционален).
+   * Основной вьювер — composer (SSAA soft-downsample + bloom).
    * Transparent/превью — прямой рендер.
    * postFx из отладки учитывается только при включённой панели — иначе
    * старый localStorage postFx=false навсегда убивал сглаживание.
@@ -1473,10 +1645,18 @@ export class SkinViewEngine {
     this.renderer.render(this.scene, this.camera);
   }
 
-  /** Пыль у пола при толчке */
-  private _syncIdleFx(_deltaTime: number): void {
+  /** Пыль у пола при толчке + Zzz во время сна */
+  private _syncIdleFx(deltaTime: number): void {
     if (!this._enableEffects) return;
     if (this._debugEnabled && !this._debugOpts.particles) return;
+
+    if (this._animation instanceof SleepAnimation) {
+      // Точка над макушкой в локали персонажа — не внутри наклонённой головы
+      this._feetWorld.set(0.8, 14.2, 0);
+      this.playerObject.localToWorld(this._feetWorld);
+      this._particles.ensureSleepZzz(this._feetWorld, deltaTime);
+    }
+
     if (!(this._animation instanceof HeroIdleAnimation)) return;
     if (this._animation.consumeNudgeImpact()) {
       feetWorldPosition(this.playerObject, this._feetWorld);

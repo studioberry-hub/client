@@ -1,0 +1,72 @@
+[
+  {
+    "id": "wave",
+    "file": "wave.json",
+    "frames": 13,
+    "endTick": 70,
+    "bendFrames": 13
+  },
+  {
+    "id": "sneak",
+    "file": "sneak.json",
+    "frames": 16,
+    "endTick": 16,
+    "bendFrames": 16
+  },
+  {
+    "id": "look",
+    "file": "look.json",
+    "frames": 5,
+    "endTick": 40,
+    "bendFrames": 0
+  },
+  {
+    "id": "cool",
+    "file": "cool.json",
+    "frames": 3,
+    "endTick": 60,
+    "bendFrames": 3
+  },
+  {
+    "id": "sad",
+    "file": "sad.json",
+    "frames": 11,
+    "endTick": 70,
+    "bendFrames": 8
+  },
+  {
+    "id": "dance",
+    "file": "dance.json",
+    "frames": 20,
+    "endTick": 20,
+    "bendFrames": 20
+  },
+  {
+    "id": "victory",
+    "file": "victory.json",
+    "frames": 6,
+    "endTick": 100,
+    "bendFrames": 4
+  },
+  {
+    "id": "dab",
+    "file": "dab.json",
+    "frames": 7,
+    "endTick": 30,
+    "bendFrames": 2
+  },
+  {
+    "id": "think",
+    "file": "think.json",
+    "frames": 3,
+    "endTick": 100,
+    "bendFrames": 3
+  },
+  {
+    "id": "hello",
+    "file": "hello.json",
+    "frames": 28,
+    "endTick": 28,
+    "bendFrames": 28
+  }
+]

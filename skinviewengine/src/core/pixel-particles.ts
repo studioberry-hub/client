@@ -8,6 +8,7 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
+  NearestFilter,
   PlaneGeometry,
   Sprite,
   SpriteMaterial,
@@ -17,7 +18,7 @@ import {
 } from "three";
 import { FLOOR_Y } from "./product-visuals.js";
 
-type FxKind = "dust" | "firefly" | "pulse" | "mote";
+type FxKind = "dust" | "firefly" | "pulse" | "mote" | "zzz";
 
 interface Particle {
   obj: Object3D;
@@ -37,6 +38,7 @@ interface Particle {
 
 const MOTE_COLORS = [0xffffff, 0xe8eef8, 0xfff4e0, 0xd8e4ff];
 const AMBIENT_MOTE_TARGET = 12;
+const SLEEP_ZZZ_MAX = 3;
 
 const DUST_GEO = new BoxGeometry(1, 1, 1);
 const GLOW_GEO = new PlaneGeometry(1, 1);
@@ -44,11 +46,14 @@ const DUST_COLORS = [0x9a9284, 0xc4b498, 0x7a7468, 0xd2c4a8, 0xb0a898, 0xe8dcc8]
 
 /** Общая мягкая текстура для Sprite — не dispose на каждую частицу */
 const SOFT_GLOW_MAP = createSoftGlowTexture();
+/** Пиксельная Z для анимации сна */
+const PIXEL_Z_MAP = createPixelZTexture();
 
 /** Пиксельная пыль / аура смены скина */
 export class PixelParticles {
   readonly group = new Group();
   private readonly _pool: Particle[] = [];
+  private _sleepZCooldown = 0;
 
   /** Дым пыли от удара о пол */
   spawnDust(origin: Vector3, count = 48): void {
@@ -112,6 +117,58 @@ export class PixelParticles {
     for (let i = 0; i < need; i++) {
       this._spawnMote(origin);
     }
+  }
+
+  /** Пиксельные Zzz над головой во время сна */
+  ensureSleepZzz(origin: Vector3, delta: number): void {
+    this._sleepZCooldown -= Math.max(0, delta);
+    if (this._sleepZCooldown > 0) return;
+    let active = 0;
+    for (const p of this._pool) {
+      if (p.kind === "zzz") active++;
+    }
+    if (active >= SLEEP_ZZZ_MAX) return;
+    this._sleepZCooldown = 0.85 + Math.random() * 0.4;
+    this._spawnSleepZ(origin, 0.75 + active * 0.22);
+  }
+
+  private _spawnSleepZ(origin: Vector3, sizeScale: number): void {
+    const mat = new SpriteMaterial({
+      map: PIXEL_Z_MAP,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      // Не клипать о голову — рисуем поверх сцены
+      depthTest: false,
+      alphaTest: 0.15,
+    });
+    const sprite = new Sprite(mat);
+    const size = (2.0 + Math.random() * 0.35) * sizeScale;
+    sprite.scale.set(size, size, 1);
+    // Старт строго над точкой над макушкой, чуть в сторону
+    sprite.position.set(
+      origin.x + 0.6 + Math.random() * 0.5,
+      origin.y + 0.3 + Math.random() * 0.4,
+      origin.z + (Math.random() - 0.5) * 0.4,
+    );
+    sprite.renderOrder = 40;
+    this.group.add(sprite);
+    this._pool.push({
+      obj: sprite,
+      material: mat,
+      vx: 0.55 + Math.random() * 0.35,
+      vy: 1.6 + Math.random() * 0.7,
+      vz: (Math.random() - 0.5) * 0.25,
+      life: 0,
+      maxLife: 1.8 + Math.random() * 0.4,
+      startSize: size,
+      endSize: size * 1.2,
+      drag: 0.35,
+      maxOpacity: 0.55,
+      twinkle: 0,
+      kind: "zzz",
+    });
   }
 
   private _spawnMote(origin: Vector3): void {
@@ -255,8 +312,8 @@ export class PixelParticles {
         continue;
       }
 
-      if (p.kind === "firefly" || p.kind === "mote") {
-        const sway = p.kind === "mote" ? 0.35 : 0.8;
+      if (p.kind === "firefly" || p.kind === "mote" || p.kind === "zzz") {
+        const sway = p.kind === "mote" ? 0.35 : p.kind === "zzz" ? 0.15 : 0.8;
         p.vx += Math.sin(p.life * 3.2 + p.twinkle) * sway * dt;
         p.vz += Math.cos(p.life * 2.7) * sway * dt;
         p.vx *= Math.exp(-p.drag * dt);
@@ -265,6 +322,17 @@ export class PixelParticles {
         p.obj.position.x += p.vx * dt;
         p.obj.position.y += p.vy * dt;
         p.obj.position.z += p.vz * dt;
+
+        if (p.kind === "zzz") {
+          const fadeIn = 0.12;
+          const fadeOut = 0.55;
+          const envelope =
+            u < fadeIn ? u / fadeIn : u > fadeOut ? 1 - (u - fadeOut) / (1 - fadeOut) : 1;
+          p.material.opacity = Math.max(0, envelope) * p.maxOpacity;
+          const s = p.startSize + (p.endSize - p.startSize) * easeOutQuad(u);
+          p.obj.scale.set(s, s, 1);
+          continue;
+        }
 
         const fadeIn = p.kind === "mote" ? 0.15 : 0.2;
         const fadeOut = p.kind === "mote" ? 0.75 : 0.65;
@@ -321,6 +389,43 @@ function createSoftGlowTexture(): CanvasTexture {
     ctx.fillRect(0, 0, size, size);
   }
   const tex = new CanvasTexture(canvas);
+  return tex;
+}
+
+/** Пиксельная Z (прозрачный фон, nearest) — как на референсе */
+function createPixelZTexture(): CanvasTexture {
+  // 8×8: верх/низ + трёхступенчатая диагональ
+  const pattern = [
+    "########",
+    "......##",
+    ".....##.",
+    "....##..",
+    "...##...",
+    "..##....",
+    "##......",
+    "########",
+  ];
+  const cell = 4;
+  const size = pattern.length * cell;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = "#ffffff";
+    for (let y = 0; y < pattern.length; y++) {
+      const row = pattern[y]!;
+      for (let x = 0; x < row.length; x++) {
+        if (row[x] === "#") ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+  }
+  const tex = new CanvasTexture(canvas);
+  tex.magFilter = NearestFilter;
+  tex.minFilter = NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
   return tex;
 }
 

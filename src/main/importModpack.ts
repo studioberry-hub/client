@@ -15,6 +15,11 @@ import { catalogCfFileUrl } from '../shared/apiBase';
 
 export type ModpackFormat = 'modrinth' | 'curseforge' | 'instance' | 'unknown';
 
+export type ModpackInspectContentItem = {
+  name: string;
+  kind: 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'config' | 'other';
+};
+
 export type ModpackInspect = {
   format: ModpackFormat;
   name: string;
@@ -24,6 +29,16 @@ export type ModpackInspect = {
   fileCount: number;
   hasOverrides: boolean;
   archiveName: string;
+  /** Счётчики контента из ZIP (без полной распаковки). */
+  counts?: {
+    mods: number;
+    resourcePacks: number;
+    shaders: number;
+    dataPacks: number;
+    configs: number;
+  };
+  /** Укороченный список имён для превью (до ~40 на тип). */
+  previewFiles?: ModpackInspectContentItem[];
 };
 
 export type ImportContentItem = {
@@ -709,6 +724,111 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
   };
 }
 
+type InspectCounts = NonNullable<ModpackInspect['counts']>;
+
+function emptyCounts(): InspectCounts {
+  return { mods: 0, resourcePacks: 0, shaders: 0, dataPacks: 0, configs: 0 };
+}
+
+function basenameZip(p: string): string {
+  const parts = p.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || p;
+}
+
+function classifyZipPath(n: string): ModpackInspectContentItem['kind'] | null {
+  const path = n.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (/(^|\/)(mods|overrides\/mods)\/[^/]+\.(jar|litemod)$/i.test(path)) return 'mod';
+  if (/(^|\/)(resourcepacks|overrides\/resourcepacks)\/[^/]+/i.test(path) && !path.endsWith('/')) {
+    return 'resourcepack';
+  }
+  if (/(^|\/)(shaderpacks|overrides\/shaderpacks)\/[^/]+/i.test(path) && !path.endsWith('/')) {
+    return 'shader';
+  }
+  if (/(^|\/)(datapacks|overrides\/datapacks)\/[^/]+/i.test(path) && !path.endsWith('/')) {
+    return 'datapack';
+  }
+  if (/(^|\/)(config|defaultconfigs|overrides\/config)\/[^/]+/i.test(path) && !path.endsWith('/')) {
+    return 'config';
+  }
+  return null;
+}
+
+function inventoryFromZipNames(names: string[]): {
+  counts: InspectCounts;
+  previewFiles: ModpackInspectContentItem[];
+  fileCount: number;
+} {
+  const counts = emptyCounts();
+  const previewFiles: ModpackInspectContentItem[] = [];
+  const perKind = { mod: 0, resourcepack: 0, shader: 0, datapack: 0, config: 0, other: 0 };
+  let fileCount = 0;
+  for (const raw of names) {
+    if (!raw || raw.endsWith('/')) continue;
+    fileCount++;
+    const kind = classifyZipPath(raw);
+    if (!kind) continue;
+    if (kind === 'mod') counts.mods++;
+    else if (kind === 'resourcepack') counts.resourcePacks++;
+    else if (kind === 'shader') counts.shaders++;
+    else if (kind === 'datapack') counts.dataPacks++;
+    else if (kind === 'config') counts.configs++;
+    if (perKind[kind] < 24) {
+      perKind[kind]++;
+      previewFiles.push({ name: basenameZip(raw), kind });
+    }
+  }
+  return { counts, previewFiles, fileCount };
+}
+
+function inventoryFromMrpackIndex(index: any): {
+  counts: InspectCounts;
+  previewFiles: ModpackInspectContentItem[];
+} {
+  const counts = emptyCounts();
+  const previewFiles: ModpackInspectContentItem[] = [];
+  const files = Array.isArray(index?.files) ? index.files : [];
+  for (const f of files) {
+    const path = String(f?.path || f?.name || '');
+    const kind = classifyZipPath(path) || 'mod';
+    if (kind === 'mod') counts.mods++;
+    else if (kind === 'resourcepack') counts.resourcePacks++;
+    else if (kind === 'shader') counts.shaders++;
+    else if (kind === 'datapack') counts.dataPacks++;
+    else if (kind === 'config') counts.configs++;
+    if (previewFiles.length < 48) {
+      previewFiles.push({ name: basenameZip(path) || String(f?.downloads?.[0] || 'file'), kind });
+    }
+  }
+  return { counts, previewFiles };
+}
+
+function mergeCounts(a: InspectCounts, b: InspectCounts): InspectCounts {
+  return {
+    mods: Math.max(a.mods, b.mods),
+    resourcePacks: Math.max(a.resourcePacks, b.resourcePacks),
+    shaders: Math.max(a.shaders, b.shaders),
+    dataPacks: Math.max(a.dataPacks, b.dataPacks),
+    configs: Math.max(a.configs, b.configs),
+  };
+}
+
+function mergePreview(
+  a: ModpackInspectContentItem[],
+  b: ModpackInspectContentItem[],
+): ModpackInspectContentItem[] {
+  if (a.length >= 8) return a.slice(0, 48);
+  const seen = new Set(a.map((x) => `${x.kind}:${x.name}`));
+  const out = a.slice();
+  for (const item of b) {
+    const key = `${item.kind}:${item.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+    if (out.length >= 48) break;
+  }
+  return out;
+}
+
 /** Превью без полной распаковки: читаем index/manifest из ZIP напрямую. */
 export function inspectLocalModpack(archivePath: string): ModpackInspect {
   const archiveName = path.basename(archivePath);
@@ -740,6 +860,8 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
     /(^|\/)mods\/[^/]+\.(jar|litemod)$/i.test(n) || /(^|\/)overrides\/mods\/[^/]+\.(jar|litemod)$/i.test(n),
   ).length;
 
+  const inventory = inventoryFromZipNames(names);
+
   const indexEntry = entries.find((e) => /(^|\/)modrinth\.index\.json$/i.test(norm(e.name)));
   if (indexEntry) {
     const buf = readZipEntryData(archivePath, indexEntry);
@@ -750,15 +872,18 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
     const loader = DEP_LOADER_MAP[depKey] || (depKey ? depKey : 'vanilla');
     const loaderVersion = depKey ? String(deps[depKey] || '') : '';
     const files = Array.isArray(index?.files) ? index.files.length : 0;
+    const fromIndex = inventoryFromMrpackIndex(index);
     return {
       format: 'modrinth',
       name: String(index?.name || fallback.name),
       gameVersion,
       loader,
       loaderVersion,
-      fileCount: Math.max(files, jarInArchive),
+      fileCount: Math.max(files, jarInArchive, inventory.fileCount),
       hasOverrides,
       archiveName,
+      counts: mergeCounts(fromIndex.counts, inventory.counts),
+      previewFiles: mergePreview(fromIndex.previewFiles, inventory.previewFiles),
     };
   }
 
@@ -778,9 +903,11 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
       gameVersion,
       loader: parsed.loader,
       loaderVersion: parsed.loaderVersion,
-      fileCount: Math.max(files, jarInArchive),
+      fileCount: Math.max(files, jarInArchive, inventory.fileCount),
       hasOverrides,
       archiveName,
+      counts: inventory.counts,
+      previewFiles: inventory.previewFiles,
     };
   }
 
@@ -802,10 +929,13 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
       loaderVersion: parsed.loaderVersion,
       fileCount: Math.max(
         jarInArchive,
+        inventory.fileCount,
         Array.isArray(inst?.installedAddons) ? inst.installedAddons.length : 0,
       ),
       hasOverrides,
       archiveName,
+      counts: inventory.counts,
+      previewFiles: inventory.previewFiles,
     };
   }
 
@@ -845,13 +975,21 @@ export function inspectLocalModpack(archivePath: string): ModpackInspect {
       gameVersion,
       loader,
       loaderVersion,
-      fileCount: jarInArchive,
+      fileCount: Math.max(jarInArchive, inventory.fileCount),
       hasOverrides,
       archiveName,
+      counts: inventory.counts,
+      previewFiles: inventory.previewFiles,
     };
   }
 
-  return { ...fallback, hasOverrides, fileCount: jarInArchive };
+  return {
+    ...fallback,
+    hasOverrides,
+    fileCount: Math.max(jarInArchive, inventory.fileCount),
+    counts: inventory.counts,
+    previewFiles: inventory.previewFiles,
+  };
 }
 
 function forgeCdnUrl(fileId: number, fileName: string): string {

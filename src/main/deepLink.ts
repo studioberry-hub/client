@@ -57,7 +57,17 @@ export interface DeepLinkJoinGroup {
   token: string;
 }
 
-export type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup;
+/** Запуск локальной сборки (ярлык на рабочем столе → лаунчер). */
+export interface DeepLinkLaunch {
+  action: 'launch';
+  id: string;
+}
+
+export type DeepLinkPayload =
+  | DeepLinkInstall
+  | DeepLinkImportInstance
+  | DeepLinkJoinGroup
+  | DeepLinkLaunch;
 
 /** Причина отказа — только для лога: пользователю о чужих ссылках сообщать нечего. */
 export type DeepLinkRejectReason =
@@ -71,7 +81,8 @@ export type DeepLinkRejectReason =
   | 'bad_project'
   | 'bad_version'
   | 'bad_share_id'
-  | 'bad_invite_token';
+  | 'bad_invite_token'
+  | 'bad_build_id';
 
 export type DeepLinkParseResult =
   | { ok: true; payload: DeepLinkPayload }
@@ -159,6 +170,15 @@ function validateJoinGroupParams(get: (key: string) => unknown): DeepLinkParseRe
   return { ok: true, payload: { action: 'join-group', token } };
 }
 
+/** Id локальной сборки: как в builds.json (`name-timestamp`). */
+const BUILD_ID_RE = /^[A-Za-z0-9_-]{2,128}$/;
+
+function validateLaunchParams(get: (key: string) => unknown): DeepLinkParseResult {
+  const id = readStr(get('id'), 128);
+  if (!BUILD_ID_RE.test(id)) return { ok: false, reason: 'bad_build_id' };
+  return { ok: true, payload: { action: 'launch', id } };
+}
+
 /** Разбор ссылки вида `uclient://install?...` или `uclient://import-instance?id=...`. */
 export function parseDeepLink(raw: unknown): DeepLinkParseResult {
   if (typeof raw !== 'string') return { ok: false, reason: 'empty' };
@@ -189,6 +209,9 @@ export function parseDeepLink(raw: unknown): DeepLinkParseResult {
   }
   if (action === 'join-group') {
     return validateJoinGroupParams((key) => url.searchParams.get(key));
+  }
+  if (action === 'launch') {
+    return validateLaunchParams((key) => url.searchParams.get(key));
   }
   return { ok: false, reason: 'unknown_action' };
 }

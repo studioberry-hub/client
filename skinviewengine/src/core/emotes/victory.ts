@@ -1,0 +1,6 @@
+// Автогенерация из SPEmotes (Emotecraft bend + xyz)
+import type { EmoteClip } from "../emote-animation.js";
+
+const clip = {"schemaVersion":2,"id":"victory","name":"Hands up","source":"SPE_Hands_up.json","tps":20,"endTick":100,"loop":true,"returnTick":15,"frames":[{"tick":6,"ease":"easeInOut","parts":{"body":{"bend":0.098}}},{"tick":10,"ease":"easeInOut","parts":{"rightArm":{"rx":-3.17411,"ry":0.04975,"rz":-0.03907,"x":-5,"y":2,"z":0}}},{"tick":13,"ease":"easeInOut","parts":{"leftArm":{"rx":-3.18031,"ry":-0.02696,"rz":0.0505,"x":5,"y":2,"z":0}}},{"tick":15,"ease":"easeInOut","parts":{"body":{"bend":0},"rightArm":{"rx":-3.17411,"ry":0.04975,"rz":-0.03907,"x":-5,"y":2,"z":0},"leftArm":{"rx":-3.18031,"ry":-0.02696,"rz":0.0505,"x":5,"y":2,"z":0}}},{"tick":55,"ease":"easeInOut","parts":{"body":{"bend":-0.01463},"rightArm":{"rx":-3.14405,"ry":0.06673,"rz":-0.13591,"x":-5,"y":2,"z":0},"leftArm":{"rx":-3.10723,"ry":-0.03326,"rz":0.1248,"x":5,"y":2,"z":0}}},{"tick":100,"ease":"easeInOut","parts":{"body":{"bend":0},"rightArm":{"rx":-3.17411,"ry":0.04975,"rz":-0.03907,"x":-5,"y":2,"z":0},"leftArm":{"rx":-3.18031,"ry":-0.02696,"rz":0.0505,"x":5,"y":2,"z":0}}}]} as EmoteClip;
+
+export default clip;
