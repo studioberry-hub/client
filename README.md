@@ -1,3 +1,7 @@
+![Undefined Client](https://github.com/studioberry-hub/client/blob/main/.github/uclientBannerGH2.png?raw=true)
+
+![Undefined Client](https://github.com/studioberry-hub/client/blob/main/.github/uclientBannerWindow.png?raw=true)
+
 [![Лицензия](https://img.shields.io/badge/license-GPL--3.0--only-brightgreen)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-43-blue)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](package.json)
