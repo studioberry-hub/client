@@ -40,6 +40,7 @@
       "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,README,readme}",
       "!**/node_modules/*/{test,tests,__tests__,docs,doc,example,examples,bench,benchmark}",
       "!**/node_modules/**/{src,Source}/**",
+      "node_modules/protodef/src/**",
       "!**/node_modules/**/*.d.ts",
       "!**/node_modules/**/*.ts",
       "!node_modules/minecraft-data{,/**}",
