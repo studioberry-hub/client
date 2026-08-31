@@ -10,6 +10,7 @@ import {
   DoubleSide,
   FrontSide,
   HemisphereLight,
+  LinearFilter,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -37,50 +38,47 @@ export const DEFAULT_KEY_ELEVATION_DEG = 42;
 export const DEFAULT_KEY_DISTANCE = 55;
 
 /**
- * Яркий мягкий студийный свет: читаемая форма, сочные midtones, без «грязи».
+ * Студийный свет: читаемая форма, сочные midtones, мягкие self-shadows.
  */
 export const DEFAULT_LIGHT_SETTINGS: LightSettings = {
   keyAzimuthDeg: DEFAULT_KEY_AZIMUTH_DEG,
   keyElevationDeg: DEFAULT_KEY_ELEVATION_DEG,
-  keyIntensity: 1.48,
-  ambientIntensity: 0.58,
-  fillIntensity: 0.55,
-  shadowRadius: 11,
-  shadowIntensity: 0.26,
+  keyIntensity: 1.35,
+  ambientIntensity: 0.68,
+  fillIntensity: 0.64,
+  shadowRadius: 16,
+  shadowIntensity: 0.24,
   castShadows: true,
 };
 
-/** Чуть сочнее матовый skin — лёгкий блик, цвета не серые */
-const SKIN_ROUGHNESS_INNER = 0.52;
+/** Лёгкий PBR: блик есть, но без «грязи» от размытия кадра */
+const SKIN_ROUGHNESS_INNER = 0.55;
 const SKIN_METALNESS_INNER = 0.04;
-const SKIN_ENV_MAP_INTENSITY_INNER = 0.28;
+const SKIN_ENV_MAP_INTENSITY_INNER = 0.26;
 
-/** Outer: только лёгкий PBR — cutout/DoubleSide/polygonOffset не трогаем */
-const SKIN_ROUGHNESS_OUTER = 0.55;
+/** Outer: тот же PBR — cutout/DoubleSide не трогаем */
+const SKIN_ROUGHNESS_OUTER = 0.58;
 const SKIN_METALNESS_OUTER = 0.03;
-const SKIN_ENV_MAP_INTENSITY_OUTER = 0.22;
-/** IBL даёт «сочность» белым/цветным пикселям без жёсткого пластика */
-const SCENE_ENV_INTENSITY = 0.22;
-/** Hemisphere — поднимает теневую сторону, белое не уходит в серое */
-const HEMI_INTENSITY = 0.72;
-/** Rim — лёгкий объём силуэта */
-const RIM_INTENSITY = 0.3;
+const SKIN_ENV_MAP_INTENSITY_OUTER = 0.2;
+/** IBL для сочности белых/цветных пикселей */
+const SCENE_ENV_INTENSITY = 0.2;
+const HEMI_INTENSITY = 0.78;
+const RIM_INTENSITY = 0.28;
 
-/** Настройка shadow map + ACES tone mapping */
+/** Shadow map + ACES */
 export function configureProductRenderer(renderer: WebGLRenderer): void {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.toneMapping = ACESFilmicToneMapping;
-  // Выше 1.0 — белые пиксели снова белые, цвета сочнее
-  renderer.toneMappingExposure = 1.18;
+  renderer.toneMappingExposure = 1.15;
   renderer.outputColorSpace = SRGBColorSpace;
 }
 
-/** RoomEnvironment + PMREM — мягкий IBL для сочности */
+/** RoomEnvironment + умеренный blur PMREM */
 export function createPlasticEnvironment(renderer: WebGLRenderer): Texture {
   const pmrem = new PMREMGenerator(renderer);
   pmrem.compileEquirectangularShader();
-  const texture = pmrem.fromScene(new RoomEnvironment(), 0.28).texture;
+  const texture = pmrem.fromScene(new RoomEnvironment(), 0.4).texture;
   pmrem.dispose();
   return texture;
 }
@@ -99,9 +97,9 @@ function configureKeyLightShadow(
   key.shadow.camera.right = 28;
   key.shadow.camera.top = 28;
   key.shadow.camera.bottom = -28;
-  // Малый normalBias — contact/self-shadows на блоках 4–12 units
+  // Bias под self-shadows на блоках 4–12 units
   key.shadow.bias = -0.0002;
-  key.shadow.normalBias = 0.0004;
+  key.shadow.normalBias = 0.00045;
   key.shadow.radius = shadowRadius;
   key.shadow.intensity = shadowIntensity;
   key.shadow.camera.updateProjectionMatrix();
@@ -114,6 +112,9 @@ function applyInnerMaterialTuning(mat: MeshStandardMaterial, envMap?: Texture | 
   if (envMap) {
     mat.envMap = envMap;
     mat.envMapIntensity = SKIN_ENV_MAP_INTENSITY_INNER;
+  } else {
+    mat.envMap = null;
+    mat.envMapIntensity = 0;
   }
 }
 
@@ -124,8 +125,10 @@ function applyOuterMaterialTuning(mat: MeshStandardMaterial, envMap?: Texture | 
   if (envMap) {
     mat.envMap = envMap;
     mat.envMapIntensity = SKIN_ENV_MAP_INTENSITY_OUTER;
+  } else {
+    mat.envMap = null;
+    mat.envMapIntensity = 0;
   }
-  // alphaToCoverage даёт «призрачные» боксы outer-слоя — не включаем
   mat.alphaToCoverage = false;
 }
 
@@ -220,12 +223,9 @@ export function enableShadows(root: Object3D): void {
       if (!(entry instanceof MeshStandardMaterial)) continue;
 
       if (layer === "inner") {
-        // Opaque inner — основной приёмник self-shadows (виден через cutout outer)
         entry.shadowSide = FrontSide;
       } else {
-        // Cutout outer (transparent+alphaTest): DoubleSide для cast/receive на overlay
         entry.shadowSide = DoubleSide;
-        // depthWrite=true (дефолт при alphaTest) — корректная запись в shadow map
         entry.depthWrite = true;
       }
       entry.needsUpdate = true;
@@ -325,11 +325,9 @@ export class ProductLighting {
     scene.add(this.key.target);
 
     this.fill = new DirectionalLight(0xd8e0f0, DEFAULT_LIGHT_SETTINGS.fillIntensity);
-    // Fill спереди-справа — смягчает тень от key, без «второго солнца»
     this.fill.position.set(-18, 8, 14);
     scene.add(this.fill);
 
-    // Лёгкий rim сзади-справа — кромка силуэта как на референсе
     this.rim = new DirectionalLight(0xc8d4ff, RIM_INTENSITY);
     this.rim.position.set(-18, 14, -22);
     scene.add(this.rim);
@@ -484,7 +482,7 @@ export function createFloorAndContactShadow(scene: Scene): {
 
   const floor = new Mesh(
     new PlaneGeometry(groundSize, groundSize),
-    new ShadowMaterial({ opacity: 0.12, color: 0x000000 }),
+    new ShadowMaterial({ opacity: 0.14, color: 0x000000 }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
@@ -541,23 +539,28 @@ function createContactShadowBlob(): Mesh {
 
   const center = size / 2;
   const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-  gradient.addColorStop(0, "rgba(0, 0, 0, 0.18)");
-  gradient.addColorStop(0.28, "rgba(0, 0, 0, 0.1)");
-  gradient.addColorStop(0.55, "rgba(0, 0, 0, 0.04)");
-  gradient.addColorStop(0.82, "rgba(0, 0, 0, 0.01)");
+  gradient.addColorStop(0, "rgba(0, 0, 0, 0.14)");
+  gradient.addColorStop(0.22, "rgba(0, 0, 0, 0.09)");
+  gradient.addColorStop(0.48, "rgba(0, 0, 0, 0.045)");
+  gradient.addColorStop(0.72, "rgba(0, 0, 0, 0.015)");
+  gradient.addColorStop(0.9, "rgba(0, 0, 0, 0.004)");
   gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
 
   const texture = new CanvasTexture(canvas);
+  // Линейная фильтрация — без «лесенки» на краю пятна
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.generateMipmaps = false;
   const material = new MeshBasicMaterial({
     map: texture,
     transparent: true,
     depthWrite: false,
   });
 
-  // Мягкое овальное пятно как на референсе — не жёсткий диск
-  const mesh = new Mesh(new PlaneGeometry(48, 28), material);
+  // Шире и мягче овал под ступнями
+  const mesh = new Mesh(new PlaneGeometry(56, 34), material);
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.set(0, FLOOR_Y + 0.05, 0.5);
   mesh.renderOrder = 1;

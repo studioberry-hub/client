@@ -4,11 +4,38 @@
 
 ### История изменений
 
-[![Версия](https://img.shields.io/badge/версия-1.0.5--beta-brightgreen)](CHANGELOG.md)
-[![Дата](https://img.shields.io/badge/релиз-29.08.2026-blue)](CHANGELOG.md)
+[![Версия](https://img.shields.io/badge/версия-1.0.6--beta-brightgreen)](CHANGELOG.md)
+[![Дата](https://img.shields.io/badge/релиз-01.09.2026-blue)](CHANGELOG.md)
 [![Лицензия](https://img.shields.io/badge/license-GPL--3.0--only-brightgreen)](LICENSE)
 
 </div>
+
+---
+
+## 📦 v1.0.6-beta — чат UX, окно/модалки и лёгкая упаковка
+
+*1 сентября 2026*
+
+Доработки поверх 1.0.5: удобнее мессенджер, стабильнее окно и модалки, сборка Windows снова ~490 МБ.
+
+Подробности — в [CHANGELOG-v1.0.6-beta.md](CHANGELOG-v1.0.6-beta.md).
+
+### 🚀 Новое
+
+- «Печатает…», догрузка истории, шаринг сборки/мира из чата, ✓/✓✓
+- Бейдж обновления в titlebar
+- Эмоции в превью скина (skinviewengine)
+
+### ⚡ Улучшения
+
+- Окно от 1100×800; модалки по центру под titlebar и выше у профиля/чата
+- Чистая упаковка: без мусора в asar, updater рядом с exe, 2 локали Electron
+- DnD в сборку, `.ico` для ярлыков Windows
+
+### 🔧 Исправления
+
+- Главная без Steam-эксперимента (как в релизе 1.0.5)
+- Удалён неиспользуемый `lucide`
 
 ---
 

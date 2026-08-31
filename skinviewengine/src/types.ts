@@ -34,8 +34,8 @@ export interface EngineOptions {
   /** OrbitControls (по умолчанию true); для мини-превью лучше false */
   enableControls?: boolean;
   /**
-   * antialias канваса (по умолчанию true). На основном вьювере сглаживание
-   * силуэта делает SMAA в StudioPostFx — MSAA с NearestFilter даёт кайму по UV.
+   * antialias канваса. По умолчанию: false при enableEffects (SMAA в StudioPostFx),
+   * иначе true. MSAA + NearestFilter даёт кайму по UV атласа скина.
    */
   antialias?: boolean;
   /** UV-inset inner-слоя в texels (0 = stock UV skin3d, pixel-perfect); по умолчанию 0 */

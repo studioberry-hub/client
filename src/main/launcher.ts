@@ -1,5 +1,5 @@
 import type { Config } from 'eml-lib';
-import { BrowserWindow, ipcMain, dialog, nativeImage, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, nativeImage, clipboard, shell } from 'electron';
 import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -17,7 +17,7 @@ import {
   installModWithDependencies,
   type ModInstallOptions,
 } from './modDependencies';
-import { skinImageUrl, skinProfileUrl, getApiBase } from '../shared/apiBase';
+import { skinImageUrl, skinProfileUrl, getApiBase, catalogImageUrl } from '../shared/apiBase';
 import {
   clearRunningGameMarker,
   detectRunningMinecraft,
@@ -1583,6 +1583,152 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     return readJSON(buildsPath);
   });
 
+  // ===== Ярлык сборки на рабочий стол (Windows) =====
+  /** PNG → ICO (Shell не читает PNG из asar и часто игнорирует PNG как IconLocation). */
+  const pngBufferToIco = (png: Buffer): Buffer => {
+    const header = Buffer.alloc(6);
+    header.writeUInt16LE(0, 0);
+    header.writeUInt16LE(1, 2);
+    header.writeUInt16LE(1, 4);
+    const entry = Buffer.alloc(16);
+    entry[0] = 0; // width 0 = 256
+    entry[1] = 0; // height 0 = 256
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(png.length, 8);
+    entry.writeUInt32LE(22, 12);
+    return Buffer.concat([header, entry, png]);
+  };
+
+  const resolvePresetIconFile = (filename: string): string | null => {
+    const name = String(filename || '').replace(/[/\\]/g, '');
+    if (!name) return null;
+    const candidates = [
+      path.join(app.getAppPath(), 'assets', 'InstancesIcons', name),
+      path.join(process.cwd(), 'assets', 'InstancesIcons', name),
+      path.join(__dirname, '../../assets/InstancesIcons', name),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+      } catch { /* */ }
+    }
+    return null;
+  };
+
+  const fallbackShortcutIco = (): string => {
+    const candidates = [
+      path.join(app.getAppPath(), 'IconForBuild', 'icon.ico'),
+      path.join(process.cwd(), 'IconForBuild', 'icon.ico'),
+      path.join(__dirname, '../../IconForBuild/icon.ico'),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch { /* */ }
+    }
+    return process.execPath;
+  };
+
+  /** Готовит .ico вне asar — иначе ярлык на рабочем столе без иконки сборки. */
+  const prepareBuildShortcutIcon = async (buildId: string, iconRaw: string): Promise<string> => {
+    const cacheDir = path.join(app.getPath('userData'), 'shortcut-icons');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const outIco = path.join(cacheDir, `${buildId}.ico`);
+    const fallback = fallbackShortcutIco();
+
+    try {
+      let buf: Buffer | null = null;
+      const icon = String(iconRaw || '').trim();
+
+      if (icon.startsWith('preset:')) {
+        const file = resolvePresetIconFile(icon.slice(7));
+        if (file) buf = fs.readFileSync(file);
+      } else if (icon.startsWith('data:')) {
+        const m = icon.match(/^data:[^;]+;base64,(.+)$/i);
+        if (m) buf = Buffer.from(m[1], 'base64');
+      } else if (icon.startsWith('modrinth:')) {
+        const rawUrl = icon.slice(9).trim();
+        const url = catalogImageUrl(rawUrl) || rawUrl;
+        if (url) {
+          const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+          if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+        }
+      } else if (/^https?:\/\//i.test(icon)) {
+        const url = catalogImageUrl(icon) || icon;
+        const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+      } else if (icon) {
+        const abs = path.isAbsolute(icon) ? icon : path.join(appDataDir, icon);
+        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+          if (/\.ico$/i.test(abs)) return abs;
+          buf = fs.readFileSync(abs);
+        }
+      }
+
+      if (!buf) {
+        const def = resolvePresetIconFile('newBuild.png');
+        if (def) buf = fs.readFileSync(def);
+      }
+      if (!buf) return fallback;
+
+      let img = nativeImage.createFromBuffer(buf);
+      if (img.isEmpty()) return fallback;
+      const { width, height } = img.getSize();
+      const maxSide = Math.max(width, height);
+      if (maxSide !== 256) {
+        img = img.resize({ width: 256, height: 256, quality: 'best' });
+      }
+      fs.writeFileSync(outIco, pngBufferToIco(img.toPNG()));
+      return outIco;
+    } catch (e) {
+      console.warn('[shortcut] icon prepare failed', e);
+      return fallback;
+    }
+  };
+
+  ipcMain.handle('launcher:create-build-shortcut', async (_event, buildId: string) => {
+    try {
+      if (process.platform !== 'win32') {
+        return { success: false, error: 'unsupported_platform' };
+      }
+      const id = String(buildId || '').trim();
+      if (!/^[A-Za-z0-9_-]{2,128}$/.test(id)) {
+        return { success: false, error: 'bad_build_id' };
+      }
+      const builds = readJSON(buildsPath);
+      const build = Array.isArray(builds) ? builds.find((b: any) => b?.id === id) : null;
+      if (!build) return { success: false, error: 'build_not_found' };
+
+      const rawName = String(build.name || id).trim() || id;
+      const safeName = rawName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || id;
+      const desktop = app.getPath('desktop');
+      const linkPath = path.join(desktop, `${safeName}.lnk`);
+
+      const iconPath = await prepareBuildShortcutIcon(id, String(build.icon || ''));
+
+      const deepLink = `uclient://launch?id=${encodeURIComponent(id)}`;
+      const target = process.execPath;
+      const args = process.defaultApp
+        ? `"${path.resolve(process.argv[1] || '.')}" "${deepLink}"`
+        : `"${deepLink}"`;
+
+      const ok = shell.writeShortcutLink(linkPath, {
+        target,
+        args,
+        cwd: path.dirname(target),
+        description: `Undefined Client — ${rawName}`,
+        icon: iconPath,
+        iconIndex: 0,
+        appUserModelId: 'undefined-client',
+      });
+      if (!ok) return { success: false, error: 'write_failed' };
+      return { success: true, path: linkPath, name: safeName };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
   ipcMain.handle('launcher:build:remove', async (_event, id: string) => {
     const builds = readJSON(buildsPath).filter((b: any) => b.id !== id);
     writeJSON(buildsPath, builds);
@@ -1630,6 +1776,7 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   /* ===== SKINS ===== */
 
   const elyWornSkinCache = new Map<string, { url: string | null; ts: number }>();
+  const DEFAULT_ACCOUNT_SKIN_URL = 'https://s.namemc.com/i/cbe20ed58814c5e1.png';
 
   async function getElyWornSkinUrl(nickname: string, force = false): Promise<string | null> {
     const cached = elyWornSkinCache.get(nickname);
@@ -1641,9 +1788,14 @@ export function initLauncher(mainWindow: BrowserWindow): void {
         const res = await fetch(`https://skinsystem.ely.by/textures/${encodeURIComponent(nickname)}`, {
           signal: AbortSignal.timeout(10000),
         });
+        if (res.status === 204) {
+          url = DEFAULT_ACCOUNT_SKIN_URL;
+          break;
+        }
         if (!res.ok) break;
         const data = await res.json();
-        url = data?.SKIN?.url || null;
+        url = data?.SKIN?.url || DEFAULT_ACCOUNT_SKIN_URL;
+        if (url && url.startsWith('http://')) url = `https://${url.slice(7)}`;
         break;
       } catch (err) {
         const code = (err as any)?.cause?.code || (err as any)?.code;
@@ -1656,6 +1808,7 @@ export function initLauncher(mainWindow: BrowserWindow): void {
         break;
       }
     }
+    if (!url) url = DEFAULT_ACCOUNT_SKIN_URL;
     elyWornSkinCache.set(nickname, { url, ts: Date.now() });
     return url;
   }
@@ -2176,9 +2329,39 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     if (type === 'yggdrasil') {
       return uploadSkinToEly(account, skinPng, variant);
     }
+    // MSA: прямой POST надёжнее eml-lib (иногда UI обновляется, а Mojang не принимает файл)
+    if (type === 'msa') {
+      try {
+        const token = String(account?.accessToken || '').trim();
+        if (!token) return { ok: false, error: 'no_token' };
+        const form = new FormData();
+        form.append('variant', variant === 'slim' ? 'slim' : 'classic');
+        const bytes = new Uint8Array(skinPng);
+        form.append('file', new Blob([bytes], { type: 'image/png' }), 'skin.png');
+        const res = await fetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (res.ok) return { ok: true };
+        const body = await res.text().catch(() => '');
+        // Fallback на eml-lib, если прямой API отклонил
+        console.warn('[cosmetics] MSA skin POST failed', res.status, body.slice(0, 160));
+      } catch (err) {
+        console.warn('[cosmetics] MSA skin POST error', err);
+      }
+      try {
+        const eml = await loadEML();
+        const file = new File([Uint8Array.from(skinPng)], 'skin.png', { type: 'image/png' });
+        await new eml.Skin(account).updateSkin(file, variant);
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: message };
+      }
+    }
     try {
       const eml = await loadEML();
-      // File/Blob — FormData upload в eml-lib (URL string уйдёт как remote, Mojang его не примет)
       const file = new File([Uint8Array.from(skinPng)], 'skin.png', { type: 'image/png' });
       await new eml.Skin(account).updateSkin(file, variant);
       return { ok: true };
@@ -2868,12 +3051,27 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
   /* ===== VERSIONS ===== */
 
+  const VERSION_MANIFEST_URLS = [
+    'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
+    'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json',
+  ];
+
+  /** Манифест версий MC: сначала piston-meta (стабильнее в РФ), затем launchermeta */
+  async function fetchVersionManifest(): Promise<any | null> {
+    for (const url of VERSION_MANIFEST_URLS) {
+      try {
+        return await fetchJsonCached(url);
+      } catch {
+        /* следующий зеркало */
+      }
+    }
+    return null;
+  }
+
   ipcMain.handle('launcher:versions:list', async () => {
     try {
-      const res = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json');
-      if (!res.ok) return [];
-      const data = await res.json();
-      return data.versions || [];
+      const data = await fetchVersionManifest();
+      return Array.isArray(data?.versions) ? data.versions : [];
     } catch {
       return [];
     }
@@ -2898,9 +3096,8 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     if (mcVersion !== 'latest_release' && mcVersion !== 'latest_snapshot') return mcVersion;
     const now = Date.now();
     if (!mojangManifestCache.release || now - mojangManifestCache.ts > 10 * 60 * 1000) {
-      const res = await fetch('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json');
-      if (!res.ok) return '';
-      const data = await res.json();
+      const data = await fetchVersionManifest();
+      if (!data) return '';
       mojangManifestCache.release = data.latest?.release || '';
       mojangManifestCache.snapshot = data.latest?.snapshot || '';
       mojangManifestCache.ts = now;
@@ -3090,7 +3287,8 @@ export function initLauncher(mainWindow: BrowserWindow): void {
       'latest_snapshot': 25,
     };
     try {
-      const manifest = await fetchJsonCached('https://launchermeta.mojang.com/mc/game/version_manifest_v2.json');
+      const manifest = await fetchVersionManifest();
+      if (!manifest) throw new Error('no_manifest');
       const resolveId = staticMapping[gameVersion]
         ? (gameVersion === 'latest_release' ? manifest.latest?.release : gameVersion === 'latest_snapshot' ? manifest.latest?.snapshot : '')
         : gameVersion;
@@ -3208,66 +3406,244 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     return javaExe;
   }
 
-  let javaRuntimesCache: { at: number; result: { name: string; path: string; version: number }[] } | null = null;
+  let javaRuntimesCache: { at: number; result: { name: string; path: string; version: number; managed: boolean }[] } | null = null;
   const JAVA_RUNTIMES_CACHE_TTL = 10000;
 
   function invalidateJavaRuntimesCache(): void {
     javaRuntimesCache = null;
   }
 
-  function detectJavaRuntimes(): { name: string; path: string; version: number }[] {
+  function javaBinaryName(): string {
+    return process.platform === 'win32' ? 'java.exe' : 'java';
+  }
+
+  function parseJavaMajorVersion(text: string, fallbackDir?: string): number {
+    const m = String(text || '').match(/version\s+"(\d+)(?:\.(\d+))?/);
+    if (m) return m[1] === '1' ? parseInt(m[2] || '8', 10) : parseInt(m[1], 10);
+    if (fallbackDir) {
+      const dm = path.basename(fallbackDir).match(/(?:jdk|jre|java|zulu|temurin|semeru|corretto)[-_]?(\d{1,2})\b/i)
+        || path.basename(fallbackDir).match(/\b(\d{1,2})(?:\.\d+)*/);
+      if (dm) return parseInt(dm[1], 10);
+    }
+    return 0;
+  }
+
+  function probeJavaExe(javaExe: string): { name: string; path: string; version: number; managed: boolean } | null {
+    try {
+      if (!javaExe || !fs.existsSync(javaExe)) return null;
+      const resolved = fs.realpathSync(javaExe);
+      let version = 0;
+      try {
+        const out = execSync(`"${resolved}" -version 2>&1`, {
+          encoding: 'utf8',
+          timeout: 6000,
+          windowsHide: true,
+        });
+        version = parseJavaMajorVersion(out, path.dirname(path.dirname(resolved)));
+      } catch (err: any) {
+        const mixed = `${err?.stdout || ''}${err?.stderr || ''}${err?.message || ''}`;
+        version = parseJavaMajorVersion(mixed, path.dirname(path.dirname(resolved)));
+      }
+      if (version <= 0) return null;
+      const homeDir = path.dirname(path.dirname(resolved));
+      const managedPrefix = path.join(javaToolsDir(), `java${version}`);
+      const managed = homeDir.toLowerCase() === managedPrefix.toLowerCase()
+        || resolved.toLowerCase().includes(path.join('tools', `java${version}`).toLowerCase());
+      return {
+        name: path.basename(homeDir) || `Java ${version}`,
+        path: resolved,
+        version,
+        managed,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Собирает каталоги JDK/JRE под корнем (глубина 1–2). */
+  function collectJavaHomeDirs(root: string, maxDepth = 2): string[] {
+    const out: string[] = [];
+    if (!root || !fs.existsSync(root)) return out;
+    const walk = (dir: string, depth: number): void => {
+      if (depth > maxDepth) return;
+      let entries: fs.Dirent[] = [];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const full = path.join(dir, ent.name);
+        const javaExe = path.join(full, 'bin', javaBinaryName());
+        if (fs.existsSync(javaExe)) {
+          out.push(full);
+          continue;
+        }
+        if (depth < maxDepth) walk(full, depth + 1);
+      }
+    };
+    // Сам root может быть JAVA_HOME
+    if (fs.existsSync(path.join(root, 'bin', javaBinaryName()))) out.push(root);
+    walk(root, 1);
+    return out;
+  }
+
+  function detectJavaFromPathEnv(): string[] {
+    const found: string[] = [];
+    const pathEnv = process.env.PATH || process.env.Path || '';
+    for (const part of pathEnv.split(path.delimiter)) {
+      const trimmed = String(part || '').trim().replace(/^"|"$/g, '');
+      if (!trimmed) continue;
+      const candidate = path.join(trimmed, javaBinaryName());
+      if (fs.existsSync(candidate)) found.push(candidate);
+    }
+    // where / which
+    try {
+      const cmd = process.platform === 'win32' ? 'where java' : 'which -a java';
+      const out = execSync(cmd, { encoding: 'utf8', timeout: 4000, windowsHide: true });
+      for (const line of out.split(/\r?\n/)) {
+        const p = line.trim().replace(/^"|"$/g, '');
+        if (p && fs.existsSync(p)) found.push(p);
+      }
+    } catch { /* ignore */ }
+    return found;
+  }
+
+  function detectJavaFromWindowsRegistry(): string[] {
+    if (process.platform !== 'win32') return [];
+    const homes: string[] = [];
+    const keys = [
+      'HKLM\\SOFTWARE\\JavaSoft\\JDK',
+      'HKLM\\SOFTWARE\\JavaSoft\\Java Development Kit',
+      'HKLM\\SOFTWARE\\JavaSoft\\JRE',
+      'HKLM\\SOFTWARE\\JavaSoft\\Java Runtime Environment',
+      'HKLM\\SOFTWARE\\Eclipse Adoptium\\JDK',
+      'HKLM\\SOFTWARE\\Semeru\\JDK',
+      'HKLM\\SOFTWARE\\WOW6432Node\\JavaSoft\\JDK',
+      'HKLM\\SOFTWARE\\WOW6432Node\\JavaSoft\\Java Development Kit',
+    ];
+    for (const key of keys) {
+      try {
+        const out = execSync(`reg query "${key}" /s /v JavaHome`, {
+          encoding: 'utf8',
+          timeout: 5000,
+          windowsHide: true,
+        });
+        for (const line of out.split(/\r?\n/)) {
+          const m = line.match(/JavaHome\s+REG_\w+\s+(.+)$/i);
+          if (m?.[1]) homes.push(m[1].trim());
+        }
+      } catch { /* ключ отсутствует */ }
+    }
+    return homes;
+  }
+
+  function detectJavaRuntimes(): { name: string; path: string; version: number; managed: boolean }[] {
     if (javaRuntimesCache && Date.now() - javaRuntimesCache.at < JAVA_RUNTIMES_CACHE_TTL) {
       return javaRuntimesCache.result;
     }
-    const found: { name: string; path: string; version: number }[] = [];
-    const roots: string[] = [
-      process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'Java') : '',
-      process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'Eclipse Adoptium') : '',
-      process.env.ProgramFiles ? path.join(process.env.ProgramFiles, 'Microsoft') : '',
-      process.env['ProgramFiles(x86)'] ? path.join(process.env['ProgramFiles(x86)'], 'Java') : '',
-      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Programs') : '',
-      javaToolsDir(),
-    ];
+    const found: { name: string; path: string; version: number; managed: boolean }[] = [];
     const seen = new Set<string>();
-    const tryDir = (dir: string): void => {
-      const javaExe = path.join(dir, 'bin', 'java.exe');
-      if (!fs.existsSync(javaExe) || seen.has(javaExe)) return;
-      seen.add(javaExe);
-      let version = 0;
-      try {
-        const out = execSync(`"${javaExe}" -version 2>&1`, { encoding: 'utf8', timeout: 8000 });
-        const m = out.match(/version\s+"(\d+)(?:\.(\d+))?/);
-        if (m) version = m[1] === '1' ? parseInt(m[2] || '8', 10) : parseInt(m[1], 10);
-      } catch {}
-      if (version === 0) {
-        const m = path.basename(dir).match(/(\d{1,2})(?:\.\d+)*/);
-        if (m) version = parseInt(m[1], 10);
-      }
-      if (version > 0) found.push({ name: path.basename(dir), path: javaExe, version });
+
+    const addExe = (exe: string): void => {
+      const probed = probeJavaExe(exe);
+      if (!probed) return;
+      const key = probed.path.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      found.push(probed);
     };
+
+    const addHome = (home: string): void => {
+      if (!home) return;
+      addExe(path.join(home, 'bin', javaBinaryName()));
+    };
+
+    // JAVA_HOME / JDK_HOME
+    addHome(process.env.JAVA_HOME || '');
+    addHome(process.env.JDK_HOME || '');
+
+    // PATH + where/which
+    for (const exe of detectJavaFromPathEnv()) addExe(exe);
+
+    // Реестр Windows
+    for (const home of detectJavaFromWindowsRegistry()) addHome(home);
+
+    const pf = process.env.ProgramFiles || '';
+    const pf86 = process.env['ProgramFiles(x86)'] || '';
+    const local = process.env.LOCALAPPDATA || '';
+    const userProfile = process.env.USERPROFILE || '';
+    const programData = process.env.ProgramData || '';
+
+    const roots: string[] = [
+      javaToolsDir(),
+      pf ? path.join(pf, 'Java') : '',
+      pf ? path.join(pf, 'Eclipse Adoptium') : '',
+      pf ? path.join(pf, 'AdoptOpenJDK') : '',
+      pf ? path.join(pf, 'Microsoft') : '',
+      pf ? path.join(pf, 'Amazon Corretto') : '',
+      pf ? path.join(pf, 'BellSoft') : '',
+      pf ? path.join(pf, 'Zulu') : '',
+      pf ? path.join(pf, 'Semeru') : '',
+      pf ? path.join(pf, 'ojdkbuild') : '',
+      pf ? path.join(pf, 'Common Files', 'Oracle', 'Java') : '',
+      pf86 ? path.join(pf86, 'Java') : '',
+      local ? path.join(local, 'Programs') : '',
+      local ? path.join(local, 'Programs', 'Eclipse Adoptium') : '',
+      userProfile ? path.join(userProfile, 'scoop', 'apps') : '',
+      programData ? path.join(programData, 'chocolatey', 'lib') : '',
+      // macOS / Linux типичные пути
+      '/Library/Java/JavaVirtualMachines',
+      '/usr/lib/jvm',
+      '/usr/java',
+      path.join(userProfile, '.sdkman', 'candidates', 'java'),
+    ];
+
     for (const root of roots) {
-      if (!root || !fs.existsSync(root)) continue;
-      let dirs: string[] = [];
-      try {
-        dirs = fs.readdirSync(root, { withFileTypes: true })
-          .filter(d => d.isDirectory())
-          .map(d => path.join(root, d.name));
-      } catch { continue; }
-      for (const dir of dirs) tryDir(dir);
+      // Под tools/javaN — depth 1 достаточно; у scoop/chocolatey нужна глубина 2–3
+      const depth = /scoop|chocolatey/i.test(root) ? 3 : 2;
+      for (const home of collectJavaHomeDirs(root, depth)) addHome(home);
     }
-    found.sort((a, b) => a.version - b.version);
+
+    found.sort((a, b) => a.version - b.version || a.name.localeCompare(b.name));
     javaRuntimesCache = { at: Date.now(), result: found };
     return found;
   }
 
-  function listJavaVersions(): { version: number; installed: boolean; managed: boolean; path: string | null; systemPaths: string[] }[] {
+  function listJavaVersions(): {
+    version: number;
+    installed: boolean;
+    managed: boolean;
+    path: string | null;
+    systemPaths: string[];
+    canInstall: boolean;
+    names: string[];
+  }[] {
     const runtimes = detectJavaRuntimes();
-    return JAVA_MANAGED_VERSIONS.map(version => {
-      const managedExe = path.join(javaToolsDir(), `java${version}`, 'bin', 'java.exe');
+    const versionSet = new Set<number>(JAVA_MANAGED_VERSIONS);
+    for (const r of runtimes) {
+      if (r.version > 0) versionSet.add(r.version);
+    }
+    const bin = javaBinaryName();
+    return Array.from(versionSet).sort((a, b) => a - b).map((version) => {
+      const managedExe = path.join(javaToolsDir(), `java${version}`, 'bin', bin);
       const managed = fs.existsSync(managedExe);
-      const systemPaths = runtimes.filter(j => j.version === version && j.path !== managedExe).map(j => j.path);
+      const ofVersion = runtimes.filter((j) => j.version === version);
+      const systemPaths = ofVersion
+        .filter((j) => !j.managed && j.path.toLowerCase() !== managedExe.toLowerCase())
+        .map((j) => j.path);
+      const names = ofVersion.map((j) => j.name);
       const installed = managed || systemPaths.length > 0;
-      return { version, installed, managed, path: managed ? managedExe : (systemPaths[0] || null), systemPaths };
+      return {
+        version,
+        installed,
+        managed,
+        path: managed ? managedExe : (systemPaths[0] || null),
+        systemPaths,
+        canInstall: JAVA_MANAGED_VERSIONS.includes(version),
+        names,
+      };
     });
   }
 
@@ -3575,7 +3951,14 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   });
 
   ipcMain.handle('launcher:get-instance-path', async (_event, buildId: string) => {
-    return getInstanceRoot(buildId);
+    const root = getInstanceRoot(String(buildId || ''));
+    // Папка появляется только после первого запуска — создаём при открытии
+    if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
+    for (const sub of ['mods', 'resourcepacks', 'shaderpacks', 'datapacks', 'saves', 'screenshots', 'config', 'logs']) {
+      const dir = path.join(root, sub);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    }
+    return root;
   });
 
   function safeSubPath(instanceRoot: string, sub: string, name: string): string | null {
@@ -3907,9 +4290,37 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     }
   });
 
-  ipcMain.handle('launcher:java:detect', () => detectJavaRuntimes());
+  ipcMain.handle('launcher:java:detect', (_event, refresh?: boolean) => {
+    if (refresh) invalidateJavaRuntimesCache();
+    return detectJavaRuntimes();
+  });
 
-  ipcMain.handle('launcher:java:list', () => listJavaVersions());
+  ipcMain.handle('launcher:java:list', (_event, refresh?: boolean) => {
+    if (refresh) invalidateJavaRuntimesCache();
+    return listJavaVersions();
+  });
+
+  ipcMain.handle('launcher:java:pick', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите исполняемый файл Java',
+      properties: ['openFile'],
+      filters: process.platform === 'win32'
+        ? [
+            { name: 'Java', extensions: ['exe'] },
+            { name: 'All files', extensions: ['*'] },
+          ]
+        : [{ name: 'All files', extensions: ['*'] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const picked = result.filePaths[0];
+    invalidateJavaRuntimesCache();
+    const probed = probeJavaExe(picked);
+    return {
+      path: picked,
+      version: probed?.version || 0,
+      name: probed?.name || path.basename(path.dirname(path.dirname(picked))),
+    };
+  });
 
   ipcMain.handle('launcher:java:install', async (_event, version: number) => {
     if (!JAVA_MANAGED_VERSIONS.includes(Number(version))) {

@@ -13,91 +13,11 @@
   <div id="app" class="app">
     <!-- Splash Screen -->
     <div id="splash">
-      <div id="splash-announce" class="splash-announce" hidden>
-        <video
-          id="splash-announce-video"
-          class="splash-announce-video"
-          src="../../assets/VideoAnnounce/m3dv5_startupWithAi.mp4"
-          playsinline
-          preload="auto"
-        ></video>
-      </div>
       <div id="splash-content">
         <img src="../../assets/SplashTitleStartup.svg" alt="Undefined Client" style="width:420px;height:auto;">
         <div id="splash-loader"></div>
       </div>
-
-      <div id="splash-welcome" class="splash-welcome" hidden>
-        <div class="modal-window md splash-welcome-modal" role="dialog" aria-modal="true" aria-labelledby="splash-welcome-title">
-          <div class="modal-header">
-            <div class="modal-header-icon">
-              <img src="../../assets/images/UAgentLogo.png" width="36" height="36" alt="" draggable="false">
-            </div>
-            <div class="modal-header-text">
-              <div class="modal-header-title" id="splash-welcome-title" data-i18n="splash.welcomeTitle">????? ?????????? ? ???????!</div>
-              <div class="modal-header-sub" id="splash-welcome-sub" data-i18n="splash.welcomeSub">Undefined Client 1.0.5-beta</div>
-            </div>
-          </div>
-          <div class="modal-body splash-welcome-body">
-            <div class="splash-welcome-page is-active" data-welcome-page="1">
-              <img class="splash-welcome-hero" src="../../assets/images/newAiTab.png" width="244" height="244" alt="" draggable="false">
-              <div class="splash-welcome-heading" data-i18n="splash.welcome.p1.title">????? ????????? ????? ????? ? ?????</div>
-              <p class="splash-welcome-text" data-i18n="splash.welcome.p1.body">??????????? ? UAgent ?? ??????? ? ???????? ????, ??????????? ?? ????????? ?????, ????? ???? ?? ?????, ????????? ??????? ? ????????? ?????? ?????? ??? ?????? ????????.</p>
-            </div>
-            <div class="splash-welcome-page" data-welcome-page="2" hidden>
-              <div class="splash-welcome-badge" data-i18n="splash.welcome.p2.badge">???????? ??????</div>
-              <div class="splash-welcome-heading" data-i18n="splash.welcome.p2.title">???? ?????? ??? ?????????????</div>
-              <p class="splash-welcome-text" data-i18n="splash.welcome.p2.body">??????? ?? ? ???? ?????? ???????? ? ???????? ???? ?? ????? ????????????. ??? ???????????? ???? ??????? ?????? ? ??????????? ?? ????????? ?????????? ? ???? ????? ?????? ????? ? ??????????.</p>
-            </div>
-            <div class="splash-welcome-page" data-welcome-page="3" hidden>
-              <div class="splash-welcome-heading" data-i18n="splash.welcome.p3.title">???????? ??????????? ???????</div>
-              <p class="splash-welcome-text" data-i18n="splash.welcome.p3.body">?????? ????? ???????? ??????? ??????? ? ??????? ??????. ??? ????????????? ???? ???????????? ???????? ? ??????????.</p>
-              <div class="splash-welcome-toggle-row">
-                <div class="splash-welcome-toggle-label">
-                  <span data-i18n="splash.welcome.p3.toggle">???????? UAgent</span>
-                  <div class="splash-welcome-toggle-hint" data-i18n="splash.welcome.p3.toggleHint">???????? ????? ??????? ?????</div>
-                </div>
-                <label class="toggle">
-                  <input type="checkbox" id="splash-welcome-ai-toggle">
-                  <span class="toggle-track"></span>
-                </label>
-              </div>
-            </div>
-            <div class="splash-welcome-page" data-welcome-page="4-on" hidden>
-              <div class="splash-welcome-heading" data-i18n="splash.welcome.p4on.title">?????? ?? ? ???????</div>
-              <p class="splash-welcome-text" data-i18n="splash.welcome.p4on.body">???????, ??? ??????? ??? ?????? ?????! UAgent ??? ???? ??? ?? ??????? ??????? ? ???????? ??? ????????????? ?????? ???? ???????????? ? ??????????.</p>
-            </div>
-            <div class="splash-welcome-page" data-welcome-page="4-off" hidden>
-              <div class="splash-welcome-heading" data-i18n="splash.welcome.p4off.title">??? ??????</div>
-              <p class="splash-welcome-text" data-i18n="splash.welcome.p4off.body">????? ??????? ?? ?????? ??????? ???????? ? ?????????? ? ?????? UAgent. ????? ?????? ??????, ??????????? ?????? ? ??????? ???? ????????????.</p>
-            </div>
-          </div>
-          <div class="modal-footer splash-welcome-footer">
-            <div class="splash-welcome-steps" id="splash-welcome-steps" aria-hidden="true">
-              <span class="splash-welcome-step is-on"></span>
-              <span class="splash-welcome-step"></span>
-              <span class="splash-welcome-step"></span>
-            </div>
-            <button type="button" class="stngs-btn primary" id="splash-welcome-next" data-i18n="splash.welcomeNext">?????</button>
-          </div>
-        </div>
-      </div>
     </div>
-    <script>
-      /* ?????? ?????? 1.0.5-beta: ????? ?????, ??? ??????? ???????? */
-      (function () {
-        try {
-          if (localStorage.getItem('Undefined Client-seen-startup-ai-1.0.5-beta') !== 'true') {
-            document.documentElement.classList.add('splash-first-run');
-            var announce = document.getElementById('splash-announce');
-            if (announce) {
-              announce.hidden = false;
-              announce.removeAttribute('hidden');
-            }
-          }
-        } catch (e) {}
-      })();
-    </script>
     <!-- TitleBar -->
     <div id="titlebar">
       <div id="titlebar-title">
@@ -107,6 +27,10 @@
         </svg>
         <span>Undefined Client</span>
       </div>
+      <button type="button" class="tb-update-badge" id="tb-update-badge" hidden title="" data-i18n-title="updates.badgeTitle">
+        <span class="tb-update-badge__dot" aria-hidden="true"></span>
+        <span class="tb-update-badge__label" data-i18n="updates.badgeLabel">Обновление</span>
+      </button>
       <div id="titlebar-controls">
         <div class="tb-btn" id="btn-menu" title="" data-i18n-title="titlebar.menu">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -303,22 +227,22 @@
             <div class="tab-title-block">
               <img class="tab-title-icon" src="../../assets/tabsIcons/home.svg" alt="">
               <div class="tab-title-texts">
-                <h1 data-i18n="tab.home">???????</h1>
-                <p id="home-welcome-sub">?????? ???????????</p>
+                <h1 data-i18n="tab.home">Главная</h1>
+                <p id="home-welcome-sub">Готовы продолжить?</p>
               </div>
             </div>
             <div class="tab-actions">
             </div>
           </div>
 
-          <!-- ?????: ??????? ????? ? ???? -->
+          <!-- Герой: быстрый старт в игру -->
           <div id="quick-banner" class="home-hero">
             <video id="quick-banner-bg" muted autoplay loop playsinline></video>
             <div id="quick-banner-gradient"></div>
             <div id="quick-banner-content">
-              <div id="quick-banner-sub" data-i18n="home.continueGame">?????????? ????</div>
+              <div id="quick-banner-sub" data-i18n="home.continueGame">Продолжить игру</div>
               <div id="quick-banner-title">Fabulously Optimized</div>
-              <div id="quick-banner-meta">1.20.1 ? Fabric</div>
+              <div id="quick-banner-meta">1.20.1 · Fabric</div>
               <div id="quick-banner-status" class="home-hero-status"></div>
             </div>
             <div id="quick-banner-actions">
@@ -326,38 +250,38 @@
                 <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
                   <path d="M0 1.61803C0 0.724419 0.724419 0 1.61803 0C1.86923 0 2.11697 0.058484 2.34164 0.17082L19.1056 8.55279C19.6537 8.82687 20 9.38713 20 10C20 10.6129 19.6537 11.1731 19.1056 11.4472L2.34164 19.8292C2.11697 19.9415 1.86923 20 1.61803 20C0.724418 20 0 19.2756 0 18.382V1.61803Z" fill="currentColor"/>
                 </svg>
-                <span data-i18n="btn.play">??????</span>
+                <span data-i18n="btn.play">Играть</span>
               </button>
             </div>
           </div>
 
-          <!-- ????? ???????? ?????? ????? ????? -->
-          <div id="home-insights" class="home-insights" aria-label="??????">
+          <!-- Живой контекст -->
+          <div id="home-insights" class="home-insights" aria-label="Сводка">
             <button type="button" class="home-insight" id="home-insight-session" data-home-action="play">
-              <div class="home-insight__label" data-i18n="home.insight.session">????????? ??????</div>
-              <div class="home-insight__value" id="home-insight-session-value">?</div>
+              <div class="home-insight__label" data-i18n="home.insight.session">Последняя сессия</div>
+              <div class="home-insight__value" id="home-insight-session-value">—</div>
               <div class="home-insight__hint" id="home-insight-session-hint"></div>
             </button>
             <button type="button" class="home-insight" id="home-insight-library" data-home-action="builds">
-              <div class="home-insight__label" data-i18n="home.insight.library">???? ??????????</div>
-              <div class="home-insight__value" id="home-insight-library-value">?</div>
+              <div class="home-insight__label" data-i18n="home.insight.library">Ваша библиотека</div>
+              <div class="home-insight__value" id="home-insight-library-value">—</div>
               <div class="home-insight__hint" id="home-insight-library-hint"></div>
             </button>
             <button type="button" class="home-insight" id="home-insight-playtime" data-home-action="stats">
-              <div class="home-insight__label" data-i18n="home.insight.playtime">????????</div>
-              <div class="home-insight__value" id="home-insight-playtime-value">?</div>
-              <div class="home-insight__hint" id="home-insight-playtime-hint" data-i18n="home.insight.playtimeHint">?? ???? ???????</div>
+              <div class="home-insight__label" data-i18n="home.insight.playtime">Наиграно</div>
+              <div class="home-insight__value" id="home-insight-playtime-value">—</div>
+              <div class="home-insight__hint" id="home-insight-playtime-hint" data-i18n="home.insight.playtimeHint">По всем сборкам</div>
             </button>
           </div>
 
-          <!-- ????????? ??????? -->
+          <!-- Свежий пост -->
           <article id="home-news-attribution" class="home-news-attribution hidden" tabindex="0" role="link">
             <div class="home-news-attribution-media">
               <div class="home-news-attribution-cover" id="home-news-cover"></div>
             </div>
             <div class="home-news-attribution-info">
               <div class="home-news-attribution-badges">
-                <span class="home-news-badge" data-i18n="home.news.kicker">?????? ????</span>
+                <span class="home-news-badge" data-i18n="home.news.kicker">Свежий пост</span>
                 <span class="home-news-badge home-news-badge--brand">Undefined Client</span>
               </div>
               <div class="home-news-attribution-title" id="home-news-title"></div>
@@ -365,20 +289,20 @@
             </div>
           </article>
 
-          <!-- ?????: ?????? + ??????? -->
+          <!-- Ряд: сборки + серверы -->
           <div id="home-content-row">
             <div class="home-section">
               <div class="home-section-header">
-                <div class="home-section-title" data-i18n="tab.builds">??? ??????</div>
-                <button class="home-section-btn" data-tab="builds" data-i18n="home.allBuilds">??? ??????</button>
+                <div class="home-section-title" data-i18n="tab.builds">Мои сборки</div>
+                <button class="home-section-btn" data-tab="builds" data-i18n="home.allBuilds">Все сборки</button>
               </div>
               <div class="home-section-body" id="home-builds-list"></div>
             </div>
 
             <div class="home-section">
               <div class="home-section-header">
-                <div class="home-section-title" data-i18n="tab.servers">???????</div>
-                <button class="home-section-btn" data-tab="servers" data-i18n="home.allServers">??? ???????</button>
+                <div class="home-section-title" data-i18n="tab.servers">Серверы</div>
+                <button class="home-section-btn" data-tab="servers" data-i18n="home.allServers">Все серверы</button>
               </div>
               <div class="home-section-body" id="home-servers-list"></div>
             </div>
@@ -805,6 +729,7 @@
                 <div class="skin-preview-badges">
                   <span class="skin-badge accent" id="skin-current-model"></span>
                   <span class="skin-badge" id="skin-current-type"></span>
+                  <button type="button" class="skin-badge skin-badge--locator hidden" id="skin-locator-badge" title="" hidden aria-label="Locator Bar"></button>
                 </div>
               </div>
 
@@ -834,15 +759,18 @@
                   </button>
                   <div class="skin-anim-menu hidden" id="skin-anim-menu" role="listbox">
                     <button type="button" class="skin-anim-option active" data-anim="idle" data-i18n="skins.animIdle">Idle</button>
-                    <button type="button" class="skin-anim-option" data-anim="run" data-i18n="skins.animRun">???</button>
-                    <button type="button" class="skin-anim-option" data-anim="wave" data-i18n="skins.animWave">??????</button>
-                    <button type="button" class="skin-anim-option" data-anim="sneak" data-i18n="skins.animSneak">????????</button>
-                    <button type="button" class="skin-anim-option" data-anim="look" data-i18n="skins.animLook">?????</button>
-                    <button type="button" class="skin-anim-option" data-anim="cool" data-i18n="skins.animCool">??????</button>
-                    <button type="button" class="skin-anim-option" data-anim="glide" data-i18n="skins.animGlide">???????</button>
-                    <button type="button" class="skin-anim-option" data-anim="victory" data-i18n="skins.animVictory">??????</button>
-                    <button type="button" class="skin-anim-option" data-anim="sad" data-i18n="skins.animSad">??????</button>
-                    <button type="button" class="skin-anim-option" data-anim="dance" data-i18n="skins.animDance">?????</button>
+                    <button type="button" class="skin-anim-option" data-anim="run" data-i18n="skins.animRun">Бег</button>
+                    <button type="button" class="skin-anim-option" data-anim="wave" data-i18n="skins.animWave">Махать</button>
+                    <button type="button" class="skin-anim-option" data-anim="hello" data-i18n="skins.animHello">Привет</button>
+                    <button type="button" class="skin-anim-option" data-anim="sneak" data-i18n="skins.animSneak">Присесть</button>
+                    <button type="button" class="skin-anim-option" data-anim="look" data-i18n="skins.animLook">Кивок</button>
+                    <button type="button" class="skin-anim-option" data-anim="cool" data-i18n="skins.animCool">Рука на сердце</button>
+                    <button type="button" class="skin-anim-option" data-anim="think" data-i18n="skins.animThink">Думать</button>
+                    <button type="button" class="skin-anim-option" data-anim="dab" data-i18n="skins.animDab">Dab</button>
+                    <button type="button" class="skin-anim-option" data-anim="glide" data-i18n="skins.animGlide">Парение</button>
+                    <button type="button" class="skin-anim-option" data-anim="victory" data-i18n="skins.animVictory">Руки вверх</button>
+                    <button type="button" class="skin-anim-option" data-anim="sleep" data-i18n="skins.animSleep">Сон</button>
+                    <button type="button" class="skin-anim-option" data-anim="dance" data-i18n="skins.animDance">Танец</button>
                   </div>
                 </div>
               </div>
@@ -1068,12 +996,14 @@
                   <button type="button" class="msgr-rail-tab" id="msgr-tab-worlds" data-rail-tab="worlds" role="tab" aria-selected="false" data-i18n="msgr.tabWorlds">Миры</button>
                 </div>
                 <button type="button" class="msgr-rail-btn" id="msgr-new-group" data-i18n="msgr.newGroup">Новая группа</button>
+                <button type="button" class="msgr-rail-btn msgr-rail-btn--ghost" id="msgr-browse-users" data-i18n="msgr.browseUsers">Все пользователи</button>
                 <div class="msgr-rail__hint" id="msgr-rail-hint" hidden aria-live="polite"></div>
               </div>
               <div class="msgr-rail__pages" id="msgr-rail-pages">
                 <div class="msgr-rail__page is-active" id="msgr-chat-list" data-rail-page="chats"></div>
                 <div class="msgr-rail__page msgr-friends-list" id="msgr-friends-list" data-rail-page="friends" hidden></div>
                 <div class="msgr-rail__page msgr-worlds-list" id="msgr-worlds-list" data-rail-page="worlds" hidden></div>
+                <div class="msgr-rail__page msgr-users-list" id="msgr-users-list" data-rail-page="users" hidden></div>
               </div>
             </aside>
             <section class="msgr-stage" aria-label="Chat">
@@ -1094,10 +1024,19 @@
                 <div class="msgr-stage-empty__hint" data-i18n="msgr.emptyHint">Найдите игрока по нику в поиске слева</div>
               </div>
               <div class="msgr-thread" id="msgr-thread" hidden>
+                <div class="msgr-pin-bar" id="msgr-pin-bar" hidden>
+                  <button type="button" class="msgr-pin-bar__main" id="msgr-pin-bar-main">
+                    <span class="msgr-pin-bar__label" id="msgr-pin-bar-label"></span>
+                    <span class="msgr-pin-bar__text" id="msgr-pin-bar-text"></span>
+                  </button>
+                  <button type="button" class="msgr-pin-bar__unpin" id="msgr-pin-bar-unpin" hidden aria-label="Unpin">×</button>
+                </div>
                 <div class="msgr-messages" id="msgr-messages"></div>
+                <div class="msgr-typing" id="msgr-typing" hidden aria-live="polite"></div>
               </div>
               <div class="ai-composer-bar msgr-composer-bar" id="msgr-composer-bar" hidden>
                 <div class="msgr-reply-bar" id="msgr-reply-bar" hidden>
+                  <div class="msgr-reply-bar__accent" aria-hidden="true"></div>
                   <div class="msgr-reply-bar__body">
                     <div class="msgr-reply-bar__label" id="msgr-reply-label"></div>
                     <div class="msgr-reply-bar__text" id="msgr-reply-text"></div>
@@ -1121,6 +1060,24 @@
                               <div class="ai-attach-menu__title" data-i18n="msgr.attach">Прикрепить</div>
                             </div>
                             <div class="ai-attach-menu__list">
+                              <button type="button" class="ai-attach-menu__row" data-msgr-attach="build" role="menuitem">
+                                <span class="ai-attach-menu__ico ai-attach-badge--build" aria-hidden="true">
+                                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M9.11426 1.55273C9.67245 1.27708 10.3275 1.27708 10.8857 1.55273L16.8857 4.51562C17.568 4.85263 17.9999 5.54763 18 6.30859V13.6914C17.9999 14.4524 17.568 15.1474 16.8857 15.4844L10.8857 18.4473C10.3275 18.7229 9.67246 18.7229 9.11426 18.4473L3.11426 15.4844C2.43199 15.1474 2.00009 14.4524 2 13.6914V6.30859C2.00009 5.54764 2.43199 4.85263 3.11426 4.51562L9.11426 1.55273Z" stroke="currentColor" stroke-width="1.6"/></svg>
+                                </span>
+                                <span class="ai-attach-menu__row-main">
+                                  <span class="ai-attach-menu__row-title" data-i18n="msgr.attachBuild">Сборка</span>
+                                  <span class="ai-attach-menu__row-hint" data-i18n="msgr.attachBuildHint">ссылка на импорт</span>
+                                </span>
+                              </button>
+                              <button type="button" class="ai-attach-menu__row" data-msgr-attach="world" role="menuitem">
+                                <span class="ai-attach-menu__ico ai-attach-badge--world" aria-hidden="true">
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c2.5 2.8 3.8 5.8 3.8 9S14.5 18.2 12 21c-2.5-2.8-3.8-5.8-3.8-9S9.5 5.8 12 3z" stroke="currentColor" stroke-width="2"/></svg>
+                                </span>
+                                <span class="ai-attach-menu__row-main">
+                                  <span class="ai-attach-menu__row-title" data-i18n="msgr.attachWorld">Мир / LAN</span>
+                                  <span class="ai-attach-menu__row-hint" data-i18n="msgr.attachWorldHint">пригласить в игру</span>
+                                </span>
+                              </button>
                               <button type="button" class="ai-attach-menu__row" data-msgr-attach="media" role="menuitem">
                                 <span class="ai-attach-menu__ico ai-attach-badge--media" aria-hidden="true">
                                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="8.5" cy="10" r="1.5" fill="currentColor"/><path d="M21 16l-5.5-5.5L9 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1372,6 +1329,7 @@
             <span class="msgr-profile__tabs-pill" id="msgr-profile-tabs-pill" aria-hidden="true"></span>
             <button type="button" class="msgr-profile__tab is-active" id="msgr-profile-tab-info" data-profile-tab="info" role="tab" aria-selected="true" data-i18n="msgr.profileTabInfo">Инфо</button>
             <button type="button" class="msgr-profile__tab" id="msgr-profile-tab-members" data-profile-tab="members" role="tab" aria-selected="false" data-i18n="msgr.profileTabMembers">Участники</button>
+            <button type="button" class="msgr-profile__tab" id="msgr-profile-tab-media" data-profile-tab="media" role="tab" aria-selected="false" data-i18n="msgr.profileTabMedia">Медиа</button>
           </div>
           <div class="msgr-profile__pages" id="msgr-profile-pages">
             <div class="msgr-profile__page is-active" id="msgr-profile-info" data-profile-page="info">
@@ -1380,6 +1338,9 @@
             </div>
             <div class="msgr-profile__page" id="msgr-profile-members-page" data-profile-page="members" hidden>
               <div class="msgr-profile__members" id="msgr-profile-members"></div>
+            </div>
+            <div class="msgr-profile__page" id="msgr-profile-media" data-profile-page="media" hidden>
+              <div class="msgr-profile__media-grid" id="msgr-profile-media-grid"></div>
             </div>
           </div>
         </div>
@@ -1429,6 +1390,7 @@
       <div class="modal-body">
         <div class="modal-field">
           <input type="text" id="modal-msgr-prompt-input" maxlength="64" autocomplete="off" spellcheck="false">
+          <textarea id="modal-msgr-prompt-textarea" class="msgr-prompt-textarea" maxlength="12000" rows="12" hidden autocomplete="off" spellcheck="true"></textarea>
         </div>
         <div class="msgr-group-search-results" id="modal-msgr-prompt-results" hidden></div>
       </div>
@@ -1640,6 +1602,10 @@
     <button type="button" class="build-share-menu__item" data-share-action="link">
       <span class="build-share-menu__title" data-i18n="share.menu.link">Поделиться по ссылке</span>
       <span class="build-share-menu__hint" data-i18n="share.menu.linkHint">Через сайт Undefined Client</span>
+    </button>
+    <button type="button" class="build-share-menu__item" data-share-action="shortcut">
+      <span class="build-share-menu__title" data-i18n="share.menu.shortcut">Ярлык на рабочий стол</span>
+      <span class="build-share-menu__hint" data-i18n="share.menu.shortcutHint">Запуск через лаунчер</span>
     </button>
   </div>
 
@@ -1895,10 +1861,11 @@
               <div class="stngs-group-head">
                 <div class="stngs-group-title" data-i18n="stngs.javaManagerGroup">???????? Java</div>
               </div>
-              <div class="stngs-setting-row">
+              <div class="stngs-setting-row java-manager-head">
                 <div class="stngs-setting-label">
-                  <span data-i18n="stngs.javaManagerHint">?????????? ??????????? ?????? Java ??? ??????? ??????????????. ?????? ??? ?????? ?????????? ? ?? ?????????.</span>
+                  <span data-i18n="stngs.javaManagerHint">Установите необходимые версии Java или удалите неиспользуемые. Версия Java для сборки выбирается в её редакторе.</span>
                 </div>
+                <button type="button" class="stngs-btn ghost" id="java-manager-rescan" data-i18n="jm.rescan">Обновить</button>
               </div>
               <div class="java-manager-list" id="java-manager-list"></div>
             </div>
@@ -2177,12 +2144,12 @@
   </div>
 
   <!-- Confirm Modal -->
-  <div id="modal-confirm" class="hidden" style="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.1s ease;">
-    <div style="background:var(--bg-content);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:24px;min-width:320px;box-shadow:0 20px 60px rgba(0,0,0,0.4),0 8px 24px rgba(0,0,0,0.22);">
-      <div id="confirm-message" style="font-size:16px;color:#fff;margin-bottom:20px;font-weight:600;"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button id="confirm-no" class="stngs-btn ghost" data-i18n="btn.cancel">??????</button>
-        <button id="confirm-yes" class="stngs-btn primary" data-i18n="confirm.delete">???????</button>
+  <div id="modal-confirm" class="modal-confirm-overlay hidden">
+    <div class="modal-confirm-card">
+      <div id="confirm-message" class="modal-confirm-message"></div>
+      <div class="modal-confirm-actions">
+        <button id="confirm-no" class="stngs-btn ghost" data-i18n="btn.cancel">Отмена</button>
+        <button id="confirm-yes" class="stngs-btn primary" data-i18n="confirm.delete">Удалить</button>
       </div>
     </div>
   </div>
@@ -2372,12 +2339,6 @@
                 </label>
               </div>
             </div>
-            <div id="modal-build-open-section" style="display:none;">
-              <button class="stngs-btn ghost" id="modal-build-open-folder" style="margin-top:8px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                <span data-i18n="btn.openFolder">??????? ????? ??????</span>
-              </button>
-            </div>
           </div>
           <!-- Mods -->
           <div class="be-panel" data-be-panel="mods">
@@ -2409,7 +2370,7 @@
                 </button>
                 <button type="button" class="be-add-btn" id="be-rp-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span data-i18n="btn.add">????????</span>
+                  <span data-i18n="btn.installResourcepack">Установить ресурспак</span>
                 </button>
               </div>
             </div>
@@ -2428,7 +2389,7 @@
                 </button>
                 <button type="button" class="be-add-btn" id="be-shaders-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span data-i18n="btn.add">????????</span>
+                  <span data-i18n="btn.installShader">Установить шейдер</span>
                 </button>
               </div>
             </div>
@@ -2447,7 +2408,7 @@
                 </button>
                 <button type="button" class="be-add-btn" id="be-dp-add">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  <span data-i18n="btn.add">????????</span>
+                  <span data-i18n="btn.installDatapack">Установить датапак</span>
                 </button>
               </div>
             </div>
@@ -2569,6 +2530,10 @@
         </div>
       </div>
       <div class="build-editor-footer">
+        <button type="button" class="stngs-btn ghost be-open-folder-btn" id="modal-build-open-folder" hidden>
+          <img src="../../assets/icons/openFolder.svg" width="14" height="14" alt="" aria-hidden="true">
+          <span data-i18n="btn.openFolder">Открыть папку сборки</span>
+        </button>
         <button class="stngs-btn ghost" id="build-form-cancel" data-i18n="btn.cancel">??????</button>
         <button class="stngs-btn primary" id="build-form-submit" data-i18n="btn.create">???????</button>
       </div>
@@ -2675,6 +2640,99 @@
     </div>
   </div>
 </div>
+
+  <!-- ===== MODAL: установка контента в сборку (каталог + локально) ===== -->
+  <div id="modal-be-install" class="modal-overlay hidden">
+    <div class="modal-window xl be-install-window">
+      <div class="modal-header">
+        <div class="modal-header-icon">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect width="36" height="36" rx="9" fill="currentColor"/>
+            <path d="M8 23C8 22.4477 8.44772 22 9 22C9.55228 22 10 22.4477 10 23V24C10 25.1046 10.8954 26 12 26H24C25.1046 26 26 25.1046 26 24V23C26 22.4477 26.4477 22 27 22C27.5523 22 28 22.4477 28 23V24C28 26.2091 26.2091 28 24 28H12C9.79086 28 8 26.2091 8 24V23Z" fill="white"/>
+            <path d="M19 9C19 8.44772 18.5523 8 18 8C17.4477 8 17 8.44772 17 9L18 9L19 9ZM17.2929 22.7071C17.6834 23.0976 18.3166 23.0976 18.7071 22.7071L25.0711 16.3431C25.4616 15.9526 25.4616 15.3195 25.0711 14.9289C24.6805 14.5384 24.0474 14.5384 23.6569 14.9289L18 20.5858L12.3431 14.9289C11.9526 14.5384 11.3195 14.5384 10.9289 14.9289C10.5384 15.3195 10.5384 15.9526 10.9289 16.3431L17.2929 22.7071ZM18 9L17 9L17 22L18 22L19 22L19 9L18 9Z" fill="white"/>
+          </svg>
+        </div>
+        <div class="modal-header-text">
+          <div class="modal-header-title" id="be-install-title" data-i18n="be.install.titleMod">Установить мод</div>
+          <div class="modal-header-sub" id="be-install-sub" data-i18n="be.install.sub">Каталог под версию и загрузчик сборки</div>
+        </div>
+        <button class="modal-close" id="be-install-close" type="button">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="modal-body be-install-body" id="be-install-scroll">
+        <!-- Sentinel: при уходе из вида тулбар получает is-stuck -->
+        <div id="be-install-toolbar-sentinel" class="mods-toolbar-sentinel" aria-hidden="true"></div>
+        <div id="be-install-search-bar" class="mods-toolbar be-install-toolbar">
+          <div class="mods-toolbar__panel">
+            <div class="be-install-meta" id="be-install-meta"></div>
+            <div class="search-input-wrapper">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M11 11L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+              <input type="text" id="be-install-search" class="search-input" spellcheck="false" autocomplete="off" data-i18n-ph="be.install.searchPlaceholder" placeholder="Поиск…">
+            </div>
+            <div class="be-install-filters">
+              <div class="stngs-select-wrap mods-select-wrap">
+                <select class="stngs-select-hidden" id="be-install-source-select" title="" data-i18n-title="mods.filter.source">
+                  <option value="both" data-i18n="mods.filter.sourceBoth">Оба источника</option>
+                  <option value="modrinth" data-i18n="mods.filter.sourceModrinth">Modrinth</option>
+                  <option value="curseforge" data-i18n="mods.filter.sourceCurseforge">CurseForge</option>
+                </select>
+                <button type="button" class="stngs-select-btn">
+                  <span class="stngs-select-value" data-i18n="mods.filter.sourceBoth">Оба источника</span>
+                  <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="stngs-select-menu">
+                  <div class="stngs-select-opt" data-value="both" data-i18n="mods.filter.sourceBoth">Оба источника</div>
+                  <div class="stngs-select-opt" data-value="modrinth" data-i18n="mods.filter.sourceModrinth">Modrinth</div>
+                  <div class="stngs-select-opt" data-value="curseforge" data-i18n="mods.filter.sourceCurseforge">CurseForge</div>
+                </div>
+              </div>
+              <div class="stngs-select-wrap mods-select-wrap">
+                <select class="stngs-select-hidden" id="be-install-sort-select" title="" data-i18n-title="mods.filter.sort">
+                  <option value="relevance" data-i18n="mods.filter.sortRelevance">По релевантности</option>
+                  <option value="downloads" data-i18n="mods.filter.sortDownloads">По скачиваниям</option>
+                  <option value="follows" data-i18n="mods.filter.sortFollows">По подпискам</option>
+                  <option value="newest" data-i18n="mods.filter.sortNewest">По новизне</option>
+                  <option value="updated" data-i18n="mods.filter.sortUpdated">По обновлениям</option>
+                </select>
+                <button type="button" class="stngs-select-btn">
+                  <span class="stngs-select-value" data-i18n="mods.filter.sortRelevance">По релевантности</span>
+                  <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="stngs-select-menu">
+                  <div class="stngs-select-opt" data-value="relevance" data-i18n="mods.filter.sortRelevance">По релевантности</div>
+                  <div class="stngs-select-opt" data-value="downloads" data-i18n="mods.filter.sortDownloads">По скачиваниям</div>
+                  <div class="stngs-select-opt" data-value="follows" data-i18n="mods.filter.sortFollows">По подпискам</div>
+                  <div class="stngs-select-opt" data-value="newest" data-i18n="mods.filter.sortNewest">По новизне</div>
+                  <div class="stngs-select-opt" data-value="updated" data-i18n="mods.filter.sortUpdated">По обновлениям</div>
+                </div>
+              </div>
+              <button type="button" class="mods-view-toggle" id="be-install-view-toggle" aria-pressed="false" title="" data-i18n-title="mods.view.toggleToCards">
+                <img class="mods-view-toggle__icon mods-view-toggle__icon--cards" src="../../assets/icons/cards.svg" width="16" height="16" alt="" aria-hidden="true">
+                <img class="mods-view-toggle__icon mods-view-toggle__icon--list" src="../../assets/icons/list.svg" width="16" height="16" alt="" aria-hidden="true">
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="be-install-grid mods-grid" id="be-install-grid"></div>
+      </div>
+      <div class="modal-footer be-install-footer">
+        <div class="be-install-local">
+          <span class="be-install-local-label" data-i18n="be.install.localTitle">Локально</span>
+          <span class="be-install-local-hint" id="be-install-local-hint" data-i18n="be.install.localHintMod">.jar</span>
+          <button type="button" class="stngs-btn ghost" id="be-install-local-btn" data-i18n="be.install.pickFile">Выбрать файл</button>
+        </div>
+        <button class="stngs-btn ghost" id="be-install-cancel" data-i18n="btn.cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
 
   <div id="modal-target-build" class="modal-overlay hidden">
     <div class="modal-window md">
@@ -2827,6 +2885,10 @@
         </div>
         <div class="share-import-details" id="share-import-details"></div>
         <div class="share-import-stats" id="share-import-stats"></div>
+        <div class="share-import-files-wrap hidden" id="share-import-files-wrap">
+          <div class="share-import-files-title" data-i18n="shareImport.filesTitle">Содержимое</div>
+          <div class="share-import-files" id="share-import-files"></div>
+        </div>
         <aside class="share-import-warn" role="note">
           <div class="share-import-warn-title" data-i18n="shareImport.warnTitle">?????? ????????? ??? ??????? ??????</div>
           <div class="share-import-warn-text" data-i18n="shareImport.warnText">???????????? ?????? ?????? ?? ?????????? ????? ??? ??????. ?? ?????????? ??????, ???? ?? ??????? ? ? ????????????: ? ?????? ????? ???? ??????????? ????.</div>
@@ -3075,7 +3137,11 @@
               <svg class="import-info-ico-idle" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 5V9M8 11V10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
               <span class="import-info-spinner" aria-hidden="true"></span>
             </div>
-            <div class="import-info-text" id="import-info-text" data-i18n="import.selected">?????? ????: {name}</div>
+            <div class="import-info-body">
+              <div class="import-info-text" id="import-info-text" data-i18n="import.selected">Выбран файл: {name}</div>
+              <div class="import-manifest-stats hidden" id="import-manifest-stats"></div>
+              <div class="import-manifest-files hidden" id="import-manifest-files"></div>
+            </div>
           </div>
         </div>
 

@@ -157,7 +157,11 @@ const SKIN_HOSTS = new Set([
   'textures.minecraft.net',
   'skinsystem.ely.by',
   'ely.by',
+  's.namemc.com',
 ]);
+
+/** Скин по умолчанию, если у аккаунта (Ely и др.) нет своей текстуры */
+export const DEFAULT_ACCOUNT_SKIN_URL = 'https://s.namemc.com/i/cbe20ed58814c5e1.png';
 
 /**
  * Приводит адрес текстуры к https. Профиль Mojang исторически отдаёт ссылки на

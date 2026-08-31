@@ -2,6 +2,7 @@
   BustPoseAnimation,
   createSkinAnimation,
   DEFAULT_SKIN_DEBUG_OPTIONS,
+  locatorColorFromUuid,
   SkinModelType,
   SkinViewEngine,
   type ShotPresetId,
@@ -104,13 +105,27 @@ interface DeepLinkJoinGroup {
   token: string;
 }
 
-type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup;
+interface DeepLinkLaunch {
+  action: 'launch';
+  id: string;
+}
+
+type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup | DeepLinkLaunch;
 
 interface InstanceShareCounts {
   mods: number;
   resourcePacks: number;
   shaders: number;
   dataPacks: number;
+}
+
+interface InstanceShareFilePreview {
+  fileId?: string;
+  contentType?: string;
+  filename?: string;
+  name?: string;
+  version?: string;
+  enabled?: boolean;
 }
 
 interface InstanceShareManifest {
@@ -124,7 +139,7 @@ interface InstanceShareManifest {
   loaderVersion: string;
   counts: InstanceShareCounts;
   authorName?: string;
-  files?: unknown[];
+  files?: InstanceShareFilePreview[];
 }
 
 interface DeepLinkVersion {
@@ -256,7 +271,24 @@ interface ElectronAPI {
       fileCount: number;
       hasOverrides: boolean;
       archiveName: string;
+      counts?: {
+        mods: number;
+        resourcePacks: number;
+        shaders: number;
+        dataPacks: number;
+        configs: number;
+      };
+      previewFiles?: Array<{
+        name: string;
+        kind: 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'config' | 'other';
+      }>;
     };
+    error?: string;
+  }>;
+  createBuildShortcut: (buildId: string) => Promise<{
+    success: boolean;
+    path?: string;
+    name?: string;
     error?: string;
   }>;
   importModpack: (archivePath: string) => Promise<{
@@ -271,8 +303,17 @@ interface ElectronAPI {
   }>;
   getVersions: () => Promise<any[]>;
   getLoaderVersions: (loader: string, mcVersion: string) => Promise<string[]>;
-  detectJava: () => Promise<{ name: string; path: string; version: number }[]>;
-  listJavaVersions: () => Promise<{ version: number; installed: boolean; managed: boolean; path: string | null; systemPaths: string[] }[]>;
+  detectJava: (refresh?: boolean) => Promise<{ name: string; path: string; version: number; managed?: boolean }[]>;
+  listJavaVersions: (refresh?: boolean) => Promise<{
+    version: number;
+    installed: boolean;
+    managed: boolean;
+    path: string | null;
+    systemPaths: string[];
+    canInstall?: boolean;
+    names?: string[];
+  }[]>;
+  pickJava: () => Promise<{ path: string; version: number; name: string } | null>;
   installJava: (version: number) => Promise<{ success: boolean; path?: string; error?: string }>;
   removeJava: (version: number) => Promise<{ success: boolean; error?: string }>;
   resolveJavaVersion: (gameVersion: string) => Promise<{ success: boolean; version?: number; error?: string }>;
@@ -1394,6 +1435,71 @@ let savedBuilds: Build[] = [];
 let savedServers: Server[] = [];
 let editingBuildId: string | null = null;
 let versionsPopulated = false;
+let versionsPopulatePromise: Promise<void> | null = null;
+
+function appendBuildVersionOption(id: string, label: string): void {
+  const select = document.getElementById('modal-build-version') as HTMLSelectElement;
+  const menu = document.getElementById('modal-build-version-menu');
+  if (!select) return;
+  if (Array.from(select.options).some((o) => o.value === id)) return;
+  const opt = document.createElement('option');
+  opt.value = id;
+  opt.textContent = label;
+  opt.setAttribute('data-dynamic', '1');
+  select.appendChild(opt);
+  if (menu) {
+    const mi = document.createElement('div');
+    mi.className = 'stngs-select-opt';
+    mi.dataset.value = id;
+    mi.setAttribute('data-dynamic', '1');
+    mi.textContent = label;
+    menu.appendChild(mi);
+  }
+}
+
+function syncBuildVersionUI(): void {
+  const select = document.getElementById('modal-build-version') as HTMLSelectElement;
+  const wrap = select?.closest('.stngs-select-wrap');
+  if (wrap) syncSelectUI(wrap as HTMLElement);
+}
+
+/** Подгружает список версий MC в селект сборки; при пустом ответе можно повторить */
+async function ensureBuildVersionsLoaded(): Promise<void> {
+  const select = document.getElementById('modal-build-version') as HTMLSelectElement | null;
+  if (!select || !api?.getVersions) return;
+  if (select.querySelectorAll('option[data-dynamic]').length > 0) {
+    versionsPopulated = true;
+    return;
+  }
+  if (versionsPopulatePromise) return versionsPopulatePromise;
+
+  versionsPopulatePromise = (async () => {
+    try {
+      const versions = await api.getVersions();
+      if (!versions || !Array.isArray(versions) || versions.length === 0) {
+        versionsPopulated = false;
+        return;
+      }
+      const seen = new Set<string>(['latest_release', 'latest_snapshot']);
+      for (const v of versions) {
+        const id = String(v?.id || '').trim();
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const type = String(v?.type || '');
+        if (type === 'old_alpha' || type === 'old_beta') continue;
+        appendBuildVersionOption(id, id + (type === 'snapshot' ? t('be.snapshotSuffix') : ''));
+      }
+      versionsPopulated = select.querySelectorAll('option[data-dynamic]').length > 0;
+      syncBuildVersionUI();
+    } catch {
+      versionsPopulated = false;
+    } finally {
+      versionsPopulatePromise = null;
+    }
+  })();
+
+  return versionsPopulatePromise;
+}
 
 let runningBuild: Build | null = null;
 let runningBuildStart: number = 0;
@@ -1710,29 +1816,9 @@ let downloadPrevTime = 0;
 
 const SPLASH_MIN_MS = 600;
 const SPLASH_SAFETY_MS = 6000;
-/** Показ AI-анонса и welcome один раз для 1.0.5-beta */
-const STARTUP_AI_SEEN_KEY = 'Undefined Client-seen-startup-ai-1.0.5-beta';
 
 let initStartedAt = performance.now();
 let splashClosed = false;
-/** После видео ждём закрытия splash → welcome, а не сразу в UI */
-let splashAwaitingWelcome = false;
-let splashWelcomeShown = false;
-
-function needsStartupAiAnnounce(): boolean {
-  try {
-    return localStorage.getItem(STARTUP_AI_SEEN_KEY) !== 'true';
-  } catch {
-    return false;
-  }
-}
-
-function markStartupAiSeen(): void {
-  try {
-    localStorage.setItem(STARTUP_AI_SEEN_KEY, 'true');
-  } catch { /* ignore */ }
-  document.documentElement.classList.remove('splash-first-run', 'splash-announce-done');
-}
 
 function closeSplash(): void {
   if (splashClosed) return;
@@ -1746,178 +1832,9 @@ function closeSplash(): void {
   }, 500);
 }
 
-function showSplashWelcome(): void {
-  if (splashWelcomeShown || splashClosed) return;
-  splashWelcomeShown = true;
-  splashAwaitingWelcome = false;
-
-  const loader = document.getElementById('splash-loader');
-  if (loader) loader.classList.add('hidden');
-
-  const content = document.getElementById('splash-content');
-  if (content) {
-    content.style.opacity = '0';
-    content.style.pointerEvents = 'none';
-  }
-
-  const welcome = document.getElementById('splash-welcome');
-  if (welcome) {
-    welcome.hidden = false;
-    welcome.removeAttribute('hidden');
-  }
-
-  bindSplashWelcomeWizard();
-}
-
-/** Многостраничная welcome-модалка после AI-анонса */
-function bindSplashWelcomeWizard(): void {
-  type WelcomeStep = '1' | '2' | '3' | '4-on' | '4-off';
-  let step: WelcomeStep = '1';
-
-  const titleEl = document.getElementById('splash-welcome-title');
-  const subEl = document.getElementById('splash-welcome-sub');
-  const nextBtn = document.getElementById('splash-welcome-next') as HTMLButtonElement | null;
-  const toggle = document.getElementById('splash-welcome-ai-toggle') as HTMLInputElement | null;
-  const stepsEl = document.getElementById('splash-welcome-steps');
-
-  const headerFor = (s: WelcomeStep): { title: string; sub: string } => {
-    switch (s) {
-      case '1':
-        return { title: t('splash.welcomeTitle'), sub: t('splash.welcomeSub', { ver: '1.0.5-beta' }) };
-      case '2':
-        return { title: t('splash.welcome.p2.header'), sub: t('splash.welcome.p2.headerSub') };
-      case '3':
-        return { title: t('splash.welcome.p3.header'), sub: t('splash.welcome.p3.headerSub') };
-      case '4-on':
-        return { title: t('splash.welcome.p4on.header'), sub: t('splash.welcome.p4on.headerSub') };
-      case '4-off':
-        return { title: t('splash.welcome.p4off.header'), sub: t('splash.welcome.p4off.headerSub') };
-    }
-  };
-
-  const render = () => {
-    document.querySelectorAll<HTMLElement>('[data-welcome-page]').forEach((page) => {
-      const id = page.getAttribute('data-welcome-page');
-      const on = id === step;
-      page.classList.toggle('is-active', on);
-      page.hidden = !on;
-    });
-    const hdr = headerFor(step);
-    if (titleEl) titleEl.textContent = hdr.title;
-    if (subEl) subEl.textContent = hdr.sub;
-    if (nextBtn) {
-      const isFinal = step === '4-on' || step === '4-off';
-      nextBtn.textContent = isFinal ? t('splash.welcomeStart') : t('splash.welcomeNext');
-    }
-    if (stepsEl) {
-      const idx = step === '1' ? 0 : step === '2' ? 1 : 2;
-      const dots = stepsEl.querySelectorAll('.splash-welcome-step');
-      dots.forEach((dot, i) => dot.classList.toggle('is-on', i === idx || (step.startsWith('4') && i === 2)));
-      stepsEl.style.visibility = step.startsWith('4') ? 'hidden' : '';
-    }
-  };
-
-  const applyAgentChoice = (enabled: boolean) => {
-    localStorage.setItem(AI_ENABLED_LS_KEY, String(enabled));
-    const settingsToggle = document.getElementById('setting-ai-enabled') as HTMLInputElement | null;
-    if (settingsToggle) settingsToggle.checked = enabled;
-    applyAiTabVisibility();
-  };
-
-  const finish = () => {
-    markStartupAiSeen();
-    closeSplash();
-  };
-
-  nextBtn?.addEventListener('click', () => {
-    if (step === '1') {
-      step = '2';
-      render();
-      return;
-    }
-    if (step === '2') {
-      step = '3';
-      render();
-      return;
-    }
-    if (step === '3') {
-      const enabled = Boolean(toggle?.checked);
-      applyAgentChoice(enabled);
-      step = enabled ? '4-on' : '4-off';
-      render();
-      return;
-    }
-    finish();
-  });
-
-  render();
-}
-
-/** Закрытие splash с учётом first-run welcome */
 function requestCloseSplash(): void {
   if (splashClosed) return;
-  if (splashAwaitingWelcome && !splashWelcomeShown) {
-    showSplashWelcome();
-    return;
-  }
-  if (splashWelcomeShown) return;
   closeSplash();
-}
-
-/** Анонс-видео AI перед логотипом (только первый запуск версии) */
-function playStartupAnnounceVideo(): Promise<void> {
-  const wrap = document.getElementById('splash-announce');
-  const video = document.getElementById('splash-announce-video') as HTMLVideoElement | null;
-  if (!wrap || !video) return Promise.resolve();
-
-  wrap.hidden = false;
-  wrap.removeAttribute('hidden');
-
-  return new Promise((resolve) => {
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      try { video.pause(); } catch { /* ignore */ }
-      wrap.classList.add('fade-out');
-      document.documentElement.classList.add('splash-announce-done');
-      setTimeout(() => {
-        wrap.hidden = true;
-        wrap.setAttribute('hidden', '');
-        wrap.classList.remove('fade-out');
-        // Показываем логотип на том же фоне
-        document.documentElement.classList.remove('splash-first-run');
-        const content = document.getElementById('splash-content');
-        if (content) {
-          content.style.opacity = '';
-          content.style.pointerEvents = '';
-        }
-        resolve();
-      }, 420);
-    };
-
-    video.addEventListener('ended', finish, { once: true });
-    video.addEventListener('error', finish, { once: true });
-
-    // В Electron обычно можно со звуком; если нет — mute и повтор
-    const tryPlay = () => {
-      const p = video.play();
-      if (p && typeof p.then === 'function') {
-        p.catch(() => {
-          video.muted = true;
-          video.play().catch(() => finish());
-        });
-      }
-    };
-    if (video.readyState >= 2) tryPlay();
-    else {
-      video.addEventListener('canplay', tryPlay, { once: true });
-      // На случай зависания загрузки
-      setTimeout(() => {
-        if (!finished && video.readyState < 2) finish();
-      }, 8000);
-    }
-  });
 }
 
 async function init(): Promise<void> {
@@ -1931,6 +1848,14 @@ async function init(): Promise<void> {
     getAccount: () => currentAccount,
     openModal,
     closeModal,
+    openSettingsTab: (tab: string) => {
+      openModal('modal-settings');
+      queueMicrotask(() => {
+        document.querySelector<HTMLElement>(`[data-settings-tab="${tab}"]`)?.click();
+        if (tab === 'updates') void checkForUpdatesUI();
+      });
+    },
+    renderMarkdown: (md: string) => sanitizeHtml(markedParse(md || '')),
     updateStatus,
     showToast: showAppToast,
     getLauncherStats: () => {
@@ -2044,12 +1969,6 @@ async function init(): Promise<void> {
       if (currentAccount?.uuid) await refreshAccountInBackground(currentAccount);
     },
   });
-
-  const firstAiRun = needsStartupAiAnnounce();
-  if (firstAiRun) {
-    splashAwaitingWelcome = true;
-    await playStartupAnnounceVideo();
-  }
 
   initStartedAt = performance.now();
   setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
@@ -2295,8 +2214,10 @@ async function init(): Promise<void> {
   await loadServers();
   renderSavedAccounts();
   loadTheme();
-  if (localStorage.getItem('Undefined Client-check-updates-start') !== 'false') {
-    void checkForUpdatesUI();
+  // Проверка обновлений всегда (бейдж в titlebar); автозапуск updater — по настройке
+  {
+    const autoLaunch = localStorage.getItem('Undefined Client-check-updates-start') !== 'false';
+    void checkForUpdatesUI({ autoLaunch });
   }
   setupDownloadProgress();
   if (api?.getPlatformInfo) {
@@ -2316,23 +2237,8 @@ async function init(): Promise<void> {
     }
   }
 
-  // Eagerly fetch Minecraft versions so the build modal select is ready
-  const versionSelect = document.getElementById('modal-build-version') as HTMLSelectElement;
-  if (versionSelect && !versionsPopulated && api?.getVersions) {
-    versionsPopulated = true;
-    api.getVersions().then(versions => {
-      if (!versions || !Array.isArray(versions)) return;
-      const seen = new Set<string>();
-      for (const v of versions) {
-        const id = v.id;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        if (['old_alpha', 'old_beta'].includes(v.type)) continue;
-        appendBuildVersionOption(id, id + (v.type === 'snapshot' ? t('be.snapshotSuffix') : ''));
-      }
-      syncBuildVersionUI();
-    }).catch(() => {});
-  }
+  // Список версий Minecraft для модалки сборки
+  void ensureBuildVersionsLoaded();
 
   const remaining = SPLASH_MIN_MS - (performance.now() - initStartedAt);
   setTimeout(requestCloseSplash, Math.max(0, remaining));
@@ -2354,29 +2260,6 @@ async function init(): Promise<void> {
     void ensureSkinTab();
     scheduleIdle(() => ensureModsCatalog(), 3000);
   }, 2000);
-}
-
-function appendBuildVersionOption(id: string, label: string): void {
-  const select = document.getElementById('modal-build-version') as HTMLSelectElement;
-  const menu = document.getElementById('modal-build-version-menu');
-  if (!select) return;
-  const opt = document.createElement('option');
-  opt.value = id;
-  opt.textContent = label;
-  select.appendChild(opt);
-  if (menu) {
-    const mi = document.createElement('div');
-    mi.className = 'stngs-select-opt';
-    mi.dataset.value = id;
-    mi.textContent = label;
-    menu.appendChild(mi);
-  }
-}
-
-function syncBuildVersionUI(): void {
-  const select = document.getElementById('modal-build-version') as HTMLSelectElement;
-  const wrap = select?.closest('.stngs-select-wrap');
-  if (wrap) syncSelectUI(wrap as HTMLElement);
 }
 
 /* ===== BUILDS ===== */
@@ -2561,29 +2444,28 @@ function populateLoaderVersions(loader: string, mcVersion: string): void {
   }).catch(() => {});
 }
 
-let detectedJava: { name: string; path: string; version: number }[] = [];
+let detectedJava: { name: string; path: string; version: number; managed?: boolean }[] = [];
 
-function populateJavaOptions(): Promise<void> {
+async function populateJavaOptions(force = false): Promise<void> {
   const select = document.getElementById('modal-build-java') as HTMLSelectElement;
   const menu = document.getElementById('modal-build-java-menu');
-  if (!select || !menu) return Promise.resolve();
-  if (detectedJava.length === 0 && api?.detectJava) {
-    return api.detectJava().then(list => {
-      detectedJava = list || [];
-      appendJavaOptions(select, menu);
-    }).catch(() => {
+  if (!select || !menu) return;
+  if ((force || detectedJava.length === 0) && api?.detectJava) {
+    try {
+      detectedJava = (await api.detectJava(force)) || [];
+    } catch {
       detectedJava = [];
-    });
+    }
   }
   appendJavaOptions(select, menu);
-  return Promise.resolve();
 }
 
 function appendJavaOptions(select: HTMLSelectElement, menu: HTMLElement): void {
   menu.querySelectorAll<HTMLElement>('.stngs-select-opt[data-java-dyn]').forEach(o => o.remove());
   select.querySelectorAll<HTMLOptionElement>('option[data-java-dyn]').forEach(o => o.remove());
   for (const j of detectedJava) {
-    const label = `Java ${j.version} · ${j.name}`;
+    const kind = j.managed ? t('jm.managed') : t('jm.system');
+    const label = `Java ${j.version} · ${j.name} (${kind})`;
     const opt = document.createElement('option');
     opt.dataset.javaDyn = '1';
     opt.value = j.path;
@@ -2594,6 +2476,7 @@ function appendJavaOptions(select: HTMLSelectElement, menu: HTMLElement): void {
     item.dataset.javaDyn = '1';
     item.dataset.value = j.path;
     item.textContent = label;
+    item.title = j.path;
     menu.appendChild(item);
   }
 }
@@ -2606,11 +2489,19 @@ interface JavaVersionInfo {
   managed: boolean;
   path: string | null;
   systemPaths: string[];
+  canInstall?: boolean;
+  names?: string[];
 }
 
 let javaManagerData: JavaVersionInfo[] = [];
 let javaBusy: Record<number, boolean> = {};
 let javaProgressCleanup: (() => void) | null = null;
+
+function truncateJavaPath(p: string, max = 42): string {
+  if (!p) return '';
+  if (p.length <= max) return p;
+  return `…${p.slice(-(max - 1))}`;
+}
 
 function renderJavaManager(list: JavaVersionInfo[]): void {
   const container = document.getElementById('java-manager-list');
@@ -2622,33 +2513,43 @@ function renderJavaManager(list: JavaVersionInfo[]): void {
     const metaParts: string[] = [];
     if (j.installed) metaParts.push(j.managed ? t('jm.managed') : t('jm.system'));
     if (j.systemPaths.length > 0 && j.managed) metaParts.push(t('jm.systemFound', { n: String(j.systemPaths.length) }));
+    else if (j.systemPaths.length > 1) metaParts.push(t('jm.systemFound', { n: String(j.systemPaths.length) }));
+    if (!j.installed) metaParts.push(t('jm.available'));
     const pathText = j.installed && j.path ? j.path : '';
+    const canInstall = j.canInstall !== false;
+    // Установить managed-копию можно, даже если есть системная
+    const installDisabled = !canInstall || j.managed || !!busy;
+    const removeDisabled = !j.managed || !!busy;
     return `
       <div class="list-row" data-java-ver="${j.version}">
         <div class="java-row-badge ${j.installed ? 'installed' : ''}">${j.version}</div>
         <div class="list-row-info">
           <div class="java-row-title">Java ${j.version}</div>
-          <div class="list-row-meta">${metaParts.join(' · ') || t('jm.available')}</div>
+          <div class="list-row-meta">${metaParts.join(' · ')}</div>
         </div>
-        <div class="java-row-path" title="${pathText}">${pathText}</div>
+        <div class="java-row-path" title="${escapeHtml(pathText)}">${escapeHtml(truncateJavaPath(pathText))}</div>
         <div class="java-row-status ${statusCls}">${statusText}</div>
         <div class="java-row-actions">
-          <button class="list-row-btn java-install-btn" data-java-ver="${j.version}" ${j.installed || busy ? 'disabled' : ''}>${t('jm.install')}</button>
-          <button class="list-row-btn danger java-remove-btn" data-java-ver="${j.version}" ${!j.managed || busy ? 'disabled' : ''}>${t('jm.remove')}</button>
+          <button class="list-row-btn java-install-btn" data-java-ver="${j.version}" ${installDisabled ? 'disabled' : ''}>${t('jm.install')}</button>
+          <button class="list-row-btn danger java-remove-btn" data-java-ver="${j.version}" ${removeDisabled ? 'disabled' : ''}>${t('jm.remove')}</button>
         </div>
       </div>`;
   }).join('');
 }
 
-async function refreshJavaManager(): Promise<void> {
+async function refreshJavaManager(force = true): Promise<void> {
   if (!api?.listJavaVersions) return;
   try {
-    javaManagerData = await api.listJavaVersions();
+    javaManagerData = await api.listJavaVersions(force);
   } catch {
     javaManagerData = [];
   }
   renderJavaManager(javaManagerData);
-  detectedJava = [];
+  try {
+    detectedJava = (await api.detectJava?.(false)) || [];
+  } catch {
+    detectedJava = [];
+  }
 }
 
 function initJavaManager(): void {
@@ -2663,7 +2564,7 @@ function initJavaManager(): void {
         javaBusy[version] = false;
         const dp = document.getElementById('download-progress');
         if (dp) dp.classList.add('hidden');
-        void refreshJavaManager();
+        void refreshJavaManager(true);
         return;
       }
       javaBusy[version] = true;
@@ -2674,6 +2575,9 @@ function initJavaManager(): void {
       }
     });
   }
+  document.getElementById('java-manager-rescan')?.addEventListener('click', () => {
+    void refreshJavaManager(true);
+  });
   container.addEventListener('click', async (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('button');
     if (!btn) return;
@@ -2687,7 +2591,7 @@ function initJavaManager(): void {
       const result = await api?.installJava?.(version);
       javaBusy[version] = false;
       if (!result?.success) updateStatus(result?.error ? String(result.error) : t('jm.installFailed'));
-      await refreshJavaManager();
+      await refreshJavaManager(true);
     } else if (btn.classList.contains('java-remove-btn')) {
       if (!await confirmAction(t('jm.removeConfirm', { ver: String(version) }))) return;
       javaBusy[version] = true;
@@ -2695,7 +2599,7 @@ function initJavaManager(): void {
       const result = await api?.removeJava?.(version);
       javaBusy[version] = false;
       if (!result?.success) updateStatus(result?.error ? String(result.error) : t('jm.removeFailed'));
-      await refreshJavaManager();
+      await refreshJavaManager(true);
     }
   });
 }
@@ -2753,11 +2657,48 @@ async function autoApplyCompatibleJava(): Promise<void> {
 
 document.getElementById('modal-build-java')?.addEventListener('change', () => {
   const select = document.getElementById('modal-build-java') as HTMLSelectElement;
+  const javaCustomRow = document.getElementById('be-java-custom-row');
   if (!select) return;
   if (select.value !== lastAutoJavaPath) {
     javaManualChoice = true;
     javaAutoApplied = false;
     setJavaAutoHint('', '', false);
+  }
+  if (javaCustomRow) javaCustomRow.classList.toggle('hidden', select.value !== '__custom');
+});
+
+document.getElementById('be-java-browse')?.addEventListener('click', async () => {
+  if (!api?.pickJava) return;
+  const picked = await api.pickJava();
+  if (!picked?.path) return;
+  const pathInput = document.getElementById('modal-build-java-path') as HTMLInputElement | null;
+  const select = document.getElementById('modal-build-java') as HTMLSelectElement | null;
+  const javaCustomRow = document.getElementById('be-java-custom-row');
+  if (pathInput) pathInput.value = picked.path;
+  if (select) {
+    select.value = '__custom';
+    const wrap = select.closest('.stngs-select-wrap');
+    if (wrap) syncSelectUI(wrap as HTMLElement);
+  }
+  if (javaCustomRow) javaCustomRow.classList.remove('hidden');
+  javaManualChoice = true;
+  javaAutoApplied = false;
+  setJavaAutoHint(
+    picked.version > 0 ? t('jm.compatibleSelected', { ver: String(picked.version) }) : '',
+    picked.version > 0 ? 'ok' : '',
+    picked.version > 0,
+  );
+  if (picked.version > 0 && !detectedJava.some((j) => j.path === picked.path)) {
+    detectedJava.push({
+      name: picked.name || `Java ${picked.version}`,
+      path: picked.path,
+      version: picked.version,
+      managed: false,
+    });
+    if (select) {
+      const menu = document.getElementById('modal-build-java-menu');
+      if (menu) appendJavaOptions(select, menu);
+    }
   }
 });
 
@@ -3746,15 +3687,16 @@ const SKIN_CARD_FRAME = { fillY: 0.96, maxFillX: 0.94, offsetY: 0 };
 const PREVIEW_SIZE = { w: 76, h: 84 };
 
 const SKIN_ANIM_IDS: SkinAnimId[] = [
-  'idle', 'run', 'wave', 'sneak', 'look', 'cool', 'glide', 'victory', 'sad', 'dance',
+  'idle', 'run', 'wave', 'hello', 'sneak', 'look', 'cool', 'think', 'dab', 'glide', 'victory', 'sleep', 'dance',
 ];
 
 /** Кадрирование пресетов под скриншот */
 const SKIN_SHOT_FRAMES: Record<ShotPresetId, { fillY: number; maxFillX: number; offsetY: number }> = {
   hero: { fillY: 0.56, maxFillX: 0.7, offsetY: -0.16 },
-  bust: { fillY: 0.72, maxFillX: 0.55, offsetY: 0.06 },
+  // Мягче заполнение: иначе bust/discord слишком крупно и «ныряют» в торс/руку
+  bust: { fillY: 0.58, maxFillX: 0.62, offsetY: 0.04 },
   back: { fillY: 0.54, maxFillX: 0.72, offsetY: -0.16 },
-  discord: { fillY: 0.78, maxFillX: 0.5, offsetY: 0.1 },
+  discord: { fillY: 0.6, maxFillX: 0.58, offsetY: 0.05 },
 };
 
 /** Текущий режим анимации основного вьювера */
@@ -3780,7 +3722,8 @@ function initSkinViewer(): void {
       autoDetectModel: true,
       idleAnimation: true,
       enableControls: true,
-      antialias: true,
+      // Силуэт сглаживает SMAA в post-FX; MSAA канваса ломает pixel-art UV
+      antialias: false,
       transparent: false,
       presentation: 'full',
     });
@@ -3788,6 +3731,7 @@ function initSkinViewer(): void {
     viewerCapeUrl = undefined;
     skinViewer.controls.enableZoom = false;
     skinViewer.setCursorFollow(true);
+    updateSkinLocatorBadge();
     skinAnimMode = 'idle';
     skinShotPreset = null;
     syncSkinAnimButtons();
@@ -4198,12 +4142,15 @@ const SKIN_ANIM_I18N: Record<SkinAnimId, string> = {
   idle: 'skins.animIdle',
   run: 'skins.animRun',
   wave: 'skins.animWave',
+  hello: 'skins.animHello',
   sneak: 'skins.animSneak',
   look: 'skins.animLook',
   cool: 'skins.animCool',
+  think: 'skins.animThink',
+  dab: 'skins.animDab',
   glide: 'skins.animGlide',
   victory: 'skins.animVictory',
-  sad: 'skins.animSad',
+  sleep: 'skins.animSleep',
   dance: 'skins.animDance',
 };
 
@@ -4237,6 +4184,7 @@ function setSkinAnimMode(mode: SkinAnimId): void {
   fitSkinViewer();
   syncSkinAnimButtons();
   syncSkinPoseButtons();
+  updateSkinLocatorBadge();
   setSkinAnimDropdownOpen(false);
 }
 
@@ -4252,6 +4200,7 @@ function setSkinShotPreset(id: ShotPresetId): void {
   fitSkinViewer();
   syncSkinAnimButtons();
   syncSkinPoseButtons();
+  updateSkinLocatorBadge();
   setSkinAnimDropdownOpen(false);
 }
 
@@ -4320,6 +4269,7 @@ function ensureSkinTab(): Promise<void> {
   if (!skinTabPromise) {
     skinTabPromise = (async () => {
       initSkinViewer();
+      bindSkinLocatorBadge();
       updateSkinsAccountUi();
       const auth = accountAuthType();
       if (auth === 'msa' || auth === 'yggdrasil') {
@@ -4385,6 +4335,7 @@ async function loadSkinToViewer(dataUrl: string): Promise<void> {
     // Габариты модели зависят от classic/slim, поэтому кадр считаем после загрузки
     fitSkinViewer();
     updateSkinModelBadge();
+    updateSkinLocatorBadge();
   } catch (e) {
     console.error('loadSkin failed', e);
   }
@@ -4414,6 +4365,51 @@ function updateSkinModelBadge(): void {
   el.textContent = skinViewer.modelType === SkinModelType.Slim
     ? t('skins.modelSlim')
     : t('skins.modelClassic');
+}
+
+/** Цвет Locator Bar по UUID аккаунта — бейдж + маркер над головой */
+function updateSkinLocatorBadge(): void {
+  const el = document.getElementById('skin-locator-badge') as HTMLButtonElement | null;
+  const uuid = String(currentAccount?.uuid || '');
+  const color =
+    !isOfflineAccount() && uuid ? locatorColorFromUuid(uuid) : null;
+
+  if (skinViewer && !skinViewer.disposed) {
+    skinViewer.setLocatorUuid(color ? uuid : null);
+  }
+
+  if (!el) return;
+  // На пресетах под скриншот бейдж тоже прячем — чистый кадр
+  if (!color || skinShotPreset) {
+    el.hidden = true;
+    el.classList.add('hidden');
+    el.textContent = '';
+    el.style.removeProperty('--locator-color');
+    return;
+  }
+  const hex = `#${color.renderedHex.toUpperCase()}`;
+  el.hidden = false;
+  el.classList.remove('hidden');
+  el.textContent = hex;
+  el.style.setProperty('--locator-color', hex);
+  el.title = t('skins.locatorBarHint');
+  el.setAttribute('aria-label', t('skins.locatorBar'));
+}
+
+function bindSkinLocatorBadge(): void {
+  const el = document.getElementById('skin-locator-badge');
+  if (!el || el.dataset.bound === '1') return;
+  el.dataset.bound = '1';
+  el.addEventListener('click', async () => {
+    const hex = el.textContent?.trim();
+    if (!hex) return;
+    try {
+      await navigator.clipboard.writeText(hex);
+      showAppToast(t('skins.locatorCopied', { color: hex }));
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
 function accountAuthType(): string {
@@ -4505,7 +4501,8 @@ async function ensureElySkinFallback(): Promise<boolean> {
   const nick = String(currentAccount?.username || '').trim();
   let skinUrl =
     String(currentAccount?.skinUrl || '').trim()
-    || (nick ? `https://skinsystem.ely.by/skins/${encodeURIComponent(nick)}.png` : '');
+    || (nick ? `https://skinsystem.ely.by/skins/${encodeURIComponent(nick)}.png` : '')
+    || 'https://s.namemc.com/i/cbe20ed58814c5e1.png';
 
   if (api.getSkinData && currentAccount?.uuid) {
     try {
@@ -4519,8 +4516,12 @@ async function ensureElySkinFallback(): Promise<boolean> {
     }
   }
 
-  if (!skinUrl) return false;
-  const b64 = await api.fetchSkinImage(skinUrl);
+  // skinsystem/{nick}.png часто 404/редирект — если не вышло, дефолтный скин
+  let b64 = await api.fetchSkinImage(skinUrl);
+  if (!b64) {
+    skinUrl = 'https://s.namemc.com/i/cbe20ed58814c5e1.png';
+    b64 = await api.fetchSkinImage(skinUrl);
+  }
   if (!b64) return false;
 
   const dataUrl = `data:image/png;base64,${b64}`;
@@ -4558,6 +4559,7 @@ function updateSkinsAccountUi(): void {
     uploadBtn.disabled = offline;
     uploadBtn.classList.toggle('hidden', offline);
   }
+  updateSkinLocatorBadge();
 }
 
 async function refreshSkinsUiForAccount(): Promise<void> {
@@ -5489,12 +5491,17 @@ let updatePending = false;
 
 function setUpdatesTabIndicator(hasUpdate: boolean): void {
   if (updatesTabEl) updatesTabEl.classList.toggle('has-update', hasUpdate);
+  const badge = document.getElementById('tb-update-badge');
+  if (badge) {
+    badge.hidden = !hasUpdate;
+    badge.classList.toggle('is-visible', hasUpdate);
+  }
 }
 
-async function checkForUpdatesUI(): Promise<void> {
-  if (!api?.checkForUpdates || !updateStatusEl) return;
+async function checkForUpdatesUI(opts?: { autoLaunch?: boolean }): Promise<void> {
+  if (!api?.checkForUpdates) return;
   if (updateBtn) updateBtn.disabled = true;
-  updateStatusEl.textContent = t('updates.checking');
+  if (updateStatusEl) updateStatusEl.textContent = t('updates.checking');
   let info;
   try {
     info = await api.checkForUpdates();
@@ -5502,7 +5509,7 @@ async function checkForUpdatesUI(): Promise<void> {
     info = null;
   }
   if (!info || info.error) {
-    updateStatusEl.textContent = t('updates.checkFailed');
+    if (updateStatusEl) updateStatusEl.textContent = t('updates.checkFailed');
     if (updateBtn) {
       updateBtn.disabled = false;
       updateBtn.textContent = t('btn.check');
@@ -5515,16 +5522,32 @@ async function checkForUpdatesUI(): Promise<void> {
   if (info.updateAvailable) {
     updatePending = true;
     setUpdatesTabIndicator(true);
-    updateStatusEl.textContent = t('updates.available', { latest: info.latest, current: info.current });
+    if (updateStatusEl) {
+      updateStatusEl.textContent = t('updates.available', { latest: info.latest, current: info.current });
+    }
     if (updateBtn) {
       updateBtn.disabled = false;
       updateBtn.textContent = t('btn.updateRestart');
       updateBtn.classList.add('has-update');
     }
+    // При запуске — сразу updater.exe (Windows / установленная сборка)
+    if (opts?.autoLaunch && api.launchUpdater) {
+      const platform = api.getPlatformInfo?.()?.platform;
+      if (platform === 'win32') {
+        if (updateStatusEl) {
+          updateStatusEl.textContent = t('updates.launching', { latest: info.latest });
+        }
+        const result = await api.launchUpdater();
+        if (result?.success) return;
+        if (updateStatusEl) updateStatusEl.textContent = t('updates.launchFailed');
+      }
+    }
   } else {
     updatePending = false;
     setUpdatesTabIndicator(false);
-    updateStatusEl.textContent = t('updates.latest', { current: info.current });
+    if (updateStatusEl) {
+      updateStatusEl.textContent = t('updates.latest', { current: info.current });
+    }
     if (updateBtn) {
       updateBtn.disabled = false;
       updateBtn.textContent = t('btn.check');
@@ -5545,6 +5568,18 @@ updateBtn?.addEventListener('click', async () => {
     return;
   }
   await checkForUpdatesUI();
+});
+
+document.getElementById('tb-update-badge')?.addEventListener('click', async () => {
+  if (updatePending) {
+    const result = await api?.launchUpdater();
+    if (result?.success) return;
+  }
+  // Фоллбек: открыть вкладку обновлений
+  document.querySelector<HTMLElement>('.tab-btn[data-tab="settings"]')?.click();
+  window.setTimeout(() => {
+    document.querySelector<HTMLElement>('.stngs-sidebar [data-settings-tab="updates"]')?.click();
+  }, 80);
 });
 
 document.getElementById('about-copy-btn')?.addEventListener('click', () => {
@@ -5593,6 +5628,7 @@ document.getElementById('build-share-menu')?.addEventListener('click', (e) => {
   if (action === 'link') void openShareModal(build);
   else if (action === 'zip') void runInstanceExport('zip', build);
   else if (action === 'mrpack') void runInstanceExport('mrpack', build);
+  else if (action === 'shortcut') void createBuildDesktopShortcut(build);
 });
 
 document.addEventListener('click', () => hideBuildShareMenu());
@@ -5783,6 +5819,7 @@ function applyAccentFromPicker(): void {
 function setAccentColorPopOpen(open: boolean): void {
   const pop = document.getElementById('settings-accent-color-pop');
   const btn = document.getElementById('settings-custom-accent');
+  const wrap = btn?.closest('.accent-custom-wrap') as HTMLElement | null;
   if (!pop || !btn) return;
   accentPickerOpen = open;
   if (open) {
@@ -5790,11 +5827,13 @@ function setAccentColorPopOpen(open: boolean): void {
     const rgb = hexToRgb(current);
     if (rgb) accentPickerHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
     syncAccentColorPopUi();
+    wrap?.classList.add('is-open');
     pop.classList.remove('hidden');
     requestAnimationFrame(() => pop.classList.add('is-open'));
     btn.setAttribute('aria-expanded', 'true');
   } else if (pop.classList.contains('is-open') || !pop.classList.contains('hidden')) {
     pop.classList.remove('is-open');
+    wrap?.classList.remove('is-open');
     btn.setAttribute('aria-expanded', 'false');
     window.setTimeout(() => {
       if (!pop.classList.contains('is-open')) pop.classList.add('hidden');
@@ -6078,6 +6117,8 @@ if (uiScaleSegments && uiScaleLabel) {
   const scaleKey = 'Undefined Client-ui-scale';
   const applyScale = (v: number): void => {
     document.body.style.zoom = String(v / 100);
+    // Кастомный caret вне zoom — сразу пересчитать позицию
+    if (typeof syncCustomCaret === 'function') syncCustomCaret();
   };
 
   const snapScale = (raw: number): number => {
@@ -6506,6 +6547,38 @@ function catalogStateHtml(
   </div>`;
 }
 
+/** Скелетон-плейсхолдеры каталога модов (список / сетка) */
+function modsSkeletonHtml(count = 8): string {
+  const mode = getModsViewMode();
+  if (mode === 'cards') {
+    return Array.from({ length: count }, () =>
+      `<article class="mod-skel mod-skel--tile" aria-hidden="true">
+        <div class="mod-skel__hero"></div>
+        <div class="mod-skel__body">
+          <div class="mod-skel__head">
+            <div class="mod-skel__icon"></div>
+            <div class="mod-skel__lines">
+              <div class="mod-skel__bar mod-skel__bar--title"></div>
+              <div class="mod-skel__bar mod-skel__bar--sub"></div>
+            </div>
+          </div>
+          <div class="mod-skel__bar mod-skel__bar--desc"></div>
+          <div class="mod-skel__bar mod-skel__bar--desc-short"></div>
+        </div>
+      </article>`,
+    ).join('');
+  }
+  return Array.from({ length: count }, () =>
+    `<div class="mod-skel mod-skel--row" aria-hidden="true">
+      <div class="mod-skel__icon"></div>
+      <div class="mod-skel__lines">
+        <div class="mod-skel__bar mod-skel__bar--title"></div>
+        <div class="mod-skel__bar mod-skel__bar--sub"></div>
+      </div>
+    </div>`,
+  ).join('');
+}
+
 /* ===== SAVED ACCOUNTS ===== */
 
 async function renderSavedAccounts(): Promise<void> {
@@ -6631,9 +6704,42 @@ let modsVersion = '';
 const modsLoaders = new Set<string>();
 const modsTags = new Set<string>();
 const modsKnownVersions = new Set<string>();
+let modsVersionsManifestLoaded = false;
+let modsVersionsManifestPromise: Promise<void> | null = null;
+
 function modsPageSize(): number {
   const v = Number(localStorage.getItem('Undefined Client-mods-page-size') || '20');
   return [10, 20, 50].includes(v) ? v : 20;
+}
+
+/** Каталог API больше не кладёт versions в hits — берём релизы из манифеста Mojang. */
+function ensureModsVersionFilter(): Promise<void> {
+  if (modsVersionsManifestLoaded) {
+    updateModsVersionSelect();
+    return Promise.resolve();
+  }
+  if (modsVersionsManifestPromise) return modsVersionsManifestPromise;
+  if (!api?.getVersions) return Promise.resolve();
+  modsVersionsManifestPromise = api
+    .getVersions()
+    .then((versions) => {
+      if (!Array.isArray(versions)) return;
+      for (const v of versions) {
+        const id = String(v?.id || '').trim();
+        const type = String(v?.type || '');
+        // В фильтре каталога — только релизы (как на сайте); снапшоты засоряют список
+        if (!id || type !== 'release') continue;
+        if (!/^\d+\.\d+(\.\d+)?$/.test(id)) continue;
+        modsKnownVersions.add(id);
+      }
+      modsVersionsManifestLoaded = modsKnownVersions.size > 0;
+      updateModsVersionSelect();
+    })
+    .catch(() => {})
+    .finally(() => {
+      modsVersionsManifestPromise = null;
+    });
+  return modsVersionsManifestPromise;
 }
 
 type ModsViewMode = 'list' | 'cards';
@@ -6967,6 +7073,7 @@ function loadMods(): void {
 let modsCatalogRequested = false;
 
 function ensureModsCatalog(): void {
+  void ensureModsVersionFilter();
   if (modsCatalogRequested) return;
   modsCatalogRequested = true;
   loadMods();
@@ -6983,7 +7090,11 @@ async function searchMods(query: string, category: string, append: boolean = fal
   modsQuery = query;
   currentCategory = category;
   if (api?.getModrinthProjects) {
-    if (!append) { grid.innerHTML = catalogStateHtml('mods.loadingTitle'); modsRenderedCount = 0; }
+    if (!append) {
+      applyModsViewModeUi();
+      grid.innerHTML = modsSkeletonHtml();
+      modsRenderedCount = 0;
+    }
     try {
       const result = await api.getModrinthProjects(query || '', category === 'all' ? '' : category, modsOffset, modsPageSize(), {
         categories: [...modsTags],
@@ -7003,10 +7114,17 @@ async function searchMods(query: string, category: string, append: boolean = fal
         return;
       }
       const hits = result.hits || [];
+      // На случай если API снова начнёт отдавать versions / game_versions в hits
       for (const h of hits) {
-        for (const gv of (h.versions || [])) modsKnownVersions.add(gv);
+        const list = h.versions || h.game_versions || [];
+        if (!Array.isArray(list)) continue;
+        for (const gv of list) {
+          const id = String(gv || '').trim();
+          if (id) modsKnownVersions.add(id);
+        }
       }
-      updateModsVersionSelect();
+      if (!modsVersionsManifestLoaded) void ensureModsVersionFilter();
+      else updateModsVersionSelect();
       modsTotal = result.total_hits || 0;
       if (append) {
         modsData = modsData.concat(hits);
@@ -7026,6 +7144,7 @@ async function searchMods(query: string, category: string, append: boolean = fal
 // ===== Установка контента: быстрый подбор версии (как Modrinth) =====
 let pendingDownloadVersionId: string = '';
 let pendingDownloadGameVersions: string[] = [];
+let pendingDownloadLoaders: string[] = [];
 let pendingVersionsAll: any[] = [];
 let pendingProjectType = 'mod';
 let versionsUiMode: 'quick' | 'list' = 'quick';
@@ -7374,6 +7493,7 @@ function renderVersionsListPanel(versions: any[]): void {
       const vid = el.getAttribute('data-version-id');
       const vobj = versions.find((v) => v.id === vid);
       pendingDownloadGameVersions = vobj?.game_versions || [];
+      pendingDownloadLoaders = (vobj?.loaders || []).map((l: string) => String(l).toLowerCase());
     });
   });
 }
@@ -7381,12 +7501,17 @@ function renderVersionsListPanel(versions: any[]): void {
 function openModalVersionsForDownload(projectId: string): void {
   pendingDownloadVersionId = '';
   pendingDownloadGameVersions = [];
+  pendingDownloadLoaders = [];
   pendingTargetProjectId = projectId;
   pendingVersionsAll = [];
   pendingProjectType = 'mod';
   versionsUiMode = 'quick';
-  versionsPickGame = modsVersion || '';
-  versionsPickLoader = modsLoaders.size === 1 ? [...modsLoaders][0] : '';
+  // Из редактора сборки — сразу подставляем MC/loader этой сборки
+  const beMeta = editingBuildId ? getEditingBuildCatalogMeta() : null;
+  versionsPickGame = beMeta?.gameVersion || modsVersion || '';
+  versionsPickLoader = beMeta?.loader && beMeta.loader !== 'vanilla'
+    ? beMeta.loader
+    : (modsLoaders.size === 1 ? [...modsLoaders][0] : '');
   versionsShowAll = false;
   versionsOpenDd = null;
 
@@ -7461,6 +7586,7 @@ document.getElementById('versions-quick')?.addEventListener('click', (e) => {
     pendingDownloadVersionId = installBtn.getAttribute('data-vdd-install') || '';
     const vobj = pendingVersionsAll.find((v) => v.id === pendingDownloadVersionId);
     pendingDownloadGameVersions = vobj?.game_versions || [];
+    pendingDownloadLoaders = (vobj?.loaders || []).map((l: string) => String(l).toLowerCase());
     void confirmPendingVersionInstall();
   }
 });
@@ -7513,10 +7639,52 @@ document.getElementById('modal-versions-confirm')?.addEventListener('click', asy
   const selected = document.querySelector('#versions-list .version-item.selected');
   if (!selected || !pendingTargetProjectId) return;
   pendingDownloadVersionId = selected.getAttribute('data-version-id') || '';
+  const vobj = pendingVersionsAll.find((v) => v.id === pendingDownloadVersionId);
+  pendingDownloadGameVersions = vobj?.game_versions || [];
+  pendingDownloadLoaders = (vobj?.loaders || []).map((l: string) => String(l).toLowerCase());
   await confirmPendingVersionInstall();
 });
 
+/**
+ * Совместимость выбранной версии контента со сборкой.
+ * Загрузчик учитываем только для модов (как в deep link).
+ */
+function contentVersionFitsBuild(
+  gameVersions: string[],
+  loaders: string[],
+  build: Build,
+  type: string,
+): boolean {
+  const anyGame = build.gameVersion === 'latest_release' || build.gameVersion === 'latest_snapshot';
+  if (!anyGame && gameVersions.length && !gameVersions.includes(build.gameVersion)) return false;
+  if (type === 'mod' && loaders.length) {
+    const real = loaders
+      .map((l) => String(l).toLowerCase())
+      .filter((l) => l && l !== 'minecraft' && l !== 'datapack');
+    if (real.length && !real.includes(String(build.loader || '').toLowerCase())) return false;
+  }
+  return true;
+}
+
 function openModalTargetBuildForDownload(projectId: string): void {
+  // Открытая сборка в редакторе — ставим сразу, если версия подходит
+  if (editingBuildId) {
+    const editing = savedBuilds.find((b) => b.id === editingBuildId);
+    if (
+      editing &&
+      contentVersionFitsBuild(
+        pendingDownloadGameVersions,
+        pendingDownloadLoaders,
+        editing,
+        pendingProjectType,
+      )
+    ) {
+      updateStatus(t('status.downloading'));
+      void downloadModToBuild(projectId, editing.id, pendingDownloadVersionId, pendingProjectType);
+      return;
+    }
+  }
+
   const list = document.getElementById('target-build-list');
   const confirmBtn = document.getElementById('modal-target-confirm') as HTMLButtonElement;
   if (!list) return;
@@ -7527,9 +7695,12 @@ function openModalTargetBuildForDownload(projectId: string): void {
   } else {
     list.innerHTML = savedBuilds.map(b => {
       const iconSrc = b.icon ? buildIconSrc(b.icon) : DEFAULT_BUILD_ICON_SRC;
-      const compatible = pendingDownloadGameVersions.length === 0 ||
-        b.gameVersion === 'latest_release' || b.gameVersion === 'latest_snapshot' ||
-        pendingDownloadGameVersions.includes(b.gameVersion);
+      const compatible = contentVersionFitsBuild(
+        pendingDownloadGameVersions,
+        pendingDownloadLoaders,
+        b,
+        pendingProjectType,
+      );
       const compatCls = compatible ? '' : ' incompatible';
       const compatAttr = compatible ? '' : ` title="${t('mods.incompatibleBuild')}"`;
       return `<div class="build-option-item${compatCls}" data-build-id="${b.id}"${compatAttr}>
@@ -7560,7 +7731,7 @@ document.getElementById('modal-target-confirm')?.addEventListener('click', async
   if (!buildId) return;
   closeModal('modal-target-build');
   updateStatus(t('status.downloading'));
-  await downloadModToBuild(pendingTargetProjectId, buildId, pendingDownloadVersionId);
+  await downloadModToBuild(pendingTargetProjectId, buildId, pendingDownloadVersionId, pendingProjectType);
 });
 
 async function downloadModToBuild(
@@ -8076,7 +8247,28 @@ async function handleDeepLinkPayload(payload: DeepLinkPayload | null): Promise<v
     await openGroupInviteModal(payload.token);
     return;
   }
+  if (payload.action === 'launch') {
+    await handleDeepLinkLaunch(payload.id);
+    return;
+  }
   await handleDeepLinkInstall(payload);
+}
+
+/** Запуск сборки по ярлыку `uclient://launch?id=…`. */
+async function handleDeepLinkLaunch(buildId: string): Promise<void> {
+  const id = String(buildId || '').trim();
+  if (!id) return;
+  if (!savedBuilds.length && api?.loadBuilds) {
+    await loadBuilds();
+  }
+  const build = savedBuilds.find((b) => b.id === id);
+  if (!build) {
+    updateStatus(t('status.error', { msg: t('share.errBuild') }));
+    switchTab('builds');
+    return;
+  }
+  switchTab('builds');
+  await launchBuild(build);
 }
 
 /** Точка входа: сюда попадают ссылки и холодного старта, и запущенного лаунчера. */
@@ -8209,6 +8401,27 @@ function hideBuildShareMenu(): void {
     menu.removeEventListener('animationend', onEnd);
     finish();
   }, 200);
+}
+
+async function createBuildDesktopShortcut(build: Build): Promise<void> {
+  if (!api?.createBuildShortcut) {
+    updateStatus(t('share.shortcutFail'));
+    return;
+  }
+  try {
+    const res = await api.createBuildShortcut(build.id);
+    if (res?.success) {
+      updateStatus(t('share.shortcutDone', { name: res.name || build.name }));
+      return;
+    }
+    if (res?.error === 'unsupported_platform') {
+      updateStatus(t('share.shortcutUnsupported'));
+      return;
+    }
+    updateStatus(t('share.shortcutFail'));
+  } catch {
+    updateStatus(t('share.shortcutFail'));
+  }
 }
 
 function openBuildShareMenu(anchor: HTMLElement, build: Build): void {
@@ -8403,6 +8616,10 @@ async function openShareImportModal(id: string): Promise<void> {
   if (details) details.innerHTML = '';
   const stats = document.getElementById('share-import-stats');
   if (stats) stats.innerHTML = '';
+  const filesWrap = document.getElementById('share-import-files-wrap');
+  const filesEl = document.getElementById('share-import-files');
+  if (filesWrap) filesWrap.classList.add('hidden');
+  if (filesEl) filesEl.innerHTML = '';
   const iconEl = document.getElementById('share-import-icon');
   if (iconEl) iconEl.innerHTML = '';
   const confirmBtn = document.getElementById('share-import-confirm') as HTMLButtonElement | null;
@@ -8458,6 +8675,22 @@ async function openShareImportModal(id: string): Promise<void> {
       <div class="share-import-stat"><span>${t('share.statShaders')}</span><b>${c.shaders}</b></div>
       <div class="share-import-stat"><span>${t('share.statDataPacks')}</span><b>${c.dataPacks}</b></div>
     `;
+  }
+  if (filesEl && filesWrap && Array.isArray(m.files) && m.files.length) {
+    const shown = m.files.slice(0, 40);
+    const more = m.files.length - shown.length;
+    filesEl.innerHTML =
+      shown
+        .map((f) => {
+          const kind = String(f.contentType || 'mod');
+          const kindKey = `import.manifest.kind.${kind === 'resourcepack' ? 'resourcepack' : kind}`;
+          const kindLabel = t(kindKey) !== kindKey ? t(kindKey) : kind;
+          const label = f.name || f.filename || '—';
+          return `<div class="import-manifest-file"><span class="import-manifest-file-kind">${escapeManifestText(kindLabel)}</span><span class="import-manifest-file-name" title="${escapeManifestText(label)}">${escapeManifestText(label)}</span></div>`;
+        })
+        .join('') +
+      (more > 0 ? `<div class="import-manifest-more">${t('import.manifest.more', { n: more })}</div>` : '');
+    filesWrap.classList.remove('hidden');
   }
   if (confirmBtn) confirmBtn.disabled = false;
 }
@@ -8677,6 +8910,7 @@ function initToolbarSticky(tabId: string, toolbarId: string, sentinelId: string)
 }
 initToolbarSticky('tab-mods', 'mods-search-bar', 'mods-toolbar-sentinel');
 initToolbarSticky('tab-servers', 'servers-search-bar', 'servers-toolbar-sentinel');
+initToolbarSticky('be-install-scroll', 'be-install-search-bar', 'be-install-toolbar-sentinel');
 
 document.addEventListener('click', (e) => {
   const wrap = document.getElementById('mods-filters-toggle')?.parentElement;
@@ -9119,10 +9353,17 @@ function updateBanner(): void {
 const PRESENCE_MODALS: Record<string, string> = { 'modal-settings': 'settings', 'modal-about': 'about' };
 /** Базовый z-index .modal-overlay; каждая openModal поднимает окно поверх уже открытых. */
 let modalZCounter = 1500;
+/** Отложенное скрытие после анимации closing — отменяется при повторном openModal */
+const modalCloseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function openModal(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
+  const pending = modalCloseTimers.get(id);
+  if (pending != null) {
+    clearTimeout(pending);
+    modalCloseTimers.delete(id);
+  }
   el.classList.remove('hidden', 'closing');
   // Считаем max среди уже видимых оверлеев — иначе versions может оказаться под details.
   let maxZ = modalZCounter;
@@ -9140,12 +9381,16 @@ function closeModal(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
   if (id === 'modal-mod-details') closeBeShotViewer();
+  const prev = modalCloseTimers.get(id);
+  if (prev != null) clearTimeout(prev);
   el.classList.add('closing');
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    modalCloseTimers.delete(id);
     el.classList.add('hidden');
     el.classList.remove('closing');
     el.style.removeProperty('z-index');
   }, 120);
+  modalCloseTimers.set(id, timer);
   if (PRESENCE_MODALS[id]) pushPresence(presenceTab);
 }
 function onOverlayClick(e: MouseEvent, id: string): void {
@@ -9247,6 +9492,7 @@ const ESC_CLOSEABLE_MODALS: { id: string; close: () => void }[] = [
   { id: 'modal-settings', close: () => closeModal('modal-settings') },
   { id: 'modal-stats', close: () => closeModal('modal-stats') },
   { id: 'modal-target-build', close: () => closeModal('modal-target-build') },
+  { id: 'modal-be-install', close: () => closeModal('modal-be-install') },
   { id: 'modal-versions', close: () => closeModal('modal-versions') },
   { id: 'modal-mod-details', close: () => closeModal('modal-mod-details') },
   { id: 'modal-news-details', close: () => closeModal('modal-news-details') },
@@ -9318,23 +9564,19 @@ async function openModalBuild(build?: Build): Promise<void> {
   if (preview) (preview as HTMLElement).style.background = '';
   setBuildIconPreview(pendingBuildIcon);
 
-  if (versionSelect && !versionsPopulated && api?.getVersions) {
-    versionsPopulated = true;
-    api.getVersions().then(versions => {
-      if (!versions || !Array.isArray(versions)) return;
-      const seen = new Set<string>();
-      for (const v of versions) {
-        const id = v.id;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        if (['old_alpha', 'old_beta'].includes(v.type)) continue;
-        appendBuildVersionOption(id, id + (v.type === 'snapshot' ? t('be.snapshotSuffix') : ''));
-      }
-      if (build && build.gameVersion && build.gameVersion !== 'latest_release' && build.gameVersion !== 'latest_snapshot') {
-        versionSelect.value = build.gameVersion;
-      }
-      syncBuildVersionUI();
-    }).catch(() => {});
+  await ensureBuildVersionsLoaded();
+  if (
+    build &&
+    versionSelect &&
+    build.gameVersion &&
+    build.gameVersion !== 'latest_release' &&
+    build.gameVersion !== 'latest_snapshot'
+  ) {
+    if (!Array.from(versionSelect.options).some((o) => o.value === build.gameVersion)) {
+      appendBuildVersionOption(build.gameVersion, build.gameVersion);
+    }
+    versionSelect.value = build.gameVersion;
+    syncBuildVersionUI();
   }
 
   if (build) {
@@ -9345,8 +9587,8 @@ async function openModalBuild(build?: Build): Promise<void> {
     if (!build.resourcePacks) build.resourcePacks = [];
     if (!build.shaders) build.shaders = [];
     if (!build.dataPacks) build.dataPacks = [];
-    const openSection = document.getElementById('modal-build-open-section');
-    if (openSection) openSection.style.display = '';
+    const openFolderBtn = document.getElementById('modal-build-open-folder');
+    if (openFolderBtn) openFolderBtn.hidden = false;
     if (title) title.textContent = t('be.manageTitle');
     if (sub) sub.textContent = t('be.manageSub');
     if (submitBtn) submitBtn.textContent = t('btn.save');
@@ -9394,8 +9636,8 @@ async function openModalBuild(build?: Build): Promise<void> {
     lastAutoJavaPath = '';
     javaManualChoice = false;
     setJavaAutoHint('', '', false);
-    const openSection = document.getElementById('modal-build-open-section');
-    if (openSection) openSection.style.display = 'none';
+    const openFolderBtn = document.getElementById('modal-build-open-folder');
+    if (openFolderBtn) openFolderBtn.hidden = true;
     if (title) title.textContent = t('be.newTitle');
     if (sub) sub.textContent = t('be.newSub');
     if (submitBtn) submitBtn.textContent = t('btn.create');
@@ -9442,7 +9684,8 @@ async function openModalBuild(build?: Build): Promise<void> {
     (document.getElementById('modal-build-loader') as HTMLSelectElement)?.value || 'vanilla',
     (document.getElementById('modal-build-version') as HTMLSelectElement)?.value || 'latest_release'
   );
-  void populateJavaOptions().then(() => {
+  updateBeLoaderTabsVisibility();
+  void populateJavaOptions(true).then(() => {
     const javaSelect = document.getElementById('modal-build-java') as HTMLSelectElement;
     const javaCustomRow = document.getElementById('be-java-custom-row');
     let val = '';
@@ -9595,6 +9838,36 @@ const LIST_ID_TO_INSTANCE_SUB: Record<string, string> = {
   'be-shaders-list': 'shaderpacks',
   'be-dp-list': 'datapacks',
 };
+
+/** Допустимые расширения при DnD с диска (по типу списка). */
+const BE_DROP_EXTS: Record<string, Set<string>> = {
+  'be-mods-list': new Set(['.jar', '.litemod', '.zip', '.disabled']),
+  'be-rp-list': new Set(['.zip']),
+  'be-shaders-list': new Set(['.zip']),
+  'be-dp-list': new Set(['.zip']),
+};
+
+function isOsFileDrag(dt: DataTransfer | null | undefined): boolean {
+  if (!dt) return false;
+  return Array.from(dt.types || []).includes('Files');
+}
+
+/** Пути файлов из OS DnD (Electron File.path). */
+function extractDroppedFilePaths(dt: DataTransfer | null | undefined, listId: string): string[] {
+  if (!dt?.files?.length) return [];
+  const allow = BE_DROP_EXTS[listId];
+  const paths: string[] = [];
+  for (let i = 0; i < dt.files.length; i++) {
+    const f = dt.files.item(i) as (File & { path?: string }) | null;
+    if (!f?.path) continue;
+    const lower = f.path.toLowerCase();
+    const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.')) : '';
+    if (allow && ext && !allow.has(ext)) continue;
+    paths.push(f.path);
+  }
+  return paths;
+}
+
 function listIdToBuildKey(listId: string): keyof Build | undefined {
   return LIST_ID_TO_BUILD_KEY[listId];
 }
@@ -9603,7 +9876,11 @@ function renderBeFileList(listId: string, items: BeFileItem[]): void {
   const list = document.getElementById(listId);
   if (!list) return;
   if (items.length === 0) {
-    list.innerHTML = '<div class="be-file-empty">' + t('be.noItems') + '</div>';
+    list.innerHTML =
+      '<div class="be-file-empty">' +
+      '<div>' + t('be.noItems') + '</div>' +
+      '<div class="be-file-drop-hint">' + t('be.dropHint') + '</div>' +
+      '</div>';
     return;
   }
   list.innerHTML = items.map((item, i) => {
@@ -9637,18 +9914,33 @@ function renderBeFileList(listId: string, items: BeFileItem[]): void {
     </div>`;
   }).join('');
 
-  // Drag & drop
+  // Drag & drop: порядок в списке + приём файлов с диска
   list.querySelectorAll('.be-file-item[draggable]').forEach(el => {
     el.addEventListener('dragstart', (e) => {
+      if (isOsFileDrag((e as DragEvent).dataTransfer)) return;
       el.classList.add('dragging');
       (e as DragEvent).dataTransfer?.setData('text/plain', String((el as HTMLElement).dataset.index));
     });
     el.addEventListener('dragend', () => el.classList.remove('dragging'));
-    el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag-over'); });
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (isOsFileDrag((e as DragEvent).dataTransfer)) {
+        list.classList.add('be-file-list--drop');
+        return;
+      }
+      el.classList.add('drag-over');
+    });
     el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
     el.addEventListener('drop', (e) => {
       e.preventDefault();
       el.classList.remove('drag-over');
+      const paths = extractDroppedFilePaths((e as DragEvent).dataTransfer, listId);
+      if (paths.length) {
+        e.stopPropagation();
+        list.classList.remove('be-file-list--drop');
+        void runBeImportFiles(listId, paths);
+        return;
+      }
       const fromIdx = parseInt((e as DragEvent).dataTransfer?.getData('text/plain') || '', 10);
       const toIdx = parseInt((el as HTMLElement).dataset.index || '', 10);
       if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx) return;
@@ -10225,13 +10517,35 @@ let modDetailsTab: 'desc' | 'shots' = 'desc';
 
 type ModGalleryItem = { url: string; thumb?: string; title?: string };
 
-/** Полноразмерный URL галереи Modrinth (raw_url), иначе убираем суффикс _350 */
+/** Достаёт исходный CDN-URL из нашего `/api/catalog/image?url=...`. */
+function unwrapCatalogImageUrl(raw: string): string {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  try {
+    const abs = text.startsWith('http') ? text : catalogImageUrl(text);
+    const u = new URL(abs);
+    if (u.pathname.includes('/api/catalog/image')) {
+      const inner = u.searchParams.get('url');
+      if (inner) return inner;
+    }
+  } catch {
+    /* ignore */
+  }
+  return text;
+}
+
+/** Полноразмерный URL галереи Modrinth (raw_url), иначе убираем суффикс превью. */
 function modGalleryFullUrl(item: any): string {
-  const raw = String(item?.raw_url || '').trim();
-  if (raw) return raw;
-  const url = String(item?.url || item || '').trim();
-  // CDN отдаёт превью вида ..._350.webp — для просмотра поднимаем до оригинала, если нет raw_url
-  return url.replace(/_350(?=\.(webp|png|jpe?g|gif)(?:\?|$))/i, '');
+  const raw = unwrapCatalogImageUrl(String(item?.raw_url || '').trim());
+  const url = unwrapCatalogImageUrl(String(item?.url || item || '').trim());
+  const candidate = raw || url;
+  if (!candidate) return '';
+  // CDN: ..._350.webp / ..._512.png / ?width=350 — для просмотра нужен оригинал
+  return candidate
+    .replace(/_(?:[1-9]\d{2,3})(?=\.(webp|png|jpe?g|gif)(?:\?|$))/i, '')
+    .replace(/([?&])(?:width|w|height|h)=\d+/gi, '$1')
+    .replace(/\?&/, '?')
+    .replace(/[?&]$/, '');
 }
 
 /** Галерея проекта Modrinth (search hit или полный project) */
@@ -10305,7 +10619,9 @@ function renderModDetailsGallery(items: ModGalleryItem[]): void {
     })
     .join('');
   gallery.querySelectorAll<HTMLButtonElement>('[data-gallery-index]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const idx = Number(btn.getAttribute('data-gallery-index'));
       if (!Number.isFinite(idx)) return;
       void openModGalleryViewer(idx);
@@ -10508,10 +10824,83 @@ function openModalImport(): void {
   }
   zone?.classList.remove('is-busy');
   if (infoText) infoText.textContent = '';
+  clearImportManifestPreview();
   if (linkInput) linkInput.value = '';
   setImportLinkError('');
   syncImportConfirmEnabled();
   openModal('modal-import');
+}
+
+function clearImportManifestPreview(): void {
+  const stats = document.getElementById('import-manifest-stats');
+  const files = document.getElementById('import-manifest-files');
+  if (stats) {
+    stats.innerHTML = '';
+    stats.classList.add('hidden');
+  }
+  if (files) {
+    files.innerHTML = '';
+    files.classList.add('hidden');
+  }
+}
+
+function escapeManifestText(s: string): string {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderImportManifestPreview(inspect: {
+  counts?: {
+    mods: number;
+    resourcePacks: number;
+    shaders: number;
+    dataPacks: number;
+    configs: number;
+  };
+  previewFiles?: Array<{ name: string; kind: string }>;
+}): void {
+  const statsEl = document.getElementById('import-manifest-stats');
+  const filesEl = document.getElementById('import-manifest-files');
+  if (!statsEl || !filesEl) return;
+
+  const c = inspect.counts;
+  const chips: string[] = [];
+  if (c) {
+    if (c.mods) chips.push(`<span class="import-manifest-stat">${t('import.manifest.mods', { n: c.mods })}</span>`);
+    if (c.resourcePacks) chips.push(`<span class="import-manifest-stat">${t('import.manifest.resourcePacks', { n: c.resourcePacks })}</span>`);
+    if (c.shaders) chips.push(`<span class="import-manifest-stat">${t('import.manifest.shaders', { n: c.shaders })}</span>`);
+    if (c.dataPacks) chips.push(`<span class="import-manifest-stat">${t('import.manifest.dataPacks', { n: c.dataPacks })}</span>`);
+    if (c.configs) chips.push(`<span class="import-manifest-stat">${t('import.manifest.configs', { n: c.configs })}</span>`);
+  }
+  if (chips.length) {
+    statsEl.innerHTML = chips.join('');
+    statsEl.classList.remove('hidden');
+  } else {
+    statsEl.innerHTML = '';
+    statsEl.classList.add('hidden');
+  }
+
+  const preview = Array.isArray(inspect.previewFiles) ? inspect.previewFiles : [];
+  if (!preview.length) {
+    filesEl.innerHTML = '';
+    filesEl.classList.add('hidden');
+    return;
+  }
+  const shown = preview.slice(0, 24);
+  const more = preview.length - shown.length;
+  filesEl.innerHTML =
+    shown
+      .map((f) => {
+        const kindKey = `import.manifest.kind.${f.kind}`;
+        const kindLabel = t(kindKey) !== kindKey ? t(kindKey) : f.kind;
+        return `<div class="import-manifest-file"><span class="import-manifest-file-kind">${escapeManifestText(kindLabel)}</span><span class="import-manifest-file-name" title="${escapeManifestText(f.name)}">${escapeManifestText(f.name)}</span></div>`;
+      })
+      .join('') +
+    (more > 0 ? `<div class="import-manifest-more">${t('import.manifest.more', { n: more })}</div>` : '');
+  filesEl.classList.remove('hidden');
 }
 
 async function selectImportModpackFile(): Promise<void> {
@@ -10529,6 +10918,7 @@ async function selectImportModpackFile(): Promise<void> {
     info.classList.add('is-loading');
   }
   zone?.classList.add('is-busy');
+  clearImportManifestPreview();
   if (infoText) infoText.textContent = t('import.detecting');
   if (confirmBtn) confirmBtn.disabled = true;
 
@@ -10547,6 +10937,7 @@ async function selectImportModpackFile(): Promise<void> {
           loaderVer,
           n: String(i.fileCount ?? 0),
         })}`;
+        renderImportManifestPreview(i);
       } else if (infoText) {
         infoText.textContent = t('import.selected', { name });
       }
@@ -10771,9 +11162,13 @@ async function openBeShotViewer(name: string): Promise<void> {
 
 async function openModGalleryViewer(index: number): Promise<void> {
   if (index < 0 || index >= modDetailsGalleryItems.length) return;
+  // Не даём фокусу кнопки утащить modal-body наверх
+  const body = document.querySelector('#modal-mod-details .modal-body') as HTMLElement | null;
+  const savedScroll = body?.scrollTop ?? 0;
   beShotViewerMode = 'gallery';
   beShotViewerIndex = index;
   await showBeShotViewer();
+  if (body) body.scrollTop = savedScroll;
 }
 
 async function loadBeShotViewerSlide(): Promise<void> {
@@ -10798,8 +11193,7 @@ async function loadBeShotViewerSlide(): Promise<void> {
       if (loading) loading.classList.add('hidden');
       return;
     }
-    // Сначала превью, затем полноразмерный raw_url
-    if (item.thumb) img.src = catalogImageUrl(item.thumb);
+    // Сразу полноразмерный кадр — превью _350 в полноэкранном режиме выглядит как ~144p
     const src = catalogImageUrl(item.url);
     const slideIndex = beShotViewerIndex;
     await new Promise<void>((resolve) => {
@@ -10809,7 +11203,21 @@ async function loadBeShotViewerSlide(): Promise<void> {
         }
         resolve();
       };
-      img.onerror = () => resolve();
+      img.onerror = () => {
+        // Fallback на thumb, если оригинал недоступен
+        if (item.thumb && img.src !== catalogImageUrl(item.thumb)) {
+          img.onload = () => {
+            if (beShotViewerMode === 'gallery' && beShotViewerIndex === slideIndex) {
+              img.classList.add('is-ready');
+            }
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = catalogImageUrl(item.thumb);
+          return;
+        }
+        resolve();
+      };
       img.src = src;
     });
     if (loading) loading.classList.add('hidden');
@@ -11126,9 +11534,18 @@ document.getElementById('build-form-cancel')?.addEventListener('click', () => cl
 document.getElementById('build-form-submit')?.addEventListener('click', () => submitModalBuild());
 document.getElementById('modal-build-open-folder')?.addEventListener('click', async () => {
   if (!editingBuildId) return;
-  if (api?.getInstancePath && api?.openPath) {
+  if (!api?.getInstancePath || !api?.openPath) return;
+  try {
     const instanceDir = await api.getInstancePath(editingBuildId);
-    if (instanceDir) await api.openPath(instanceDir);
+    if (!instanceDir) return;
+    const err = await api.openPath(instanceDir);
+    if (err) {
+      updateStatus(String(err));
+      return;
+    }
+  } catch (e) {
+    updateStatus(e instanceof Error ? e.message : String(e));
+    return;
   }
   closeModalBuildModal();
 });
@@ -11141,6 +11558,313 @@ const BE_ADD_BTN_TO_LIST: Record<string, string> = {
   'be-shaders-add': 'be-shaders-list',
   'be-dp-add': 'be-dp-list',
 };
+
+const BE_LIST_TO_CONTENT: Record<string, {
+  type: 'mod' | 'resourcepack' | 'shader' | 'datapack';
+  titleKey: string;
+  localHintKey: string;
+}> = {
+  'be-mods-list': {
+    type: 'mod',
+    titleKey: 'be.install.titleMod',
+    localHintKey: 'be.install.localHintMod',
+  },
+  'be-rp-list': {
+    type: 'resourcepack',
+    titleKey: 'be.install.titleResourcepack',
+    localHintKey: 'be.install.localHintResourcepack',
+  },
+  'be-shaders-list': {
+    type: 'shader',
+    titleKey: 'be.install.titleShader',
+    localHintKey: 'be.install.localHintShader',
+  },
+  'be-dp-list': {
+    type: 'datapack',
+    titleKey: 'be.install.titleDatapack',
+    localHintKey: 'be.install.localHintDatapack',
+  },
+};
+
+const BE_LOADER_CATALOG = new Set(['fabric', 'forge', 'neoforge', 'quilt']);
+
+type BeInstallContentType = 'mod' | 'resourcepack' | 'shader' | 'datapack';
+
+let beInstallListId = 'be-mods-list';
+let beInstallType: BeInstallContentType = 'mod';
+let beInstallQuery = '';
+let beInstallOffset = 0;
+let beInstallTotal = 0;
+let beInstallData: any[] = [];
+let beInstallLoading = false;
+let beInstallToken = 0;
+let beInstallSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let beInstallSource: 'both' | 'modrinth' | 'curseforge' = 'both';
+let beInstallSort = 'relevance';
+
+function getEditingBuildCatalogMeta(): { gameVersion: string; loader: string } {
+  const versionSelect = document.getElementById('modal-build-version') as HTMLSelectElement | null;
+  const loaderSelect = document.getElementById('modal-build-loader') as HTMLSelectElement | null;
+  const gameVersion = String(
+    versionSelect?.value || editingBuild?.gameVersion || '',
+  ).trim();
+  const loader = String(loaderSelect?.value || editingBuild?.loader || 'vanilla')
+    .trim()
+    .toLowerCase();
+  return { gameVersion, loader: loader || 'vanilla' };
+}
+
+function beInstallNeedsLoaderFilter(type: BeInstallContentType): boolean {
+  return type === 'mod';
+}
+
+/** Для vanilla скрываем вкладки модов и шейдеров в редакторе сборки. */
+function updateBeLoaderTabsVisibility(): void {
+  const loader = getEditingBuildCatalogMeta().loader;
+  const isVanilla = !BE_LOADER_CATALOG.has(loader);
+  document.querySelectorAll<HTMLElement>('.be-tab[data-be-tab="mods"], .be-tab[data-be-tab="shaders"]').forEach((el) => {
+    el.hidden = isVanilla;
+  });
+  document.querySelectorAll<HTMLElement>('.be-panel[data-be-panel="mods"], .be-panel[data-be-panel="shaders"]').forEach((el) => {
+    el.hidden = isVanilla;
+  });
+  const active = document.querySelector('.be-tab.active') as HTMLElement | null;
+  const tab = active?.getAttribute('data-be-tab') || '';
+  if (isVanilla && (tab === 'mods' || tab === 'shaders')) {
+    switchBeTab('general');
+  }
+}
+
+function applyBeInstallViewModeUi(): void {
+  const mode = getModsViewMode();
+  const grid = document.getElementById('be-install-grid');
+  const btn = document.getElementById('be-install-view-toggle');
+  grid?.classList.toggle('is-cards', mode === 'cards');
+  if (btn) {
+    btn.setAttribute('aria-pressed', mode === 'cards' ? 'true' : 'false');
+    btn.dataset.mode = mode;
+    const titleKey = mode === 'cards' ? 'mods.view.toggleToList' : 'mods.view.toggleToCards';
+    btn.setAttribute('title', t(titleKey));
+    btn.setAttribute('aria-label', t(titleKey));
+  }
+}
+
+function syncBeInstallFilterSelects(): void {
+  const sourceSel = document.getElementById('be-install-source-select') as HTMLSelectElement | null;
+  const sortSel = document.getElementById('be-install-sort-select') as HTMLSelectElement | null;
+  if (sourceSel) {
+    sourceSel.value = beInstallSource;
+    const wrap = sourceSel.closest('.stngs-select-wrap') as HTMLElement | null;
+    if (wrap) syncSelectUI(wrap);
+  }
+  if (sortSel) {
+    sortSel.value = beInstallSort;
+    const wrap = sortSel.closest('.stngs-select-wrap') as HTMLElement | null;
+    if (wrap) syncSelectUI(wrap);
+  }
+}
+
+function renderBeInstallCard(p: any, mode: ModsViewMode): string {
+  const id = escapeHtml(String(p.project_id || p.slug || p.id || ''));
+  const title = escapeHtml(String(p.title || 'Unknown'));
+  const desc = escapeHtml(String(p.description || '').substring(0, mode === 'cards' ? 120 : 110));
+  const accent = modAccentColor(p);
+  const source = modSourceOf(p);
+  const sourceBadge = modSourceBadge(source);
+  const icon = p.icon_url
+    ? `<img src="${escapeHtml(catalogImageUrl(p.icon_url))}" alt="">`
+    : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
+  const actions = `<div class="mod-card-actions${mode === 'cards' ? ' mod-tile__actions' : ''}">
+    <button type="button" class="details-btn" data-be-install-details="${id}">${t('btn.details')}</button>
+    <button type="button" class="list-row-btn download-btn" data-be-install-pick="${id}">${t('btn.install')}</button>
+  </div>`;
+  if (mode === 'cards') {
+    const authorRaw = String(p.author || '').trim();
+    const gallery = modGalleryUrl(p);
+    const placeholder = source === 'curseforge' ? MOD_CF_GALLERY_PLACEHOLDER : MOD_GALLERY_PLACEHOLDER;
+    const hero = gallery
+      ? `<img class="mod-tile__hero-img" src="${escapeHtml(catalogImageUrl(gallery))}" alt="" loading="lazy">`
+      : placeholder;
+    const downloads = formatAiDownloads(p.downloads);
+    const follows = formatAiDownloads(p.follows);
+    const updated = formatModsRelativeDate(p.date_modified);
+    return `<article class="mod-tile" data-modrinth-id="${id}" data-mod-source="${escapeHtml(source)}">
+      <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
+      <div class="mod-tile__body">
+        <div class="mod-tile__head">
+          <div class="mod-tile__icon" style="background:${accent}">${icon}</div>
+          <div class="mod-tile__titles">
+            <div class="mod-tile__name">${title} ${sourceBadge}</div>
+            ${authorRaw ? `<div class="mod-tile__author">${escapeHtml(t('mods.byAuthor', { author: authorRaw }))}</div>` : ''}
+          </div>
+        </div>
+        <p class="mod-tile__desc">${desc}</p>
+        <div class="mod-tile__stats">
+          <span title="${escapeHtml(t('mods.stat.downloads'))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6.5M3.5 5.5L6 8l2.5-2.5M2 10.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            ${escapeHtml(downloads)}
+          </span>
+          <span title="${escapeHtml(t('mods.stat.follows'))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 10.2l-4.1-3.7A2.6 2.6 0 016 2.7a2.6 2.6 0 014.1 3.8L6 10.2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            ${escapeHtml(follows)}
+          </span>
+          ${updated ? `<span title="${escapeHtml(t('mods.stat.updated'))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5V6l1.8 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            ${escapeHtml(updated)}
+          </span>` : ''}
+        </div>
+        ${actions}
+      </div>
+    </article>`;
+  }
+  return `<div class="mod-card" data-modrinth-id="${id}" data-mod-source="${escapeHtml(source)}">
+    <div class="mod-card-icon" style="background:${accent}">${icon}</div>
+    <div class="mod-card-info">
+      <div class="mod-card-name">${title} ${sourceBadge}</div>
+      <div class="mod-card-desc">${desc}</div>
+    </div>
+    ${actions}
+  </div>`;
+}
+
+async function openBeInstallModal(listId: string): Promise<void> {
+  if (!editingBuildId) {
+    window.alert(t('be.importNeedSave'));
+    return;
+  }
+  const cfg = BE_LIST_TO_CONTENT[listId];
+  if (!cfg) return;
+
+  const meta = getEditingBuildCatalogMeta();
+  // Моды/шейдеры на vanilla — только локальные файлы (вкладки обычно скрыты)
+  if ((cfg.type === 'mod' || cfg.type === 'shader') && !BE_LOADER_CATALOG.has(meta.loader)) {
+    await runBeImportFiles(listId);
+    return;
+  }
+
+  beInstallListId = listId;
+  beInstallType = cfg.type;
+  beInstallQuery = '';
+  beInstallOffset = 0;
+  beInstallTotal = 0;
+  beInstallData = [];
+  beInstallSource = modsSource;
+  beInstallSort = modsSort || 'relevance';
+
+  const titleEl = document.getElementById('be-install-title');
+  const subEl = document.getElementById('be-install-sub');
+  const hintEl = document.getElementById('be-install-local-hint');
+  const metaEl = document.getElementById('be-install-meta');
+  const searchEl = document.getElementById('be-install-search') as HTMLInputElement | null;
+  if (titleEl) titleEl.textContent = t(cfg.titleKey);
+  if (subEl) {
+    subEl.textContent = beInstallNeedsLoaderFilter(cfg.type)
+      ? t('be.install.sub')
+      : t('be.install.subVersionOnly');
+  }
+  if (hintEl) hintEl.textContent = t(cfg.localHintKey);
+  if (searchEl) searchEl.value = '';
+  if (metaEl) {
+    const chips: string[] = [];
+    if (meta.gameVersion) {
+      chips.push(
+        `<span class="be-install-chip">${escapeHtml(t('be.install.metaVersion', { version: meta.gameVersion }))}</span>`,
+      );
+    }
+    if (beInstallNeedsLoaderFilter(cfg.type) && meta.loader) {
+      chips.push(
+        `<span class="be-install-chip">${escapeHtml(t('be.install.metaLoader', { loader: meta.loader }))}</span>`,
+      );
+    }
+    metaEl.innerHTML = chips.join('');
+  }
+
+  syncBeInstallFilterSelects();
+  applyBeInstallViewModeUi();
+  const scrollEl = document.getElementById('be-install-scroll');
+  if (scrollEl) scrollEl.scrollTop = 0;
+  document.getElementById('be-install-search-bar')?.classList.remove('is-stuck');
+  openModal('modal-be-install');
+  await searchBeInstallCatalog('', false);
+}
+
+function renderBeInstallGrid(append: boolean): void {
+  const grid = document.getElementById('be-install-grid');
+  if (!grid) return;
+  applyBeInstallViewModeUi();
+  if (!beInstallData.length) {
+    grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t('be.install.empty'))}</div>`;
+    return;
+  }
+  const mode = getModsViewMode();
+  const rows = beInstallData.map((p) => renderBeInstallCard(p, mode)).join('');
+  const more =
+    beInstallOffset < beInstallTotal
+      ? `<div class="be-install-empty" id="be-install-more" style="padding:10px;cursor:pointer">${escapeHtml(t('common.loading'))}</div>`
+      : '';
+  if (append) {
+    grid.querySelector('#be-install-more')?.remove();
+    grid.insertAdjacentHTML('beforeend', rows + more);
+  } else {
+    grid.innerHTML = rows + more;
+  }
+}
+
+async function searchBeInstallCatalog(query: string, append: boolean): Promise<void> {
+  const grid = document.getElementById('be-install-grid');
+  if (!grid || !api?.getModrinthProjects) return;
+  if (beInstallLoading) return;
+  beInstallLoading = true;
+  const token = ++beInstallToken;
+  if (!append) {
+    beInstallOffset = 0;
+    beInstallData = [];
+    grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t('be.install.loading'))}</div>`;
+  }
+  beInstallQuery = query;
+  const meta = getEditingBuildCatalogMeta();
+  const loaders = beInstallNeedsLoaderFilter(beInstallType) && meta.loader !== 'vanilla'
+    ? [meta.loader]
+    : [];
+  const version =
+    meta.gameVersion && meta.gameVersion !== 'latest_release' && meta.gameVersion !== 'latest_snapshot'
+      ? meta.gameVersion
+      : undefined;
+  try {
+    const result = await api.getModrinthProjects(query || '', beInstallType, beInstallOffset, 20, {
+      loaders,
+      version,
+      index: beInstallSort || 'relevance',
+      source: beInstallSource,
+    });
+    if (token !== beInstallToken) return;
+    if (result?.error) {
+      if (!append) {
+        grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t('mods.loadError'))}: ${escapeHtml(String(result.error))}</div>`;
+      }
+      return;
+    }
+    const hits = result?.hits || [];
+    beInstallTotal = result?.total_hits || 0;
+    beInstallData = append ? beInstallData.concat(hits) : hits;
+    beInstallOffset += hits.length;
+    if (append && hits.length === 0) beInstallTotal = beInstallOffset;
+    renderBeInstallGrid(append);
+  } catch {
+    if (token !== beInstallToken) return;
+    if (!append) {
+      grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t('mods.loadError'))}</div>`;
+    }
+  } finally {
+    if (token === beInstallToken) beInstallLoading = false;
+  }
+}
+
+function pickBeInstallProject(projectId: string): void {
+  if (!projectId) return;
+  // versions-модалка поверх; editingBuildId уже задан → установка в текущую сборку
+  openModalVersionsForDownload(projectId);
+}
 
 async function runBeScanInstance(): Promise<void> {
   if (!editingBuildId) {
@@ -11166,7 +11890,7 @@ async function runBeScanInstance(): Promise<void> {
   }
 }
 
-async function runBeImportFiles(listId: string): Promise<void> {
+async function runBeImportFiles(listId: string, sourcePaths?: string[]): Promise<void> {
   const sub = LIST_ID_TO_INSTANCE_SUB[listId];
   if (!sub) return;
   if (!editingBuildId) {
@@ -11178,9 +11902,14 @@ async function runBeImportFiles(listId: string): Promise<void> {
     window.alert(t('be.importUnavailable'));
     return;
   }
-  updateStatus(t('be.importPicking'));
+  const fromDrop = Array.isArray(sourcePaths) && sourcePaths.length > 0;
+  updateStatus(fromDrop ? t('be.importing') : t('be.importPicking'));
   try {
-    const result = await api.importInstanceFiles(editingBuildId, sub);
+    const result = await api.importInstanceFiles(
+      editingBuildId,
+      sub,
+      fromDrop ? sourcePaths : undefined,
+    );
     if (!result || result.canceled) return;
     if (!result.success) {
       console.error('[be-import] failed', result.error);
@@ -11197,6 +11926,60 @@ async function runBeImportFiles(listId: string): Promise<void> {
   }
 }
 
+/** Приём модов/паков с диска в списки управления сборкой. */
+function setupBeFileListOsDrop(): void {
+  const panelToList: Record<string, string> = {
+    mods: 'be-mods-list',
+    resourcepacks: 'be-rp-list',
+    shaders: 'be-shaders-list',
+    datapacks: 'be-dp-list',
+  };
+
+  const bindDropTarget = (el: HTMLElement, listId: string) => {
+    if ((el as HTMLElement & { _beOsDropBound?: boolean })._beOsDropBound) return;
+    (el as HTMLElement & { _beOsDropBound?: boolean })._beOsDropBound = true;
+    let depth = 0;
+    el.addEventListener('dragenter', (e) => {
+      if (!isOsFileDrag((e as DragEvent).dataTransfer)) return;
+      e.preventDefault();
+      depth += 1;
+      el.classList.add('be-file-list--drop');
+    });
+    el.addEventListener('dragleave', () => {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) el.classList.remove('be-file-list--drop');
+    });
+    el.addEventListener('dragover', (e) => {
+      if (!isOsFileDrag((e as DragEvent).dataTransfer)) return;
+      e.preventDefault();
+      const dt = (e as DragEvent).dataTransfer;
+      if (dt) dt.dropEffect = 'copy';
+    });
+    el.addEventListener('drop', (e) => {
+      depth = 0;
+      el.classList.remove('be-file-list--drop');
+      if (!isOsFileDrag((e as DragEvent).dataTransfer)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const paths = extractDroppedFilePaths((e as DragEvent).dataTransfer, listId);
+      if (!paths.length) return;
+      void runBeImportFiles(listId, paths);
+    });
+  };
+
+  Object.keys(LIST_ID_TO_INSTANCE_SUB).forEach((listId) => {
+    const list = document.getElementById(listId);
+    if (list) bindDropTarget(list, listId);
+  });
+
+  document.querySelectorAll<HTMLElement>('#modal-build .be-panel[data-be-panel]').forEach((panel) => {
+    const key = panel.getAttribute('data-be-panel') || '';
+    const listId = panelToList[key];
+    if (!listId) return;
+    bindDropTarget(panel, listId);
+  });
+}
+
 // Прямые слушатели — надёжнее делегирования с :not() по SVG внутри кнопок
 document.querySelectorAll<HTMLElement>('#modal-build .be-scan-btn').forEach((btn) => {
   btn.addEventListener('click', (e) => {
@@ -11209,8 +11992,79 @@ Object.keys(BE_ADD_BTN_TO_LIST).forEach((btnId) => {
   document.getElementById(btnId)?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void runBeImportFiles(BE_ADD_BTN_TO_LIST[btnId]);
+    void openBeInstallModal(BE_ADD_BTN_TO_LIST[btnId]);
   });
+});
+setupBeFileListOsDrop();
+
+document.getElementById('be-install-close')?.addEventListener('click', () => closeModal('modal-be-install'));
+document.getElementById('be-install-cancel')?.addEventListener('click', () => closeModal('modal-be-install'));
+document.getElementById('modal-be-install')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal('modal-be-install');
+});
+document.getElementById('be-install-local-btn')?.addEventListener('click', () => {
+  closeModal('modal-be-install');
+  void runBeImportFiles(beInstallListId);
+});
+document.getElementById('be-install-view-toggle')?.addEventListener('click', () => {
+  setModsViewMode(getModsViewMode() === 'cards' ? 'list' : 'cards');
+  applyBeInstallViewModeUi();
+  renderBeInstallGrid(false);
+});
+document.getElementById('be-install-source-select')?.addEventListener('change', (e) => {
+  const v = (e.target as HTMLSelectElement).value as 'both' | 'modrinth' | 'curseforge';
+  beInstallSource = v === 'modrinth' || v === 'curseforge' ? v : 'both';
+  void searchBeInstallCatalog(beInstallQuery, false);
+});
+document.getElementById('be-install-sort-select')?.addEventListener('change', (e) => {
+  beInstallSort = (e.target as HTMLSelectElement).value || 'relevance';
+  void searchBeInstallCatalog(beInstallQuery, false);
+});
+document.getElementById('be-install-search')?.addEventListener('input', (e) => {
+  const q = (e.target as HTMLInputElement).value || '';
+  if (beInstallSearchTimer) clearTimeout(beInstallSearchTimer);
+  beInstallSearchTimer = setTimeout(() => {
+    void searchBeInstallCatalog(q.trim(), false);
+  }, 280);
+});
+document.getElementById('be-install-search')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (beInstallSearchTimer) clearTimeout(beInstallSearchTimer);
+    const q = (e.target as HTMLInputElement).value || '';
+    void searchBeInstallCatalog(q.trim(), false);
+  }
+});
+document.getElementById('be-install-grid')?.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  const pick = target.closest('[data-be-install-pick]') as HTMLElement | null;
+  if (pick) {
+    e.preventDefault();
+    e.stopPropagation();
+    pickBeInstallProject(pick.getAttribute('data-be-install-pick') || '');
+    return;
+  }
+  const details = target.closest('[data-be-install-details]') as HTMLElement | null;
+  if (details) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = details.getAttribute('data-be-install-details') || '';
+    if (id) void openModalDetails(id);
+    return;
+  }
+  if (target.closest('#be-install-more')) {
+    e.preventDefault();
+    void searchBeInstallCatalog(beInstallQuery, true);
+  }
+});
+
+document.getElementById('be-install-scroll')?.addEventListener('scroll', () => {
+  const scrollEl = document.getElementById('be-install-scroll');
+  if (!scrollEl || beInstallLoading) return;
+  if (beInstallOffset >= beInstallTotal) return;
+  if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 80) {
+    void searchBeInstallCatalog(beInstallQuery, true);
+  }
 });
 
 // Icon picker: сетка заполняется из assets/InstancesIcons (ensureInstanceIconGrid)
@@ -11234,6 +12088,7 @@ document.getElementById('modal-build-loader')?.addEventListener('change', () => 
   const loaderSelect = document.getElementById('modal-build-loader') as HTMLSelectElement;
   const versionSelect = document.getElementById('modal-build-version') as HTMLSelectElement;
   populateLoaderVersions(loaderSelect.value, versionSelect?.value || 'latest_release');
+  updateBeLoaderTabsVisibility();
 });
 document.getElementById('modal-build-version')?.addEventListener('change', () => {
   const loaderSelect = document.getElementById('modal-build-loader') as HTMLSelectElement;
@@ -12207,12 +13062,23 @@ function ensureUcCaretEl(): HTMLElement {
     caret.className = 'uc-caret';
     caret.setAttribute('aria-hidden', 'true');
     caret.hidden = true;
-    document.body.appendChild(caret);
+    // Вне body: иначе CSS zoom на body дважды масштабирует position:fixed
+    document.documentElement.appendChild(caret);
+  } else if (caret.parentElement !== document.documentElement) {
+    document.documentElement.appendChild(caret);
   }
   return caret;
 }
 
-/** Размер кастомного caret: всегда 2×16 */
+/** Текущий UI zoom (body.style.zoom), для перевода локальных offset → viewport. */
+function getUiZoomFactor(): number {
+  const raw = String(document.body?.style?.zoom || '').trim();
+  if (!raw) return 1;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** Размер кастомного caret: всегда 2×16 (в локальных CSS px поля) */
 const UC_CARET_W = 2;
 const UC_CARET_H = 16;
 
@@ -12341,6 +13207,13 @@ function syncCustomCaret(): void {
   }
 
   const { top, left, height } = getTextFieldCaretOffset(el);
+  const zoom = getUiZoomFactor();
+  // getBoundingClientRect — уже в координатах viewport (с учётом zoom).
+  // top/left из поля — в локальных CSS px → умножаем на zoom.
+  const viewLeft = left * zoom;
+  const viewTop = top * zoom;
+  const viewW = UC_CARET_W * zoom;
+  const viewH = height * zoom;
   // Прячем, если ушло за края поля (горизонтальный/вертикальный скролл)
   if (left < -1 || left > el.clientWidth + 1 || top < -2 || top > el.clientHeight + 2) {
     caret.hidden = true;
@@ -12348,9 +13221,9 @@ function syncCustomCaret(): void {
   }
 
   caret.hidden = false;
-  caret.style.width = `${UC_CARET_W}px`;
-  caret.style.height = `${UC_CARET_H}px`;
-  caret.style.transform = `translate(${Math.round(rect.left + left)}px, ${Math.round(rect.top + top)}px)`;
+  caret.style.width = `${viewW}px`;
+  caret.style.height = `${viewH}px`;
+  caret.style.transform = `translate(${Math.round(rect.left + viewLeft)}px, ${Math.round(rect.top + viewTop)}px)`;
   caret.style.animation = 'none';
   void caret.offsetWidth;
   caret.style.animation = '';

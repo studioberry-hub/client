@@ -1,6 +1,6 @@
 {
   "name": "uclient",
-  "version": "1.0.5-beta",
+  "version": "1.0.6-beta",
   "description": "Minecraft Launcher",
   "license": "GPL-3.0-only",
   "main": "dist/main/main.js",
@@ -10,7 +10,8 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --dev",
     "dist": "npm run build && electron-builder --win",
-    "dist:dir": "npm run build && electron-builder --win --dir"
+    "dist:dir": "npm run build && electron-builder --win --dir",
+    "dist:pack-only": "electron-builder --win --dir"
   },
   "build": {
     "appId": "undefined-client",
@@ -18,17 +19,44 @@
     "directories": {
       "output": "dist-windows"
     },
+    "afterPack": "./scripts/after-pack.cjs",
+    "electronLanguages": [
+      "en-US",
+      "ru"
+    ],
     "files": [
-      "dist/**/*",
-      "src/renderer/**/*",
-      "assets/**/*",
-      "node_modules/**/*",
       "package.json",
-      "!node_modules/minecraft-data/**",
-      "!node_modules/minecraft-renderer/**",
-      "!node_modules/mc-assets/**",
-      "!node_modules/contro-max/**",
-      "!node_modules/prismarine-chunk/**"
+      "dist/main/**/*.js",
+      "dist/preload/**/*.js",
+      "dist/renderer/**/*.js",
+      "dist/shared/**/*.js",
+      "src/renderer/**/*",
+      "!src/renderer/**/*.{ts,tsx,map}",
+      "assets/**/*",
+      "!assets/MusicForUClient{,/**}",
+      "!assets/screenshots{,/**}",
+      "IconForBuild/icon.ico",
+      "!**/*.{map,md,markdown}",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,README,readme}",
+      "!**/node_modules/*/{test,tests,__tests__,docs,doc,example,examples,bench,benchmark}",
+      "!**/node_modules/**/{src,Source}/**",
+      "!**/node_modules/**/*.d.ts",
+      "!**/node_modules/**/*.ts",
+      "!node_modules/minecraft-data{,/**}",
+      "!node_modules/minecraft-renderer{,/**}",
+      "!node_modules/mc-assets{,/**}",
+      "!node_modules/contro-max{,/**}",
+      "!node_modules/prismarine-chunk{,/**}",
+      "!node_modules/three/examples{,/**}",
+      "!node_modules/three/build/three.module.js",
+      "!node_modules/three/build/three.cjs",
+      "!node_modules/three/build/three.tsl.js",
+      "!node_modules/three/build/three.webgpu.js",
+      "!node_modules/three/build/three.webgpu.nodes.js",
+      "!node_modules/three/build/three.core.js"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ],
     "protocols": [
       {
@@ -71,11 +99,10 @@
     "adm-zip": "^0.6.0",
     "discord-rpc": "^4.0.1",
     "eml-lib": "^2.6.0",
-    "lucide": "^1.31.0",
     "marked": "^18.0.7",
     "minecraft-server-util": "^5.4.4",
     "pngjs": "^7.0.0",
     "prismarine-nbt": "^2.8.0",
-    "skinviewengine": "file:./skinviewengine"
+    "skinviewengine": "file:skinviewengine"
   }
 }

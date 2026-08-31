@@ -23013,6 +23013,110 @@ var app = (() => {
     }
   });
 
+  // skinviewengine/dist/core/locator-color.js
+  function normalizeMinecraftUuid(uuid) {
+    const hex = String(uuid || "").trim().replace(/-/g, "").toLowerCase();
+    if (!/^[0-9a-f]{32}$/.test(hex))
+      return null;
+    return hex;
+  }
+  function javaUuidHashCode(uuidHex32) {
+    const a = parseInt(uuidHex32.slice(0, 8), 16) | 0;
+    const b2 = parseInt(uuidHex32.slice(8, 16), 16) | 0;
+    const c = parseInt(uuidHex32.slice(16, 24), 16) | 0;
+    const d2 = parseInt(uuidHex32.slice(24, 32), 16) | 0;
+    return a ^ b2 ^ c ^ d2 | 0;
+  }
+  function setBrightnessRgb(color, brightness) {
+    let red = parseInt(color.slice(0, 2), 16);
+    let green = parseInt(color.slice(2, 4), 16);
+    let blue = parseInt(color.slice(4, 6), 16);
+    const rgbMax = Math.max(red, green, blue);
+    const rgbMin = Math.min(red, green, blue);
+    const range = rgbMax - rgbMin;
+    const saturation = rgbMax !== 0 ? range / rgbMax : 0;
+    let hue = 0;
+    if (saturation !== 0) {
+      const cr = (rgbMax - red) / range;
+      const cg = (rgbMax - green) / range;
+      const cb = (rgbMax - blue) / range;
+      if (red === rgbMax)
+        hue = cb - cg;
+      else if (green === rgbMax)
+        hue = 2 + cr - cb;
+      else
+        hue = 4 + cg - cr;
+      hue /= 6;
+      if (hue < 0)
+        hue += 1;
+    }
+    if (saturation === 0) {
+      const v2 = Math.round(brightness * 255);
+      return { r: v2, g: v2, b: v2 };
+    }
+    const segment = (hue - Math.floor(hue)) * 6;
+    const offset = segment - Math.floor(segment);
+    const primary = brightness * (1 - saturation);
+    const secondary = brightness * (1 - saturation * offset);
+    const tertiary = brightness * (1 - saturation * (1 - offset));
+    switch (Math.floor(segment)) {
+      case 0:
+        red = Math.round(brightness * 255);
+        green = Math.round(tertiary * 255);
+        blue = Math.round(primary * 255);
+        break;
+      case 1:
+        red = Math.round(secondary * 255);
+        green = Math.round(brightness * 255);
+        blue = Math.round(primary * 255);
+        break;
+      case 2:
+        red = Math.round(primary * 255);
+        green = Math.round(brightness * 255);
+        blue = Math.round(tertiary * 255);
+        break;
+      case 3:
+        red = Math.round(primary * 255);
+        green = Math.round(secondary * 255);
+        blue = Math.round(brightness * 255);
+        break;
+      case 4:
+        red = Math.round(tertiary * 255);
+        green = Math.round(primary * 255);
+        blue = Math.round(brightness * 255);
+        break;
+      default:
+        red = Math.round(brightness * 255);
+        green = Math.round(primary * 255);
+        blue = Math.round(secondary * 255);
+        break;
+    }
+    return { r: red, g: green, b: blue };
+  }
+  function toHex2(n) {
+    return Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0");
+  }
+  function locatorColorFromUuid(uuid) {
+    const hex = normalizeMinecraftUuid(uuid);
+    if (!hex)
+      return null;
+    const raw = javaUuidHashCode(hex) & 16777215;
+    const rawHex = raw.toString(16).padStart(6, "0");
+    const { r, g: g2, b: b2 } = setBrightnessRgb(rawHex, 0.9);
+    return {
+      rawHex,
+      renderedHex: `${toHex2(r)}${toHex2(g2)}${toHex2(b2)}`,
+      r,
+      g: g2,
+      b: b2
+    };
+  }
+  var init_locator_color = __esm({
+    "skinviewengine/dist/core/locator-color.js"() {
+      "use strict";
+    }
+  });
+
   // skinviewengine/dist/core/skin-animations.js
   function readRot(obj) {
     return { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z };
@@ -23030,6 +23134,10 @@ var app = (() => {
   }
   function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
+  }
+  function smooth01(t) {
+    const x2 = Math.max(0, Math.min(1, t));
+    return x2 * x2 * (3 - 2 * x2);
   }
   function punch(x2) {
     return Math.sin(x2) * Math.abs(Math.sin(x2));
@@ -23085,8 +23193,15 @@ var app = (() => {
     player.rotation.x = 0;
     player.rotation.z = 0;
     for (const name of PARTS) {
-      player.skin[name].rotation.set(0, 0, 0);
+      const part = player.skin[name];
+      part.rotation.order = "XYZ";
+      part.rotation.set(0, 0, 0);
+      part.quaternion.identity();
     }
+    player.skin.head.position.set(0, 0, 0);
+    player.skin.body.position.set(0, -6, 0);
+    player.skin.rightArm.position.set(-5, -2, 0);
+    player.skin.leftArm.position.set(5, -2, 0);
     player.cape.rotation.set(CAPE_REST_X, CAPE_YAW, 0);
   }
   function animationControlsLegs(animation) {
@@ -23103,18 +23218,25 @@ var app = (() => {
         return new TrailerRunAnimation();
       case "wave":
         return new WaveHelloAnimation();
+      case "hello":
+        return new HelloNodAnimation();
       case "sneak":
         return new SneakAnimation();
       case "look":
         return new LookAroundAnimation();
       case "cool":
         return new CoolPoseAnimation();
+      case "think":
+        return new ThinkAnimation();
+      case "dab":
+        return new DabAnimation();
       case "glide":
         return new GlideAnimation();
       case "victory":
         return new VictoryAnimation();
+      case "sleep":
       case "sad":
-        return new SadAnimation();
+        return new SleepAnimation();
       case "dance":
         return new DanceAnimation();
       case "idle":
@@ -23122,7 +23244,7 @@ var app = (() => {
         return new HeroIdleAnimation();
     }
   }
-  var PARTS, CAPE_YAW, CAPE_REST_X, BaseSkinAnimation, HeroIdleAnimation, TrailerRunAnimation, WaveHelloAnimation, SneakAnimation, LookAroundAnimation, CoolPoseAnimation, VictoryAnimation, SadAnimation, DanceAnimation, GlideAnimation, BustPoseAnimation;
+  var PARTS, CAPE_YAW, CAPE_REST_X, BaseSkinAnimation, HeroIdleAnimation, TrailerRunAnimation, WaveHelloAnimation, SneakAnimation, LookAroundAnimation, CoolPoseAnimation, VictoryAnimation, SleepAnimation, SadAnimation, DanceAnimation, GlideAnimation, BustPoseAnimation, DabAnimation, ThinkAnimation, HelloNodAnimation;
   var init_skin_animations = __esm({
     "skinviewengine/dist/core/skin-animations.js"() {
       "use strict";
@@ -23245,6 +23367,7 @@ var app = (() => {
       };
       TrailerRunAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.12;
         animate(player) {
           const t = this.progress * 9.6;
           const stride = Math.sin(t);
@@ -23275,188 +23398,194 @@ var app = (() => {
       };
       WaveHelloAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.15;
         animate(player) {
-          const t = this.progress * 5;
+          const t = this.progress * 6.8;
           const wave = Math.sin(t);
-          const bounce = 0.5 - 0.5 * Math.cos(t);
-          player.position.y = bounce * 0.35;
-          player.rotation.z = wave * 0.025;
-          player.skin.head.rotation.x = -0.1 + bounce * 0.03;
-          player.skin.head.rotation.y = 0.22 + wave * 0.08;
-          player.skin.head.rotation.z = 0.16 + wave * 0.06;
-          player.skin.body.rotation.x = 0.05;
-          player.skin.body.rotation.y = 0.12;
-          player.skin.body.rotation.z = -0.05 + wave * 0.03;
-          player.skin.rightArm.rotation.x = -0.2 + wave * 0.12;
-          player.skin.rightArm.rotation.y = 0.2;
-          player.skin.rightArm.rotation.z = -Math.PI * 0.58 + wave * 0.32;
-          player.skin.leftArm.rotation.x = -0.22;
+          const lift = smooth01(Math.min(1, this.progress * 3.2));
+          const bounce = (0.5 - 0.5 * Math.cos(t * 0.5)) * 0.14 * lift;
+          player.position.y = bounce;
+          player.skin.head.rotation.x = -0.05 + bounce * 0.05;
+          player.skin.head.rotation.y = 0.14 * lift + wave * 0.04 * lift;
+          player.skin.head.rotation.z = 0.05 * lift + wave * 0.03 * lift;
+          player.skin.body.rotation.x = 0.025 + bounce * 0.02;
+          player.skin.body.rotation.y = 0.07 * lift;
+          player.skin.body.rotation.z = wave * 0.025 * lift;
+          player.skin.rightArm.rotation.x = wave * 0.06 * lift;
+          player.skin.rightArm.rotation.y = 0;
+          player.skin.rightArm.rotation.z = (-2.15 + wave * 0.48) * lift;
+          player.skin.leftArm.rotation.x = -0.08 + bounce * 0.04;
           player.skin.leftArm.rotation.y = 0;
-          player.skin.leftArm.rotation.z = 0.18 + bounce * 0.05;
-          player.skin.leftLeg.rotation.set(-0.08, 0, 0.04);
-          player.skin.rightLeg.rotation.set(0.12, 0, -0.05);
-          player.cape.rotation.x = Math.PI * 0.09 + bounce * 0.03;
+          player.skin.leftArm.rotation.z = 0.1;
+          player.skin.leftLeg.rotation.set(-0.04 - bounce * 0.04, 0, 0.025);
+          player.skin.rightLeg.rotation.set(0.05 + bounce * 0.05, 0, -0.025);
+          player.cape.rotation.x = CAPE_REST_X + bounce * 0.08;
         }
       };
       SneakAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.1;
         animate(player) {
-          const t = this.progress * 3.8;
-          const stride = Math.sin(t);
-          const tense = 0.5 + Math.sin(t * 2.2) * 0.5;
-          player.position.y = -1.5;
-          player.rotation.x = 0.2;
-          player.skin.body.rotation.x = 0.16;
+          const t = this.progress * 3.4;
+          const stride = Math.sin(t) * 0.32;
+          const bob = Math.abs(Math.sin(t)) * 0.06;
+          player.position.y = -0.95 + bob;
+          player.rotation.x = 0.1;
+          player.skin.body.rotation.x = 0.12;
           player.skin.body.rotation.y = stride * 0.05;
           player.skin.body.rotation.z = 0;
-          player.skin.head.rotation.x = -0.1;
-          player.skin.head.rotation.y = Math.sin(t * 0.45) * 0.06;
+          player.skin.head.rotation.x = -0.02 + bob * 0.1;
+          player.skin.head.rotation.y = stride * 0.08;
           player.skin.head.rotation.z = 0;
-          player.skin.leftLeg.rotation.x = stride * 0.5;
-          player.skin.rightLeg.rotation.x = -stride * 0.5;
-          player.skin.leftArm.rotation.x = -stride * 0.4 - 0.28;
-          player.skin.rightArm.rotation.x = stride * 0.4 - 0.28;
-          player.skin.leftArm.rotation.z = 0.18 + tense * 0.05;
-          player.skin.rightArm.rotation.z = -0.18 - tense * 0.05;
-          player.cape.rotation.x = Math.PI * 0.2;
+          player.skin.leftLeg.rotation.set(stride, 0, 0.015);
+          player.skin.rightLeg.rotation.set(-stride, 0, -0.015);
+          player.skin.leftArm.rotation.set(-stride * 0.28 - 0.18, 0, 0.09);
+          player.skin.rightArm.rotation.set(stride * 0.28 - 0.18, 0, -0.09);
+          player.cape.rotation.x = CAPE_REST_X + 0.1 + bob * 0.05;
         }
       };
       LookAroundAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.15;
         animate(player) {
-          const t = this.progress * 0.85;
-          const lookRaw = Math.sin(t);
-          const look = lookRaw * Math.abs(lookRaw) * Math.abs(lookRaw);
-          const peek = Math.sin(t * 2.4);
-          player.skin.head.rotation.y = look * 0.95;
-          player.skin.head.rotation.x = -0.08 + peek * 0.1;
-          player.skin.head.rotation.z = look * 0.06;
-          player.skin.body.rotation.y = look * 0.28;
-          player.skin.body.rotation.z = -look * 0.04;
-          player.skin.leftArm.rotation.x = -0.2 - Math.abs(look) * 0.1;
-          player.skin.rightArm.rotation.x = -0.15 - Math.abs(look) * 0.08;
-          player.skin.leftArm.rotation.z = 0.14 + Math.abs(look) * 0.08;
-          player.skin.rightArm.rotation.z = -0.14 - Math.abs(look) * 0.08;
-          player.skin.leftLeg.rotation.x = -0.06;
-          player.skin.rightLeg.rotation.x = 0.1;
-          player.cape.rotation.x = Math.PI * 0.1 + Math.abs(look) * 0.03;
+          const t = this.progress * 1.45;
+          const look = Math.sin(t);
+          const settle = smooth01(Math.min(1, this.progress * 1.8));
+          const k = look * settle;
+          const blink = Math.sin(t * 2.2) * 0.02;
+          player.skin.head.rotation.x = -0.04 + blink;
+          player.skin.head.rotation.y = k * 0.78;
+          player.skin.head.rotation.z = k * 0.03;
+          player.skin.body.rotation.x = 0.02;
+          player.skin.body.rotation.y = k * 0.14;
+          player.skin.body.rotation.z = 0;
+          player.skin.leftArm.rotation.set(-0.1 - k * 0.04, 0, 0.09);
+          player.skin.rightArm.rotation.set(-0.08 + k * 0.04, 0, -0.09);
+          player.skin.leftLeg.rotation.set(-0.03, 0, 0.02);
+          player.skin.rightLeg.rotation.set(0.04, 0, -0.02);
+          player.cape.rotation.x = CAPE_REST_X;
         }
       };
       CoolPoseAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.1;
         animate(player) {
-          const t = this.progress;
-          const breathe = Math.sin(t * 1.25);
-          player.skin.body.rotation.y = -0.32;
-          player.skin.body.rotation.z = 0.08;
-          player.skin.body.rotation.x = 0.05 + breathe * 0.02;
-          player.skin.head.rotation.y = 0.48;
-          player.skin.head.rotation.x = -0.12 + breathe * 0.025;
-          player.skin.head.rotation.z = 0.05;
-          player.skin.leftArm.rotation.x = -1.05;
-          player.skin.leftArm.rotation.z = 0.42;
-          player.skin.leftArm.rotation.y = 0.25;
-          player.skin.rightArm.rotation.x = -0.55;
-          player.skin.rightArm.rotation.z = -0.55;
-          player.skin.rightArm.rotation.y = -0.15;
-          player.skin.leftLeg.rotation.x = -0.05;
-          player.skin.rightLeg.rotation.x = 0.18;
-          player.skin.rightLeg.rotation.z = -0.08;
-          player.cape.rotation.x = Math.PI * 0.14 + breathe * 0.03;
+          const breathe = Math.sin(this.progress * 1.35) * 0.016;
+          const inPose = smooth01(Math.min(1, this.progress * 2));
+          const pulse = Math.sin(this.progress * 2.4) * 0.02 * inPose;
+          player.skin.body.rotation.y = -0.1 * inPose;
+          player.skin.body.rotation.z = 0;
+          player.skin.body.rotation.x = 0.025 + breathe;
+          player.skin.head.rotation.y = 0.14 * inPose;
+          player.skin.head.rotation.x = -0.05 + breathe;
+          player.skin.head.rotation.z = 0;
+          player.skin.rightArm.rotation.x = (-1 + pulse) * inPose;
+          player.skin.rightArm.rotation.y = 0;
+          player.skin.rightArm.rotation.z = (0.75 + pulse * 0.5) * inPose;
+          player.skin.leftArm.rotation.x = -0.05 + breathe;
+          player.skin.leftArm.rotation.y = 0;
+          player.skin.leftArm.rotation.z = 0.08;
+          player.skin.leftLeg.rotation.set(-0.03, 0, 0.02);
+          player.skin.rightLeg.rotation.set(0.06 * inPose, 0, -0.03 * inPose);
+          player.cape.rotation.x = CAPE_REST_X + breathe;
         }
       };
       VictoryAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.2;
         animate(player) {
-          const t = this.progress * 6.2;
+          const t = this.progress * 5.8;
           const bounce = 0.5 - 0.5 * Math.cos(t);
-          const sway = Math.sin(t);
-          player.position.y = bounce * 1.1;
-          player.rotation.z = sway * 0.04;
-          player.skin.head.rotation.x = -0.15 + bounce * 0.05;
-          player.skin.head.rotation.y = sway * 0.1;
-          player.skin.body.rotation.x = -0.06;
-          player.skin.body.rotation.y = sway * 0.06;
-          player.skin.leftArm.rotation.z = 2.35 + sway * 0.12;
-          player.skin.rightArm.rotation.z = -2.35 - sway * 0.12;
-          player.skin.leftArm.rotation.x = -0.15 + bounce * 0.1;
-          player.skin.rightArm.rotation.x = -0.15 + bounce * 0.1;
-          player.skin.leftLeg.rotation.x = -0.15 * bounce;
-          player.skin.rightLeg.rotation.x = 0.2 * bounce;
-          player.cape.rotation.x = Math.PI * 0.12 + bounce * 0.08;
+          const sway = Math.sin(t) * 0.4;
+          player.position.y = bounce * 0.75;
+          player.skin.head.rotation.x = -0.12 + bounce * 0.05;
+          player.skin.head.rotation.y = sway * 0.06;
+          player.skin.head.rotation.z = 0;
+          player.skin.body.rotation.x = -0.04;
+          player.skin.body.rotation.y = sway * 0.04;
+          player.skin.body.rotation.z = 0;
+          player.skin.leftArm.rotation.set(bounce * 0.05, 0, 2.35 + sway * 0.06);
+          player.skin.rightArm.rotation.set(bounce * 0.05, 0, -2.35 - sway * 0.06);
+          player.skin.leftLeg.rotation.set(-0.1 * bounce, 0, 0.025);
+          player.skin.rightLeg.rotation.set(0.12 * bounce, 0, -0.025);
+          player.cape.rotation.x = CAPE_REST_X + bounce * 0.05;
         }
       };
-      SadAnimation = class extends BaseSkinAnimation {
+      SleepAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 0.75;
         animate(player) {
-          const t = this.progress;
-          const sigh = Math.sin(t * 1.1);
-          player.skin.head.rotation.x = 0.42 + sigh * 0.04;
-          player.skin.head.rotation.y = -0.12;
-          player.skin.head.rotation.z = -0.08;
-          player.skin.body.rotation.x = 0.18;
-          player.skin.body.rotation.z = -0.04;
-          player.skin.body.rotation.y = 0.06;
-          player.skin.leftArm.rotation.x = 0.15;
-          player.skin.rightArm.rotation.x = 0.2;
-          player.skin.leftArm.rotation.z = 0.08;
-          player.skin.rightArm.rotation.z = -0.06;
-          player.skin.leftArm.rotation.y = 0.05;
-          player.skin.rightArm.rotation.y = -0.05;
-          player.skin.leftLeg.rotation.x = -0.05;
-          player.skin.rightLeg.rotation.x = 0.08;
-          player.cape.rotation.x = Math.PI * 0.06 + sigh * 0.015;
+          const inPose = smooth01(Math.min(1, this.progress * 1.35));
+          const breath = Math.sin(this.progress * 1.15) * 0.03;
+          const snore = Math.sin(this.progress * 2.3) * 0.014;
+          player.position.y = 0;
+          player.rotation.x = 0;
+          player.rotation.z = 0;
+          const sink = 0.9 * inPose;
+          player.skin.body.position.y = -6 - sink;
+          player.skin.head.position.y = -sink;
+          player.skin.leftArm.position.y = -2 - sink;
+          player.skin.rightArm.position.y = -2 - sink;
+          player.skin.body.rotation.x = 0.1 * inPose;
+          player.skin.body.rotation.y = 0;
+          player.skin.body.rotation.z = 0;
+          player.skin.leftLeg.rotation.set(0, 0, 0.02);
+          player.skin.rightLeg.rotation.set(0, 0, -0.02);
+          player.skin.head.rotation.x = (0.78 + breath + snore) * inPose;
+          player.skin.head.rotation.y = snore * 0.35;
+          player.skin.head.rotation.z = 0;
+          player.skin.leftArm.rotation.set(0.12 * inPose + breath * 0.85, 0, 0.04);
+          player.skin.rightArm.rotation.set(0.14 * inPose + breath * 0.85, 0, -0.04);
+          player.cape.rotation.x = CAPE_REST_X + 0.03 * inPose;
         }
       };
+      SadAnimation = SleepAnimation;
       DanceAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.2;
         animate(player) {
-          const t = this.progress * 7.4;
+          const t = this.progress * 6.6;
           const beat = Math.sin(t);
           const beatOpp = Math.sin(t + Math.PI);
-          const bob = Math.abs(Math.sin(t * 2));
-          player.position.y = bob * 0.65;
-          player.rotation.z = beat * 0.08;
-          player.skin.body.rotation.y = beat * 0.28;
-          player.skin.body.rotation.z = beat * 0.06;
-          player.skin.body.rotation.x = 0.06;
-          player.skin.head.rotation.y = beat * 0.2;
-          player.skin.head.rotation.z = -beat * 0.08;
-          player.skin.head.rotation.x = -0.08 + bob * 0.05;
-          player.skin.leftArm.rotation.x = beatOpp * 0.9;
-          player.skin.rightArm.rotation.x = beat * 0.9;
-          player.skin.leftArm.rotation.z = 0.55 + bob * 0.25;
-          player.skin.rightArm.rotation.z = -0.55 - bob * 0.25;
-          player.skin.leftLeg.rotation.x = beat * 0.55;
-          player.skin.rightLeg.rotation.x = beatOpp * 0.55;
-          player.skin.leftLeg.rotation.z = 0.06;
-          player.skin.rightLeg.rotation.z = -0.06;
-          player.cape.rotation.x = Math.PI * 0.16 + bob * 0.1;
+          const bob = Math.abs(Math.sin(t * 2)) * 0.7;
+          player.position.y = bob * 0.48;
+          player.skin.body.rotation.y = beat * 0.14;
+          player.skin.body.rotation.z = beat * 0.03;
+          player.skin.body.rotation.x = 0.05 + bob * 0.02;
+          player.skin.head.rotation.y = beat * 0.12;
+          player.skin.head.rotation.z = -beat * 0.04;
+          player.skin.head.rotation.x = -0.05 + bob * 0.04;
+          player.skin.leftArm.rotation.set(beatOpp * 0.7, 0, 0.32 + bob * 0.12);
+          player.skin.rightArm.rotation.set(beat * 0.7, 0, -0.32 - bob * 0.12);
+          player.skin.leftLeg.rotation.set(beat * 0.4, 0, 0.04);
+          player.skin.rightLeg.rotation.set(beatOpp * 0.4, 0, -0.04);
+          player.cape.rotation.x = CAPE_REST_X + bob * 0.06;
         }
       };
       GlideAnimation = class extends BaseSkinAnimation {
         controlsLegs = true;
+        speed = 1.1;
         animate(player) {
           const t = this.progress;
-          const bob = Math.sin(t * 1.7);
-          const bank = Math.sin(t * 0.9);
+          const bob = Math.sin(t * 2.2);
+          const bank = Math.sin(t * 1.15);
           player.rotation.x = -0.72;
-          player.rotation.z = bank * 0.12;
-          player.position.y = 1.6 + bob * 0.4;
+          player.rotation.z = bank * 0.14;
+          player.position.y = 1.6 + bob * 0.48;
           player.skin.head.rotation.x = 0.45;
-          player.skin.head.rotation.y = bank * 0.1;
+          player.skin.head.rotation.y = bank * 0.12;
           player.skin.body.rotation.x = 0.08;
-          player.skin.leftArm.rotation.z = 0.95 + bob * 0.06;
-          player.skin.rightArm.rotation.z = -0.95 - bob * 0.06;
-          player.skin.leftArm.rotation.x = -0.45;
-          player.skin.rightArm.rotation.x = -0.45;
-          player.skin.leftArm.rotation.y = 0.2;
-          player.skin.rightArm.rotation.y = -0.2;
-          player.skin.leftLeg.rotation.x = 0.35 + bob * 0.05;
-          player.skin.rightLeg.rotation.x = 0.2 - bob * 0.05;
-          player.skin.leftLeg.rotation.z = 0.08;
-          player.skin.rightLeg.rotation.z = -0.08;
-          player.cape.rotation.x = Math.PI * 0.72 + bob * 0.08;
+          player.skin.leftArm.rotation.x = -0.35;
+          player.skin.leftArm.rotation.y = 0;
+          player.skin.leftArm.rotation.z = 1.05 + bob * 0.07;
+          player.skin.rightArm.rotation.x = -0.35;
+          player.skin.rightArm.rotation.y = 0;
+          player.skin.rightArm.rotation.z = -1.05 - bob * 0.07;
+          player.skin.leftLeg.rotation.x = 0.3 + bob * 0.05;
+          player.skin.rightLeg.rotation.x = 0.18 - bob * 0.05;
+          player.skin.leftLeg.rotation.z = 0.06;
+          player.skin.rightLeg.rotation.z = -0.06;
+          player.cape.rotation.x = CAPE_REST_X + 1.85 + bob * 0.08;
         }
       };
       BustPoseAnimation = class extends BaseSkinAnimation {
@@ -23505,6 +23634,80 @@ var app = (() => {
             player.skin.rightArm.rotation.z = -0.4;
           }
           player.cape.rotation.x = Math.PI * 0.16 + breathe;
+        }
+      };
+      DabAnimation = class extends BaseSkinAnimation {
+        controlsLegs = true;
+        speed = 1.15;
+        animate(player) {
+          const hold = smooth01(Math.min(1, this.progress * 3));
+          const settle = Math.sin(this.progress * 3.5) * 0.02 * hold;
+          player.skin.body.rotation.y = -0.14 * hold;
+          player.skin.body.rotation.z = 0;
+          player.skin.body.rotation.x = 0.03 * hold;
+          player.skin.head.rotation.y = 0.38 * hold;
+          player.skin.head.rotation.x = 0.14 * hold + settle;
+          player.skin.head.rotation.z = -0.1 * hold;
+          player.skin.rightArm.rotation.x = -1.65 * hold;
+          player.skin.rightArm.rotation.y = 0;
+          player.skin.rightArm.rotation.z = 0.7 * hold;
+          player.skin.leftArm.rotation.x = 0;
+          player.skin.leftArm.rotation.y = 0;
+          player.skin.leftArm.rotation.z = 2.2 * hold;
+          player.skin.leftLeg.rotation.set(0.05 * hold, 0, 0.025);
+          player.skin.rightLeg.rotation.set(-0.04 * hold, 0, -0.03 * hold);
+          player.cape.rotation.x = CAPE_REST_X;
+        }
+      };
+      ThinkAnimation = class extends BaseSkinAnimation {
+        controlsLegs = true;
+        speed = 1.1;
+        animate(player) {
+          const breathe = Math.sin(this.progress * 1.3) * 0.018;
+          const inPose = smooth01(Math.min(1, this.progress * 2));
+          const tap = Math.sin(this.progress * 2.8) * 0.04 * inPose;
+          player.skin.head.rotation.x = 0.1 + breathe;
+          player.skin.head.rotation.y = 0.12 * inPose + tap * 0.3;
+          player.skin.head.rotation.z = 0;
+          player.skin.body.rotation.y = -0.06 * inPose;
+          player.skin.body.rotation.x = 0.025 + breathe * 0.4;
+          player.skin.body.rotation.z = 0;
+          player.skin.rightArm.rotation.x = (-2.05 + tap) * inPose;
+          player.skin.rightArm.rotation.y = 0;
+          player.skin.rightArm.rotation.z = (0.22 + tap * 0.4) * inPose;
+          player.skin.leftArm.rotation.x = -0.08 + breathe;
+          player.skin.leftArm.rotation.y = 0;
+          player.skin.leftArm.rotation.z = 0.09;
+          player.skin.leftLeg.rotation.set(-0.03, 0, 0.02);
+          player.skin.rightLeg.rotation.set(0.05, 0, -0.02);
+          player.cape.rotation.x = CAPE_REST_X + breathe;
+        }
+      };
+      HelloNodAnimation = class extends BaseSkinAnimation {
+        controlsLegs = true;
+        speed = 1.2;
+        animate(player) {
+          const t = this.progress * 6.2;
+          const wave = Math.sin(t);
+          const lift = smooth01(Math.min(1, this.progress * 3));
+          const nod = Math.sin(t * 0.55) * 0.08 * lift;
+          const bounce = (0.5 - 0.5 * Math.cos(t * 0.5)) * 0.1 * lift;
+          player.position.y = bounce;
+          player.skin.head.rotation.x = -0.04 + nod;
+          player.skin.head.rotation.y = 0.12 * lift;
+          player.skin.head.rotation.z = wave * 0.025 * lift;
+          player.skin.body.rotation.y = 0.05 * lift;
+          player.skin.body.rotation.x = 0.025 + bounce * 0.02;
+          player.skin.body.rotation.z = wave * 0.02 * lift;
+          player.skin.rightArm.rotation.x = wave * 0.05 * lift;
+          player.skin.rightArm.rotation.y = 0;
+          player.skin.rightArm.rotation.z = (-2.05 + wave * 0.42) * lift;
+          player.skin.leftArm.rotation.x = -0.07;
+          player.skin.leftArm.rotation.y = 0;
+          player.skin.leftArm.rotation.z = 0.09;
+          player.skin.leftLeg.rotation.set(-0.03, 0, 0.02);
+          player.skin.rightLeg.rotation.set(0.04, 0, -0.02);
+          player.cape.rotation.x = CAPE_REST_X + bounce * 0.06;
         }
       };
     }
@@ -23612,13 +23815,13 @@ var app = (() => {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
     renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.18;
+    renderer.toneMappingExposure = 1.15;
     renderer.outputColorSpace = SRGBColorSpace;
   }
   function createPlasticEnvironment(renderer) {
     const pmrem = new PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
-    const texture = pmrem.fromScene(new RoomEnvironment(), 0.28).texture;
+    const texture = pmrem.fromScene(new RoomEnvironment(), 0.4).texture;
     pmrem.dispose();
     return texture;
   }
@@ -23631,7 +23834,7 @@ var app = (() => {
     key.shadow.camera.top = 28;
     key.shadow.camera.bottom = -28;
     key.shadow.bias = -2e-4;
-    key.shadow.normalBias = 4e-4;
+    key.shadow.normalBias = 45e-5;
     key.shadow.radius = shadowRadius;
     key.shadow.intensity = shadowIntensity;
     key.shadow.camera.updateProjectionMatrix();
@@ -23643,6 +23846,9 @@ var app = (() => {
     if (envMap) {
       mat.envMap = envMap;
       mat.envMapIntensity = SKIN_ENV_MAP_INTENSITY_INNER;
+    } else {
+      mat.envMap = null;
+      mat.envMapIntensity = 0;
     }
   }
   function applyOuterMaterialTuning(mat, envMap) {
@@ -23651,6 +23857,9 @@ var app = (() => {
     if (envMap) {
       mat.envMap = envMap;
       mat.envMapIntensity = SKIN_ENV_MAP_INTENSITY_OUTER;
+    } else {
+      mat.envMap = null;
+      mat.envMapIntensity = 0;
     }
     mat.alphaToCoverage = false;
   }
@@ -23788,7 +23997,7 @@ var app = (() => {
     ground.receiveShadow = true;
     ground.visible = false;
     scene.add(ground);
-    const floor = new Mesh(new PlaneGeometry(groundSize, groundSize), new ShadowMaterial({ opacity: 0.12, color: 0 }));
+    const floor = new Mesh(new PlaneGeometry(groundSize, groundSize), new ShadowMaterial({ opacity: 0.14, color: 0 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = FLOOR_Y;
     floor.receiveShadow = true;
@@ -23831,20 +24040,24 @@ var app = (() => {
     }
     const center = size / 2;
     const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-    gradient.addColorStop(0, "rgba(0, 0, 0, 0.18)");
-    gradient.addColorStop(0.28, "rgba(0, 0, 0, 0.1)");
-    gradient.addColorStop(0.55, "rgba(0, 0, 0, 0.04)");
-    gradient.addColorStop(0.82, "rgba(0, 0, 0, 0.01)");
+    gradient.addColorStop(0, "rgba(0, 0, 0, 0.14)");
+    gradient.addColorStop(0.22, "rgba(0, 0, 0, 0.09)");
+    gradient.addColorStop(0.48, "rgba(0, 0, 0, 0.045)");
+    gradient.addColorStop(0.72, "rgba(0, 0, 0, 0.015)");
+    gradient.addColorStop(0.9, "rgba(0, 0, 0, 0.004)");
     gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
     const texture = new CanvasTexture(canvas);
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+    texture.generateMipmaps = false;
     const material = new MeshBasicMaterial({
       map: texture,
       transparent: true,
       depthWrite: false
     });
-    const mesh = new Mesh(new PlaneGeometry(48, 28), material);
+    const mesh = new Mesh(new PlaneGeometry(56, 34), material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(0, FLOOR_Y + 0.05, 0.5);
     mesh.renderOrder = 1;
@@ -23871,22 +24084,22 @@ var app = (() => {
       DEFAULT_LIGHT_SETTINGS = {
         keyAzimuthDeg: DEFAULT_KEY_AZIMUTH_DEG,
         keyElevationDeg: DEFAULT_KEY_ELEVATION_DEG,
-        keyIntensity: 1.48,
-        ambientIntensity: 0.58,
-        fillIntensity: 0.55,
-        shadowRadius: 11,
-        shadowIntensity: 0.26,
+        keyIntensity: 1.35,
+        ambientIntensity: 0.68,
+        fillIntensity: 0.64,
+        shadowRadius: 16,
+        shadowIntensity: 0.24,
         castShadows: true
       };
-      SKIN_ROUGHNESS_INNER = 0.52;
+      SKIN_ROUGHNESS_INNER = 0.55;
       SKIN_METALNESS_INNER = 0.04;
-      SKIN_ENV_MAP_INTENSITY_INNER = 0.28;
-      SKIN_ROUGHNESS_OUTER = 0.55;
+      SKIN_ENV_MAP_INTENSITY_INNER = 0.26;
+      SKIN_ROUGHNESS_OUTER = 0.58;
       SKIN_METALNESS_OUTER = 0.03;
-      SKIN_ENV_MAP_INTENSITY_OUTER = 0.22;
-      SCENE_ENV_INTENSITY = 0.22;
-      HEMI_INTENSITY = 0.72;
-      RIM_INTENSITY = 0.3;
+      SKIN_ENV_MAP_INTENSITY_OUTER = 0.2;
+      SCENE_ENV_INTENSITY = 0.2;
+      HEMI_INTENSITY = 0.78;
+      RIM_INTENSITY = 0.28;
       ProductLighting = class {
         ambient;
         hemi;
@@ -24030,6 +24243,41 @@ var app = (() => {
     const tex = new CanvasTexture(canvas);
     return tex;
   }
+  function createPixelZTexture() {
+    const pattern = [
+      "########",
+      "......##",
+      ".....##.",
+      "....##..",
+      "...##...",
+      "..##....",
+      "##......",
+      "########"
+    ];
+    const cell = 4;
+    const size = pattern.length * cell;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, size, size);
+      ctx.fillStyle = "#ffffff";
+      for (let y2 = 0; y2 < pattern.length; y2++) {
+        const row = pattern[y2];
+        for (let x2 = 0; x2 < row.length; x2++) {
+          if (row[x2] === "#")
+            ctx.fillRect(x2 * cell, y2 * cell, cell, cell);
+        }
+      }
+    }
+    const tex = new CanvasTexture(canvas);
+    tex.magFilter = NearestFilter;
+    tex.minFilter = NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return tex;
+  }
   function easeOutQuad(t) {
     return 1 - (1 - t) * (1 - t);
   }
@@ -24043,7 +24291,7 @@ var app = (() => {
     out.y += 2;
     return out;
   }
-  var MOTE_COLORS, AMBIENT_MOTE_TARGET, DUST_GEO, GLOW_GEO, DUST_COLORS, SOFT_GLOW_MAP, PixelParticles;
+  var MOTE_COLORS, AMBIENT_MOTE_TARGET, SLEEP_ZZZ_MAX, DUST_GEO, GLOW_GEO, DUST_COLORS, SOFT_GLOW_MAP, PIXEL_Z_MAP, PixelParticles;
   var init_pixel_particles = __esm({
     "skinviewengine/dist/core/pixel-particles.js"() {
       "use strict";
@@ -24051,13 +24299,16 @@ var app = (() => {
       init_product_visuals();
       MOTE_COLORS = [16777215, 15265528, 16774368, 14214399];
       AMBIENT_MOTE_TARGET = 12;
+      SLEEP_ZZZ_MAX = 3;
       DUST_GEO = new BoxGeometry(1, 1, 1);
       GLOW_GEO = new PlaneGeometry(1, 1);
       DUST_COLORS = [10130052, 12891288, 8025192, 13812904, 11577496, 15260872];
       SOFT_GLOW_MAP = createSoftGlowTexture();
+      PIXEL_Z_MAP = createPixelZTexture();
       PixelParticles = class {
         group = new Group();
         _pool = [];
+        _sleepZCooldown = 0;
         /** Дым пыли от удара о пол */
         spawnDust(origin, count = 48) {
           for (let i = 0; i < count; i++) {
@@ -24118,6 +24369,54 @@ var app = (() => {
           for (let i = 0; i < need; i++) {
             this._spawnMote(origin);
           }
+        }
+        /** Пиксельные Zzz над головой во время сна */
+        ensureSleepZzz(origin, delta) {
+          this._sleepZCooldown -= Math.max(0, delta);
+          if (this._sleepZCooldown > 0)
+            return;
+          let active = 0;
+          for (const p of this._pool) {
+            if (p.kind === "zzz")
+              active++;
+          }
+          if (active >= SLEEP_ZZZ_MAX)
+            return;
+          this._sleepZCooldown = 0.85 + Math.random() * 0.4;
+          this._spawnSleepZ(origin, 0.75 + active * 0.22);
+        }
+        _spawnSleepZ(origin, sizeScale) {
+          const mat = new SpriteMaterial({
+            map: PIXEL_Z_MAP,
+            color: 16777215,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            // Не клипать о голову — рисуем поверх сцены
+            depthTest: false,
+            alphaTest: 0.15
+          });
+          const sprite = new Sprite(mat);
+          const size = (2 + Math.random() * 0.35) * sizeScale;
+          sprite.scale.set(size, size, 1);
+          sprite.position.set(origin.x + 0.6 + Math.random() * 0.5, origin.y + 0.3 + Math.random() * 0.4, origin.z + (Math.random() - 0.5) * 0.4);
+          sprite.renderOrder = 40;
+          this.group.add(sprite);
+          this._pool.push({
+            obj: sprite,
+            material: mat,
+            vx: 0.55 + Math.random() * 0.35,
+            vy: 1.6 + Math.random() * 0.7,
+            vz: (Math.random() - 0.5) * 0.25,
+            life: 0,
+            maxLife: 1.8 + Math.random() * 0.4,
+            startSize: size,
+            endSize: size * 1.2,
+            drag: 0.35,
+            maxOpacity: 0.55,
+            twinkle: 0,
+            kind: "zzz"
+          });
         }
         _spawnMote(origin) {
           const color = MOTE_COLORS[Math.random() * MOTE_COLORS.length | 0];
@@ -24244,8 +24543,8 @@ var app = (() => {
               p.material.opacity = (1 - u) * (1 - u) * p.maxOpacity;
               continue;
             }
-            if (p.kind === "firefly" || p.kind === "mote") {
-              const sway = p.kind === "mote" ? 0.35 : 0.8;
+            if (p.kind === "firefly" || p.kind === "mote" || p.kind === "zzz") {
+              const sway = p.kind === "mote" ? 0.35 : p.kind === "zzz" ? 0.15 : 0.8;
               p.vx += Math.sin(p.life * 3.2 + p.twinkle) * sway * dt;
               p.vz += Math.cos(p.life * 2.7) * sway * dt;
               p.vx *= Math.exp(-p.drag * dt);
@@ -24253,6 +24552,15 @@ var app = (() => {
               p.obj.position.x += p.vx * dt;
               p.obj.position.y += p.vy * dt;
               p.obj.position.z += p.vz * dt;
+              if (p.kind === "zzz") {
+                const fadeIn2 = 0.12;
+                const fadeOut2 = 0.55;
+                const envelope2 = u < fadeIn2 ? u / fadeIn2 : u > fadeOut2 ? 1 - (u - fadeOut2) / (1 - fadeOut2) : 1;
+                p.material.opacity = Math.max(0, envelope2) * p.maxOpacity;
+                const s2 = p.startSize + (p.endSize - p.startSize) * easeOutQuad(u);
+                p.obj.scale.set(s2, s2, 1);
+                continue;
+              }
               const fadeIn = p.kind === "mote" ? 0.15 : 0.2;
               const fadeOut = p.kind === "mote" ? 0.75 : 0.65;
               const envelope = u < fadeIn ? u / fadeIn : u > fadeOut ? 1 - (u - fadeOut) / (1 - fadeOut) : 1;
@@ -24436,578 +24744,6 @@ var app = (() => {
         }
         dispose() {
           this.material.dispose();
-          this.fsQuad.dispose();
-        }
-      };
-    }
-  });
-
-  // node_modules/three/examples/jsm/shaders/SMAAShader.js
-  var SMAAEdgesShader, SMAAWeightsShader, SMAABlendShader;
-  var init_SMAAShader = __esm({
-    "node_modules/three/examples/jsm/shaders/SMAAShader.js"() {
-      init_three_module();
-      SMAAEdgesShader = {
-        defines: {
-          "SMAA_THRESHOLD": "0.1"
-        },
-        uniforms: {
-          "tDiffuse": { value: null },
-          "resolution": { value: new Vector2(1 / 1024, 1 / 512) }
-        },
-        vertexShader: (
-          /* glsl */
-          `
-
-		uniform vec2 resolution;
-
-		varying vec2 vUv;
-		varying vec4 vOffset[ 3 ];
-
-		void SMAAEdgeDetectionVS( vec2 texcoord ) {
-			vOffset[ 0 ] = texcoord.xyxy + resolution.xyxy * vec4( -1.0, 0.0, 0.0,  1.0 ); // WebGL port note: Changed sign in W component
-			vOffset[ 1 ] = texcoord.xyxy + resolution.xyxy * vec4(  1.0, 0.0, 0.0, -1.0 ); // WebGL port note: Changed sign in W component
-			vOffset[ 2 ] = texcoord.xyxy + resolution.xyxy * vec4( -2.0, 0.0, 0.0,  2.0 ); // WebGL port note: Changed sign in W component
-		}
-
-		void main() {
-
-			vUv = uv;
-
-			SMAAEdgeDetectionVS( vUv );
-
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-        ),
-        fragmentShader: (
-          /* glsl */
-          `
-
-		uniform sampler2D tDiffuse;
-
-		varying vec2 vUv;
-		varying vec4 vOffset[ 3 ];
-
-		vec4 SMAAColorEdgeDetectionPS( vec2 texcoord, vec4 offset[3], sampler2D colorTex ) {
-			vec2 threshold = vec2( SMAA_THRESHOLD, SMAA_THRESHOLD );
-
-			// Calculate color deltas:
-			vec4 delta;
-			vec3 C = texture2D( colorTex, texcoord ).rgb;
-
-			vec3 Cleft = texture2D( colorTex, offset[0].xy ).rgb;
-			vec3 t = abs( C - Cleft );
-			delta.x = max( max( t.r, t.g ), t.b );
-
-			vec3 Ctop = texture2D( colorTex, offset[0].zw ).rgb;
-			t = abs( C - Ctop );
-			delta.y = max( max( t.r, t.g ), t.b );
-
-			// We do the usual threshold:
-			vec2 edges = step( threshold, delta.xy );
-
-			// Then discard if there is no edge:
-			if ( dot( edges, vec2( 1.0, 1.0 ) ) == 0.0 )
-				discard;
-
-			// Calculate right and bottom deltas:
-			vec3 Cright = texture2D( colorTex, offset[1].xy ).rgb;
-			t = abs( C - Cright );
-			delta.z = max( max( t.r, t.g ), t.b );
-
-			vec3 Cbottom  = texture2D( colorTex, offset[1].zw ).rgb;
-			t = abs( C - Cbottom );
-			delta.w = max( max( t.r, t.g ), t.b );
-
-			// Calculate the maximum delta in the direct neighborhood:
-			float maxDelta = max( max( max( delta.x, delta.y ), delta.z ), delta.w );
-
-			// Calculate left-left and top-top deltas:
-			vec3 Cleftleft  = texture2D( colorTex, offset[2].xy ).rgb;
-			t = abs( C - Cleftleft );
-			delta.z = max( max( t.r, t.g ), t.b );
-
-			vec3 Ctoptop = texture2D( colorTex, offset[2].zw ).rgb;
-			t = abs( C - Ctoptop );
-			delta.w = max( max( t.r, t.g ), t.b );
-
-			// Calculate the final maximum delta:
-			maxDelta = max( max( maxDelta, delta.z ), delta.w );
-
-			// Local contrast adaptation in action:
-			edges.xy *= step( 0.5 * maxDelta, delta.xy );
-
-			return vec4( edges, 0.0, 0.0 );
-		}
-
-		void main() {
-
-			gl_FragColor = SMAAColorEdgeDetectionPS( vUv, vOffset, tDiffuse );
-
-		}`
-        )
-      };
-      SMAAWeightsShader = {
-        defines: {
-          "SMAA_MAX_SEARCH_STEPS": "8",
-          "SMAA_AREATEX_MAX_DISTANCE": "16",
-          "SMAA_AREATEX_PIXEL_SIZE": "( 1.0 / vec2( 160.0, 560.0 ) )",
-          "SMAA_AREATEX_SUBTEX_SIZE": "( 1.0 / 7.0 )"
-        },
-        uniforms: {
-          "tDiffuse": { value: null },
-          "tArea": { value: null },
-          "tSearch": { value: null },
-          "resolution": { value: new Vector2(1 / 1024, 1 / 512) }
-        },
-        vertexShader: (
-          /* glsl */
-          `
-
-		uniform vec2 resolution;
-
-		varying vec2 vUv;
-		varying vec4 vOffset[ 3 ];
-		varying vec2 vPixcoord;
-
-		void SMAABlendingWeightCalculationVS( vec2 texcoord ) {
-			vPixcoord = texcoord / resolution;
-
-			// We will use these offsets for the searches later on (see @PSEUDO_GATHER4):
-			vOffset[ 0 ] = texcoord.xyxy + resolution.xyxy * vec4( -0.25, 0.125, 1.25, 0.125 ); // WebGL port note: Changed sign in Y and W components
-			vOffset[ 1 ] = texcoord.xyxy + resolution.xyxy * vec4( -0.125, 0.25, -0.125, -1.25 ); // WebGL port note: Changed sign in Y and W components
-
-			// And these for the searches, they indicate the ends of the loops:
-			vOffset[ 2 ] = vec4( vOffset[ 0 ].xz, vOffset[ 1 ].yw ) + vec4( -2.0, 2.0, -2.0, 2.0 ) * resolution.xxyy * float( SMAA_MAX_SEARCH_STEPS );
-
-		}
-
-		void main() {
-
-			vUv = uv;
-
-			SMAABlendingWeightCalculationVS( vUv );
-
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-        ),
-        fragmentShader: (
-          /* glsl */
-          `
-
-		#define SMAASampleLevelZeroOffset( tex, coord, offset ) texture2D( tex, coord + float( offset ) * resolution, 0.0 )
-
-		uniform sampler2D tDiffuse;
-		uniform sampler2D tArea;
-		uniform sampler2D tSearch;
-		uniform vec2 resolution;
-
-		varying vec2 vUv;
-		varying vec4 vOffset[3];
-		varying vec2 vPixcoord;
-
-		#if __VERSION__ == 100
-		vec2 round( vec2 x ) {
-			return sign( x ) * floor( abs( x ) + 0.5 );
-		}
-		#endif
-
-		float SMAASearchLength( sampler2D searchTex, vec2 e, float bias, float scale ) {
-			// Not required if searchTex accesses are set to point:
-			// float2 SEARCH_TEX_PIXEL_SIZE = 1.0 / float2(66.0, 33.0);
-			// e = float2(bias, 0.0) + 0.5 * SEARCH_TEX_PIXEL_SIZE +
-			//     e * float2(scale, 1.0) * float2(64.0, 32.0) * SEARCH_TEX_PIXEL_SIZE;
-			e.r = bias + e.r * scale;
-			return 255.0 * texture2D( searchTex, e, 0.0 ).r;
-		}
-
-		float SMAASearchXLeft( sampler2D edgesTex, sampler2D searchTex, vec2 texcoord, float end ) {
-			/**
-				* @PSEUDO_GATHER4
-				* This texcoord has been offset by (-0.25, -0.125) in the vertex shader to
-				* sample between edge, thus fetching four edges in a row.
-				* Sampling with different offsets in each direction allows to disambiguate
-				* which edges are active from the four fetched ones.
-				*/
-			vec2 e = vec2( 0.0, 1.0 );
-
-			for ( int i = 0; i < SMAA_MAX_SEARCH_STEPS; i ++ ) { // WebGL port note: Changed while to for
-				e = texture2D( edgesTex, texcoord, 0.0 ).rg;
-				texcoord -= vec2( 2.0, 0.0 ) * resolution;
-				if ( ! ( texcoord.x > end && e.g > 0.8281 && e.r == 0.0 ) ) break;
-			}
-
-			// We correct the previous (-0.25, -0.125) offset we applied:
-			texcoord.x += 0.25 * resolution.x;
-
-			// The searches are bias by 1, so adjust the coords accordingly:
-			texcoord.x += resolution.x;
-
-			// Disambiguate the length added by the last step:
-			texcoord.x += 2.0 * resolution.x; // Undo last step
-			texcoord.x -= resolution.x * SMAASearchLength(searchTex, e, 0.0, 0.5);
-
-			return texcoord.x;
-		}
-
-		float SMAASearchXRight( sampler2D edgesTex, sampler2D searchTex, vec2 texcoord, float end ) {
-			vec2 e = vec2( 0.0, 1.0 );
-
-			for ( int i = 0; i < SMAA_MAX_SEARCH_STEPS; i ++ ) { // WebGL port note: Changed while to for
-				e = texture2D( edgesTex, texcoord, 0.0 ).rg;
-				texcoord += vec2( 2.0, 0.0 ) * resolution;
-				if ( ! ( texcoord.x < end && e.g > 0.8281 && e.r == 0.0 ) ) break;
-			}
-
-			texcoord.x -= 0.25 * resolution.x;
-			texcoord.x -= resolution.x;
-			texcoord.x -= 2.0 * resolution.x;
-			texcoord.x += resolution.x * SMAASearchLength( searchTex, e, 0.5, 0.5 );
-
-			return texcoord.x;
-		}
-
-		float SMAASearchYUp( sampler2D edgesTex, sampler2D searchTex, vec2 texcoord, float end ) {
-			vec2 e = vec2( 1.0, 0.0 );
-
-			for ( int i = 0; i < SMAA_MAX_SEARCH_STEPS; i ++ ) { // WebGL port note: Changed while to for
-				e = texture2D( edgesTex, texcoord, 0.0 ).rg;
-				texcoord += vec2( 0.0, 2.0 ) * resolution; // WebGL port note: Changed sign
-				if ( ! ( texcoord.y > end && e.r > 0.8281 && e.g == 0.0 ) ) break;
-			}
-
-			texcoord.y -= 0.25 * resolution.y; // WebGL port note: Changed sign
-			texcoord.y -= resolution.y; // WebGL port note: Changed sign
-			texcoord.y -= 2.0 * resolution.y; // WebGL port note: Changed sign
-			texcoord.y += resolution.y * SMAASearchLength( searchTex, e.gr, 0.0, 0.5 ); // WebGL port note: Changed sign
-
-			return texcoord.y;
-		}
-
-		float SMAASearchYDown( sampler2D edgesTex, sampler2D searchTex, vec2 texcoord, float end ) {
-			vec2 e = vec2( 1.0, 0.0 );
-
-			for ( int i = 0; i < SMAA_MAX_SEARCH_STEPS; i ++ ) { // WebGL port note: Changed while to for
-				e = texture2D( edgesTex, texcoord, 0.0 ).rg;
-				texcoord -= vec2( 0.0, 2.0 ) * resolution; // WebGL port note: Changed sign
-				if ( ! ( texcoord.y < end && e.r > 0.8281 && e.g == 0.0 ) ) break;
-			}
-
-			texcoord.y += 0.25 * resolution.y; // WebGL port note: Changed sign
-			texcoord.y += resolution.y; // WebGL port note: Changed sign
-			texcoord.y += 2.0 * resolution.y; // WebGL port note: Changed sign
-			texcoord.y -= resolution.y * SMAASearchLength( searchTex, e.gr, 0.5, 0.5 ); // WebGL port note: Changed sign
-
-			return texcoord.y;
-		}
-
-		vec2 SMAAArea( sampler2D areaTex, vec2 dist, float e1, float e2, float offset ) {
-			// Rounding prevents precision errors of bilinear filtering:
-			vec2 texcoord = float( SMAA_AREATEX_MAX_DISTANCE ) * round( 4.0 * vec2( e1, e2 ) ) + dist;
-
-			// We do a scale and bias for mapping to texel space:
-			texcoord = SMAA_AREATEX_PIXEL_SIZE * texcoord + ( 0.5 * SMAA_AREATEX_PIXEL_SIZE );
-
-			// Move to proper place, according to the subpixel offset:
-			texcoord.y += SMAA_AREATEX_SUBTEX_SIZE * offset;
-
-			return texture2D( areaTex, texcoord, 0.0 ).rg;
-		}
-
-		vec4 SMAABlendingWeightCalculationPS( vec2 texcoord, vec2 pixcoord, vec4 offset[ 3 ], sampler2D edgesTex, sampler2D areaTex, sampler2D searchTex, ivec4 subsampleIndices ) {
-			vec4 weights = vec4( 0.0, 0.0, 0.0, 0.0 );
-
-			vec2 e = texture2D( edgesTex, texcoord ).rg;
-
-			if ( e.g > 0.0 ) { // Edge at north
-				vec2 d;
-
-				// Find the distance to the left:
-				vec2 coords;
-				coords.x = SMAASearchXLeft( edgesTex, searchTex, offset[ 0 ].xy, offset[ 2 ].x );
-				coords.y = offset[ 1 ].y; // offset[1].y = texcoord.y - 0.25 * resolution.y (@CROSSING_OFFSET)
-				d.x = coords.x;
-
-				// Now fetch the left crossing edges, two at a time using bilinear
-				// filtering. Sampling at -0.25 (see @CROSSING_OFFSET) enables to
-				// discern what value each edge has:
-				float e1 = texture2D( edgesTex, coords, 0.0 ).r;
-
-				// Find the distance to the right:
-				coords.x = SMAASearchXRight( edgesTex, searchTex, offset[ 0 ].zw, offset[ 2 ].y );
-				d.y = coords.x;
-
-				// We want the distances to be in pixel units (doing this here allow to
-				// better interleave arithmetic and memory accesses):
-				d = d / resolution.x - pixcoord.x;
-
-				// SMAAArea below needs a sqrt, as the areas texture is compressed
-				// quadratically:
-				vec2 sqrt_d = sqrt( abs( d ) );
-
-				// Fetch the right crossing edges:
-				coords.y -= 1.0 * resolution.y; // WebGL port note: Added
-				float e2 = SMAASampleLevelZeroOffset( edgesTex, coords, ivec2( 1, 0 ) ).r;
-
-				// Ok, we know how this pattern looks like, now it is time for getting
-				// the actual area:
-				weights.rg = SMAAArea( areaTex, sqrt_d, e1, e2, float( subsampleIndices.y ) );
-			}
-
-			if ( e.r > 0.0 ) { // Edge at west
-				vec2 d;
-
-				// Find the distance to the top:
-				vec2 coords;
-
-				coords.y = SMAASearchYUp( edgesTex, searchTex, offset[ 1 ].xy, offset[ 2 ].z );
-				coords.x = offset[ 0 ].x; // offset[1].x = texcoord.x - 0.25 * resolution.x;
-				d.x = coords.y;
-
-				// Fetch the top crossing edges:
-				float e1 = texture2D( edgesTex, coords, 0.0 ).g;
-
-				// Find the distance to the bottom:
-				coords.y = SMAASearchYDown( edgesTex, searchTex, offset[ 1 ].zw, offset[ 2 ].w );
-				d.y = coords.y;
-
-				// We want the distances to be in pixel units:
-				d = d / resolution.y - pixcoord.y;
-
-				// SMAAArea below needs a sqrt, as the areas texture is compressed
-				// quadratically:
-				vec2 sqrt_d = sqrt( abs( d ) );
-
-				// Fetch the bottom crossing edges:
-				coords.y -= 1.0 * resolution.y; // WebGL port note: Added
-				float e2 = SMAASampleLevelZeroOffset( edgesTex, coords, ivec2( 0, 1 ) ).g;
-
-				// Get the area for this direction:
-				weights.ba = SMAAArea( areaTex, sqrt_d, e1, e2, float( subsampleIndices.x ) );
-			}
-
-			return weights;
-		}
-
-		void main() {
-
-			gl_FragColor = SMAABlendingWeightCalculationPS( vUv, vPixcoord, vOffset, tDiffuse, tArea, tSearch, ivec4( 0.0 ) );
-
-		}`
-        )
-      };
-      SMAABlendShader = {
-        uniforms: {
-          "tDiffuse": { value: null },
-          "tColor": { value: null },
-          "resolution": { value: new Vector2(1 / 1024, 1 / 512) }
-        },
-        vertexShader: (
-          /* glsl */
-          `
-
-		uniform vec2 resolution;
-
-		varying vec2 vUv;
-		varying vec4 vOffset[ 2 ];
-
-		void SMAANeighborhoodBlendingVS( vec2 texcoord ) {
-			vOffset[ 0 ] = texcoord.xyxy + resolution.xyxy * vec4( -1.0, 0.0, 0.0, 1.0 ); // WebGL port note: Changed sign in W component
-			vOffset[ 1 ] = texcoord.xyxy + resolution.xyxy * vec4( 1.0, 0.0, 0.0, -1.0 ); // WebGL port note: Changed sign in W component
-		}
-
-		void main() {
-
-			vUv = uv;
-
-			SMAANeighborhoodBlendingVS( vUv );
-
-			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-
-		}`
-        ),
-        fragmentShader: (
-          /* glsl */
-          `
-
-		uniform sampler2D tDiffuse;
-		uniform sampler2D tColor;
-		uniform vec2 resolution;
-
-		varying vec2 vUv;
-		varying vec4 vOffset[ 2 ];
-
-		vec4 SMAANeighborhoodBlendingPS( vec2 texcoord, vec4 offset[ 2 ], sampler2D colorTex, sampler2D blendTex ) {
-			// Fetch the blending weights for current pixel:
-			vec4 a;
-			a.xz = texture2D( blendTex, texcoord ).xz;
-			a.y = texture2D( blendTex, offset[ 1 ].zw ).g;
-			a.w = texture2D( blendTex, offset[ 1 ].xy ).a;
-
-			// Is there any blending weight with a value greater than 0.0?
-			if ( dot(a, vec4( 1.0, 1.0, 1.0, 1.0 )) < 1e-5 ) {
-				return texture2D( colorTex, texcoord, 0.0 );
-			} else {
-				// Up to 4 lines can be crossing a pixel (one through each edge). We
-				// favor blending by choosing the line with the maximum weight for each
-				// direction:
-				vec2 offset;
-				offset.x = a.a > a.b ? a.a : -a.b; // left vs. right
-				offset.y = a.g > a.r ? -a.g : a.r; // top vs. bottom // WebGL port note: Changed signs
-
-				// Then we go in the direction that has the maximum weight:
-				if ( abs( offset.x ) > abs( offset.y )) { // horizontal vs. vertical
-					offset.y = 0.0;
-				} else {
-					offset.x = 0.0;
-				}
-
-				// Fetch the opposite color and lerp by hand:
-				vec4 C = texture2D( colorTex, texcoord, 0.0 );
-				texcoord += sign( offset ) * resolution;
-				vec4 Cop = texture2D( colorTex, texcoord, 0.0 );
-				float s = abs( offset.x ) > abs( offset.y ) ? abs( offset.x ) : abs( offset.y );
-
-				// WebGL port note: Added gamma correction
-				C.xyz = pow(C.xyz, vec3(2.2));
-				Cop.xyz = pow(Cop.xyz, vec3(2.2));
-				vec4 mixed = mix(C, Cop, s);
-				mixed.xyz = pow(mixed.xyz, vec3(1.0 / 2.2));
-
-				return mixed;
-			}
-		}
-
-		void main() {
-
-			gl_FragColor = SMAANeighborhoodBlendingPS( vUv, vOffset, tColor, tDiffuse );
-
-		}`
-        )
-      };
-    }
-  });
-
-  // node_modules/three/examples/jsm/postprocessing/SMAAPass.js
-  var SMAAPass;
-  var init_SMAAPass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/SMAAPass.js"() {
-      init_three_module();
-      init_Pass();
-      init_SMAAShader();
-      init_SMAAShader();
-      init_SMAAShader();
-      SMAAPass = class extends Pass {
-        constructor(width, height) {
-          super();
-          this.edgesRT = new WebGLRenderTarget(width, height, {
-            depthBuffer: false,
-            type: HalfFloatType
-          });
-          this.edgesRT.texture.name = "SMAAPass.edges";
-          this.weightsRT = new WebGLRenderTarget(width, height, {
-            depthBuffer: false,
-            type: HalfFloatType
-          });
-          this.weightsRT.texture.name = "SMAAPass.weights";
-          const scope = this;
-          const areaTextureImage = new Image();
-          areaTextureImage.src = this.getAreaTexture();
-          areaTextureImage.onload = function() {
-            scope.areaTexture.needsUpdate = true;
-          };
-          this.areaTexture = new Texture();
-          this.areaTexture.name = "SMAAPass.area";
-          this.areaTexture.image = areaTextureImage;
-          this.areaTexture.minFilter = LinearFilter;
-          this.areaTexture.generateMipmaps = false;
-          this.areaTexture.flipY = false;
-          const searchTextureImage = new Image();
-          searchTextureImage.src = this.getSearchTexture();
-          searchTextureImage.onload = function() {
-            scope.searchTexture.needsUpdate = true;
-          };
-          this.searchTexture = new Texture();
-          this.searchTexture.name = "SMAAPass.search";
-          this.searchTexture.image = searchTextureImage;
-          this.searchTexture.magFilter = NearestFilter;
-          this.searchTexture.minFilter = NearestFilter;
-          this.searchTexture.generateMipmaps = false;
-          this.searchTexture.flipY = false;
-          this.uniformsEdges = UniformsUtils.clone(SMAAEdgesShader.uniforms);
-          this.uniformsEdges["resolution"].value.set(1 / width, 1 / height);
-          this.materialEdges = new ShaderMaterial({
-            defines: Object.assign({}, SMAAEdgesShader.defines),
-            uniforms: this.uniformsEdges,
-            vertexShader: SMAAEdgesShader.vertexShader,
-            fragmentShader: SMAAEdgesShader.fragmentShader
-          });
-          this.uniformsWeights = UniformsUtils.clone(SMAAWeightsShader.uniforms);
-          this.uniformsWeights["resolution"].value.set(1 / width, 1 / height);
-          this.uniformsWeights["tDiffuse"].value = this.edgesRT.texture;
-          this.uniformsWeights["tArea"].value = this.areaTexture;
-          this.uniformsWeights["tSearch"].value = this.searchTexture;
-          this.materialWeights = new ShaderMaterial({
-            defines: Object.assign({}, SMAAWeightsShader.defines),
-            uniforms: this.uniformsWeights,
-            vertexShader: SMAAWeightsShader.vertexShader,
-            fragmentShader: SMAAWeightsShader.fragmentShader
-          });
-          this.uniformsBlend = UniformsUtils.clone(SMAABlendShader.uniforms);
-          this.uniformsBlend["resolution"].value.set(1 / width, 1 / height);
-          this.uniformsBlend["tDiffuse"].value = this.weightsRT.texture;
-          this.materialBlend = new ShaderMaterial({
-            uniforms: this.uniformsBlend,
-            vertexShader: SMAABlendShader.vertexShader,
-            fragmentShader: SMAABlendShader.fragmentShader
-          });
-          this.needsSwap = false;
-          this.fsQuad = new FullScreenQuad(null);
-        }
-        render(renderer, writeBuffer, readBuffer) {
-          this.uniformsEdges["tDiffuse"].value = readBuffer.texture;
-          this.fsQuad.material = this.materialEdges;
-          renderer.setRenderTarget(this.edgesRT);
-          if (this.clear) renderer.clear();
-          this.fsQuad.render(renderer);
-          this.fsQuad.material = this.materialWeights;
-          renderer.setRenderTarget(this.weightsRT);
-          if (this.clear) renderer.clear();
-          this.fsQuad.render(renderer);
-          this.uniformsBlend["tColor"].value = readBuffer.texture;
-          this.fsQuad.material = this.materialBlend;
-          if (this.renderToScreen) {
-            renderer.setRenderTarget(null);
-            this.fsQuad.render(renderer);
-          } else {
-            renderer.setRenderTarget(writeBuffer);
-            if (this.clear) renderer.clear();
-            this.fsQuad.render(renderer);
-          }
-        }
-        setSize(width, height) {
-          this.edgesRT.setSize(width, height);
-          this.weightsRT.setSize(width, height);
-          this.materialEdges.uniforms["resolution"].value.set(1 / width, 1 / height);
-          this.materialWeights.uniforms["resolution"].value.set(1 / width, 1 / height);
-          this.materialBlend.uniforms["resolution"].value.set(1 / width, 1 / height);
-        }
-        getAreaTexture() {
-          return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAIwCAIAAACOVPcQAACBeklEQVR42u39W4xlWXrnh/3WWvuciIzMrKxrV8/0rWbY0+SQFKcb4owIkSIFCjY9AC1BT/LYBozRi+EX+cV+8IMsYAaCwRcBwjzMiw2jAWtgwC8WR5Q8mDFHZLNHTarZGrLJJllt1W2qKrsumZWZcTvn7L3W54e1vrXX3vuciLPPORFR1XE2EomorB0nVuz//r71re/y/1eMvb4Cb3N11xV/PP/2v4UBAwJG/7H8urx6/25/Gf8O5hypMQ0EEEQwAqLfoN/Z+97f/SW+/NvcgQk4sGBJK6H7N4PFVL+K+e0N11yNfkKvwUdwdlUAXPHHL38oa15f/i/46Ih6SuMSPmLAYAwyRKn7dfMGH97jaMFBYCJUgotIC2YAdu+LyW9vvubxAP8kAL8H/koAuOKP3+q6+xGnd5kdYCeECnGIJViwGJMAkQKfDvB3WZxjLKGh8VSCCzhwEWBpMc5/kBbjawT4HnwJfhr+pPBIu7uu+OOTo9vsmtQcniMBGkKFd4jDWMSCRUpLjJYNJkM+IRzQ+PQvIeAMTrBS2LEiaiR9b/5PuT6Ap/AcfAFO4Y3dA3DFH7/VS+M8k4baEAQfMI4QfbVDDGIRg7GKaIY52qAjTAgTvGBAPGIIghOCYAUrGFNgzA7Q3QhgCwfwAnwe5vDejgG44o/fbm1C5ZlYQvQDARPAIQGxCWBM+wWl37ZQESb4gImexGMDouhGLx1Cst0Saa4b4AqO4Hk4gxo+3DHAV/nx27p3JziPM2pVgoiia5MdEzCGULprIN7gEEeQ5IQxEBBBQnxhsDb5auGmAAYcHMA9eAAz8PBol8/xij9+C4Djlim4gJjWcwZBhCBgMIIYxGAVIkH3ZtcBuLdtRFMWsPGoY9rN+HoBji9VBYdwD2ZQg4cnO7OSq/z4rU5KKdwVbFAjNojCQzTlCLPFSxtamwh2jMUcEgg2Wm/6XgErIBhBckQtGN3CzbVacERgCnfgLswhnvqf7QyAq/z4rRZm1YglYE3affGITaZsdIe2FmMIpnOCap25I6jt2kCwCW0D1uAD9sZctNGXcQIHCkINDQgc78aCr+zjtw3BU/ijdpw3zhCwcaONwBvdeS2YZKkJNJsMPf2JKEvC28RXxxI0ASJyzQCjCEQrO4Q7sFArEzjZhaFc4cdv+/JFdKULM4px0DfUBI2hIsy06BqLhGTQEVdbfAIZXYMPesq6VoCHICzUyjwInO4Y411//LYLs6TDa9wvg2CC2rElgAnpTBziThxaL22MYhzfkghz6GAs2VHbbdM91VZu1MEEpupMMwKyVTb5ij9+u4VJG/5EgEMMmFF01cFai3isRbKbzb+YaU/MQbAm2XSMoUPAmvZzbuKYRIFApbtlrfFuUGd6vq2hXNnH78ZLh/iFhsQG3T4D1ib7k5CC6vY0DCbtrohgLEIClXiGtl10zc0CnEGIhhatLBva7NP58Tvw0qE8yWhARLQ8h4+AhQSP+I4F5xoU+VilGRJs6wnS7ruti/4KvAY/CfdgqjsMy4pf8fodQO8/gnuX3f/3xi3om1/h7THr+co3x93PP9+FBUfbNUjcjEmhcrkT+8K7ml7V10Jo05mpIEFy1NmCJWx9SIKKt+EjAL4Ez8EBVOB6havuT/rByPvHXK+9zUcfcbb254+9fydJknYnRr1oGfdaiAgpxu1Rx/Rek8KISftx3L+DfsLWAANn8Hvw0/AFeAGO9DFV3c6D+CcWbL8Dj9e7f+T1k8AZv/d7+PXWM/Z+VvdCrIvuAKO09RpEEQJM0Ci6+B4xhTWr4cZNOvhktabw0ta0rSJmqz3Yw5/AKXwenod7cAhTmBSPKf6JBdvH8IP17h95pXqw50/+BFnj88fev4NchyaK47OPhhtI8RFSvAfDSNh0Ck0p2gLxGkib5NJj/JWCr90EWQJvwBzO4AHcgztwAFN1evHPUVGwfXON+0debT1YeGON9Yy9/63X+OguiwmhIhQhD7l4sMqlG3D86Suc3qWZ4rWjI1X7u0Ytw6x3rIMeIOPDprfe2XzNgyj6PahhBjO4C3e6puDgXrdg+/5l948vF3bqwZetZ+z9Rx9zdIY5pInPK4Nk0t+l52xdK2B45Qd87nM8fsD5EfUhIcJcERw4RdqqH7Yde5V7m1vhNmtedkz6EDzUMF/2jJYWbC+4fzzA/Y+/8PPH3j9dcBAPIRP8JLXd5BpAu03aziOL3VVHZzz3CXWDPWd+SH2AnxIqQoTZpo9Ckc6HIrFbAbzNmlcg8Ag8NFDDAhbJvTBZXbC94P7t68EXfv6o+21gUtPETU7bbkLxvNKRFG2+KXzvtObonPP4rBvsgmaKj404DlshFole1Glfh02fE7bYR7dZ82oTewIBGn1Md6CG6YUF26X376oevOLzx95vhUmgblI6LBZwTCDY7vMq0op5WVXgsObOXJ+1x3qaBl9j1FeLxbhU9w1F+Wiba6s1X/TBz1LnUfuYDi4r2C69f1f14BWfP+p+W2GFKuC9phcELMYRRLur9DEZTUdEH+iEqWdaM7X4WOoPGI+ZYD2+wcQ+y+ioHUZ9dTDbArzxmi/bJI9BND0Ynd6lBdve/butBw8+f/T9D3ABa3AG8W3VPX4hBin+bj8dMMmSpp5pg7fJ6xrBFE2WQQEWnV8Qg3FbAWzYfM1rREEnmvkN2o1+acG2d/9u68GDzx91v3mAjb1zkpqT21OipPKO0b9TO5W0nTdOmAQm0TObts3aBKgwARtoPDiCT0gHgwnbArzxmtcLc08HgF1asN0C4Ms/fvD5I+7PhfqyXE/b7RbbrGyRQRT9ARZcwAUmgdoz0ehJ9Fn7QAhUjhDAQSw0bV3T3WbNa59jzmiP6GsWbGXDX2ytjy8+f9T97fiBPq9YeLdBmyuizZHaqXITnXiMUEEVcJ7K4j3BFPurtB4bixW8wTpweL8DC95szWMOqucFYGsWbGU7p3TxxxefP+r+oTVktxY0v5hbq3KiOKYnY8ddJVSBxuMMVffNbxwIOERShst73HZ78DZrHpmJmH3K6sGz0fe3UUj0eyRrSCGTTc+rjVNoGzNSv05srAxUBh8IhqChiQgVNIIBH3AVPnrsnXQZbLTm8ammv8eVXn/vWpaTem5IXRlt+U/LA21zhSb9cye6jcOfCnOwhIAYXAMVTUNV0QhVha9xjgA27ODJbLbmitt3tRN80lqG6N/khgot4ZVlOyO4WNg3OIMzhIZQpUEHieg2im6F91hB3I2tubql6BYNN9Hj5S7G0G2tahslBWKDnOiIvuAEDzakDQKDNFQT6gbn8E2y4BBubM230YIpBnDbMa+y3dx0n1S0BtuG62lCCXwcY0F72T1VRR3t2ONcsmDjbmzNt9RFs2LO2hQNyb022JisaI8rAWuw4HI3FuAIhZdOGIcdjLJvvObqlpqvWTJnnQbyi/1M9O8UxWhBs//H42I0q1Yb/XPGONzcmm+ri172mHKvZBpHkJaNJz6v9jxqiklDj3U4CA2ugpAaYMWqNXsdXbmJNd9egCnJEsphXNM+MnK3m0FCJ5S1kmJpa3DgPVbnQnPGWIDspW9ozbcO4K/9LkfaQO2KHuqlfFXSbdNzcEcwoqNEFE9zcIXu9/6n/ym/BC/C3aJLzEKPuYVlbFnfhZ8kcWxV3dbv4bKl28566wD+8C53aw49lTABp9PWbsB+knfc/Li3eVizf5vv/xmvnPKg5ihwKEwlrcHqucuVcVOxEv8aH37E3ZqpZypUulrHEtIWKUr+txHg+ojZDGlwnqmkGlzcVi1dLiNSJiHjfbRNOPwKpx9TVdTn3K05DBx4psIk4Ei8aCkJahRgffk4YnEXe07T4H2RR1u27E6wfQsBDofUgjFUFnwC2AiVtA+05J2zpiDK2Oa0c5fmAecN1iJzmpqFZxqYBCYhFTCsUNEmUnIcZ6aEA5rQVhEywG6w7HSW02XfOoBlQmjwulOFQAg66SvJblrTEX1YtJ3uG15T/BH1OfOQeuR8g/c0gdpT5fx2SKbs9EfHTKdM8A1GaJRHLVIwhcGyydZsbifAFVKl5EMKNU2Hryo+06BeTgqnxzYjThVySDikbtJPieco75lYfKAJOMEZBTjoITuWHXXZVhcUDIS2hpiXHV9Ku4u44bN5OYLDOkJo8w+xJSMbhBRHEdEs9JZUCkQrPMAvaHyLkxgkEHxiNkx/x2YB0mGsQ8EUWj/stW5YLhtS5SMu+/YBbNPDCkGTUybN8krRLBGPlZkVOA0j+a1+rkyQKWGaPHPLZOkJhioQYnVZ2hS3zVxMtgC46KuRwbJNd9nV2PHgb36F194ecf/Yeu2vAFe5nm/bRBFrnY4BauE8ERmZRFUn0k8hbftiVYSKMEme2dJCJSCGYAlNqh87bXOPdUkGy24P6d1ll21MBqqx48Fvv8ZHH8HZFY7j/uAq1xMJUFqCSUlJPmNbIiNsmwuMs/q9CMtsZsFO6SprzCS1Z7QL8xCQClEelpjTduDMsmWD8S1PT152BtvmIGvUeDA/yRn83u/x0/4qxoPHjx+PXY9pqX9bgMvh/Nz9kpP4pOe1/fYf3axUiMdHLlPpZCNjgtNFAhcHEDxTumNONhHrBduW+vOyY++70WWnPXj98eA4kOt/mj/5E05l9+O4o8ePx67HFqyC+qSSnyselqjZGaVK2TadbFLPWAQ4NBhHqDCCV7OTpo34AlSSylPtIdd2AJZlyzYQrDJ5lcWGNceD80CunPLGGzsfD+7wRb95NevJI5docQ3tgCyr5bGnyaPRlmwNsFELViOOx9loebGNq2moDOKpHLVP5al2cymWHbkfzGXL7kfRl44H9wZy33tvt+PB/Xnf93e+nh5ZlU18wCiRUa9m7kib9LYuOk+hudQNbxwm0AQqbfloimaB2lM5fChex+ylMwuTbfmXQtmWlenZljbdXTLuOxjI/fDDHY4Hjx8/Hrse0zXfPFxbUN1kKqSCCSk50m0Ajtx3ub9XHBKHXESb8iO6E+qGytF4nO0OG3SXzbJlhxBnKtKyl0NwybjvYCD30aMdjgePHz8eu56SVTBbgxJMliQ3Oauwg0QHxXE2Ez/EIReLdQj42Gzb4CLS0YJD9xUx7bsi0vJi5mUbW1QzL0h0PFk17rtiIPfJk52MB48fPx67npJJwyrBa2RCCQRTbGZSPCxTPOiND4G2pYyOQ4h4jINIJh5wFU1NFZt+IsZ59LSnDqBjZ2awbOku+yInunLcd8VA7rNnOxkPHj9+PGY9B0MWJJNozOJmlglvDMXDEozdhQWbgs/U6oBanGzLrdSNNnZFjOkmbi5bNt1lX7JLLhn3vXAg9/h4y/Hg8ePHI9dzQMEkWCgdRfYykYKnkP7D4rIujsujaKPBsB54vE2TS00ccvFY/Tth7JXeq1hz+qgVy04sAJawTsvOknHfCwdyT062HA8eP348Zj0vdoXF4pilKa2BROed+9fyw9rWRXeTFXESMOanvDZfJuJaSXouQdMdDJZtekZcLLvEeK04d8m474UDuaenW44Hjx8/Xns9YYqZpszGWB3AN/4VHw+k7WSFtJ3Qicuqb/NlVmgXWsxh570xg2UwxUw3WfO6B5nOuO8aA7lnZxuPB48fPx6znm1i4bsfcbaptF3zNT78eFPtwi1OaCNOqp1x3zUGcs/PN++AGD1+fMXrSVm2baTtPhPahbPhA71wIHd2bXzRa69nG+3CraTtPivahV/55tXWg8fyRY/9AdsY8VbSdp8V7cKrrgdfM//z6ILQFtJ2nxHtwmuoB4/kf74+gLeRtvvMaBdeSz34+vifx0YG20jbfTa0C6+tHrwe//NmOG0L8EbSdp8R7cLrrQe/996O+ai3ujQOskpTNULa7jOjXXj99eCd8lHvoFiwsbTdZ0a78PrrwTvlo966pLuRtB2fFe3Cm6oHP9kNH/W2FryxtN1nTLvwRurBO+Kj3pWXHidtx2dFu/Bm68Fb81HvykuPlrb7LGkX3mw9eGs+6h1Y8MbSdjegXcguQLjmevDpTQLMxtJ2N6NdyBZu9AbrwVvwUW+LbteULUpCdqm0HTelXbhNPe8G68Gb8lFvVfYfSNuxvrTdTWoXbozAzdaDZzfkorOj1oxVxlIMlpSIlpLrt8D4hrQL17z+c3h6hU/wv4Q/utps4+bm+6P/hIcf0JwQ5oQGPBL0eKPTYEXTW+eL/2DKn73J9BTXYANG57hz1cEMviVf/4tf5b/6C5pTQkMIWoAq7hTpOJjtAM4pxKu5vg5vXeUrtI09/Mo/5H+4z+Mp5xULh7cEm2QbRP2tFIKR7WM3fPf/jZ3SWCqLM2l4NxID5zB72HQXv3jj/8mLR5xXNA5v8EbFQEz7PpRfl1+MB/hlAN65qgDn3wTgH13hK7T59bmP+NIx1SHHU84nLOITt3iVz8mNO+lPrjGAnBFqmioNn1mTyk1ta47R6d4MrX7tjrnjYUpdUbv2rVr6YpVfsGG58AG8Ah9eyUN8CX4WfgV+G8LVWPDGb+Zd4cU584CtqSbMKxauxTg+dyn/LkVgA+IR8KHtejeFKRtTmLLpxN6mYVLjYxwXf5x2VofiZcp/lwKk4wGOpYDnoIZPdg/AAbwMfx0+ge9dgZvYjuqKe4HnGnykYo5TvJbG0Vj12JagRhwKa44H95ShkZa5RyLGGdfYvG7aw1TsF6iapPAS29mNS3NmsTQZCmgTzFwgL3upCTgtBTRwvGMAKrgLn4evwin8+afJRcff+8izUGUM63GOOuAs3tJkw7J4kyoNreqrpO6cYLQeFUd7TTpr5YOTLc9RUUogUOVJQ1GYJaFLAW0oTmKyYS46ZooP4S4EON3xQ5zC8/CX4CnM4c1PE8ApexpoYuzqlP3d4S3OJP8ZDK7cKWNaTlqmgDiiHwl1YsE41w1zT4iRTm3DBqxvOUsbMKKDa/EHxagtnta072ejc3DOIh5ojvh8l3tk1JF/AV6FU6jh3U8HwEazLgdCLYSQ+MYiAI2ltomkzttUb0gGHdSUUgsIYjTzLG3mObX4FBRaYtpDVNZrih9TgTeYOBxsEnN1gOCTM8Bsw/ieMc75w9kuAT6A+/AiHGvN/+Gn4KRkiuzpNNDYhDGFndWRpE6SVfm8U5bxnSgVV2jrg6JCKmneqey8VMFgq2+AM/i4L4RUbfSi27lNXZ7R7W9RTcq/q9fk4Xw3AMQd4I5ifAZz8FcVtm9SAom/dyN4lczJQW/kC42ZrHgcCoIf1oVMKkVItmMBi9cOeNHGLqOZk+QqQmrbc5YmYgxELUUN35z2iohstgfLIFmcMV7s4CFmI74L9+EFmGsi+tGnAOD4Yk9gIpo01Y4cA43BWGygMdr4YZekG3OBIUXXNukvJS8tqa06e+lSDCtnqqMFu6hWHXCF+WaYt64m9QBmNxi7Ioy7D+fa1yHw+FMAcPt7SysFLtoG4PXAk7JOA3aAxBRqUiAdU9Yp5lK3HLSRFtOim0sa8euEt08xvKjYjzeJ2GU7YawexrnKI9tmobInjFXCewpwriY9+RR4aaezFhMhGCppKwom0ChrgFlKzyPKkGlTW1YQrE9HJqu8hKGgMc6hVi5QRq0PZxNfrYNgE64utmRv6KKHRpxf6VDUaOvNP5jCEx5q185My/7RKz69UQu2im5k4/eownpxZxNLwiZ1AZTO2ZjWjkU9uaB2HFn6Q3u0JcsSx/qV9hTEApRzeBLDJQXxYmTnq7bdLa3+uqFrxLJ5w1TehnNHx5ECvCh2g2c3hHH5YsfdaSKddztfjQ6imKFGSyFwlLzxEGPp6r5IevVjk1AMx3wMqi1NxDVjLBiPs9tbsCkIY5we5/ML22zrCScFxnNtzsr9Wcc3CnD+pYO+4VXXiDE0oc/vQQ/fDK3oPESJMYXNmJa/DuloJZkcTpcYE8lIH8Dz8DJMiynNC86Mb2lNaaqP/+L7f2fcE/yP7/Lde8xfgSOdMxvOixZf/9p3+M4hT1+F+zApxg9XfUvYjc8qX2lfOOpK2gNRtB4flpFu9FTKCp2XJRgXnX6olp1zyYjTKJSkGmLE2NjUr1bxFM4AeAAHBUFIeSLqXR+NvH/M9fOnfHzOD2vCSyQJKzfgsCh+yi/Mmc35F2fUrw7miW33W9hBD1vpuUojFphIyvg7aTeoymDkIkeW3XLHmguMzbIAJejN6B5MDrhipE2y6SoFRO/AK/AcHHZHNIfiWrEe/C6cr3f/yOvrQKB+zMM55/GQdLDsR+ifr5Fiuu+/y+M78LzOE5dsNuXC3PYvYWd8NXvphLSkJIasrlD2/HOqQ+RjcRdjKTGWYhhVUm4yxlyiGPuMsZR7sMCHUBeTuNWA7if+ifXgc/hovftHXs/DV+Fvwe+f8shzMiMcweFgBly3//vwJfg5AN4450fn1Hd1Rm1aBLu22Dy3y3H2+OqMemkbGZ4jozcDjJf6596xOLpC0eMTHbKnxLxH27uZ/bMTGs2jOaMOY4m87CfQwF0dw53oa1k80JRuz/XgS+8fX3N9Af4qPIMfzKgCp4H5TDGe9GGeFPzSsZz80SlPTxXjgwJmC45njzgt2vbQ4b4OAdUK4/vWhO8d8v6EE8fMUsfakXbPpFJeLs2ubM/qdm/la3WP91uWhxXHjoWhyRUq2iJ/+5mA73zwIIo+LoZ/SgvIRjAd1IMvvn98PfgOvAJfhhm8scAKVWDuaRaK8aQ9f7vuPDH6Bj47ZXau7rqYJ66mTDwEDU6lLbCjCK0qTXyl5mnDoeNRxanj3FJbaksTk0faXxHxLrssgPkWB9LnA/MFleXcJozzjwsUvUG0X/QCve51qkMDXp9mtcyOy3rwBfdvVJK7D6/ACSzg3RoruIq5UDeESfEmVclDxnniU82vxMLtceD0hGZWzBNPMM/jSPne2OVatiTKUpY5vY7gc0LdUAWeWM5tH+O2I66AOWw9xT2BuyRVLGdoDHUsVRXOo/c+ZdRXvFfnxWyIV4upFLCl9eAL7h8Zv0QH8Ry8pA2cHzQpGesctVA37ZtklBTgHjyvdSeKY/RZw/kJMk0Y25cSNRWSigQtlULPTw+kzuJPeYEkXjQRpoGZobYsLF79pyd1dMRHInbgFTZqNLhDqiIsTNpoex2WLcy0/X6rHcdMMQvFSd5dWA++4P7xv89deACnmr36uGlL69bRCL6BSZsS6c0TU2TKK5gtWCzgAOOwQcurqk9j8whvziZSMLcq5hbuwBEsYjopUBkqw1yYBGpLA97SRElEmx5MCInBY5vgLk94iKqSWmhIGmkJ4Bi9m4L645J68LyY4wsFYBfUg5feP/6gWWm58IEmKQM89hq7KsZNaKtP5TxxrUZZVkNmMJtjbKrGxLNEbHPJxhqy7lAmbC32ZqeF6lTaknRWcYaFpfLUBh/rwaQycCCJmW15Kstv6jRHyJFry2C1ahkkIW0LO75s61+owxK1y3XqweX9m5YLM2DPFeOjn/iiqCKJ+yKXF8t5Yl/kNsqaSCryxPq5xWTFIaP8KSW0RYxqupaUf0RcTNSSdJZGcKYdYA6kdtrtmyBckfKXwqk0pHpUHlwWaffjNRBYFPUDWa8e3Lt/o0R0CdisKDM89cX0pvRHEfM8ca4t0s2Xx4kgo91MPQJ/0c9MQYq0co8MBh7bz1fio0UUHLR4aAIOvOmoYO6kwlEVODSSTliWtOtH6sPkrtctF9ZtJ9GIerBskvhdVS5cFNv9s1BU0AbdUgdK4FG+dRnjFmDTzniRMdZO1QhzMK355vigbdkpz9P6qjUGE5J2qAcXmwJ20cZUiAD0z+pGMx6xkzJkmEf40Hr4qZfVg2XzF9YOyoV5BjzVkUJngKf8lgNYwKECEHrCNDrWZzMlflS3yBhr/InyoUgBc/lKT4pxVrrC6g1YwcceK3BmNxZcAtz3j5EIpqguh9H6wc011YN75cKDLpFDxuwkrPQmUwW4KTbj9mZTwBwLq4aQMUZbHm1rylJ46dzR0dua2n3RYCWZsiHROeywyJGR7mXKlpryyCiouY56sFkBWEnkEB/raeh/Sw4162KeuAxMQpEkzy5alMY5wamMsWKKrtW2WpEWNnReZWONKWjrdsKZarpFjqCslq773PLmEhM448Pc3+FKr1+94vv/rfw4tEcu+lKTBe4kZSdijBrykwv9vbCMPcLQTygBjzVckSLPRVGslqdunwJ4oegtFOYb4SwxNgWLCmD7T9kVjTv5YDgpo0XBmN34Z/rEHp0sgyz7lngsrm4lvMm2Mr1zNOJYJ5cuxuQxwMGJq/TP5emlb8fsQBZviK4t8hFL+zbhtlpwaRSxQRWfeETjuauPsdGxsBVdO7nmP4xvzSoT29pRl7kGqz+k26B3Oy0YNV+SXbbQas1ctC/GarskRdFpKczVAF1ZXnLcpaMuzVe6lZ2g/1ndcvOVgRG3sdUAY1bKD6achijMPdMxV4muKVorSpiDHituH7rSTs7n/4y5DhRXo4FVBN4vO/zbAcxhENzGbHCzU/98Mcx5e7a31kWjw9FCe/zNeYyQjZsWb1uc7U33pN4Mji6hCLhivqfa9Ss6xLg031AgfesA/l99m9fgvnaF9JoE6bYKmkGNK3aPbHB96w3+DnxFm4hs0drLsk7U8kf/N/CvwQNtllna0rjq61sH8L80HAuvwH1tvBy2ChqWSCaYTaGN19sTvlfzFD6n+iKTbvtayfrfe9ueWh6GJFoxLdr7V72a5ZpvHcCPDzma0wTO4EgbLyedxstO81n57LYBOBzyfsOhUKsW1J1BB5vr/tz8RyqOFylQP9Tvst2JALsC5lsH8PyQ40DV4ANzYa4dedNiKNR1s+x2wwbR7q4/4cTxqEk4LWDebfisuo36JXLiWFjOtLrlNWh3K1rRS4xvHcDNlFnNmWBBAl5SWaL3oPOfnvbr5pdjVnEaeBJSYjuLEkyLLsWhKccadmOphZkOPgVdalj2QpSmfOsADhMWE2ZBu4+EEJI4wKTAuCoC4xwQbWXBltpxbjkXJtKxxabo9e7tyhlgb6gNlSbUpMh+l/FaqzVwewGu8BW1Zx7pTpQDJUjb8tsUTW6+GDXbMn3mLbXlXJiGdggxFAoUrtPS3wE4Nk02UZG2OOzlk7fRs7i95QCLo3E0jtrjnM7SR3uS1p4qtS2nJ5OwtQVHgOvArLBFijZUV9QtSl8dAY5d0E0hM0w3HS2DpIeB6m/A1+HfhJcGUq4sOxH+x3f5+VO+Ds9rYNI7zPXOYWPrtf8bYMx6fuOAX5jzNR0PdsuON+X1f7EERxMJJoU6GkTEWBvVolVlb5lh3tKCg6Wx1IbaMDdJ+9sUCc5KC46hKGCk3IVOS4TCqdBNfUs7Kd4iXf2RjnT/LLysJy3XDcHLh/vde3x8DoGvwgsa67vBk91G5Pe/HbOe7xwym0NXbtiuuDkGO2IJDh9oQvJ4cY4vdoqLDuoH9Zl2F/ofsekn8lkuhIlhQcffUtSjytFyp++p6NiE7Rqx/lodgKVoceEp/CP4FfjrquZaTtj2AvH5K/ywpn7M34K/SsoYDAdIN448I1/0/wveW289T1/lX5xBzc8N5IaHr0XMOQdHsIkDuJFifj20pBm5jzwUv9e2FhwRsvhAbalCIuIw3bhJihY3p6nTFFIZgiSYjfTf3aXuOjmeGn4bPoGvwl+CFzTRczBIuHBEeImHc37/lGfwZR0cXzVDOvaKfNHvwe+suZ771K/y/XcBlsoN996JpBhoE2toYxOznNEOS5TJc6Id5GEXLjrWo+LEWGNpPDU4WAwsIRROu+1vM+0oW37z/MBN9kqHnSArwPfgFJ7Cq/Ai3Ie7g7ncmI09v8sjzw9mzOAEXoIHxURueaAce5V80f/DOuuZwHM8vsMb5wBzOFWM7wymTXPAEvm4vcFpZ2ut0VZRjkiP2MlmLd6DIpbGSiHOjdnUHN90hRYmhTnmvhzp1iKDNj+b7t5hi79lWGwQ+HN9RsfFMy0FXbEwhfuczKgCbyxYwBmcFhhvo/7a44v+i3XWcwDP86PzpGQYdWh7csP5dBvZ1jNzdxC8pBGuxqSW5vw40nBpj5JhMwvOzN0RWqERHMr4Lv1kWX84xLR830G3j6yqZ1a8UstTlW+qJPOZ+sZ7xZPKTJLhiNOAFd6tk+jrTH31ncLOxid8+nzRb128HhUcru/y0Wn6iT254YPC6FtVSIMoW2sk727AhvTtrWKZTvgsmckfXYZWeNRXx/3YQ2OUxLDrbHtN11IwrgXT6c8dATDwLniYwxzO4RzuQqTKSC5gAofMZ1QBK3zQ4JWobFbcvJm87FK+6JXrKahLn54m3p+McXzzYtP8VF/QpJuh1OwieElEoI1pRxPS09FBrkq2tWCU59+HdhNtTIqKm8EBrw2RTOEDpG3IKo2Y7mFdLm3ZeVjYwVw11o/oznceMve4CgMfNym/utA/d/ILMR7gpXzRy9eDsgLcgbs8O2Va1L0zzIdwGGemTBuwROHeoMShkUc7P+ISY3KH5ZZeWqO8mFTxQYeXTNuzvvK5FGPdQfuu00DwYFY9dyhctEt+OJDdnucfpmyhzUJzfsJjr29l8S0bXBfwRS9ZT26tmMIdZucch5ZboMz3Nio3nIOsYHCGoDT4kUA9MiXEp9Xsui1S8th/kbWIrMBxDGLodWUQIWcvnXy+9M23xPiSMOiRPqM+YMXkUN3gXFrZJwXGzUaMpJfyRS9ZT0lPe8TpScuRlbMHeUmlaKDoNuy62iWNTWNFYjoxFzuJs8oR+RhRx7O4SVNSXpa0ZJQ0K1LAHDQ+D9IepkMXpcsq5EVCvClBUIzDhDoyKwDw1Lc59GbTeORivugw1IcuaEOaGWdNm+Ps5fQ7/tm0DjMegq3yM3vb5j12qUId5UZD2oxDSEWOZMSqFl/W+5oynWDa/aI04tJRQ2eTXusg86SQVu/nwSYwpW6wLjlqIzwLuxGIvoAvul0PS+ZNz0/akp/pniO/8JDnGyaCkzbhl6YcqmK/69prxPqtpx2+Km9al9sjL+rwMgHw4jE/C8/HQ3m1vBuL1fldbzd8mOueVJ92syqdEY4KJjSCde3mcRw2TA6szxedn+zwhZMps0XrqEsiUjnC1hw0TELC2Ek7uAAdzcheXv1BYLagspxpzSAoZZUsIzIq35MnFQ9DOrlNB30jq3L4pkhccKUAA8/ocvN1Rzx9QyOtERs4CVsJRK/DF71kPYrxYsGsm6RMh4cps5g1DOmM54Ly1ii0Hd3Y/BMk8VWFgBVmhqrkJCPBHAolwZaWzLR9Vb7bcWdX9NyUYE+uB2BKfuaeBUcjDljbYVY4DdtsVWvzRZdWnyUzDpjNl1Du3aloAjVJTNDpcIOVVhrHFF66lLfJL1zJr9PQ2nFJSBaKoDe+sAvLufZVHVzYh7W0h/c6AAZ+7Tvj6q9j68G/cTCS/3n1vLKHZwNi+P+pS0WkZNMBMUl+LDLuiE4omZy71r3UFMwNJV+VJ/GC5ixVUkBStsT4gGKh0Gm4Oy3qvq7Lbmq24nPdDuDR9deR11XzP4vFu3TYzfnIyiSVmgizUYGqkIXNdKTY9pgb9D2Ix5t0+NHkVzCdU03suWkkVZAoCONCn0T35gAeW38de43mf97sMOpSvj4aa1KYUm58USI7Wxxes03bAZdRzk6UtbzMaCQ6IxO0dy7X+XsjoD16hpsBeGz9dfzHj+R/Hp8nCxZRqkEDTaCKCSywjiaoMJ1TITE9eg7Jqnq8HL6gDwiZb0u0V0Rr/rmvqjxKuaLCX7ZWXTvAY+uvm3z8CP7nzVpngqrJpZKwWnCUjIviYVlirlGOzPLI3SMVyp/elvBUjjDkNhrtufFFErQ8pmdSlbK16toBHlt/HV8uHMX/vEGALkV3RJREiSlopxwdMXOZPLZ+ix+kAHpMKIk8UtE1ygtquttwxNhphrIZ1IBzjGF3IIGxGcBj6q8bHJBG8T9vdsoWrTFEuebEZuVxhhClH6P5Zo89OG9fwHNjtNQTpD0TG9PJLEYqvEY6Rlxy+ZZGfL0Aj62/bnQCXp//eeM4KzfQVJbgMQbUjlMFIm6TpcfWlZje7NBSV6IsEVmumWIbjiloUzQX9OzYdo8L1wjw2PrrpimONfmfNyzKklrgnEkSzT5QWYQW40YShyzqsRmMXbvVxKtGuYyMKaU1ugenLDm5Ily4iT14fP11Mx+xJv+zZ3MvnfdFqxU3a1W/FTB4m3Qfsyc1XUcdVhDeUDZXSFHHLQj/Y5jtC7ZqM0CXGwB4bP11i3LhOvzPGygYtiUBiwQV/4wFO0majijGsafHyRLu0yG6q35cL1rOpVxr2s5cM2jJYMCdc10Aj6q/blRpWJ//+dmm5psMl0KA2+AFRx9jMe2WbC4jQxnikd4DU8TwUjRVacgdlhmr3bpddzuJ9zXqr2xnxJfzP29RexdtjDVZqzkqa6PyvcojGrfkXiJ8SEtml/nYskicv0ivlxbqjemwUjMw5evdg8fUX9nOiC/lf94Q2i7MURk9nW1MSj5j8eAyV6y5CN2S6qbnw3vdA1Iwq+XOSCl663udN3IzLnrt+us25cI1+Z83SXQUldqQq0b5XOT17bGpLd6ssN1VMPf8c+jG8L3NeCnMdF+Ra3fRa9dft39/LuZ/3vwHoHrqGmQFafmiQw6eyzMxS05K4bL9uA+SKUQzCnSDkqOGokXyJvbgJ/BHI+qvY69//4rl20NsmK2ou2dTsyIALv/91/8n3P2Aao71WFGi8KKv1fRC5+J67Q/507/E/SOshqN5TsmYIjVt+kcjAx98iz/4SaojbIV1rexE7/C29HcYD/DX4a0rBOF5VTu7omsb11L/AWcVlcVZHSsqGuXLLp9ha8I//w3Mv+T4Ew7nTBsmgapoCrNFObIcN4pf/Ob/mrvHTGqqgAupL8qWjWPS9m/31jAe4DjA+4+uCoQoT/zOzlrNd3qd4SdphFxsUvYwGWbTWtISc3wNOWH+kHBMfc6kpmpwPgHWwqaSUG2ZWWheYOGQGaHB+eQ/kn6b3pOgLV+ODSn94wDvr8Bvb70/LLuiPPEr8OGVWfDmr45PZyccEmsVXZGe1pRNX9SU5+AVQkNTIVPCHF/jGmyDC9j4R9LfWcQvfiETmgMMUCMN1uNCakkweZsowdYobiMSlnKA93u7NzTXlSfe+SVbfnPQXmg9LpYAQxpwEtONyEyaueWM4FPjjyjG3uOaFmBTWDNgBXGEiQpsaWhnAqIijB07Dlsy3fUGeP989xbWkyf+FF2SNEtT1E0f4DYYVlxFlbaSMPIRMk/3iMU5pME2SIWJvjckciebkQuIRRyhUvkHg/iUljG5kzVog5hV7vIlCuBrmlhvgPfNHQM8lCf+FEGsYbMIBC0qC9a0uuy2wLXVbLBaP5kjHokCRxapkQyzI4QEcwgYHRZBp+XEFTqXFuNVzMtjXLJgX4gAid24Hjwc4N3dtVSe+NNiwTrzH4WVUOlDobUqr1FuAgYllc8pmzoVrELRHSIW8ViPxNy4xwjBpyR55I6J220qQTZYR4guvUICJiSpr9gFFle4RcF/OMB7BRiX8sSfhpNSO3lvEZCQfLUVTKT78Ek1LRLhWN+yLyTnp8qWUZ46b6vxdRGXfHVqx3eI75YaLa4iNNiK4NOW7wPW6lhbSOF9/M9qw8e/aoB3d156qTzxp8pXx5BKAsYSTOIIiPkp68GmTq7sZtvyzBQaRLNxIZ+paozHWoLFeExIhRBrWitHCAHrCF7/thhD8JhYz84wg93QRV88wLuLY8zF8sQ36qF1J455bOlgnELfshKVxYOXKVuKx0jaj22sczTQqPqtV/XDgpswmGTWWMSDw3ssyUunLLrVPGjYRsH5ggHeHSWiV8kT33ycFSfMgkoOK8apCye0J6VW6GOYvffgU9RWsukEi2kUV2nl4dOYUzRik9p7bcA4ggdJ53LxKcEe17B1R8eqAd7dOepV8sTXf5lhejoL85hUdhDdknPtKHFhljOT+bdq0hxbm35p2nc8+Ja1Iw+tJykgp0EWuAAZYwMVwac5KzYMslhvgHdHRrxKnvhTYcfKsxTxtTETkjHO7rr3zjoV25lAQHrqpV7bTiy2aXMmUhTBnKS91jhtR3GEoF0oLnWhWNnYgtcc4N0FxlcgT7yz3TgNIKkscx9jtV1ZKpWW+Ub1tc1eOv5ucdgpx+FJy9pgbLE7xDyXb/f+hLHVGeitHOi6A7ybo3sF8sS7w7cgdk0nJaOn3hLj3uyD0Zp5pazFIUXUpuTTU18d1EPkDoX8SkmWTnVIozEdbTcZjoqxhNHf1JrSS/AcvHjZ/SMHhL/7i5z+POsTUh/8BvNfYMTA8n+yU/MlTZxSJDRStqvEuLQKWwDctMTQogUDyQRoTQG5Kc6oQRE1yV1jCA7ri7jdZyK0sYTRjCR0Hnnd+y7nHxNgTULqw+8wj0mQKxpYvhjm9uSUxg+TTy7s2GtLUGcywhXSKZN275GsqlclX90J6bRI1aouxmgL7Q0Nen5ziM80SqMIo8cSOo+8XplT/5DHNWsSUr/6lLN/QQ3rDyzLruEW5enpf7KqZoShEduuSFOV7DLX7Ye+GmXb6/hnNNqKsVXuMDFpb9Y9eH3C6NGEzuOuI3gpMH/I6e+zDiH1fXi15t3vA1czsLws0TGEtmPEJdiiFPwlwKbgLHAFk4P6ZyPdymYYHGE0dutsChQBl2JcBFlrEkY/N5bQeXQ18gjunuMfMfsBlxJSx3niO485fwO4fGD5T/+3fPQqkneWVdwnw/3bMPkW9Wbqg+iC765Zk+xcT98ibKZc2EdgHcLoF8cSOo/Oc8fS+OyEULF4g4sJqXVcmfMfsc7A8v1/yfGXmL9I6Fn5pRwZhsPv0TxFNlAfZCvG+Oohi82UC5f/2IsJo0cTOm9YrDoKhFPEUr/LBYTUNht9zelHXDqwfPCIw4owp3mOcIQcLttWXFe3VZ/j5H3cIc0G6oPbCR+6Y2xF2EC5cGUm6wKC5tGEzhsWqw5hNidUiKX5gFWE1GXh4/Qplw4sVzOmx9QxU78g3EF6wnZlEN4FzJ1QPSLEZz1KfXC7vd8ssGdIbNUYpVx4UapyFUHzJoTOo1McSkeNn1M5MDQfs4qQuhhX5vQZFw8suwWTcyYTgioISk2YdmkhehG4PkE7w51inyAGGaU+uCXADabGzJR1fn3lwkty0asIo8cROm9Vy1g0yDxxtPvHDAmpu+PKnM8Ix1wwsGw91YJqhteaWgjYBmmQiebmSpwKKzE19hx7jkzSWOm66oPbzZ8Yj6kxVSpYjVAuvLzYMCRo3oTQecOOjjgi3NQ4l9K5/hOGhNTdcWVOTrlgYNkEXINbpCkBRyqhp+LdRB3g0OU6rMfW2HPCFFMV9nSp+uB2woepdbLBuJQyaw/ZFysXrlXwHxI0b0LovEkiOpXGA1Ijagf+KUNC6rKNa9bQnLFqYNkEnMc1uJrg2u64ELPBHpkgWbmwKpJoDhMwNbbGzAp7Yg31wS2T5rGtzit59PrKhesWG550CZpHEzpv2NGRaxlNjbMqpmEIzygJqQfjypycs2pg2cS2RY9r8HUqkqdEgKTWtWTKoRvOBPDYBltja2SO0RGjy9UHtxwRjA11ujbKF+ti5cIR9eCnxUg6owidtyoU5tK4NLji5Q3HCtiyF2IqLGYsHViOXTXOYxucDqG0HyttqYAKqYo3KTY1ekyDXRAm2AWh9JmsVh/ccg9WJ2E8YjG201sPq5ULxxX8n3XLXuMInbft2mk80rRGjCGctJ8/GFdmEQ9Ug4FlE1ll1Y7jtiraqm5Fe04VV8lvSVBL8hiPrfFVd8+7QH3Qbu2ipTVi8cvSGivc9cj8yvH11YMHdNSERtuOslM97feYFOPKzGcsI4zW0YGAbTAOaxCnxdfiYUmVWslxiIblCeAYr9VYR1gM7GmoPrilunSxxeT3DN/2eBQ9H11+nk1adn6VK71+5+Jfct4/el10/7KBZfNryUunWSCPxPECk1rdOv1WVSrQmpC+Tl46YD3ikQYcpunSQgzVB2VHFhxHVGKDgMEY5GLlQnP7FMDzw7IacAWnO6sBr12u+XanW2AO0wQ8pknnFhsL7KYIqhkEPmEXFkwaN5KQphbkUmG72wgw7WSm9RiL9QT925hkjiVIIhphFS9HKI6/8QAjlpXqg9W2C0apyaVDwKQwrwLY3j6ADR13ZyUNByQXHQu6RY09Hu6zMqXRaNZGS/KEJs0cJEe9VH1QdvBSJv9h09eiRmy0V2uJcqHcShcdvbSNg5fxkenkVprXM9rDVnX24/y9MVtncvbKY706anNl3ASll9a43UiacVquXGhvq4s2FP62NGKfQLIQYu9q1WmdMfmUrDGt8eDS0cXozH/fjmUH6Jruvm50hBDSaEU/2Ru2LEN/dl006TSc/g7tfJERxGMsgDUEr104pfWH9lQaN+M4KWQjwZbVc2rZVNHsyHal23wZtIs2JJqtIc/WLXXRFCpJkfE9jvWlfFbsNQ9pP5ZBS0zKh4R0aMFj1IjTcTnvi0Zz2rt7NdvQb2mgbju1plsH8MmbnEk7KbK0b+wC2iy3aX3szW8xeZvDwET6hWZYwqTXSSG+wMETKum0Dq/q+x62gt2ua2ppAo309TRk9TPazfV3qL9H8z7uhGqGqxNVg/FKx0HBl9OVUORn8Q8Jx9gFttGQUDr3tzcXX9xGgN0EpzN9mdZ3GATtPhL+CjxFDmkeEU6x56kqZRusLzALXVqkCN7zMEcqwjmywDQ6OhyUe0Xao1Qpyncrg6wKp9XfWDsaZplElvQ/b3sdweeghorwBDlHzgk1JmMc/wiERICVy2VJFdMjFuLQSp3S0W3+sngt2njwNgLssFGVQdJ0tu0KH4ky1LW4yrbkuaA6Iy9oz/qEMMXMMDWyIHhsAyFZc2peV9hc7kiKvfULxCl9iddfRK1f8kk9qvbdOoBtOg7ZkOZ5MsGrSHsokgLXUp9y88smniwWyuFSIRVmjplga3yD8Uij5QS1ZiM4U3Qw5QlSm2bXjFe6jzzBFtpg+/YBbLAWG7OPynNjlCw65fukGNdkJRf7yM1fOxVzbxOJVocFoYIaGwH22mIQkrvu1E2nGuebxIgW9U9TSiukPGU+Lt++c3DJPKhyhEEbXCQLUpae2exiKy6tMPe9mDRBFCEMTWrtwxN8qvuGnt6MoihKWS5NSyBhbH8StXoAz8PLOrRgLtOT/+4vcu+7vDLnqNvztOq7fmd8sMmY9Xzn1zj8Dq8+XVdu2Nv0IIySgEdQo3xVHps3Q5i3fLFsV4aiqzAiBhbgMDEd1uh8qZZ+lwhjkgokkOIv4xNJmyncdfUUzgB4oFMBtiu71Xumpz/P+cfUP+SlwFExwWW62r7b+LSPxqxn/gvMZ5z9C16t15UbNlq+jbGJtco7p8wbYlL4alSyfWdeuu0j7JA3JFNuVAwtst7F7FhWBbPFNKIUORndWtLraFLmMu7KFVDDOzqkeaiN33YAW/r76wR4XDN/yN1z7hejPau06EddkS/6XThfcz1fI/4K736fO48vlxt2PXJYFaeUkFS8U15XE3428xdtn2kc8GQlf1vkIaNRRnOMvLTWrZbElEHeLWi1o0dlKPAh1MVgbbVquPJ5+Cr8LU5/H/+I2QlHIU2ClXM9G8v7Rr7oc/hozfUUgsPnb3D+I+7WF8kNO92GY0SNvuxiE+2Bt8prVJTkzE64sfOstxuwfxUUoyk8VjcTlsqe2qITSFoSj6Epd4KsT6BZOWmtgE3hBfir8IzZDwgV4ZTZvD8VvPHERo8v+vL1DASHTz/i9OlKueHDjK5Rnx/JB1Vb1ioXdBra16dmt7dgik10yA/FwJSVY6XjA3oy4SqM2frqDPPSRMex9qs3XQtoWxMj7/Er8GWYsXgjaVz4OYumP2+9kbxvny/6kvWsEBw+fcb5bInc8APdhpOSs01tEqIkoiZjbAqKMruLbJYddHuHFRIyJcbdEdbl2sVLaySygunutBg96Y2/JjKRCdyHV+AEFtTvIpbKIXOamknYSiB6KV/0JetZITgcjjk5ZdaskBtWO86UF0ap6ozGXJk2WNiRUlCPFir66lzdm/SLSuK7EUdPz8f1z29Skq6F1fXg8+5UVR6bszncP4Tn4KUkkdJ8UFCY1zR1i8RmL/qQL3rlei4THG7OODlnKko4oI01kd3CaM08Ia18kC3GNoVaO9iDh+hWxSyTXFABXoau7Q6q9OxYg/OVEMw6jdbtSrJ9cBcewGmaZmg+bvkUnUUaGr+ZfnMH45Ivevl61hMcXsxYLFTu1hTm2zViCp7u0o5l+2PSUh9bDj6FgYypufBDhqK2+oXkiuHFHR3zfj+9PtA8oR0xnqX8qn+sx3bFODSbbF0X8EUvWQ8jBIcjo5bRmLOljDNtcqNtOe756h3l0VhKa9hDd2l1eqmsnh0MNMT/Cqnx6BInumhLT8luljzQ53RiJeA/0dxe5NK0o2fA1+GLXr6eNQWHNUOJssQaTRlGpLHKL9fD+IrQzTOMZS9fNQD4AnRNVxvTdjC+fJdcDDWQcyB00B0t9BDwTxXgaAfzDZ/DBXzRnfWMFRwuNqocOmX6OKNkY63h5n/fFcB28McVHqnXZVI27K0i4rDLNE9lDKV/rT+udVbD8dFFu2GGZ8mOt0kAXcoX3ZkIWVtw+MNf5NjR2FbivROHmhV1/pj2egv/fMGIOWTIWrV3Av8N9imV9IWml36H6cUjqEWNv9aNc+veb2sH46PRaHSuMBxvtW+twxctq0z+QsHhux8Q7rCY4Ct8lqsx7c6Sy0dl5T89rIeEuZKoVctIk1hNpfavER6yyH1Vvm3MbsUHy4ab4hWr/OZPcsRBphnaV65/ZcdYPNNwsjN/djlf9NqCw9U5ExCPcdhKxUgLSmfROpLp4WSUr8ojdwbncbvCf+a/YzRaEc6QOvXcGO256TXc5Lab9POvB+AWY7PigWYjzhifbovuunzRawsO24ZqQQAqguBtmpmPB7ysXJfyDDaV/aPGillgz1MdQg4u5MYaEtBNNHFjkRlSpd65lp4hd2AVPTfbV7FGpyIOfmNc/XVsPfg7vzaS/3nkvLL593ANLvMuRMGpQIhiF7kUEW9QDpAUbTWYBcbp4WpacHHY1aacqQyjGZS9HI3yCBT9kUZJhVOD+zUDvEH9ddR11fzPcTDQ5TlgB0KwqdXSavk9BC0pKp0WmcuowSw07VXmXC5guzSa4p0UvRw2lbDiYUx0ExJJRzWzi6Gm8cnEkfXXsdcG/M/jAJa0+bmCgdmQ9CYlNlSYZOKixmRsgiFxkrmW4l3KdFKv1DM8tk6WxPYJZhUUzcd8Kdtgrw/gkfXXDT7+avmfVak32qhtkg6NVdUS5wgkru1YzIkSduTW1FDwVWV3JQVJVuieTc0y4iDpFwc7/BvSalvKdQM8sv662cevz/+8sQVnjVAT0W2wLllw1JiMhJRxgDjCjLQsOzSFSgZqx7lAW1JW0e03yAD3asC+GD3NbQhbe+mN5GXH1F83KDOM4n/e5JIuH4NpdQARrFPBVptUNcjj4cVMcFSRTE2NpR1LEYbYMmfWpXgP9KejaPsLUhuvLCsVXznAG9dfx9SR1ud/3hZdCLHb1GMdPqRJgqDmm76mHbvOXDtiO2QPUcKo/TWkQ0i2JFXpBoo7vij1i1Lp3ADAo+qvG3V0rM//vFnnTE4hxd5Ka/Cor5YEdsLVJyKtDgVoHgtW11pWSjolPNMnrlrVj9Fv2Qn60twMwKPqr+N/wvr8z5tZcDsDrv06tkqyzESM85Ycv6XBWA2birlNCXrI6VbD2lx2L0vQO0QVTVVLH4SE67fgsfVXv8n7sz7/85Z7cMtbE6f088wSaR4kCkCm10s6pKbJhfqiUNGLq+0gLWC6eUAZFPnLjwqtKd8EwGvWX59t7iPW4X/eAN1svgRVSY990YZg06BD1ohLMtyFTI4pKTJsS9xREq9EOaPWiO2gpms7397x6nQJkbh+Fz2q/rqRROX6/M8bJrqlVW4l6JEptKeUFuMYUbtCQ7CIttpGc6MY93x1r1vgAnRXvY5cvwWPqb9uWQm+lP95QxdNMeWhOq1x0Db55C7GcUv2ZUuN6n8iKzsvOxibC//Yfs9Na8r2Rlz02vXXDT57FP/zJi66/EJSmsJKa8QxnoqW3VLQ+jZVUtJwJ8PNX1NQCwfNgdhhHD9on7PdRdrdGPF28rJr1F+3LBdeyv+8yYfLoMYet1vX4upNAjVvwOUWnlNXJXlkzk5Il6kqeoiL0C07qno+/CYBXq/+utlnsz7/Mzvy0tmI4zm4ag23PRN3t/CWryoUVJGm+5+K8RJ0V8Hc88/XHUX/HfiAq7t+BH+x6v8t438enWmdJwFA6ZINriLGKv/95f8lT9/FnyA1NMVEvQyaXuu+gz36f/DD73E4pwqpLcvm/o0Vle78n//+L/NPvoefp1pTJye6e4A/D082FERa5/opeH9zpvh13cNm19/4v/LDe5xMWTi8I0Ta0qKlK27AS/v3/r+/x/2GO9K2c7kVMonDpq7//jc5PKCxeNPpFVzaRr01wF8C4Pu76hXuX18H4LduTr79guuFD3n5BHfI+ZRFhY8w29TYhbbLi/bvBdqKE4fUgg1pBKnV3FEaCWOWyA+m3WpORZr/j+9TKJtW8yBTF2/ZEODI9/QavHkVdGFp/Pjn4Q+u5hXapsP5sOH+OXXA1LiKuqJxiMNbhTkbdJTCy4llEt6NnqRT4dhg1V3nbdrm6dYMecA1yTOL4PWTE9L5VzPFlLBCvlG58AhehnN4uHsAYinyJ+AZ/NkVvELbfOBUuOO5syBIEtiqHU1k9XeISX5bsimrkUUhnGDxourN8SgUsCZVtKyGbyGzHXdjOhsAvOAswSRyIBddRdEZWP6GZhNK/yjwew9ehBo+3jEADu7Ay2n8mDc+TS7awUHg0OMzR0LABhqLD4hJEh/BEGyBdGlSJoXYXtr+3HS4ijzVpgi0paWXtdruGTknXBz+11qT1Q2inxaTzQCO46P3lfLpyS4fou2PH/PupwZgCxNhGlj4IvUuWEsTkqMWm6i4xCSMc9N1RDQoCVcuGItJ/MRWefais+3synowi/dESgJjkilnWnBTGvRWmaw8oR15257t7CHmCf8HOn7cwI8+NQBXMBEmAa8PMRemrNCEhLGEhDQKcGZWS319BX9PFBEwGTbRBhLbDcaV3drFcDqk5kCTd2JF1Wp0HraqBx8U0wwBTnbpCadwBA/gTH/CDrcCs93LV8E0YlmmcyQRQnjBa8JESmGUfIjK/7fkaDJpmD2QptFNVJU1bbtIAjjWQizepOKptRjbzR9Kag6xZmMLLjHOtcLT3Tx9o/0EcTT1XN3E45u24AiwEypDJXihKjQxjLprEwcmRKclaDNZCVqr/V8mYWyFADbusiY5hvgFoU2vio49RgJLn5OsReRFN6tabeetiiy0V7KFHT3HyZLx491u95sn4K1QQSPKM9hNT0wMVvAWbzDSVdrKw4zRjZMyJIHkfq1VAVCDl/bUhNKlGq0zGr05+YAceXVPCttVk0oqjVwMPt+BBefx4yPtGVkUsqY3CHDPiCM5ngupUwCdbkpd8kbPrCWHhkmtIKLEetF2499eS1jZlIPGYnlcPXeM2KD9vLS0bW3ktYNqUllpKLn5ZrsxlIzxvDu5eHxzGLctkZLEY4PgSOg2IUVVcUONzUDBEpRaMoXNmUc0tFZrTZquiLyKxrSm3DvIW9Fil+AkhXu5PhEPx9mUNwqypDvZWdKlhIJQY7vn2OsnmBeOWnYZ0m1iwbbw1U60by5om47iHRV6fOgzjMf/DAZrlP40Z7syxpLK0lJ0gqaAK1c2KQKu7tabTXkLFz0sCftuwX++MyNeNn68k5Buq23YQhUh0SNTJa1ioQ0p4nUG2y0XilF1JqODqdImloPS4Bp111DEWT0jJjVv95uX9BBV7eB3bUWcu0acSVM23YZdd8R8UbQUxJ9wdu3oMuhdt929ME+mh6JXJ8di2RxbTi6TbrDquqV4aUKR2iwT6aZbyOwEXN3DUsWr8Hn4EhwNyHuXHh7/pdaUjtR7vnDh/d8c9xD/s5f501eQ1+CuDiCvGhk1AN/4Tf74RfxPwD3toLarR0zNtsnPzmS64KIRk861dMWCU8ArasG9T9H0ZBpsDGnjtAOM2+/LuIb2iIUGXNgl5ZmKD/Tw8TlaAuihaFP5yrw18v4x1898zIdP+DDAX1bM3GAMvPgRP/cJn3zCW013nrhHkrITyvYuwOUkcHuKlRSW5C6rzIdY4ppnF7J8aAJbQepgbJYBjCY9usGXDKQxq7RZfh9eg5d1UHMVATRaD/4BHK93/1iAgYZ/+jqPn8Dn4UExmWrpa3+ZOK6MvM3bjwfzxNWA2dhs8+51XHSPJiaAhGSpWevEs5xHLXcEGFXYiCONySH3fPWq93JIsBiSWvWyc3CAN+EcXoT7rCSANloPPoa31rt/5PUA/gp8Q/jDD3hyrjzlR8VkanfOvB1XPubt17vzxAfdSVbD1pzAnfgyF3ycadOTOTXhpEUoLC1HZyNGW3dtmjeXgr2r56JNmRwdNNWaQVBddd6rh4MhviEB9EFRD/7RGvePvCbwAL4Mx/D6M541hHO4D3e7g6PafdcZVw689z7NGTwo5om7A8sPhccT6qKcl9NJl9aM/9kX+e59Hh1yPqGuCCZxuITcsmNaJ5F7d0q6J3H48TO1/+M57085q2icdu2U+W36Ldllz9Agiv4YGljoEN908EzvDOrBF98/vtJwCC/BF2AG75xxEmjmMIcjxbjoaxqOK3/4hPOZzhMPBpYPG44CM0dTVm1LjLtUWWVz1Bcf8tEx0zs8O2A2YVHRxKYOiy/aOVoAaMu0i7ubu43njjmd4ibMHU1sIDHaQNKrZND/FZYdk54oCXetjq7E7IVl9eAL7t+oHnwXXtLx44czzoRFHBztYVwtH1d+NOMkupZ5MTM+gUmq90X+Bh9zjRlmaQ+m7YMqUL/veemcecAtOJ0yq1JnVlN27di2E0+Klp1tAJ4KRw1eMI7aJjsO3R8kPSI3fUFXnIOfdQe86sIIVtWDL7h//Ok6vj8vwDk08NEcI8zz7OhBy+WwalzZeZ4+0XniRfst9pAJqQHDGLzVQ2pheZnnv1OWhwO43/AgcvAEXEVVpa4db9sGvNK8wjaENHkfFQ4Ci5i7dqnQlPoLQrHXZDvO3BIXZbJOBrOaEbML6sFL798I4FhKihjHMsPjBUZYCMFr6nvaArxqXPn4lCa+cHfSa2cP27g3Z3ziYTRrcbQNGLQmGF3F3cBdzzzX7AILx0IB9rbwn9kx2G1FW3Inic+ZLIsVvKR8Zwfj0l1fkqo8LWY1M3IX14OX3r9RKTIO+d9XzAI8qRPGPn/4NC2n6o4rN8XJ82TOIvuVA8zLKUHRFgBCetlDZlqR1gLKjS39xoE7Bt8UvA6BxuEDjU3tFsEijgA+615tmZkXKqiEENrh41iLDDZNq4pKTWR3LZfnos81LOuNa15cD956vLMsJd1rqYp51gDUQqMYm2XsxnUhD2jg1DM7SeuJxxgrmpfISSXVIJIS5qJJSvJPEQ49DQTVIbYWJ9QWa/E2+c/oPK1drmC7WSfJRNKBO5Yjvcp7Gc3dmmI/Xh1kDTEuiSnWqQf37h+fTMhGnDf6dsS8SQfQWlqqwXXGlc/PEZ/SC5mtzIV0nAshlQdM/LvUtYutrEZ/Y+EAFtq1k28zQhOwLr1AIeANzhF8t9qzTdZf2qRKO6MWE9ohBYwibbOmrFtNmg3mcS+tB28xv2uKd/agYCvOP+GkSc+0lr7RXzyufL7QbkUpjLjEWFLqOIkAGu2B0tNlO9Eau2W1qcOUvVRgKzypKIQZ5KI3q0MLzqTNRYqiZOqmtqloIRlmkBHVpHmRYV6/HixbO6UC47KOFJnoMrVyr7wYz+SlW6GUaghYbY1I6kkxA2W1fSJokUdSh2LQ1GAimRGm0MT+uu57H5l7QgOWxERpO9moLRPgTtquWCfFlGlIjQaRly9odmzMOWY+IBO5tB4sW/0+VWGUh32qYk79EidWKrjWuiLpiVNGFWFRJVktyeXWmbgBBzVl8anPuXyNJlBJOlKLTgAbi/EYHVHxWiDaVR06GnHQNpJcWcK2jJtiCfG2sEHLzuI66sGrMK47nPIInPnu799935aOK2cvmvubrE38ZzZjrELCmXM2hM7UcpXD2oC3+ECVp7xtIuxptJ0jUr3sBmBS47TVxlvJ1Sqb/E0uLdvLj0lLr29ypdd/eMX3f6lrxGlKwKQxEGvw0qHbkbwrF3uHKwVENbIV2wZ13kNEF6zD+x24aLNMfDTCbDPnEikZFyTNttxWBXDaBuM8KtI2rmaMdUY7cXcUPstqTGvBGSrFWIpNMfbdea990bvAOC1YX0qbc6smDS1mPxSJoW4fwEXvjMmhlijDRq6qale6aJEuFGoppYDoBELQzLBuh/mZNx7jkinv0EtnUp50lO9hbNK57lZaMAWuWR5Yo9/kYwcYI0t4gWM47Umnl3YmpeBPqSyNp3K7s2DSAS/39KRuEN2bS4xvowV3dFRMx/VFcp2Yp8w2nTO9hCXtHG1kF1L4KlrJr2wKfyq77R7MKpFKzWlY9UkhYxyHWW6nBWPaudvEAl3CGcNpSXPZ6R9BbBtIl6cHL3gIBi+42CYXqCx1gfGWe7Ap0h3luyXdt1MKy4YUT9xSF01G16YEdWsouW9mgDHd3veyA97H+Ya47ZmEbqMY72oPztCGvK0onL44AvgC49saZKkWRz4veWljE1FHjbRJaWv6ZKKtl875h4CziFCZhG5rx7tefsl0aRT1bMHZjm8dwL/6u7wCRysaQblQoG5yAQN5zpatMNY/+yf8z+GLcH/Qn0iX2W2oEfXP4GvwQHuIL9AYGnaO3zqAX6946nkgqZNnUhx43DIdQtMFeOPrgy/y3Yd85HlJWwjLFkU3kFwq28xPnuPhMWeS+tDLV9Otllq7pQCf3uXJDN9wFDiUTgefHaiYbdfi3b3u8+iY6TnzhgehI1LTe8lcd7s1wJSzKbahCRxKKztTLXstGAiu3a6rPuQs5pk9TWAan5f0BZmGf7Ylxzzk/A7PAs4QPPPAHeFQ2hbFHszlgZuKZsJcUmbDC40sEU403cEjczstOEypa+YxevL4QBC8oRYqWdK6b7sK25tfE+oDZgtOQ2Jg8T41HGcBE6fTWHn4JtHcu9S7uYgU5KSCkl/mcnq+5/YBXOEr6lCUCwOTOM1taOI8mSxx1NsCXBEmLKbMAg5MkwbLmpBaFOPrNSlO2HnLiEqW3tHEwd8AeiQLmn+2gxjC3k6AxREqvKcJbTEzlpLiw4rNZK6oJdidbMMGX9FULKr0AkW+2qDEPBNNm5QAt2Ik2nftNWHetubosHLo2nG4vQA7GkcVCgVCgaDixHqo9UUn1A6OshapaNR/LPRYFV8siT1cCtJE0k/3WtaNSuUZYKPnsVIW0xXWnMUxq5+En4Kvw/MqQmVXnAXj9Z+9zM98zM/Agy7F/qqj2Nh67b8HjFnPP3iBn/tkpdzwEJX/whIcQUXOaikeliCRGUk7tiwF0rItwMEhjkZ309hikFoRAmLTpEXWuHS6y+am/KB/fM50aLEhGnSMwkpxzOov4H0AvgovwJ1iGzDLtJn/9BU+fAINfwUe6FHSLhu83viV/+/HrOePX+STT2B9uWGbrMHHLldRBlhS/CJQmcRxJFqZica01XixAZsYiH1uolZxLrR/SgxVIJjkpQP4PE9sE59LKLr7kltSBogS5tyszzH8Fvw8/AS8rNOg0xUS9fIaHwb+6et8Q/gyvKRjf5OusOzGx8evA/BP4IP11uN/grca5O0lcsPLJ5YjwI4QkJBOHa0WdMZYGxPbh2W2nR9v3WxEWqgp/G3+6VZbRLSAAZ3BhdhAaUL33VUSw9yjEsvbaQ9u4A/gGXwZXoEHOuU1GSj2chf+Mo+f8IcfcAxfIKVmyunRbYQVnoevwgfw3TXXcw++xNuP4fhyueEUNttEduRVaDttddoP0eSxLe2LENk6itYxlrxBNBYrNNKSQmeaLcm9c8UsaB5WyO6675yyQIAWSDpBVoA/gxmcwEvwoDv0m58UE7gHn+fJOa8/Ywan8EKRfjsopF83eCglX/Sfr7OeaRoQfvt1CGvIDccH5BCvw1sWIzRGC/66t0VTcLZQZtm6PlAasbOJ9iwWtUo7biktTSIPxnR24jxP1ZKaqq+2RcXM9OrBAm/AAs7hDJ5bNmGb+KIfwCs8a3jnjBrOFeMjHSCdbKr+2uOLfnOd9eiA8Hvvwwq54VbP2OqwkB48Ytc4YEOiH2vTXqodabfWEOzso4qxdbqD5L6tbtNPECqbhnA708DZH4QOJUXqScmUlks7Ot6FBuZw3n2mEbaUX7kDzxHOOQk8nKWMzAzu6ZZ8sOFw4RK+6PcuXo9tB4SbMz58ApfKDXf3szjNIIbGpD5TKTRxGkEMLjLl+K3wlWXBsCUxIDU+jbOiysESqAy1MGUJpXgwbTWzNOVEziIXZrJ+VIztl1PUBxTSo0dwn2bOmfDRPD3TRTGlfbCJvO9KvuhL1hMHhB9wPuPRLGHcdOWG2xc0U+5bQtAJT0nRTewXL1pgk2+rZAdeWmz3jxAqfNQQdzTlbF8uJ5ecEIWvTkevAHpwz7w78QujlD/Lr491bD8/1vhM2yrUQRrWXNQY4fGilfctMWYjL72UL/qS9eiA8EmN88nbNdour+PBbbAjOjIa4iBhfFg6rxeKdEGcL6p3EWR1Qq2Qkhs2DrnkRnmN9tG2EAqmgPw6hoL7Oza7B+3SCrR9tRftko+Lsf2F/mkTndN2LmzuMcKTuj/mX2+4Va3ki16+nnJY+S7MefpkidxwnV+4wkXH8TKnX0tsYzYp29DOOoSW1nf7nTh2akYiWmcJOuTidSaqESrTYpwjJJNVGQr+rLI7WsqerHW6Kp/oM2pKuV7T1QY9gjqlZp41/WfKpl56FV/0kvXQFRyeQ83xaTu5E8p5dNP3dUF34ihyI3GSpeCsywSh22ZJdWto9winhqifb7VRvgktxp13vyjrS0EjvrRfZ62uyqddSWaWYlwTPAtJZ2oZ3j/Sgi/mi+6vpzesfAcWNA0n8xVyw90GVFGuZjTXEQy+6GfLGLMLL523f5E0OmxVjDoOuRiH91RKU+vtoCtH7TgmvBLvtFXWLW15H9GTdVw8ow4IlRLeHECN9ym1e9K0I+Cbnhgv4Yu+aD2HaQJ80XDqOzSGAV4+4yCqBxrsJAX6ZTIoX36QnvzhhzzMfFW2dZVLOJfo0zbce5OvwXMFaZ81mOnlTVXpDZsQNuoYWveketKb5+6JOOsgX+NTm7H49fUTlx+WLuWL7qxnOFh4BxpmJx0p2gDzA/BUARuS6phR+pUsY7MMboAHx5xNsSVfVZcYSwqCKrqon7zM+8ecCkeS4nm3rINuaWvVNnMRI1IRpxTqx8PZUZ0Br/UEduo3B3hNvmgZfs9gQPj8vIOxd2kndir3awvJ6BLvoUuOfFWNYB0LR1OQJoUySKb9IlOBx74q1+ADC2G6rOdmFdJcD8BkfualA+BdjOOzP9uUhGUEX/TwhZsUduwRr8wNuXKurCixLBgpQI0mDbJr9dIqUuV+92ngkJZ7xduCk2yZKbfWrH1VBiTg9VdzsgRjW3CVXCvAwDd+c1z9dWw9+B+8MJL/eY15ZQ/HqvTwVdsZn5WQsgRRnMaWaecu3jFvMBEmgg+FJFZsnSl0zjB9OqPYaBD7qmoVyImFvzi41usesV0julaAR9dfR15Xzv9sEruRDyk1nb+QaLU67T885GTls6YgcY+UiMa25M/pwGrbCfzkvR3e0jjtuaFtnwuagHTSb5y7boBH119HXhvwP487jJLsLJ4XnUkHX5sLbS61dpiAXRoZSCrFJ+EjpeU3puVfitngYNo6PJrAigKktmwjyQdZpfq30mmtulaAx9Zfx15Xzv+cyeuiBFUs9zq8Kq+XB9a4PVvph3GV4E3y8HENJrN55H1X2p8VyqSKwVusJDKzXOZzplWdzBUFK9e+B4+uv468xvI/b5xtSAkBHQaPvtqWzllVvEOxPbuiE6+j2pvjcKsbvI7txnRErgfH7LdXqjq0IokKzga14GzQ23SSbCQvO6r+Or7SMIr/efOkkqSdMnj9mBx2DRsiY29Uj6+qK9ZrssCKaptR6HKURdwUYeUWA2kPzVKQO8ku2nU3Anhs/XWkBx3F/7wJtCTTTIKftthue1ty9xvNYLY/zo5KSbIuKbXpbEdSyeRyYdAIwKY2neyoc3+k1XUaufYga3T9daMUx/r8z1s10ITknIO0kuoMt+TB8jK0lpayqqjsJ2qtXAYwBU932zinimgmd6mTRDnQfr88q36NAI+tv24E8Pr8zxtasBqx0+xHH9HhlrwsxxNUfKOHQaZBITNf0uccj8GXiVmXAuPEAKSdN/4GLHhs/XWj92dN/uetNuBMnVR+XWDc25JLjo5Mg5IZIq226tmCsip2zZliL213YrTlL2hcFjpCduyim3M7/eB16q/blQsv5X/esDRbtJeabLIosWy3ycavwLhtxdWzbMmHiBTiVjJo6lCLjXZsi7p9PEPnsq6X6wd4bP11i0rD5fzPm/0A6brrIsllenZs0lCJlU4abakR59enZKrKe3BZihbTxlyZ2zl1+g0wvgmA166/bhwDrcn/7Ddz0eWZuJvfSESug6NzZsox3Z04FIxz0mUjMwVOOVTq1CQ0AhdbBGVdjG/CgsfUX7esJl3K/7ytWHRv683praW/8iDOCqWLLhpljDY1ZpzK75QiaZoOTpLKl60auHS/97oBXrv+umU9+FL+5+NtLFgjqVLCdbmj7pY5zPCPLOHNCwXGOcLquOhi8CmCWvbcuO73XmMUPab+ug3A6/A/78Bwe0bcS2+tgHn4J5pyS2WbOck0F51Vq3LcjhLvZ67p1ABbaL2H67bg78BfjKi/jr3+T/ABV3ilLmNXTI2SpvxWBtt6/Z//D0z/FXaGbSBgylzlsEGp+5//xrd4/ae4d8DUUjlslfIYS3t06HZpvfQtvv0N7AHWqtjP2pW08QD/FLy//da38vo8PNlKHf5y37Dxdfe/oj4kVIgFq3koLReSR76W/bx//n9k8jonZxzWTANVwEniDsg87sOSd/z7//PvMp3jQiptGVWFX2caezzAXwfgtzYUvbr0iozs32c3Uge7varH+CNE6cvEYmzbPZ9hMaYDdjK4V2iecf6EcEbdUDVUARda2KzO/JtCuDbNQB/iTeL0EG1JSO1jbXS+nLxtPMDPw1fh5+EPrgSEKE/8Gry5A73ui87AmxwdatyMEBCPNOCSKUeRZ2P6Myb5MRvgCHmA9ywsMifU+AYXcB6Xa5GibUC5TSyerxyh0j6QgLVpdyhfArRTTLqQjwe4HOD9s92D4Ap54odXAPBWLAwB02igG5Kkc+piN4lvODIFGAZgT+EO4Si1s7fjSR7vcQETUkRm9O+MXyo9OYhfe4xt9STQ2pcZRLayCV90b4D3jR0DYAfyxJ+eywg2IL7NTMXna7S/RpQ63JhWEM8U41ZyQGjwsVS0QBrEKLu8xwZsbi4wLcCT+OGidPIOCe1PiSc9Qt+go+vYqB7cG+B9d8cAD+WJPz0Am2gxXgU9IneOqDpAAXOsOltVuMzpdakJXrdPCzXiNVUpCeOos5cxnpQT39G+XVLhs1osQVvJKPZyNq8HDwd4d7pNDuWJPxVX7MSzqUDU6gfadKiNlUFTzLeFHHDlzO4kpa7aiKhBPGKwOqxsBAmYkOIpipyXcQSPlRTf+Tii0U3EJGaZsDER2qoB3h2hu0qe+NNwUooYU8y5mILbJe6OuX+2FTKy7bieTDAemaQyQ0CPthljSWO+xmFDIYiESjM5xKd6Ik5lvLq5GrQ3aCMLvmCA9wowLuWJb9xF59hVVP6O0CrBi3ZjZSNOvRy+I6klNVRJYRBaEzdN+imiUXQ8iVF8fsp+W4JXw7WISW7fDh7lptWkCwZ4d7QTXyBPfJMYK7SijjFppGnlIVJBJBYj7eUwtiP1IBXGI1XCsjNpbjENVpSAJ2hq2LTywEly3hUYazt31J8w2+aiLx3g3fohXixPfOMYm6zCGs9LVo9MoW3MCJE7R5u/WsOIjrqBoHUO0bJE9vxBpbhsd3+Nb4/vtPCZ4oZYCitNeYuC/8UDvDvy0qvkiW/cgqNqRyzqSZa/s0mqNGjtKOoTm14zZpUauiQgVfqtQiZjq7Q27JNaSK5ExRcrGCXO1FJYh6jR6CFqK7bZdQZ4t8g0rSlPfP1RdBtqaa9diqtzJkQ9duSryi2brQXbxDwbRUpFMBHjRj8+Nt7GDKgvph9okW7LX47gu0SpGnnFQ1S1lYldOsC7hYteR574ZuKs7Ei1lBsfdz7IZoxzzCVmmVqaSySzQbBVAWDek+N4jh9E/4VqZrJjPwiv9BC1XcvOWgO8275CVyBPvAtTVlDJfZkaZGU7NpqBogAj/xEHkeAuJihWYCxGN6e8+9JtSegFXF1TrhhLGP1fak3pebgPz192/8gB4d/6WT7+GdYnpH7hH/DJzzFiYPn/vjW0SgNpTNuPIZoAEZv8tlGw4+RLxy+ZjnKa5NdFoC7UaW0aduoYse6+bXg1DLg6UfRYwmhGEjqPvF75U558SANrElK/+MdpXvmqBpaXOa/MTZaa1DOcSiLaw9j0NNNst3c+63c7EKTpkvKHzu6bPbP0RkuHAVcbRY8ijP46MIbQeeT1mhA+5PV/inyDdQipf8LTvMXbwvoDy7IruDNVZKTfV4CTSRUYdybUCnGU7KUTDxLgCknqUm5aAW6/1p6eMsOYsphLzsHrE0Y/P5bQedx1F/4yPHnMB3/IOoTU9+BL8PhtjuFKBpZXnYNJxTuv+2XqolKR2UQgHhS5novuxVySJhBNRF3SoKK1XZbbXjVwWNyOjlqWJjrWJIy+P5bQedyldNScP+HZ61xKSK3jyrz+NiHG1hcOLL/+P+PDF2gOkekKGiNWKgJ+8Z/x8Iv4DdQHzcpZyF4v19I27w9/yPGDFQvmEpKtqv/TLiWMfn4sofMm9eAH8Ao0zzh7h4sJqYtxZd5/D7hkYPneDzl5idlzNHcIB0jVlQ+8ULzw/nc5/ojzl2juE0apD7LRnJxe04dMz2iOCFNtGFpTuXA5AhcTRo8mdN4kz30nVjEC4YTZQy4gpC7GlTlrePKhGsKKgeXpCYeO0MAd/GH7yKQUlXPLOasOH3FnSphjHuDvEu4gB8g66oNbtr6eMbFIA4fIBJkgayoXriw2XEDQPJrQeROAlY6aeYOcMf+IVYTU3XFlZufMHinGywaW3YLpObVBAsbjF4QJMsVUSayjk4voPsHJOQfPWDhCgDnmDl6XIRerD24HsGtw86RMHOLvVSHrKBdeVE26gKB5NKHzaIwLOmrqBWJYZDLhASG16c0Tn+CdRhWDgWXnqRZUTnPIHuMJTfLVpkoYy5CzylHVTGZMTwkGAo2HBlkQplrJX6U+uF1wZz2uwS1SQ12IqWaPuO4baZaEFBdukksJmkcTOm+YJSvoqPFzxFA/YUhIvWxcmSdPWTWwbAKVp6rxTtPFUZfKIwpzm4IoMfaYQLWgmlG5FME2gdBgm+J7J+rtS/XBbaVLsR7bpPQnpMFlo2doWaVceHk9+MkyguZNCJ1He+kuHTWyQAzNM5YSUg/GlTk9ZunAsg1qELVOhUSAK0LABIJHLKbqaEbHZLL1VA3VgqoiOKXYiS+HRyaEKgsfIqX64HYWbLRXy/qWoylIV9gudL1OWBNgBgTNmxA6b4txDT4gi3Ri7xFSLxtXpmmYnzAcWDZgY8d503LFogz5sbonDgkKcxGsWsE1OI+rcQtlgBBCSOKD1mtqYpIU8cTvBmAT0yZe+zUzeY92fYjTtGipXLhuR0ePoHk0ofNWBX+lo8Z7pAZDk8mEw5L7dVyZZoE/pTewbI6SNbiAL5xeygW4xPRuLCGbhcO4RIeTMFYHEJkYyEO9HmJfXMDEj/LaH781wHHZEtqSQ/69UnGpzH7LKIAZEDSPJnTesJTUa+rwTepI9dLJEawYV+ZkRn9g+QirD8vF8Mq0jFQ29js6kCS3E1+jZIhgPNanHdHFqFvPJLHqFwQqbIA4jhDxcNsOCCQLDomaL/dr5lyJaJU6FxPFjO3JOh3kVMcROo8u+C+jo05GjMF3P3/FuDLn5x2M04xXULPwaS6hBYki+MrMdZJSgPHlcB7nCR5bJ9Kr5ACUn9jk5kivdd8tk95SOGrtqu9lr2IhK65ZtEl7ZKrp7DrqwZfRUSN1el7+7NJxZbywOC8neNKTch5vsTEMNsoCCqHBCqIPRjIPkm0BjvFODGtto99rCl+d3wmHkW0FPdpZtC7MMcVtGFQjJLX5bdQ2+x9ypdc313uj8xlsrfuLgWXz1cRhZvJYX0iNVBRcVcmCXZs6aEf3RQF2WI/TcCbKmGU3IOoDJGDdDub0+hYckt6PlGu2BcxmhbTdj/klhccLGJMcqRjMJP1jW2ETqLSWJ/29MAoORluJ+6LPffBZbi5gqi5h6catQpmOT7/OFf5UorRpLzCqcMltBLhwd1are3kztrSzXO0LUbXRQcdLh/RdSZ+swRm819REDrtqzC4es6Gw4JCKlSnjYVpo0xeq33PrADbFLL3RuCmObVmPN+24kfa+AojDuM4umKe2QwCf6EN906HwjujaitDs5o0s1y+k3lgbT2W2i7FJdnwbLXhJUBq/9liTctSmFC/0OqUinb0QddTWamtjbHRFuWJJ6NpqZ8vO3fZJ37Db+2GkaPYLGHs7XTTdiFQJ68SkVJFVmY6McR5UycflNCsccHFaV9FNbR4NttLxw4pQ7wJd066Z0ohVbzihaxHVExd/ay04oxUKWt+AsdiQ9OUyZ2krzN19IZIwafSTFgIBnMV73ADj7V/K8u1MaY2sJp2HWm0f41tqwajEvdHWOJs510MaAqN4aoSiPCXtN2KSi46dUxHdaMquar82O1x5jqhDGvqmoE9LfxcY3zqA7/x3HA67r9ZG4O6Cuxu12/+TP+eLP+I+HErqDDCDVmBDO4larujNe7x8om2rMug0MX0rL1+IWwdwfR+p1TNTyNmVJ85ljWzbWuGv8/C7HD/izjkHNZNYlhZcUOKVzKFUxsxxN/kax+8zPWPSFKw80rJr9Tizyj3o1gEsdwgWGoxPezDdZ1TSENE1dLdNvuKL+I84nxKesZgxXVA1VA1OcL49dFlpFV5yJMhzyCmNQ+a4BqusPJ2bB+xo8V9u3x48VVIEPS/mc3DvAbXyoYr6VgDfh5do5hhHOCXMqBZUPhWYbWZECwVJljLgMUWOCB4MUuMaxGNUQDVI50TQ+S3kFgIcu2qKkNSHVoM0SHsgoZxP2d5HH8B9woOk4x5bPkKtAHucZsdykjxuIpbUrSILgrT8G7G5oCW+K0990o7E3T6AdW4TilH5kDjds+H64kS0mz24grtwlzDHBJqI8YJQExotPvoC4JBq0lEjjQkyBZ8oH2LnRsQ4Hu1QsgDTJbO8fQDnllitkxuVskoiKbRF9VwzMDvxHAdwB7mD9yCplhHFEyUWHx3WtwCbSMMTCUCcEmSGlg4gTXkHpZXWQ7kpznK3EmCHiXInqndkQjunG5kxTKEeGye7jWz9cyMR2mGiFQ15ENRBTbCp+Gh86vAyASdgmJq2MC6hoADQ3GosP0QHbnMHjyBQvQqfhy/BUbeHd5WY/G/9LK/8Ka8Jd7UFeNWEZvzPb458Dn8DGLOe3/wGL/4xP+HXlRt+M1PE2iLhR8t+lfgxsuh7AfO2AOf+owWhSZRYQbd622hbpKWKuU+XuvNzP0OseRDa+mObgDHJUSc/pKx31QdKffQ5OIJpt8GWjlgTwMc/w5MPCR/yl1XC2a2Yut54SvOtMev55Of45BOat9aWG27p2ZVORRvnEk1hqWMVUmqa7S2YtvlIpspuF1pt0syuZS2NV14mUidCSfzQzg+KqvIYCMljIx2YK2AO34fX4GWdu5xcIAb8MzTw+j/lyWM+Dw/gjs4GD6ehNgA48kX/AI7XXM/XAN4WHr+9ntywqoCakCqmKP0rmQrJJEErG2Upg1JObr01lKQy4jskWalKYfJ/EDLMpjNSHFEUAde2fltaDgmrNaWQ9+AAb8I5vKjz3L1n1LriB/BXkG/wwR9y/oRX4LlioHA4LzP2inzRx/DWmutRweFjeP3tNeSGlaE1Fde0OS11yOpmbIp2u/jF1n2RRZviJM0yBT3IZl2HWImKjQOxIyeU325b/qWyU9Moj1o07tS0G7qJDoGHg5m8yeCxMoEH8GU45tnrNM84D2l297DQ9t1YP7jki/7RmutRweEA77/HWXOh3HCxkRgldDQkAjNTMl2Iloc1qN5JfJeeTlyTRzxURTdn1Ixv2uKjs12AbdEWlBtmVdk2k7FFwj07PCZ9XAwW3dG+8xKzNFr4EnwBZpy9Qzhh3jDXebBpYcpuo4fQ44u+fD1dweEnHzI7v0xuuOALRUV8rXpFyfSTQYkhd7IHm07jpyhlkCmI0ALYqPTpUxXS+z4jgDj1Pflvmz5ecuItpIBxyTHpSTGWd9g1ApfD/bvwUhL4nT1EzqgX7cxfCcNmb3mPL/qi9SwTHJ49oj5ZLjccbTG3pRmlYi6JCG0mQrAt1+i2UXTZ2dv9IlQpN5naMYtviaXlTrFpoMsl3bOAFEa8sqPj2WCMrx3Yjx99qFwO59Aw/wgx+HlqNz8oZvA3exRDvuhL1jMQHPaOJ0+XyA3fp1OfM3qObEVdhxjvynxNMXQV4+GJyvOEFqeQBaIbbO7i63rpxCltdZShPFxkjM2FPVkn3TG+Rp9pO3l2RzFegGfxGDHIAh8SteR0C4HopXzRF61nheDw6TFN05Ebvq8M3VKKpGjjO6r7nhudTEGMtYM92HTDaR1FDMXJ1eThsbKfywyoWwrzRSXkc51flG3vIid62h29bIcFbTGhfV+faaB+ohj7dPN0C2e2lC96+XouFByen9AsunLDJZ9z7NExiUc0OuoYW6UZkIyx2YUR2z6/TiRjyKMx5GbbjLHvHuf7YmtKghf34LJfx63Yg8vrvN2zC7lY0x0tvKezo4HmGYDU+Gab6dFL+KI761lDcNifcjLrrr9LWZJctG1FfU1uwhoQE22ObjdfkSzY63CbU5hzs21WeTddH2BaL11Gi7lVdlxP1nkxqhnKhVY6knS3EPgVGg1JpN5cP/hivujOelhXcPj8HC/LyI6MkteVjlolBdMmF3a3DbsuAYhL44dxzthWSN065xxUd55Lmf0wRbOYOqH09/o9WbO2VtFdaMb4qBgtFJoT1SqoN8wPXMoXLb3p1PUEhxfnnLzGzBI0Ku7FxrKsNJj/8bn/H8fPIVOd3rfrklUB/DOeO+nkghgSPzrlPxluCMtOnDL4Yml6dK1r3vsgMxgtPOrMFUZbEUbTdIzii5beq72G4PD0DKnwjmBULUVFmy8t+k7fZ3pKc0Q4UC6jpVRqS9Umv8bxw35flZVOU1X7qkjnhZlsMbk24qQ6Hz7QcuL6sDC0iHHki96Uh2UdvmgZnjIvExy2TeJdMDZNSbdZyAHe/Yd1xsQhHiKzjh7GxQ4yqMPaywPkjMamvqrYpmO7Knad+ZQC5msCuAPWUoxrxVhrGv7a+KLXFhyONdTMrZ7ke23qiO40ZJUyzgYyX5XyL0mV7NiUzEs9mjtbMN0dERqwyAJpigad0B3/zRV7s4PIfXSu6YV/MK7+OrYe/JvfGMn/PHJe2fyUdtnFrKRNpXV0Y2559aWPt/G4BlvjTMtXlVIWCnNyA3YQBDmYIodFz41PvXPSa6rq9lWZawZ4dP115HXV/M/tnFkkrBOdzg6aP4pID+MZnTJ1SuuB6iZlyiox4HT2y3YBtkUKWooacBQUDTpjwaDt5poBHl1/HXltwP887lKKXxNUEyPqpGTyA699UqY/lt9yGdlUKra0fFWS+36iylVWrAyd7Uw0CZM0z7xKTOduznLIjG2Hx8cDPLb+OvK6Bv7n1DYci4CxUuRxrjBc0bb4vD3rN5Zz36ntLb83eVJIB8LiIzCmn6SMPjlX+yNlTjvIGjs+QzHPf60Aj62/jrzG8j9vYMFtm1VoRWCJdmw7z9N0t+c8cxZpPeK4aTRicS25QhrVtUp7U578chk4q04Wx4YoQSjFryUlpcQ1AbxZ/XVMknIU//OGl7Q6z9Zpxi0+3yFhSkjUDpnCIUhLWVX23KQ+L9vKvFKI0ZWFQgkDLvBoylrHNVmaw10zwCPrr5tlodfnf94EWnQ0lFRWy8pW9LbkLsyUVDc2NSTHGDtnD1uMtchjbCeb1mpxFP0YbcClhzdLu6lfO8Bj6q+bdT2sz/+8SZCV7VIxtt0DUn9L7r4cLYWDSXnseEpOGFuty0qbOVlS7NNzs5FOGJUqQpl2Q64/yBpZf90sxbE+//PGdZ02HSipCbmD6NItmQ4Lk5XUrGpDMkhbMm2ZVheNYV+VbUWTcv99+2NyX1VoafSuC+AN6q9bFIMv5X/eagNWXZxEa9JjlMwNWb00akGUkSoepp1/yRuuqHGbUn3UdBSTxBU6SEVklzWRUkPndVvw2PrrpjvxOvzPmwHc0hpmq82npi7GRro8dXp0KXnUQmhZbRL7NEVp1uuZmO45vuzKsHrktS3GLWXODVjw+vXXLYx4Hf7njRPd0i3aoAGX6W29GnaV5YdyDj9TFkakje7GHYzDoObfddHtOSpoi2SmzJHrB3hM/XUDDEbxP2/oosszcRlehWXUvzHv4TpBVktHqwenFo8uLVmy4DKLa5d3RtLrmrM3aMFr1183E4sewf+85VWeg1c5ag276NZrM9IJVNcmLEvDNaV62aq+14IAOGFsBt973Ra8Xv11YzXwNfmft7Jg2oS+XOyoC8/cwzi66Dhmgk38kUmP1CUiYWOX1bpD2zWXt2FCp7uq8703APAa9dfNdscR/M/bZLIyouVxqJfeWvG9Je+JVckHQ9+CI9NWxz+blX/KYYvO5n2tAP/vrlZ7+8/h9y+9qeB/Hnt967e5mevX10rALDWK//FaAT5MXdBXdP0C/BAes792c40H+AiAp1e1oH8HgH94g/Lttx1gp63op1eyoM/Bvw5/G/7xFbqJPcCXnmBiwDPb/YKO4FX4OjyCb289db2/Noqicw4i7N6TVtoz8tNwDH+8x/i6Ae7lmaQVENzJFb3Di/BFeAwz+Is9SjeQySpPqbLFlNmyz47z5a/AF+AYFvDmHqibSXTEzoT4Gc3OALaqAP4KPFUJ6n+1x+rGAM6Zd78bgJ0a8QN4GU614vxwD9e1Amy6CcskNrczLx1JIp6HE5UZD/DBHrFr2oNlgG4Odv226BodoryjGJ9q2T/AR3vQrsOCS0ctXZi3ruLlhpFDJYl4HmYtjQCP9rhdn4suySLKDt6wLcC52h8xPlcjju1fn+yhuw4LZsAGUuo2b4Fx2UwQu77uqRHXGtg92aN3tQCbFexc0uk93vhTXbct6y7MulLycoUljx8ngDMBg1tvJjAazpEmOtxlzclvj1vQf1Tx7QlPDpGpqgtdSKz/d9/hdy1vTfFHSmC9dGDZbLiezz7Ac801HirGZsWjydfZyPvHXL/Y8Mjzg8BxTZiuwKz4Eb8sBE9zznszmjvFwHKPIWUnwhqfVRcd4Ck0K6ate48m1oOfrX3/yOtvAsJ8zsPAM89sjnddmuLuDPjX9Bu/L7x7xpMzFk6nWtyQfPg278Gn4Aekz2ZgOmU9eJ37R14vwE/BL8G3aibCiWMWWDQ0ZtkPMnlcGeAu/Ag+8ZyecU5BPuy2ILD+sQqyZhAKmn7XZd+jIMTN9eBL7x95xVLSX4On8EcNlXDqmBlqS13jG4LpmGbkF/0CnOi3H8ETOIXzmnmtb0a16Tzxj1sUvQCBiXZGDtmB3KAefPH94xcUa/6vwRn80GOFyjEXFpba4A1e8KQfFF+259tx5XS4egYn8fQsLGrqGrHbztr+uByTahWuL1NUGbDpsnrwBfePPwHHIf9X4RnM4Z2ABWdxUBlqQ2PwhuDxoS0vvqB1JzS0P4h2nA/QgTrsJFn+Y3AOjs9JFC07CGWX1oNX3T/yHOzgDjwPn1PM3g9Jk9lZrMEpxnlPmBbjyo2+KFXRU52TJM/2ALcY57RUzjObbjqxVw++4P6RAOf58pcVsw9Daje3htriYrpDOonre3CudSe6bfkTEgHBHuDiyu5MCsc7BHhYDx7ePxLjqigXZsw+ijMHFhuwBmtoTPtOxOrTvYJDnC75dnUbhfwu/ZW9AgYd+peL68HD+0emKquiXHhWjJg/UrkJYzuiaL3E9aI/ytrCvAd4GcYZMCkSQxfUg3v3j8c4e90j5ZTPdvmJJGHnOCI2nHS8081X013pHuBlV1gB2MX1YNmWLHqqGN/TWmG0y6clJWthxNUl48q38Bi8vtMKyzzpFdSDhxZ5WBA5ZLt8Jv3895DduBlgbPYAj8C4B8hO68FDkoh5lydC4FiWvBOVqjYdqjiLv92t8yPDjrDaiHdUD15qkSURSGmXJwOMSxWAXYwr3zaAufJ66l+94vv3AO+vPcD7aw/w/toDvL/2AO+vPcD7aw/wHuD9tQd4f+0B3l97gPfXHuD9tQd4f+0B3l97gG8LwP8G/AL8O/A5OCq0Ys2KIdv/qOIXG/4mvFAMF16gZD+2Xvu/B8as5+8bfllWyg0zaNO5bfXj6vfhhwD86/Aq3NfRS9t9WPnhfnvCIw/CT8GLcFTMnpntdF/z9V+PWc/vWoIH+FL3Znv57PitcdGP4R/C34avw5fgRVUInCwbsn1yyA8C8zm/BH8NXoXnVE6wVPjdeCI38kX/3+Ct9dbz1pTmHFRu+Hm4O9Ch3clr99negxfwj+ER/DR8EV6B5+DuQOnTgUw5rnkY+FbNU3gNXh0o/JYTuWOvyBf9FvzX663HH/HejO8LwAl8Hl5YLTd8q7sqA3wbjuExfAFegQdwfyDoSkWY8swzEf6o4Qyewefg+cHNbqMQruSL/u/WWc+E5g7vnnEXgDmcDeSGb/F4cBcCgT+GGRzDU3hZYburAt9TEtHgbM6JoxJ+6NMzzTcf6c2bycv2+KK/f+l6LBzw5IwfqZJhA3M472pWT/ajKxnjv4AFnMEpnBTPND6s2J7qHbPAqcMK74T2mZ4VGB9uJA465It+/eL1WKhYOD7xHOkr1ajK7d0C4+ke4Hy9qXZwpgLr+Znm/uNFw8xQOSy8H9IzjUrd9+BIfenYaylf9FsXr8fBAadnPIEDna8IBcwlxnuA0/Wv6GAWPd7dDIKjMdSWueAsBj4M7TOd06qBbwDwKr7oleuxMOEcTuEZTHWvDYUO7aHqAe0Bbq+HEFRzOz7WVoTDQkVds7A4sIIxfCQdCefFRoIOF/NFL1mPab/nvOakSL/Q1aFtNpUb/nFOVX6gzyg/1nISyDfUhsokIzaBR9Kxm80s5mK+6P56il1jXic7nhQxsxSm3OwBHl4fFdLqi64nDQZvqE2at7cWAp/IVvrN6/BFL1mPhYrGMBfOi4PyjuSGf6wBBh7p/FZTghCNWGgMzlBbrNJoPJX2mW5mwZfyRffXo7OFi5pZcS4qZUrlViptrXtw+GQoyhDPS+ANjcGBNRiLCQDPZPMHuiZfdFpPSTcQwwKYdRNqpkjm7AFeeT0pJzALgo7g8YYGrMHS0iocy+YTm2vyRUvvpXCIpQ5pe666TJrcygnScUf/p0NDs/iAI/nqDHC8TmQT8x3NF91l76oDdQGwu61Z6E0ABv7uO1dbf/37Zlv+Zw/Pbh8f1s4Avur6657/+YYBvur6657/+YYBvur6657/+YYBvur6657/+aYBvuL6657/+VMA8FXWX/f8zzcN8BXXX/f8zzcNMFdbf93zP38KLPiK6697/uebtuArrr/u+Z9vGmCusP6653/+1FjwVdZf9/zPN7oHX339dc//fNMu+irrr3v+50+Bi+Zq6697/uebA/jz8Pudf9ht/fWv517J/XUzAP8C/BAeX9WCDrUpZ3/dEMBxgPcfbtTVvsYV5Yn32u03B3Ac4P3b8I+vxNBKeeL9dRMAlwO83959qGO78sT769oB7g3w/vGVYFzKE++v6wV4OMD7F7tckFkmT7y/rhHgpQO8b+4Y46XyxPvrugBeNcB7BRiX8sT767oAvmCA9woAHsoT76+rBJjLBnh3txOvkifeX1dswZcO8G6N7sXyxPvr6i340gHe3TnqVfLE++uKAb50gHcXLnrX8sR7gNdPRqwzwLu7Y/FO5Yn3AK9jXCMGeHdgxDuVJ75VAI8ljP7PAb3/RfjcZfePHBB+79dpfpH1CanN30d+mT1h9GqAxxJGM5LQeeQ1+Tb+EQJrElLb38VHQ94TRq900aMIo8cSOo+8Dp8QfsB8zpqE1NO3OI9Zrj1h9EV78PqE0WMJnUdeU6E+Jjyk/hbrEFIfeWbvId8H9oTRFwdZaxJGvziW0Hn0gqYB/wyZ0PwRlxJST+BOw9m77Amj14ii1yGM/txYQudN0qDzGe4EqfA/5GJCagsHcPaEPWH0esekSwmjRxM6b5JEcZ4ww50ilvAOFxBSx4yLW+A/YU8YvfY5+ALC6NGEzhtmyZoFZoarwBLeZxUhtY4rc3bKnjB6TKJjFUHzJoTOozF2YBpsjcyxDgzhQ1YRUse8+J4wenwmaylB82hC5w0zoRXUNXaRBmSMQUqiWSWkLsaVqc/ZE0aPTFUuJWgeTei8SfLZQeMxNaZSIzbII4aE1Nmr13P2hNHjc9E9guYNCZ032YlNwESMLcZiLQHkE4aE1BFg0yAR4z1h9AiAGRA0jyZ03tyIxWMajMPWBIsxYJCnlITU5ShiHYdZ94TR4wCmSxg9jtB5KyPGYzymAYexWEMwAPIsAdYdV6aObmNPGD0aYLoEzaMJnTc0Ygs+YDw0GAtqxBjkuP38bMRWCHn73xNGjz75P73WenCEJnhwyVe3AEe8TtKdJcYhBl97wuhNAObK66lvD/9J9NS75v17wuitAN5fe4D31x7g/bUHeH/tAd5fe4D3AO+vPcD7aw/w/toDvL/2AO+vPcD7aw/w/toDvAd4f/24ABzZ8o+KLsSLS+Pv/TqTb3P4hKlQrTGh+fbIBT0Axqznnb+L/V2mb3HkN5Mb/nEHeK7d4IcDld6lmDW/iH9E+AH1MdOw/Jlu2T1xNmY98sv4wHnD7D3uNHu54WUuOsBTbQuvBsPT/UfzNxGYzwkP8c+Yz3C+r/i6DcyRL/rZ+utRwWH5PmfvcvYEt9jLDS/bg0/B64DWKrQM8AL8FPwS9beQCe6EMKNZYJol37jBMy35otdaz0Bw2H/C2Smc7+WGB0HWDELBmOByA3r5QONo4V+DpzR/hFS4U8wMW1PXNB4TOqYz9urxRV++ntWCw/U59Ty9ebdWbrgfRS9AYKKN63ZokZVygr8GZ/gfIhZXIXPsAlNjPOLBby5c1eOLvmQ9lwkOy5x6QV1j5TYqpS05JtUgUHUp5toHGsVfn4NX4RnMCe+AxTpwmApTYxqMxwfCeJGjpXzRF61nbcHhUBPqWze9svwcHJ+S6NPscKrEjug78Dx8Lj3T8D4YxGIdxmJcwhi34fzZUr7olevZCw5vkOhoClq5zBPZAnygD/Tl9EzDh6kl3VhsHYcDEb+hCtJSvuiV69kLDm+WycrOTArHmB5/VYyP6jOVjwgGawk2zQOaTcc1L+aLXrKeveDwZqlKrw8U9Y1p66uK8dEzdYwBeUQAY7DbyYNezBfdWQ97weEtAKYQg2xJIkuveAT3dYeLGH+ShrWNwZgN0b2YL7qznr3g8JYAo5bQBziPjx7BPZ0d9RCQp4UZbnFdzBddor4XHN4KYMrB2qHFRIzzcLAHQZ5the5ovui94PCWAPefaYnxIdzRwdHCbuR4B+tbiy96Lzi8E4D7z7S0mEPd+eqO3cT53Z0Y8SV80XvB4Z0ADJi/f7X113f+7p7/+UYBvur6657/+YYBvur6657/+aYBvuL6657/+aYBvuL6657/+aYBvuL6657/+aYBvuL6657/+VMA8FXWX/f8z58OgK+y/rrnf75RgLna+uue//lTA/CV1V/3/M837aKvvv6653++UQvmauuve/7nTwfAV1N/3fM/fzr24Cuuv+75nz8FFnxl9dc9//MOr/8/glixwRuUfM4AAAAASUVORK5CYII=";
-        }
-        getSearchTexture() {
-          return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEIAAAAhCAAAAABIXyLAAAAAOElEQVRIx2NgGAWjYBSMglEwEICREYRgFBZBqDCSLA2MGPUIVQETE9iNUAqLR5gIeoQKRgwXjwAAGn4AtaFeYLEAAAAASUVORK5CYII=";
-        }
-        dispose() {
-          this.edgesRT.dispose();
-          this.weightsRT.dispose();
-          this.areaTexture.dispose();
-          this.searchTexture.dispose();
-          this.materialEdges.dispose();
-          this.materialWeights.dispose();
-          this.materialBlend.dispose();
           this.fsQuad.dispose();
         }
       };
@@ -25348,55 +25084,55 @@ var app = (() => {
       init_EffectComposer();
       init_OutputPass();
       init_RenderPass();
-      init_SMAAPass();
       init_UnrealBloomPass();
-      BLOOM_BASE = 0.06;
-      BLOOM_RADIUS = 0.48;
-      BLOOM_THRESHOLD = 0.88;
+      BLOOM_BASE = 0.045;
+      BLOOM_RADIUS = 0.5;
+      BLOOM_THRESHOLD = 0.9;
       StudioPostFx = class {
         _composer;
         _bloom;
-        _smaa;
         _size = new Vector2(1, 1);
         constructor(renderer, scene, camera) {
           const size = renderer.getSize(new Vector2());
+          const cssW = Math.max(1, Math.floor(size.width));
+          const cssH = Math.max(1, Math.floor(size.height));
           const pixelRatio = renderer.getPixelRatio();
-          const renderTarget = new WebGLRenderTarget(Math.max(1, Math.floor(size.width * pixelRatio)), Math.max(1, Math.floor(size.height * pixelRatio)), {
-            type: UnsignedByteType,
-            samples: 0
+          const renderTarget = new WebGLRenderTarget(cssW, cssH, {
+            type: HalfFloatType,
+            samples: 0,
+            minFilter: LinearFilter,
+            magFilter: LinearFilter
           });
           renderTarget.texture.name = "StudioPostFx.rt";
           this._composer = new EffectComposer(renderer, renderTarget);
+          this._composer.setPixelRatio(pixelRatio);
+          this._composer.setSize(cssW, cssH);
           this._composer.addPass(new RenderPass(scene, camera));
-          this._bloom = new UnrealBloomPass(new Vector2(1, 1), BLOOM_BASE, BLOOM_RADIUS, BLOOM_THRESHOLD);
+          this._bloom = new UnrealBloomPass(new Vector2(cssW, cssH), BLOOM_BASE, BLOOM_RADIUS, BLOOM_THRESHOLD);
           this._bloom.enabled = BLOOM_BASE > 0;
           this._composer.addPass(this._bloom);
-          const smaaW = Math.max(1, Math.floor(size.width * pixelRatio));
-          const smaaH = Math.max(1, Math.floor(size.height * pixelRatio));
-          this._smaa = new SMAAPass(smaaW, smaaH);
-          this._composer.addPass(this._smaa);
           this._composer.addPass(new OutputPass());
+          this._size.set(cssW, cssH);
         }
         setSize(width, height) {
-          this._size.set(width, height);
-          this._composer.setSize(width, height);
-          this._bloom.resolution.set(width, height);
+          const cssW = Math.max(1, Math.floor(width));
+          const cssH = Math.max(1, Math.floor(height));
+          this._size.set(cssW, cssH);
+          this._composer.setSize(cssW, cssH);
+          this._bloom.resolution.set(cssW, cssH);
         }
         setPixelRatio(ratio) {
           this._composer.setPixelRatio(ratio);
         }
-        /** Временный буст bloom (0…1) — вспышка смены скина */
         setBloomBoost(amount) {
           const t = Math.max(0, Math.min(1, amount));
           this._bloom.strength = BLOOM_BASE + t * 0.35;
           this._bloom.enabled = this._bloom.strength > 1e-3;
         }
-        /** Прямая сила bloom (модалка профиля — без bloom) */
         setBloomStrength(strength) {
           this._bloom.strength = Math.max(0, strength);
           this._bloom.enabled = this._bloom.strength > 1e-3;
         }
-        /** Вернуть базовую силу bloom */
         resetBloomStrength() {
           this._bloom.strength = BLOOM_BASE;
           this._bloom.enabled = BLOOM_BASE > 0;
@@ -25454,10 +25190,15 @@ var app = (() => {
   });
 
   // skinviewengine/dist/core/scene-loop.js
+  function resolveProductPixelRatio(enableEffects) {
+    const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const floor = enableEffects ? MIN_PRODUCT_PIXEL_RATIO : 1;
+    return Math.min(MAX_PIXEL_RATIO, Math.max(dpr, floor));
+  }
   function toSkin3dModelType(type) {
     return type === SkinModelType.Slim ? "slim" : "default";
   }
-  var ENGINE_DISPLAY_NAME, ENGINE_VERSION, MAX_PIXEL_RATIO, CAMERA_NEAR, CAMERA_FAR, DEFAULT_CAMERA_SETTINGS, SkinViewEngine;
+  var ENGINE_DISPLAY_NAME, ENGINE_VERSION, MAX_PIXEL_RATIO, MIN_PRODUCT_PIXEL_RATIO, CAMERA_NEAR, CAMERA_FAR, DEFAULT_CAMERA_SETTINGS, SkinViewEngine;
   var init_scene_loop = __esm({
     "skinviewengine/dist/core/scene-loop.js"() {
       "use strict";
@@ -25473,6 +25214,7 @@ var app = (() => {
       init_skin_uv_inset();
       init_skin_leg_stock();
       init_skin_outer_voxel();
+      init_locator_color();
       init_skin_animations();
       init_pixel_particles();
       init_product_visuals();
@@ -25480,8 +25222,9 @@ var app = (() => {
       init_studio_postfx();
       init_types2();
       ENGINE_DISPLAY_NAME = "Mine3D Embedded";
-      ENGINE_VERSION = "0.2.0";
-      MAX_PIXEL_RATIO = 2.5;
+      ENGINE_VERSION = "1.0.1";
+      MAX_PIXEL_RATIO = 3;
+      MIN_PRODUCT_PIXEL_RATIO = 2;
       CAMERA_NEAR = 1;
       CAMERA_FAR = 500;
       DEFAULT_CAMERA_SETTINGS = {
@@ -25531,8 +25274,8 @@ var app = (() => {
         /** Кроссфейд между анимациями */
         _blendFrom = null;
         _blendElapsed = 0;
-        /** Короткий кроссфейд — смена анимации ощущается почти мгновенной */
-        _blendDuration = 0.12;
+        /** Кроссфейд при смене анимации — чуть мягче */
+        _blendDuration = 0.22;
         /** Взгляд за курсором (только поверх idle) */
         _cursorFollow = false;
         _cursorAimX = 0;
@@ -25586,6 +25329,12 @@ var app = (() => {
         _shotPreset = null;
         /** Частицы / «переоделся» — выкл. на мини-превью */
         _enableEffects;
+        /** Маркер Locator Bar над головой */
+        _locatorMarker = null;
+        _locatorTexture = null;
+        _locatorUuid = null;
+        _locatorColor = null;
+        _locatorVisible = true;
         constructor(canvas, options = {}) {
           this.canvas = canvas;
           this._autoDetectModel = options.autoDetectModel ?? true;
@@ -25619,14 +25368,15 @@ var app = (() => {
           this._ground = floorParts.ground;
           this._contactShadow = floorParts.contactShadow;
           this.camera = new PerspectiveCamera(this._fov, 1, CAMERA_NEAR, CAMERA_FAR);
+          const useCanvasAA = options.antialias ?? !this._enableEffects;
           this.renderer = new WebGLRenderer({
             canvas: this.canvas,
-            antialias: options.antialias ?? true,
+            antialias: useCanvasAA,
             alpha: true,
             premultipliedAlpha: false,
             powerPreference: "high-performance"
           });
-          this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+          this.renderer.setPixelRatio(resolveProductPixelRatio(this._enableEffects));
           this.renderer.setClearColor(2236962, 1);
           this.renderer.sortObjects = true;
           configureProductRenderer(this.renderer);
@@ -25635,6 +25385,8 @@ var app = (() => {
           if (this._enableEffects) {
             this._postFx = new StudioPostFx(this.renderer, this.scene, this.camera);
             this._postFx.setPixelRatio(this.renderer.getPixelRatio());
+            const initSize = this.renderer.getSize(new Vector2());
+            this._postFx.setSize(initSize.width, initSize.height);
           }
           this.playerObject = new PlayerObject();
           this.playerObject.name = "player";
@@ -25735,6 +25487,98 @@ var app = (() => {
           return this._cursorFollow;
         }
         /**
+         * UUID игрока → цвет маркера Locator Bar над головой.
+         * null — скрыть маркер (offline / нет UUID).
+         */
+        setLocatorUuid(uuid) {
+          this._locatorUuid = uuid;
+          this._locatorColor = locatorColorFromUuid(uuid);
+          this._syncLocatorMarker();
+        }
+        get locatorUuid() {
+          return this._locatorUuid;
+        }
+        get locatorColor() {
+          return this._locatorColor;
+        }
+        /** Показать/скрыть маркер без сброса UUID */
+        setLocatorVisible(visible) {
+          this._locatorVisible = visible;
+          this._syncLocatorMarker();
+        }
+        get locatorVisible() {
+          return this._locatorVisible;
+        }
+        /** Маркер не показываем на пресетах под скриншот/рендер */
+        _shouldShowLocator() {
+          return Boolean(this._locatorColor) && this._locatorVisible && !this._shotPreset;
+        }
+        _syncLocatorMarker() {
+          if (!this._shouldShowLocator()) {
+            if (this._locatorMarker)
+              this._locatorMarker.visible = false;
+            return;
+          }
+          if (!this._locatorMarker) {
+            this._locatorMarker = this._createLocatorMarker();
+            this.playerObject.add(this._locatorMarker);
+          }
+          this._paintLocatorTexture(this._locatorColor);
+          this._locatorMarker.visible = true;
+        }
+        _createLocatorMarker() {
+          const canvas = document.createElement("canvas");
+          canvas.width = 32;
+          canvas.height = 32;
+          const tex = new CanvasTexture(canvas);
+          tex.magFilter = NearestFilter;
+          tex.minFilter = NearestFilter;
+          this._locatorTexture = tex;
+          const mat = new SpriteMaterial({
+            map: tex,
+            transparent: true,
+            depthTest: true,
+            depthWrite: false
+          });
+          const sprite = new Sprite(mat);
+          sprite.name = "locator-bar-marker";
+          sprite.position.set(0, 13.2, 0);
+          sprite.scale.set(2.4, 2.4, 1);
+          sprite.renderOrder = 20;
+          return sprite;
+        }
+        _paintLocatorTexture(color) {
+          const tex = this._locatorTexture;
+          if (!tex)
+            return;
+          const canvas = tex.image;
+          const ctx = canvas.getContext("2d");
+          if (!ctx)
+            return;
+          const s = canvas.width;
+          ctx.clearRect(0, 0, s, s);
+          const pad = 5;
+          const size = s - pad * 2;
+          ctx.fillStyle = "#1a1a1a";
+          ctx.fillRect(pad - 1, pad - 1, size + 2, size + 2);
+          ctx.fillStyle = `#${color.renderedHex}`;
+          ctx.fillRect(pad, pad, size, size);
+          ctx.fillStyle = "rgba(255,255,255,0.28)";
+          ctx.fillRect(pad, pad, size, Math.max(2, size * 0.22));
+          tex.needsUpdate = true;
+        }
+        _disposeLocatorMarker() {
+          if (this._locatorMarker) {
+            this._locatorMarker.removeFromParent();
+            const mat = this._locatorMarker.material;
+            mat.map = null;
+            mat.dispose();
+            this._locatorMarker = null;
+          }
+          this._locatorTexture?.dispose();
+          this._locatorTexture = null;
+        }
+        /**
          * Цель взгляда относительно сцены: центр = 0, y вверх.
          * Допускаем чуть больше ±1 — курсор на боковых панелях тоже тянет взгляд.
          */
@@ -25776,6 +25620,11 @@ var app = (() => {
           else
             this.setAnimation(new HeroIdleAnimation());
           this.resetCameraPose();
+          this._syncLocatorMarker();
+        }
+        /** Бюст-кадр: presentation=bust или пресеты bust/discord (ноги скрыты). */
+        _isBustLikeFrame() {
+          return this._presentation === "bust" || this._shotPreset === "bust" || this._shotPreset === "discord";
         }
         /** Сброс пресета скриншота (ноги/yaw) — анимацию задаёт вызывающий код */
         clearShotPreset() {
@@ -25786,6 +25635,7 @@ var app = (() => {
             this.playerObject.skin.rightLeg.visible = true;
           }
           this.setPlayerYaw(0);
+          this._syncLocatorMarker();
         }
         get transparentBackground() {
           return this._transparent;
@@ -26014,7 +25864,7 @@ var app = (() => {
             geometries: memory.geometries,
             textures: memory.textures,
             programs,
-            postFx: this._postFx && !this._transparent && this._debugOpts.postFx ? "bloom+SMAA" : "direct",
+            postFx: this._postFx && !this._transparent && this._debugOpts.postFx ? "ssaa+bloom" : "direct",
             skinType: this._modelType,
             hasCape: !!(this.capeTexture && this.playerObject.cape.visible),
             hasElytra: !!this.playerObject.elytra.visible,
@@ -26036,6 +25886,19 @@ var app = (() => {
         }
         get playerYaw() {
           return this.playerObject.rotation.y;
+        }
+        /** Доступ для инструментов (anim editor / отладка) */
+        get player() {
+          return this.playerObject;
+        }
+        get threeScene() {
+          return this.scene;
+        }
+        get threeCamera() {
+          return this.camera;
+        }
+        get threeRenderer() {
+          return this.renderer;
         }
         get disposed() {
           return this._disposed;
@@ -26159,14 +26022,18 @@ var app = (() => {
           const savedBlendElapsed = this._blendElapsed;
           this._blendFrom = null;
           resetLimbPose(this.playerObject);
-          if (this._presentation === "bust") {
-            const bust = new BustPoseAnimation(0);
+          const bustLike = this._isBustLikeFrame();
+          if (bustLike) {
+            const variant = this._shotPreset === "discord" ? 1 : 0;
+            const bust = new BustPoseAnimation(variant);
             bust.progress = 0.8;
             bust.update(this.playerObject, 0);
+            this.playerObject.skin.leftLeg.visible = false;
+            this.playerObject.skin.rightLeg.visible = false;
           } else {
             applyStockLegPose(this.playerObject.skin);
+            this._applyPresentationVisibility();
           }
-          this._applyPresentationVisibility();
           const result = fitObjectToFrame(this.playerWrapper, this.camera, this.lookTarget, {
             ...options,
             centerX: true,
@@ -26178,7 +26045,12 @@ var app = (() => {
             this._animation.progress = savedProgress;
           this._blendFrom = savedBlend;
           this._blendElapsed = savedBlendElapsed;
-          this._applyPresentationVisibility();
+          if (bustLike) {
+            this.playerObject.skin.leftLeg.visible = false;
+            this.playerObject.skin.rightLeg.visible = false;
+          } else {
+            this._applyPresentationVisibility();
+          }
           if (!result)
             return null;
           if (result.distance > this.controls.maxDistance)
@@ -26260,6 +26132,7 @@ var app = (() => {
           this._postFx = null;
           this._resizeObserver?.disconnect();
           this._outerVoxels.dispose(this.playerObject.skin);
+          this._disposeLocatorMarker();
           this.controls.dispose();
           this.skinTexture?.dispose();
           this.capeTexture?.dispose();
@@ -26687,7 +26560,7 @@ var app = (() => {
           });
         }
         /**
-         * Основной вьювер — composer (SMAA; bloom опционален).
+         * Основной вьювер — composer (SSAA soft-downsample + bloom).
          * Transparent/превью — прямой рендер.
          * postFx из отладки учитывается только при включённой панели — иначе
          * старый localStorage postFx=false навсегда убивал сглаживание.
@@ -26701,12 +26574,17 @@ var app = (() => {
           }
           this.renderer.render(this.scene, this.camera);
         }
-        /** Пыль у пола при толчке */
-        _syncIdleFx(_deltaTime) {
+        /** Пыль у пола при толчке + Zzz во время сна */
+        _syncIdleFx(deltaTime) {
           if (!this._enableEffects)
             return;
           if (this._debugEnabled && !this._debugOpts.particles)
             return;
+          if (this._animation instanceof SleepAnimation) {
+            this._feetWorld.set(0.8, 14.2, 0);
+            this.playerObject.localToWorld(this._feetWorld);
+            this._particles.ensureSleepZzz(this._feetWorld, deltaTime);
+          }
           if (!(this._animation instanceof HeroIdleAnimation))
             return;
           if (this._animation.consumeNudgeImpact()) {
@@ -26877,17 +26755,503 @@ var app = (() => {
     }
   });
 
+  // skinviewengine/dist/core/minecraft-rotation.js
+  function minecraftEulerToThree(pitch, yaw, roll) {
+    _e.set(pitch, yaw, roll, "ZYX");
+    _m.makeRotationFromEuler(_e);
+    _m.premultiply(FLIP_YZ);
+    _m.multiply(FLIP_YZ);
+    _q.setFromRotationMatrix(_m);
+    _e.setFromQuaternion(_q, "ZYX");
+    return [_e.x, _e.y, _e.z];
+  }
+  function flipYzPosition(x2, y2, z2) {
+    return [x2, -y2, -z2];
+  }
+  var FLIP_YZ, _m, _e, _q;
+  var init_minecraft_rotation = __esm({
+    "skinviewengine/dist/core/minecraft-rotation.js"() {
+      "use strict";
+      init_three_module();
+      FLIP_YZ = new Matrix4().makeScale(1, -1, -1);
+      _m = new Matrix4();
+      _e = new Euler();
+      _q = new Quaternion();
+    }
+  });
+
+  // skinviewengine/dist/core/bendable-skeleton.js
+  function setHalfLimbUVs(box, u, v2, width, height, depth, half, textureSize = SKIN_TEXTURE_SIZE) {
+    const h0 = half === "upper" ? 0 : height / 2;
+    const h1 = half === "upper" ? height / 2 : height;
+    const mid = height / 2;
+    const toFaceVertices = (x1, y1, x2, y2) => [
+      [x1 / textureSize, 1 - y2 / textureSize],
+      [x2 / textureSize, 1 - y2 / textureSize],
+      [x2 / textureSize, 1 - y1 / textureSize],
+      [x1 / textureSize, 1 - y1 / textureSize]
+    ];
+    const top = half === "upper" ? toFaceVertices(u + depth, v2, u + width + depth, v2 + depth) : toFaceVertices(u + depth, v2 + depth + mid - 0.01, u + width + depth, v2 + depth + mid + 0.01);
+    const bottom = half === "lower" ? toFaceVertices(u + width + depth, v2, u + width * 2 + depth, v2 + depth) : toFaceVertices(u + depth, v2 + depth + mid - 0.01, u + width + depth, v2 + depth + mid + 0.01);
+    const left = toFaceVertices(u, v2 + depth + h0, u + depth, v2 + depth + h1);
+    const front = toFaceVertices(u + depth, v2 + depth + h0, u + width + depth, v2 + depth + h1);
+    const right = toFaceVertices(u + width + depth, v2 + depth + h0, u + width + depth * 2, v2 + depth + h1);
+    const back = toFaceVertices(u + width + depth * 2, v2 + depth + h0, u + width * 2 + depth * 2, v2 + depth + h1);
+    const uvAttr = box.attributes.uv;
+    if (!uvAttr)
+      return;
+    const uvRight = [right[3], right[2], right[0], right[1]];
+    const uvLeft = [left[3], left[2], left[0], left[1]];
+    const uvTop = [top[3], top[2], top[0], top[1]];
+    const uvBottom = [bottom[0], bottom[1], bottom[3], bottom[2]];
+    const uvFront = [front[3], front[2], front[0], front[1]];
+    const uvBack = [back[3], back[2], back[0], back[1]];
+    const data = [];
+    for (const face of [uvRight, uvLeft, uvTop, uvBottom, uvFront, uvBack]) {
+      for (const uv of face)
+        data.push(uv[0], uv[1]);
+    }
+    uvAttr.set(new Float32Array(data));
+    uvAttr.needsUpdate = true;
+  }
+  function limbUV(slim) {
+    const armW = slim ? 3 : 4;
+    return {
+      body: {
+        inner: { u: 16, v: 16, w: 8, h: 12, d: 4 },
+        outer: { u: 16, v: 32, w: 8, h: 12, d: 4 }
+      },
+      rightArm: {
+        inner: { u: 40, v: 16, w: armW, h: 12, d: 4 },
+        outer: { u: 40, v: 32, w: armW, h: 12, d: 4 }
+      },
+      leftArm: {
+        inner: { u: 32, v: 48, w: armW, h: 12, d: 4 },
+        outer: { u: 48, v: 48, w: armW, h: 12, d: 4 }
+      },
+      rightLeg: {
+        inner: { u: 0, v: 16, w: 4, h: 12, d: 4 },
+        outer: { u: 0, v: 32, w: 4, h: 12, d: 4 }
+      },
+      leftLeg: {
+        inner: { u: 16, v: 48, w: 4, h: 12, d: 4 },
+        outer: { u: 0, v: 48, w: 4, h: 12, d: 4 }
+      }
+    };
+  }
+  function ensurePivot(part, fallbackY) {
+    const inner = part.innerLayer;
+    const parent = inner.parent;
+    if (parent && parent !== part) {
+      return parent;
+    }
+    const pivot = new Group();
+    pivot.name = "bendPivot";
+    pivot.position.y = fallbackY;
+    part.add(pivot);
+    pivot.add(inner);
+    if (part.outerLayer.parent === part)
+      pivot.add(part.outerLayer);
+    return pivot;
+  }
+  function makeHalfMesh(source, size, uv, half, y2, useUnitScale) {
+    const geom = new BoxGeometry(useUnitScale ? 1 : size[0], useUnitScale ? 1 : size[1], useUnitScale ? 1 : size[2]);
+    setHalfLimbUVs(geom, uv.u, uv.v, uv.w, uv.h, uv.d, half);
+    collapseCutFace(geom, half === "upper" ? "bottom" : "top");
+    const mesh = new Mesh(geom, source.material);
+    mesh.name = `${source.name || "limb"}_${half}`;
+    mesh.castShadow = source.castShadow;
+    mesh.receiveShadow = source.receiveShadow;
+    mesh.renderOrder = source.renderOrder;
+    mesh.position.set(0, y2, 0);
+    if (useUnitScale) {
+      mesh.scale.set(size[0], size[1], size[2]);
+    } else {
+      mesh.scale.set(1, 1, 1);
+    }
+    return mesh;
+  }
+  function collapseCutFace(geometry, face) {
+    const faceIndex = face === "top" ? 2 : 3;
+    const pos = geometry.attributes.position;
+    const base = faceIndex * 4;
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    for (let i = 0; i < 4; i++) {
+      cx += pos.getX(base + i);
+      cy += pos.getY(base + i);
+      cz += pos.getZ(base + i);
+    }
+    cx *= 0.25;
+    cy *= 0.25;
+    cz *= 0.25;
+    for (let i = 0; i < 4; i++)
+      pos.setXYZ(base + i, cx, cy, cz);
+    pos.needsUpdate = true;
+  }
+  var SKIN_REST_POS, AXIS_TMP, BendableSkeleton;
+  var init_bendable_skeleton = __esm({
+    "skinviewengine/dist/core/bendable-skeleton.js"() {
+      "use strict";
+      init_three_module();
+      init_skin_leg_stock();
+      init_skin_uv_inset();
+      SKIN_REST_POS = {
+        head: { x: 0, y: 0, z: 0 },
+        body: { x: 0, y: -6, z: 0 },
+        rightArm: { x: -5, y: -2, z: 0 },
+        leftArm: { x: 5, y: -2, z: 0 },
+        rightLeg: { ...STOCK_RIGHT_LEG_POSE },
+        leftLeg: { ...STOCK_LEFT_LEG_POSE }
+      };
+      AXIS_TMP = new Vector3();
+      BendableSkeleton = class {
+        _slim = false;
+        _limbs = /* @__PURE__ */ new Map();
+        _installed = false;
+        get installed() {
+          return this._installed;
+        }
+        /** Установить/переустановить скелет после смены скина или slim */
+        install(skin, slim) {
+          if (this._installed && this._slim === slim) {
+            this.resetBends();
+            return;
+          }
+          this.uninstall();
+          this._slim = slim;
+          const uvs = limbUV(slim);
+          this._installBody(skin.body, uvs.body);
+          this._installArm(skin.rightArm, uvs.rightArm, "rightArm", slim);
+          this._installArm(skin.leftArm, uvs.leftArm, "leftArm", slim);
+          this._installLeg(skin.rightLeg, uvs.rightLeg, "rightLeg");
+          this._installLeg(skin.leftLeg, uvs.leftLeg, "leftLeg");
+          this._installed = true;
+          this.resetBends();
+        }
+        uninstall() {
+          for (const state of this._limbs.values()) {
+            state.bendJoint.removeFromParent();
+            state.upperInner.removeFromParent();
+            state.upperOuter.removeFromParent();
+            state.lowerInner.geometry.dispose();
+            state.lowerOuter.geometry.dispose();
+            state.upperInner.geometry.dispose();
+            state.upperOuter.geometry.dispose();
+            state.stockInner.visible = true;
+            state.stockOuter.visible = true;
+            if (state.stockInner.parent !== state.pivot) {
+              state.pivot.add(state.stockInner);
+            }
+            if (state.stockOuter.parent !== state.pivot) {
+              state.pivot.add(state.stockOuter);
+            }
+          }
+          this._limbs.clear();
+          this._installed = false;
+        }
+        /** Сброс всех сгибов */
+        resetBends() {
+          for (const state of this._limbs.values()) {
+            state.bendJoint.quaternion.identity();
+            state.bendJoint.rotation.set(0, 0, 0);
+          }
+        }
+        /**
+         * Emotecraft bend (как EmoteCraftTSViewer / bendy-lib).
+         * axis≈0 → сгиб вокруг локального X; иначе ось в плоскости XZ.
+         */
+        setBend(part, bend, axis = 0) {
+          const state = this._limbs.get(part);
+          if (!state)
+            return;
+          state.bendJoint.rotation.set(0, 0, 0);
+          state.bendJoint.quaternion.identity();
+          if (Math.abs(bend) < 1e-5)
+            return;
+          if (Math.abs(axis) < 1e-5) {
+            state.bendJoint.rotation.x = bend;
+            return;
+          }
+          AXIS_TMP.set(Math.cos(axis), 0, Math.sin(axis)).normalize();
+          state.bendJoint.quaternion.setFromAxisAngle(AXIS_TMP, bend);
+        }
+        _installArm(part, uv, name, slim) {
+          const pivot = ensurePivot(part, -4);
+          const armW = slim ? 3 : 4;
+          const innerSize = [armW, 6, 4];
+          const outerSize = [slim ? 3.5 : 4.5, 6.5, 4.5];
+          this._splitLimb(part, pivot, uv, name, innerSize, outerSize, true);
+        }
+        _installLeg(part, uv, name) {
+          const pivot = ensurePivot(part, -6);
+          const innerSize = [
+            STOCK_LEG_INNER_SIZE[0],
+            6,
+            STOCK_LEG_INNER_SIZE[2]
+          ];
+          const outerSize = [
+            STOCK_LEG_OUTER_SIZE[0],
+            6.25,
+            STOCK_LEG_OUTER_SIZE[2]
+          ];
+          this._splitLimb(part, pivot, uv, name, innerSize, outerSize, false);
+        }
+        _installBody(part, uv) {
+          let pivot = part.children.find((c) => c instanceof Group && c.name === "bendPivot");
+          if (!pivot) {
+            pivot = new Group();
+            pivot.name = "bendPivot";
+            const inner = part.innerLayer;
+            const outer = part.outerLayer;
+            part.add(pivot);
+            pivot.add(inner);
+            pivot.add(outer);
+          }
+          this._splitLimb(part, pivot, uv, "body", [8, 6, 4], [8.5, 6.25, 4.5], false);
+        }
+        _splitLimb(part, pivot, uv, name, innerSize, outerSize, useUnitScale) {
+          const stockInner = part.innerLayer;
+          const stockOuter = part.outerLayer;
+          stockInner.visible = false;
+          stockOuter.visible = false;
+          const halfH = innerSize[1] / 2;
+          const outerHalfH = outerSize[1] / 2;
+          const upperInner = makeHalfMesh(stockInner, innerSize, uv.inner, "upper", halfH, useUnitScale);
+          const upperOuter = makeHalfMesh(stockOuter, outerSize, uv.outer, "upper", outerHalfH, useUnitScale);
+          const bendJoint = new Group();
+          bendJoint.name = `${name}_bend`;
+          bendJoint.position.set(0, 0, 0);
+          const lowerInner = makeHalfMesh(stockInner, innerSize, uv.inner, "lower", -halfH, useUnitScale);
+          const lowerOuter = makeHalfMesh(stockOuter, outerSize, uv.outer, "lower", -outerHalfH, useUnitScale);
+          pivot.add(upperInner, upperOuter, bendJoint);
+          bendJoint.add(lowerInner, lowerOuter);
+          this._limbs.set(name, {
+            bendJoint,
+            upperInner,
+            upperOuter,
+            lowerInner,
+            lowerOuter,
+            stockInner,
+            stockOuter,
+            pivot
+          });
+        }
+      };
+    }
+  });
+
+  // skinviewengine/dist/core/emote-animation.js
+  function emptyPart(mc) {
+    return { rx: 0, ry: 0, rz: 0, x: mc.x, y: mc.y, z: mc.z, bend: 0, axis: 0 };
+  }
+  function emptyPose() {
+    return {
+      head: emptyPart(MC_REST.head),
+      body: emptyPart(MC_REST.body),
+      leftArm: emptyPart(MC_REST.leftArm),
+      rightArm: emptyPart(MC_REST.rightArm),
+      leftLeg: emptyPart(MC_REST.leftLeg),
+      rightLeg: emptyPart(MC_REST.rightLeg)
+    };
+  }
+  function easeT(t, ease = "linear") {
+    if (ease === "constant")
+      return 0;
+    const x2 = Math.max(0, Math.min(1, t));
+    switch (ease) {
+      case "easeIn":
+        return x2 * x2;
+      case "easeOut":
+        return 1 - (1 - x2) * (1 - x2);
+      case "easeInOut":
+        return x2 < 0.5 ? 2 * x2 * x2 : 1 - Math.pow(-2 * x2 + 2, 2) / 2;
+      default:
+        return x2;
+    }
+  }
+  function lerp3(a, b2, t) {
+    return a + (b2 - a) * t;
+  }
+  function lerpPart(a, b2, t) {
+    return {
+      rx: lerp3(a.rx, b2.rx, t),
+      ry: lerp3(a.ry, b2.ry, t),
+      rz: lerp3(a.rz, b2.rz, t),
+      x: lerp3(a.x, b2.x, t),
+      y: lerp3(a.y, b2.y, t),
+      z: lerp3(a.z, b2.z, t),
+      bend: lerp3(a.bend, b2.bend, t),
+      axis: lerp3(a.axis, b2.axis, t)
+    };
+  }
+  function applyFrameDelta(state, frame) {
+    for (const part of PARTS2) {
+      const p = frame.parts[part];
+      if (!p)
+        continue;
+      const s = state[part];
+      if (typeof p.rx === "number")
+        s.rx = p.rx;
+      if (typeof p.ry === "number")
+        s.ry = p.ry;
+      if (typeof p.rz === "number")
+        s.rz = p.rz;
+      if (typeof p.x === "number")
+        s.x = p.x;
+      if (typeof p.y === "number")
+        s.y = p.y;
+      if (typeof p.z === "number")
+        s.z = p.z;
+      if (typeof p.bend === "number")
+        s.bend = p.bend;
+      if (typeof p.axis === "number")
+        s.axis = p.axis;
+    }
+  }
+  function buildPoseKeys(frames) {
+    const sorted = [...frames].sort((a, b2) => a.tick - b2.tick);
+    const state = emptyPose();
+    const keys = [];
+    for (const f of sorted) {
+      applyFrameDelta(state, f);
+      keys.push({
+        tick: f.tick,
+        ease: f.ease ?? "linear",
+        pose: {
+          head: { ...state.head },
+          body: { ...state.body },
+          leftArm: { ...state.leftArm },
+          rightArm: { ...state.rightArm },
+          leftLeg: { ...state.leftLeg },
+          rightLeg: { ...state.rightLeg }
+        }
+      });
+    }
+    return keys;
+  }
+  function samplePose(keys, tick) {
+    if (!keys.length)
+      return emptyPose();
+    if (tick <= keys[0].tick)
+      return keys[0].pose;
+    const last = keys[keys.length - 1];
+    if (tick >= last.tick)
+      return last.pose;
+    for (let i = 0; i < keys.length - 1; i++) {
+      const a = keys[i];
+      const b2 = keys[i + 1];
+      if (tick >= a.tick && tick <= b2.tick) {
+        const span = b2.tick - a.tick;
+        const u = span <= 1e-8 ? 0 : (tick - a.tick) / span;
+        const k = easeT(u, a.ease);
+        const pose = emptyPose();
+        for (const part of PARTS2) {
+          pose[part] = lerpPart(a.pose[part], b2.pose[part], k);
+        }
+        return pose;
+      }
+    }
+    return last.pose;
+  }
+  var PARTS2, BEND_PARTS, MC_REST, CAPE_YAW2, CAPE_REST_X2, BEND_SCALE, POS_SCALE, ROT_SCALE, EmoteClipAnimation;
+  var init_emote_animation = __esm({
+    "skinviewengine/dist/core/emote-animation.js"() {
+      "use strict";
+      init_minecraft_rotation();
+      init_bendable_skeleton();
+      PARTS2 = ["head", "body", "leftArm", "rightArm", "leftLeg", "rightLeg"];
+      BEND_PARTS = ["body", "leftArm", "rightArm", "leftLeg", "rightLeg"];
+      MC_REST = {
+        head: { x: 0, y: 0, z: 0 },
+        body: { x: 0, y: 0, z: 0 },
+        rightArm: { x: -5, y: 2, z: 0 },
+        leftArm: { x: 5, y: 2, z: 0 },
+        rightLeg: { x: -1.9, y: 12, z: 0.1 },
+        leftLeg: { x: 1.9, y: 12, z: 0.1 }
+      };
+      CAPE_YAW2 = Math.PI;
+      CAPE_REST_X2 = 10.8 * Math.PI / 180;
+      BEND_SCALE = 0.72;
+      POS_SCALE = 0.55;
+      ROT_SCALE = 0.88;
+      EmoteClipAnimation = class {
+        speed = 1;
+        paused = false;
+        progress = 0;
+        controlsLegs = true;
+        _clip;
+        _keys;
+        _skeleton = null;
+        constructor(clip) {
+          this._clip = clip;
+          this._keys = buildPoseKeys(clip.frames);
+        }
+        bindSkeleton(skeleton) {
+          this._skeleton = skeleton;
+        }
+        update(player, deltaTime) {
+          if (this.paused)
+            return;
+          this.progress += deltaTime * this.speed;
+          const tps = this._clip.tps || 20;
+          let tick = this.progress * tps;
+          const end = Math.max(1, this._clip.endTick);
+          const ret = this._clip.returnTick ?? 0;
+          if (this._clip.loop) {
+            if (tick > end) {
+              const span = Math.max(1, end - ret);
+              tick = ret + (tick - ret) % span;
+            }
+          } else {
+            tick = Math.min(tick, end);
+          }
+          this._applyPose(player, samplePose(this._keys, tick));
+        }
+        _applyPose(player, pose) {
+          const skin = player.skin;
+          for (const name of PARTS2) {
+            this._applyPart(skin[name], name, pose[name]);
+          }
+          const sk = this._skeleton;
+          if (sk?.installed) {
+            sk.resetBends();
+            for (const name of BEND_PARTS) {
+              const p = pose[name];
+              sk.setBend(name, p.bend * BEND_SCALE, p.axis);
+            }
+          }
+          player.cape.rotation.set(CAPE_REST_X2, CAPE_YAW2, 0);
+        }
+        _applyPart(obj, name, p) {
+          const mc = MC_REST[name];
+          const rest = SKIN_REST_POS[name];
+          const [fx, fy, fz] = flipYzPosition((p.x - mc.x) * POS_SCALE, (p.y - mc.y) * POS_SCALE, (p.z - mc.z) * POS_SCALE);
+          obj.position.set(rest.x + fx, rest.y + fy, rest.z + fz);
+          const [rx, ry, rz] = minecraftEulerToThree(p.rx * ROT_SCALE, p.ry * ROT_SCALE, p.rz * ROT_SCALE);
+          obj.rotation.order = "ZYX";
+          obj.rotation.set(rx, ry, rz);
+        }
+      };
+    }
+  });
+
   // skinviewengine/dist/index.js
   var dist_exports = {};
   __export(dist_exports, {
+    BendableSkeleton: () => BendableSkeleton,
     BustPoseAnimation: () => BustPoseAnimation,
     CoolPoseAnimation: () => CoolPoseAnimation,
     DEFAULT_CAMERA_SETTINGS: () => DEFAULT_CAMERA_SETTINGS,
     DEFAULT_LIGHT_SETTINGS: () => DEFAULT_LIGHT_SETTINGS,
     DEFAULT_SKIN_DEBUG_OPTIONS: () => DEFAULT_SKIN_DEBUG_OPTIONS,
+    DabAnimation: () => DabAnimation,
     DanceAnimation: () => DanceAnimation,
+    EmoteClipAnimation: () => EmoteClipAnimation,
     EmptyUsernameError: () => EmptyUsernameError,
     GlideAnimation: () => GlideAnimation,
+    HelloNodAnimation: () => HelloNodAnimation,
     HeroIdleAnimation: () => HeroIdleAnimation,
     IdleAnimation: () => IdleAnimation,
     LookAroundAnimation: () => LookAroundAnimation,
@@ -26897,7 +27261,9 @@ var app = (() => {
     SadAnimation: () => SadAnimation,
     SkinModelType: () => SkinModelType,
     SkinViewEngine: () => SkinViewEngine,
+    SleepAnimation: () => SleepAnimation,
     SneakAnimation: () => SneakAnimation,
+    ThinkAnimation: () => ThinkAnimation,
     TrailerRunAnimation: () => TrailerRunAnimation,
     VictoryAnimation: () => VictoryAnimation,
     WalkAnimation: () => WalkingAnimation,
@@ -26907,7 +27273,10 @@ var app = (() => {
     computeVisibleBounds: () => computeVisibleBounds,
     createSkinAnimation: () => createSkinAnimation,
     fitObjectToFrame: () => fitObjectToFrame,
+    javaUuidHashCode: () => javaUuidHashCode,
+    locatorColorFromUuid: () => locatorColorFromUuid,
     measureObjectFrame: () => measureObjectFrame,
+    normalizeMinecraftUuid: () => normalizeMinecraftUuid,
     normalizeUsername: () => normalizeUsername,
     resetPlayerRootPose: () => resetPlayerRootPose
   });
@@ -26920,6 +27289,9 @@ var app = (() => {
       init_camera_framing();
       init_skin_animations();
       init_types2();
+      init_emote_animation();
+      init_bendable_skeleton();
+      init_locator_color();
       init_dist();
     }
   });
@@ -27048,7 +27420,7 @@ var app = (() => {
   function g(l3, e) {
     return M.parse(l3, e);
   }
-  var T, _, Te, m, Oe, we, ye, B, Pe, j, oe, ae, Se, F, $e, U, Le, _e, H, K, Me, le, ze, Ee, Ce, W, se, Ae, Ie, Be, qe, ue, De, C, Z, X, ve, pe, He, Ze, Ge, ce, Ne, Qe, he, je, Fe, Ue, Ke, We, Xe, Je, Ve, Ye, et, v, tt, ke, de, nt, ie, J, rt, Q, st, q, A, it, ge, w, x, y, L, b, P, D, M, Kt, Wt, Xt, Jt, Vt, Yt, en, tn;
+  var T, _, Te, m, Oe, we, ye, B, Pe, j, oe, ae, Se, F, $e, U, Le, _e2, H, K, Me, le, ze, Ee, Ce, W, se, Ae, Ie, Be, qe, ue, De, C, Z, X, ve, pe, He, Ze, Ge, ce, Ne, Qe, he, je, Fe, Ue, Ke, We, Xe, Je, Ve, Ye, et, v, tt, ke, de, nt, ie, J, rt, Q, st, q, A, it, ge, w, x, y, L, b, P, D, M, Kt, Wt, Xt, Jt, Vt, Yt, en, tn;
   var init_marked_esm = __esm({
     "node_modules/marked/lib/marked.esm.js"() {
       T = z();
@@ -27074,7 +27446,7 @@ var app = (() => {
       $e = /^[^\n]+/;
       U = /(?!\s*\])(?:\\[\s\S]|[^\[\]\\])+/;
       Le = d(/^ {0,3}\[(label)\]: *(?:\n[ \t]*)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n[ \t]*)?| *\n[ \t]*)(title))? *(?:\n+|$)/).replace("label", U).replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex();
-      _e = d(/^(bull)([ \t][^\n]*?)?(?:\n|$)/).replace(/bull/g, j).getRegex();
+      _e2 = d(/^(bull)([ \t][^\n]*?)?(?:\n|$)/).replace(/bull/g, j).getRegex();
       H = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
       K = /<!--(?:-?>|[\s\S]*?(?:-->|$))/;
       Me = d("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n*|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>[^\\n]*\\n*|$)|<![A-Z][\\s\\S]*?(?:>[^\\n]*\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>[^\\n]*\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$))", "i").replace("comment", K).replace("tag", H).replace("attribute", / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex();
@@ -27082,7 +27454,7 @@ var app = (() => {
       ze = le(/ {0,3}(?:[*+-]|1[.)])[ \t]+[^ \t\n]/);
       Ee = le(/ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]|\n|$)/);
       Ce = d(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph", Ee).getRegex();
-      W = { blockquote: Ce, code: we, def: Le, fences: ye, heading: Pe, hr: B, html: Me, lheading: ae, list: _e, newline: Oe, paragraph: ze, table: _, text: $e };
+      W = { blockquote: Ce, code: we, def: Le, fences: ye, heading: Pe, hr: B, html: Me, lheading: ae, list: _e2, newline: Oe, paragraph: ze, table: _, text: $e };
       se = d("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr", B).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("blockquote", " {0,3}>").replace("code", "(?: {4}| {0,3}	)[^\\n]").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~~~)[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)])[ \\t]").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", H).getRegex();
       Ae = { ...W, lheading: Se, table: se, paragraph: d(F).replace("hr", B).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("table", se).replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~~~)[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)])[ \\t]+[^ \\t\\n]").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", H).getRegex() };
       Ie = { ...W, html: d(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment", K).replace(/tag/g, "(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(), def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/, heading: /^(#{1,6})(.*)(?:\n+|$)/, fences: _, lheading: /^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/, paragraph: d(F).replace("hr", B).replace("heading", ` *#{1,6} *[^
@@ -28197,7 +28569,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     "dist/shared/apiBase.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.DEFAULT_API_BASE = void 0;
+      exports.DEFAULT_ACCOUNT_SKIN_URL = exports.DEFAULT_API_BASE = void 0;
       exports.setApiBase = setApiBase;
       exports.getApiBase = getApiBase;
       exports.releaseLatestUrl = releaseLatestUrl;
@@ -28314,8 +28686,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         "mineskin.eu",
         "textures.minecraft.net",
         "skinsystem.ely.by",
-        "ely.by"
+        "ely.by",
+        "s.namemc.com"
       ]);
+      exports.DEFAULT_ACCOUNT_SKIN_URL = "https://s.namemc.com/i/cbe20ed58814c5e1.png";
       function upgradeSkinScheme(text) {
         return text.startsWith("http://") ? `https://${text.slice(7)}` : text;
       }
@@ -28487,6 +28861,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       var ONLINE_MS = 2 * 60 * 1e3;
       var POLL_FALLBACK_MS = 2e4;
       var AVATAR_SIZE = 64;
+      var REACTION_EMOJIS = ["\u{1F44D}", "\u2764\uFE0F", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F525}", "\u{1F389}", "\u{1F440}"];
       var host = null;
       var inited = false;
       var me2 = null;
@@ -28494,7 +28869,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       var conversations = [];
       var activeId = null;
       var messages = [];
+      var messagesHasMore = true;
+      var messagesLoadingOlder = false;
       var replyTo = null;
+      var typingPeers = /* @__PURE__ */ new Map();
+      var typingSendTimer = null;
+      var typingUiTimer = null;
       var pollTimer = null;
       var searchTimer = null;
       var groupSearchTimer = null;
@@ -28507,6 +28887,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       var pendingFiles = [];
       var railTab = "chats";
       var friendsBundle = { friends: [], incoming: [], outgoing: [] };
+      var directoryUsers = [];
+      var directoryTotal = 0;
       var blockedUsers = [];
       var myPresenceStatus = "online";
       var boundAccountKey = null;
@@ -28649,6 +29031,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }, 0);
       }
       async function hideOrLeaveConversation(conv) {
+        if (conv.isProject)
+          return;
         const id = conv.id;
         if (conv.type === "group" && conv.myRole === "owner") {
           await req(`/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -28706,11 +29090,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             }
           });
         }
-        items.push({
-          label: conv.type === "group" ? conv.myRole === "owner" ? host.t("msgr.actionDeleteGroup") : host.t("msgr.actionLeave") : host.t("msgr.actionDeleteChat"),
-          danger: true,
-          action: () => void hideOrLeaveConversation(conv)
-        });
+        if (!conv.isProject) {
+          items.push({
+            label: conv.type === "group" ? conv.myRole === "owner" ? host.t("msgr.actionDeleteGroup") : host.t("msgr.actionLeave") : host.t("msgr.actionDeleteChat"),
+            danger: true,
+            action: () => void hideOrLeaveConversation(conv)
+          });
+        }
         return items;
       }
       function parseShareId(raw) {
@@ -28761,20 +29147,36 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       var ICON_ELY = "../../assets/icons/elyby.svg";
       var ICON_MS = "../../assets/icons/microsoft.svg";
       var ICON_JOINED = "../../assets/icons/userregistered.svg";
+      var ICON_UACC = "../../assets/icons/undefinedacc.svg";
+      var PROJECT_BOT_SKIN_URL = "https://s.namemc.com/i/d1d81be1a4cf9aa3.png";
+      var PROJECT_BOT_UACC_ID = "uacc_id1";
       var LOCAL_FILE_KEY = "msgr-local-files";
       function $2(id) {
         return document.getElementById(id);
       }
+      function isProjectBotUser(user) {
+        if (!user)
+          return false;
+        return user.provider === "bot" || String(user.id || "").startsWith("bot:");
+      }
       function providerLabel(provider) {
+        if (provider === "bot")
+          return host?.t("msgr.botBadge") || "BOT";
         return provider === "ely" ? "Ely.by" : "MS";
       }
       function providerLabelFull(provider) {
+        if (provider === "bot")
+          return host?.t("msgr.botAccountType") || "Undefined ID";
         return provider === "ely" ? "Ely.by" : "Microsoft";
       }
       function providerIconUrl(provider) {
+        if (provider === "bot")
+          return ICON_UACC;
         return provider === "ely" ? ICON_ELY : ICON_MS;
       }
       function providerClass(provider) {
+        if (provider === "bot")
+          return "msgr-badge--bot";
         return provider === "ely" ? "msgr-badge--ely" : "msgr-badge--ms";
       }
       function readLocalFileMap() {
@@ -29224,6 +29626,43 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const name = String(nick || hostDisplayNick()).trim() || "Player";
         return host?.t("msgr.shareLanLabel", { name }) || `\u041C\u0438\u0440 \u0438\u0433\u0440\u043E\u043A\u0430 ${name}`;
       }
+      async function shareBuildFromChat() {
+        if (!host || !activeId)
+          return;
+        const builds = host.listLocalBuilds?.() || [];
+        if (!builds.length) {
+          toast(host.t("msgr.attachBuildEmpty"));
+          return;
+        }
+        const items = builds.slice(0, 24).map((b2) => ({
+          label: b2.name,
+          action: () => {
+            void (async () => {
+              toast(host.t("msgr.attachBuildPreparing"));
+              const res = await host.createInstanceShare?.(b2.id);
+              if (!res?.ok || !res.url) {
+                toast(host.t("msgr.attachBuildFailed"));
+                return;
+              }
+              const body = host.t("msgr.attachBuildBody", { name: b2.name, url: res.url });
+              await sendMessage(body);
+            })();
+          }
+        }));
+        const btn = $2("msgr-attach");
+        const r = btn?.getBoundingClientRect();
+        showCtx(r?.left || 120, (r?.bottom || 160) + 4, items);
+      }
+      async function shareWorldFromChat() {
+        if (!host)
+          return;
+        if (hostRelaySession) {
+          toast(host.t("msgr.shareAlreadyOn"));
+          setRailTab("worlds");
+          return;
+        }
+        await shareLanWithFriends();
+      }
       async function shareLanWithFriends() {
         if (!host)
           return;
@@ -29473,6 +29912,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         return "online";
       }
       function resolvePresence(user) {
+        if (isProjectBotUser(user))
+          return "online";
         const manual = normalizePresenceStatus(user?.presenceStatus);
         if (manual === "offline")
           return "offline";
@@ -29512,6 +29953,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         activeId = null;
         friendsBundle = { friends: [], incoming: [], outgoing: [] };
         blockedUsers = [];
+        directoryUsers = [];
+        directoryTotal = 0;
         pendingFiles = [];
         replyTo = null;
         if (!key)
@@ -29566,9 +30009,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       function rawSkinUrl(user) {
         const toHttps = (u) => String(u || "").replace(/^http:\/\//i, "https://");
         if (user.provider === "ely") {
-          const byName = `https://skinsystem.ely.by/skins/${encodeURIComponent(user.username)}.png`;
-          const candidate = user.skinUrl ? toHttps(user.skinUrl) : byName;
-          return (0, apiBase_1.skinImageUrl)(candidate) || (0, apiBase_1.skinImageUrl)(byName) || candidate;
+          const candidate = user.skinUrl ? toHttps(user.skinUrl) : apiBase_1.DEFAULT_ACCOUNT_SKIN_URL;
+          return (0, apiBase_1.skinImageUrl)(candidate) || candidate;
         }
         if (user.skinUrl) {
           const https = toHttps(user.skinUrl);
@@ -29578,14 +30020,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (uuid) {
           return (0, apiBase_1.skinImageUrl)(`https://mc-heads.net/avatar/${uuid}/64`) || `${(0, apiBase_1.getApiBase)()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/avatar/${uuid}/64`)}`;
         }
-        return "";
+        return (0, apiBase_1.skinImageUrl)(apiBase_1.DEFAULT_ACCOUNT_SKIN_URL) || apiBase_1.DEFAULT_ACCOUNT_SKIN_URL;
       }
       function fullSkinTextureUrl(user) {
+        if (isProjectBotUser(user)) {
+          return (0, apiBase_1.skinImageUrl)(PROJECT_BOT_SKIN_URL) || PROJECT_BOT_SKIN_URL;
+        }
         const toHttps = (u) => String(u || "").replace(/^http:\/\//i, "https://");
         if (user.provider === "ely") {
-          const byName = `https://skinsystem.ely.by/skins/${encodeURIComponent(user.username)}.png`;
-          const candidate = user.skinUrl ? toHttps(user.skinUrl) : byName;
-          return (0, apiBase_1.skinImageUrl)(candidate) || (0, apiBase_1.skinImageUrl)(byName) || candidate;
+          const candidate = user.skinUrl ? toHttps(user.skinUrl) : apiBase_1.DEFAULT_ACCOUNT_SKIN_URL;
+          return (0, apiBase_1.skinImageUrl)(candidate) || candidate;
         }
         if (user.skinUrl && /textures\.minecraft\.net|skin/i.test(user.skinUrl)) {
           const https = toHttps(user.skinUrl);
@@ -29615,6 +30059,9 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const cached = avatarCache.get(user.id);
         if (cached)
           return cached;
+        if (isProjectBotUser(user) && user.skinUrl) {
+          return resolveMsgrMediaUrl(user.skinUrl);
+        }
         if (user.provider === "msa") {
           const uuid = String(user.uuid || "").replace(/-/g, "");
           if (uuid) {
@@ -29624,7 +30071,17 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         return "";
       }
       function ensureAvatar(user) {
-        if (!user?.id || avatarCache.has(user.id) || avatarInflight.has(user.id))
+        if (!user?.id)
+          return;
+        if (isProjectBotUser(user)) {
+          const url = user.skinUrl ? resolveMsgrMediaUrl(user.skinUrl) : "";
+          if (url && avatarCache.get(user.id) !== url) {
+            avatarCache.set(user.id, url);
+            applyAvatarsInDom(user.id);
+          }
+          return;
+        }
+        if (avatarCache.has(user.id) || avatarInflight.has(user.id))
           return;
         const raw = rawSkinUrl(user);
         if (!raw)
@@ -30102,6 +30559,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
         const prefs = pruneExpiredMutes(loadMsgrPrefs());
         const ordered = [...conversations].sort((a, b2) => {
+          const aProj = a.isProject ? 0 : 1;
+          const bProj = b2.isProject ? 0 : 1;
+          if (aProj !== bProj)
+            return aProj - bProj;
           const ap = prefs.pinned.includes(a.id) ? 0 : 1;
           const bp = prefs.pinned.includes(b2.id) ? 0 : 1;
           if (ap !== bp)
@@ -30112,16 +30573,17 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           const user = c.type === "dm" ? c.peer : null;
           if (user)
             ensureAvatar(user);
-          const title = host.escapeHtml(c.title || "Chat");
+          const title = host.escapeHtml(c.isProject ? host.t("msgr.projectChat") : c.title || "Chat");
           const preview = host.escapeHtml(previewText(c));
-          const badge = user ? `<span class="msgr-badge ${providerClass(user.provider)}">${host.escapeHtml(providerLabel(user.provider))}</span>` : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
+          const badge = c.isProject ? `<span class="msgr-badge msgr-badge--project">${host.escapeHtml(host.t("msgr.projectChatBadge"))}</span>` : user ? `<span class="msgr-badge ${providerClass(user.provider)}">${host.escapeHtml(providerLabel(user.provider))}</span>` : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
           const online = user ? presenceClass(user) : "";
           const active = c.id === activeId ? "is-active" : "";
+          const projectCls = c.isProject ? " msgr-chat-item--project" : "";
           const unread = c.unreadCount && c.id !== activeId ? `<span class="msgr-unread">${c.unreadCount}</span>` : "";
           const marks = (prefs.pinned.includes(c.id) ? `<span class="msgr-chat-mark is-pinned" title="${host.escapeHtml(host.t("msgr.actionPin"))}" aria-hidden="true"></span>` : "") + (isConvMuted(c.id) ? `<span class="msgr-chat-mark is-muted" data-mute-id="${host.escapeHtml(c.id)}" title="${host.escapeHtml(host.t("msgr.actionMuted"))}" aria-hidden="true"></span>` : "");
           const av = c.type === "group" ? groupAvatarHtml(c, 40) : avatarImgHtml(user || void 0, 40, (c.title || "?").slice(0, 1));
           return `
-        <button type="button" class="msgr-chat-item ${active}" data-id="${host.escapeHtml(c.id)}">
+        <button type="button" class="msgr-chat-item${projectCls} ${active}" data-id="${host.escapeHtml(c.id)}">
           <span class="msgr-avatar ${online}">${av}</span>
           <span class="msgr-chat-item__body">
             <span class="msgr-chat-item__top">
@@ -30183,6 +30645,32 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
         list.innerHTML = parts.join("");
       }
+      function renderUsersDirectory(opts) {
+        const list = $2("msgr-users-list");
+        if (!list || !host)
+          return;
+        const count = directoryTotal > 0 ? `<div class="msgr-friends-section">${host.escapeHtml(host.t("msgr.browseUsersCount", { n: String(directoryTotal) }))}</div>` : "";
+        const body = opts?.failed ? `<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.browseUsersFailed"))}</div>` : directoryUsers.length ? directoryUsers.map((u) => friendRowHtml(u, "friend")).join("") : `<div class="msgr-empty-list">${host.escapeHtml(host.t("msgr.browseUsersEmpty"))}</div>`;
+        list.innerHTML = `
+    <div class="msgr-friends-head">
+      <button type="button" class="msgr-mini-btn" data-user-dir-act="back-chats">${host.escapeHtml(host.t("msgr.backToChats"))}</button>
+      <div class="msgr-friends-title">${host.escapeHtml(host.t("msgr.browseUsersTitle"))}</div>
+    </div>
+    ${count}
+    ${body}`;
+      }
+      async function refreshUsersDirectory() {
+        const res = await req("/users/directory", { query: { limit: 200, offset: 0 } });
+        if (!res?.ok) {
+          directoryUsers = [];
+          directoryTotal = 0;
+          renderUsersDirectory({ failed: true });
+          return;
+        }
+        directoryUsers = Array.isArray(res.data?.users) ? res.data.users : [];
+        directoryTotal = Number(res.data?.total || directoryUsers.length) || 0;
+        renderUsersDirectory();
+      }
       function setRailTab(tab) {
         const next = tab === "blocked" ? "blocked" : tab;
         const prev = railTab;
@@ -30190,20 +30678,23 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const chatsList = $2("msgr-chat-list");
         const friendsList = $2("msgr-friends-list");
         const worldsList = $2("msgr-worlds-list");
+        const usersList = $2("msgr-users-list");
         const pages = $2("msgr-rail-pages");
         const tabs = $2("msgr-rail-tabs");
         const newGroup = $2("msgr-new-group");
+        const browseUsers = $2("msgr-browse-users");
         const tabChats = $2("msgr-tab-chats");
         const tabFriends = $2("msgr-tab-friends");
         const tabWorlds = $2("msgr-tab-worlds");
         const showChats = railTab === "chats";
         const showFriends = railTab === "friends" || railTab === "blocked";
         const showWorlds = railTab === "worlds";
+        const showUsers = railTab === "users";
         const dir = prev === "chats" && !showChats ? "left" : prev !== "chats" && showChats ? "right" : showChats ? "right" : "left";
         if (pages)
           pages.setAttribute("data-dir", dir);
         if (tabs) {
-          tabs.setAttribute("data-active", showChats ? "chats" : showWorlds ? "worlds" : "friends");
+          tabs.setAttribute("data-active", showChats || showUsers ? "chats" : showWorlds ? "worlds" : "friends");
         }
         if (chatsList) {
           chatsList.hidden = false;
@@ -30217,8 +30708,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           worldsList.hidden = false;
           worldsList.classList.toggle("is-active", showWorlds);
         }
+        if (usersList) {
+          usersList.hidden = false;
+          usersList.classList.toggle("is-active", showUsers);
+        }
         if (newGroup)
           newGroup.hidden = !showChats;
+        if (browseUsers)
+          browseUsers.hidden = !showChats;
         tabChats?.classList.toggle("is-active", showChats);
         tabFriends?.classList.toggle("is-active", showFriends);
         tabWorlds?.classList.toggle("is-active", showWorlds);
@@ -30229,6 +30726,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           renderConversationList();
         else if (showWorlds)
           void refreshWorldsRail();
+        else if (showUsers)
+          void refreshUsersDirectory();
         else
           void refreshFriendsRail();
       }
@@ -30243,7 +30742,128 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
         renderWorldsList();
       }
+      var PROFILE_TAB_ORDER = ["info", "members", "media"];
       var profilePanelTab = "info";
+      function groupOnlineMembersLabel(conv) {
+        if (!host)
+          return "";
+        const members = conv.memberCount ?? conv.members?.length ?? 0;
+        const online = conv.onlineCount ?? 0;
+        return host.t("msgr.onlineAndMembers", { online, members });
+      }
+      function applyComposerMuteState() {
+        if (!host)
+          return;
+        const input = $2("msgr-input");
+        const send = $2("msgr-send");
+        const attach = $2("msgr-attach");
+        const conv = conversations.find((c) => c.id === activeId) || null;
+        const mute = conv?.myMute;
+        const muted = Boolean(mute);
+        if (input) {
+          input.disabled = muted;
+          if (muted) {
+            if (mute.until == null) {
+              input.placeholder = host.t("msgr.mutedForever");
+            } else {
+              const n = Math.max(1, Math.ceil((mute.until - Date.now()) / 6e4));
+              input.placeholder = host.t("msgr.mutedForMinutes", { n });
+            }
+          } else {
+            input.placeholder = host.t("msgr.placeholder");
+          }
+        }
+        if (send)
+          send.disabled = muted;
+        if (attach) {
+          attach.disabled = muted;
+          if (muted)
+            setAttachMenuOpen(false);
+        }
+      }
+      function renderPinBar() {
+        const bar = $2("msgr-pin-bar");
+        const label = $2("msgr-pin-bar-label");
+        const text = $2("msgr-pin-bar-text");
+        const unpin = $2("msgr-pin-bar-unpin");
+        if (!bar || !host)
+          return;
+        const conv = conversations.find((c) => c.id === activeId) || null;
+        const pin = conv?.pinnedMessage;
+        if (!conv || !pin || pin.deleted) {
+          bar.hidden = true;
+          return;
+        }
+        bar.hidden = false;
+        if (label)
+          label.textContent = host.t("msgr.pinnedMessage");
+        if (text) {
+          text.textContent = pin.attachment ? pin.attachment.name : String(pin.body || "").slice(0, 120) || "\u2026";
+        }
+        const canMod = conv.myRole === "owner" || conv.myRole === "admin";
+        if (unpin)
+          unpin.hidden = !canMod;
+      }
+      function scrollToMessageId(msgId) {
+        const thread = $2("msgr-messages");
+        if (!thread)
+          return;
+        const row = Array.from(thread.querySelectorAll("[data-msg-id]")).find((el) => el.getAttribute("data-msg-id") === msgId);
+        if (!row)
+          return;
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.classList.add("is-flash");
+        window.setTimeout(() => row.classList.remove("is-flash"), 1200);
+      }
+      async function clearPinnedMessage() {
+        if (!activeId)
+          return;
+        const res = await req(`/conversations/${encodeURIComponent(activeId)}`, {
+          method: "PATCH",
+          body: { clearPinned: true }
+        });
+        if (res?.ok && res.data?.conversation) {
+          const idx = conversations.findIndex((c) => c.id === activeId);
+          if (idx >= 0)
+            conversations[idx] = res.data.conversation;
+          renderPinBar();
+          renderConversationList();
+        }
+      }
+      async function pinMessage(msgId) {
+        if (!activeId)
+          return;
+        const res = await req(`/conversations/${encodeURIComponent(activeId)}`, {
+          method: "PATCH",
+          body: { pinnedMessageId: msgId }
+        });
+        if (res?.ok && res.data?.conversation) {
+          const idx = conversations.findIndex((c) => c.id === activeId);
+          if (idx >= 0)
+            conversations[idx] = res.data.conversation;
+          renderPinBar();
+          toast(host?.t("msgr.pinnedOk") || "");
+        }
+      }
+      async function toggleReaction(msgId, emoji) {
+        if (!activeId || !REACTION_EMOJIS.includes(emoji))
+          return;
+        const msg = messages.find((m2) => m2.id === msgId);
+        const mine = Boolean(msg?.reactions?.some((r) => r.emoji === emoji && r.me));
+        const path = `/conversations/${encodeURIComponent(activeId)}/messages/${encodeURIComponent(msgId)}/reactions`;
+        const res = await req(path, {
+          method: mine ? "DELETE" : "POST",
+          body: { emoji }
+        });
+        if (res?.ok && res.data?.message)
+          upsertIncomingMessage(res.data.message);
+      }
+      function renderReactionsHtml(m2) {
+        if (m2.deleted || !m2.reactions?.length || !host)
+          return "";
+        const chips = m2.reactions.map((r) => `<button type="button" class="msgr-react-chip${r.me ? " is-me" : ""}" data-react-emoji="${host.escapeHtml(r.emoji)}" data-msg-id="${host.escapeHtml(m2.id)}" title="${host.escapeHtml(host.t("msgr.react"))}">${host.escapeHtml(r.emoji)}<span>${r.count}</span></button>`).join("");
+        return `<div class="msgr-react-row">${chips}</div>`;
+      }
       function setProfilePanelTab(tab, animate = true) {
         const prev = profilePanelTab;
         profilePanelTab = tab;
@@ -30251,11 +30871,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const pages = $2("msgr-profile-pages");
         const info = $2("msgr-profile-info");
         const membersPage = $2("msgr-profile-members-page");
+        const mediaPage = $2("msgr-profile-media");
         const tabInfo = $2("msgr-profile-tab-info");
         const tabMembers = $2("msgr-profile-tab-members");
+        const tabMedia = $2("msgr-profile-tab-media");
         if (animate && pages) {
-          const dir = prev === "info" && tab === "members" ? "left" : "right";
-          pages.setAttribute("data-dir", dir);
+          const pi = PROFILE_TAB_ORDER.indexOf(prev);
+          const ti = PROFILE_TAB_ORDER.indexOf(tab);
+          pages.setAttribute("data-dir", ti >= pi ? "left" : "right");
         }
         if (tabs)
           tabs.setAttribute("data-active", tab);
@@ -30267,10 +30890,46 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           membersPage.hidden = false;
           membersPage.classList.toggle("is-active", tab === "members");
         }
+        if (mediaPage) {
+          mediaPage.hidden = false;
+          mediaPage.classList.toggle("is-active", tab === "media");
+        }
         tabInfo?.classList.toggle("is-active", tab === "info");
         tabMembers?.classList.toggle("is-active", tab === "members");
+        tabMedia?.classList.toggle("is-active", tab === "media");
         tabInfo?.setAttribute("aria-selected", tab === "info" ? "true" : "false");
         tabMembers?.setAttribute("aria-selected", tab === "members" ? "true" : "false");
+        tabMedia?.setAttribute("aria-selected", tab === "media" ? "true" : "false");
+        if (tab === "media")
+          void loadProfileMedia();
+      }
+      async function loadProfileMedia() {
+        const grid = $2("msgr-profile-media-grid");
+        if (!grid || !host || !activeId)
+          return;
+        grid.innerHTML = "";
+        const res = await req(`/conversations/${encodeURIComponent(activeId)}/media`, {
+          query: { limit: 60 }
+        });
+        const items = Array.isArray(res?.data?.items) ? res.data.items : [];
+        if (!items.length) {
+          grid.innerHTML = `<div class="msgr-profile__media-empty">${host.escapeHtml(host.t("msgr.mediaEmpty"))}</div>`;
+          return;
+        }
+        grid.innerHTML = items.map((m2) => {
+          if (!m2.attachment)
+            return "";
+          const kind = isVideoAttachment(m2.attachment) ? "video" : "image";
+          const url = attachmentMediaUrl(m2.id);
+          if (kind === "video") {
+            return `<button type="button" class="msgr-profile__media-item" data-msgr-media="video" data-msg-id="${host.escapeHtml(m2.id)}">
+          <video src="${host.escapeHtml(url)}" muted preload="metadata" playsinline></video>
+        </button>`;
+          }
+          return `<button type="button" class="msgr-profile__media-item" data-msgr-media="image" data-msg-id="${host.escapeHtml(m2.id)}">
+        <img src="${host.escapeHtml(url)}" alt="" loading="lazy">
+      </button>`;
+        }).filter(Boolean).join("");
       }
       function setProfileTabsVisible(visible) {
         const tabs = $2("msgr-profile-tabs");
@@ -30333,6 +30992,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             headRow.hidden = true;
           if (moreBtn)
             moreBtn.hidden = true;
+          applyComposerMuteState();
+          renderPinBar();
           return;
         }
         if (empty)
@@ -30350,12 +31011,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           moreBtn.title = host.t("msgr.moreActions");
         }
         if (nameEl)
-          nameEl.textContent = conv.title;
+          nameEl.textContent = conv.isProject ? host.t("msgr.projectChat") : conv.title;
         const peer = conv.peer;
         if (metaEl) {
           if (conv.type === "group") {
-            metaEl.innerHTML = `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>
-        <span class="msgr-peer-status">${host.escapeHtml(host.t("msgr.members", { n: String(conv.members?.length || 0) }))}</span>`;
+            const groupBadge = conv.isProject ? `<span class="msgr-badge msgr-badge--project">${host.escapeHtml(host.t("msgr.projectChatBadge"))}</span>` : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
+            metaEl.innerHTML = `${groupBadge}
+        <span class="msgr-peer-status">${host.escapeHtml(groupOnlineMembersLabel(conv))}</span>`;
           } else if (peer) {
             const act = activityLine(peer);
             const p = resolvePresence(peer);
@@ -30371,6 +31033,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           avEl.className = `msgr-avatar ${online}`;
           avEl.innerHTML = conv.type === "group" ? groupAvatarHtml(conv, 36) : avatarImgHtml(peer || void 0, 36, (conv.title || "?").slice(0, 1));
         }
+        applyComposerMuteState();
+        renderPinBar();
       }
       function renderReplyBar() {
         const bar = $2("msgr-reply-bar");
@@ -30394,42 +31058,214 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         replyTo = msg;
         renderReplyBar();
       }
-      function renderMessages() {
+      function isMessagesNearBottom(thread, thresholdPx = 96) {
+        return thread.scrollHeight - thread.scrollTop - thread.clientHeight <= thresholdPx;
+      }
+      function isMessagesThreadPainted() {
         const thread = $2("msgr-messages");
-        if (!thread || !host || !me2)
+        if (!thread)
+          return false;
+        if (!messages.length)
+          return true;
+        return Boolean(thread.querySelector("[data-msg-id]"));
+      }
+      function peerLastReadAt(conv) {
+        if (!conv || conv.type !== "dm" || !me2)
+          return null;
+        const peer = conv.peer || conv.members?.find((m2) => m2.id !== me2.id) || null;
+        const ts = peer?.lastReadAt;
+        return typeof ts === "number" && ts > 0 ? ts : null;
+      }
+      function readReceiptHtml(m2, conv) {
+        if (!host || !me2 || m2.senderId !== me2.id || m2.deleted)
+          return "";
+        const peerRead = peerLastReadAt(conv);
+        const seen = peerRead != null && m2.createdAt <= peerRead;
+        const label = seen ? host.t("msgr.read") : host.t("msgr.sent");
+        const cls = seen ? "msgr-bubble__read is-read" : "msgr-bubble__read is-sent";
+        return `<span class="${cls}" title="${host.escapeHtml(label)}">${seen ? "\u2713\u2713" : "\u2713"}</span>`;
+      }
+      function clearTypingState() {
+        typingPeers.clear();
+        renderTypingIndicator();
+      }
+      function renderTypingIndicator() {
+        const el = $2("msgr-typing");
+        if (!el || !host)
+          return;
+        const now2 = Date.now();
+        for (const [id, info] of [...typingPeers.entries()]) {
+          if (info.until < now2)
+            typingPeers.delete(id);
+        }
+        if (!activeId || typingPeers.size === 0) {
+          el.hidden = true;
+          el.textContent = "";
+          return;
+        }
+        const names = [...typingPeers.values()].map((v2) => v2.name).filter(Boolean);
+        el.hidden = false;
+        if (names.length === 1) {
+          el.textContent = host.t("msgr.typingOne", { name: names[0] });
+        } else if (names.length === 2) {
+          el.textContent = host.t("msgr.typingTwo", { a: names[0], b: names[1] });
+        } else {
+          el.textContent = host.t("msgr.typingMany", { n: names.length });
+        }
+      }
+      function notePeerTyping(payload) {
+        if (!payload?.conversationId || payload.conversationId !== activeId)
+          return;
+        if (!payload.userId || payload.userId === me2?.id)
+          return;
+        typingPeers.set(payload.userId, {
+          name: String(payload.username || host?.t("msgr.someone") || "\u2026"),
+          until: Date.now() + 3500
+        });
+        renderTypingIndicator();
+        if (!typingUiTimer) {
+          typingUiTimer = setInterval(() => renderTypingIndicator(), 800);
+        }
+      }
+      function sendTypingPulse() {
+        if (!activeId || !sessionToken)
+          return;
+        void req(`/conversations/${encodeURIComponent(activeId)}/typing`, {
+          method: "POST",
+          body: {}
+        });
+      }
+      function scheduleTypingPulse() {
+        if (typingSendTimer)
+          return;
+        typingSendTimer = setTimeout(() => {
+          typingSendTimer = null;
+          sendTypingPulse();
+        }, 900);
+      }
+      async function loadOlderMessages() {
+        if (!activeId || messagesLoadingOlder || !messagesHasMore || !messages.length)
+          return;
+        const before = messages[0]?.createdAt;
+        if (!before)
+          return;
+        messagesLoadingOlder = true;
+        const thread = $2("msgr-messages");
+        const prevHeight = thread?.scrollHeight || 0;
+        const prevTop = thread?.scrollTop || 0;
+        try {
+          const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
+            query: { limit: 50, before: String(before) }
+          });
+          if (!res?.ok)
+            return;
+          const older = Array.isArray(res.data?.messages) ? res.data.messages : [];
+          if (older.length < 50)
+            messagesHasMore = false;
+          if (!older.length)
+            return;
+          const seen = new Set(messages.map((m2) => m2.id));
+          const add = older.filter((m2) => m2?.id && !seen.has(m2.id));
+          if (!add.length) {
+            messagesHasMore = false;
+            return;
+          }
+          messages = [...add, ...messages];
+          renderMessages({ forceScrollBottom: false });
+          if (thread) {
+            thread.scrollTop = Math.max(0, thread.scrollHeight - prevHeight + prevTop);
+          }
+        } finally {
+          messagesLoadingOlder = false;
+        }
+      }
+      function renderMessages(opts) {
+        const thread = $2("msgr-messages");
+        if (!thread || !host)
           return;
         const conv = conversations.find((c) => c.id === activeId);
+        const stickBottom = Boolean(opts?.forceScrollBottom) || isMessagesNearBottom(thread);
+        const savedScrollTop = thread.scrollTop;
         thread.innerHTML = messages.map((m2) => {
-          const mine = m2.senderId === me2.id;
-          const sender = conv?.members?.find((u) => u.id === m2.senderId)?.username || (mine ? me2.username : "");
+          const mine = Boolean(me2?.id && m2.senderId === me2.id);
+          const senderUser = conv?.members?.find((u) => u.id === m2.senderId) || null;
+          const sender = senderUser?.username || (mine ? me2.username || "" : "");
+          const isBot = senderUser?.provider === "bot" || String(m2.senderId || "").startsWith("bot:");
+          if (isBot && !m2.deleted) {
+            return renderBotPostHtml(m2, senderUser, sender, conv);
+          }
           const showName = conv?.type === "group" && !mine;
-          const reply = m2.replyTo ? `<div class="msgr-bubble__reply">
+          const reply = m2.replyTo ? `<button type="button" class="msgr-bubble__reply" data-reply-to="${host.escapeHtml(m2.replyTo.id || "")}">
             <div class="msgr-bubble__reply-name">${host.escapeHtml(conv?.members?.find((u) => u.id === m2.replyTo.senderId)?.username || "")}</div>
             <div class="msgr-bubble__reply-text">${host.escapeHtml(m2.replyTo.deleted ? host.t("msgr.messageDeleted") : m2.replyTo.attachment ? m2.replyTo.attachment.name : m2.replyTo.body)}</div>
-          </div>` : "";
+          </button>` : "";
           const fileBlock = renderAttachmentBlock(m2);
           const invite = !m2.deleted && m2.kind === "game_invite" ? inviteFromMeta(m2.meta, {
             id: m2.senderId,
             username: sender
           }) : null;
           const inviteBlock = invite ? renderInviteCardHtml(invite, m2.id) : "";
+          const updateBlock = !m2.deleted && m2.kind === "client_update" ? `<button type="button" class="stngs-btn ghost msgr-update-btn" data-msgr-open-updates>${host.escapeHtml(host.t("msgr.updateClient"))}</button>` : "";
           const textBody = m2.deleted ? `<div class="msgr-bubble__text is-deleted">${host.escapeHtml(host.t("msgr.messageDeleted"))}</div>` : invite ? "" : m2.body && (!m2.attachment || m2.body !== m2.attachment.name) ? `<div class="msgr-bubble__text">${host.escapeHtml(m2.body)}</div>` : "";
+          const reactions = renderReactionsHtml(m2);
           return `
         <div class="msgr-bubble-row ${mine ? "is-mine" : "is-theirs"}" data-msg-id="${host.escapeHtml(m2.id)}">
           <div class="msgr-bubble ${m2.deleted ? "is-deleted" : ""}${m2.attachment && isMediaAttachment(m2.attachment) ? " has-media" : ""}${invite ? " has-invite" : ""}">
             ${showName ? `<div class="msgr-bubble__name">${host.escapeHtml(sender)}</div>` : ""}
             ${reply}
             ${inviteBlock}
+            ${updateBlock}
             ${textBody}
             ${fileBlock}
             <div class="msgr-bubble__meta">
               <span>${host.escapeHtml(formatMsgTime(m2.createdAt))}</span>
-              ${mine && !m2.deleted ? `<span class="msgr-bubble__read">${host.escapeHtml(host.t("msgr.read"))}</span>` : ""}
+              ${readReceiptHtml(m2, conv)}
             </div>
+            ${reactions}
           </div>
         </div>`;
         }).join("");
-        thread.scrollTop = thread.scrollHeight;
+        if (stickBottom)
+          thread.scrollTop = thread.scrollHeight;
+        else
+          thread.scrollTop = savedScrollTop;
+      }
+      function renderBotPostHtml(m2, senderUser, senderName, conv) {
+        if (!host)
+          return "";
+        if (senderUser)
+          ensureAvatar(senderUser);
+        const name = senderName || host.t("msgr.botDefaultName");
+        const av = avatarImgHtml(senderUser, 28, name.slice(0, 1));
+        const reply = m2.replyTo ? `<div class="msgr-bot-post__quote">
+        <div class="msgr-bot-post__quote-name">${host.escapeHtml(conv?.members?.find((u) => u.id === m2.replyTo.senderId)?.username || "")}</div>
+        <div class="msgr-bot-post__quote-text">${host.escapeHtml(m2.replyTo.deleted ? host.t("msgr.messageDeleted") : m2.replyTo.attachment ? m2.replyTo.attachment.name : m2.replyTo.body)}</div>
+      </div>` : "";
+        const updateBlock = m2.kind === "client_update" ? `<button type="button" class="stngs-btn ghost msgr-update-btn" data-msgr-open-updates>${host.escapeHtml(host.t("msgr.updateClient"))}</button>` : "";
+        const bodyRaw = m2.body && (!m2.attachment || m2.body !== m2.attachment.name) ? m2.body : "";
+        const bodyHtml = bodyRaw ? host.renderMarkdown ? `<div class="msgr-bot-post__md ai-md">${host.renderMarkdown(bodyRaw)}</div>` : `<div class="msgr-bot-post__md">${host.escapeHtml(bodyRaw)}</div>` : "";
+        const fileBlock = renderAttachmentBlock(m2);
+        const reactions = renderReactionsHtml(m2);
+        return `
+    <div class="msgr-bubble-row is-bot is-theirs" data-msg-id="${host.escapeHtml(m2.id)}">
+      <article class="msgr-bot-post">
+        <header class="msgr-bot-post__head">
+          <span class="msgr-avatar msgr-bot-post__avatar">${av}</span>
+          <span class="msgr-bot-post__name">${host.escapeHtml(name)}</span>
+          <span class="msgr-badge msgr-badge--bot">${host.escapeHtml(host.t("msgr.botBadge"))}</span>
+        </header>
+        <div class="msgr-bot-post__content">
+          ${reply}
+          ${bodyHtml}
+          ${fileBlock}
+          ${updateBlock}
+          <div class="msgr-bot-post__meta">
+            <span>${host.escapeHtml(formatMsgTime(m2.createdAt))}</span>
+          </div>
+          ${reactions}
+        </div>
+      </article>
+    </div>`;
       }
       function renderPendingFiles() {
         const chips = $2("msgr-attach-chips");
@@ -30533,12 +31369,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (!message?.id)
           return;
         const idx = messages.findIndex((m2) => m2.id === message.id);
+        const isNew = idx < 0;
         if (idx >= 0) {
           messages[idx] = message;
         } else {
           messages = [...messages, message];
         }
-        renderMessages();
+        const forceBottom = isNew && Boolean(me2?.id && message.senderId === me2.id);
+        renderMessages({ forceScrollBottom: forceBottom });
       }
       function applyActivityToUsers(userId, data) {
         const patch = (u) => {
@@ -30644,39 +31482,69 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
         renderConversationList();
         renderPeerHeader();
+        applyComposerMuteState();
+        renderPinBar();
         persistAccountCache();
       }
-      async function loadMessages(conversationId) {
+      async function loadMessages(conversationId, opts) {
         const res = await req(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
           query: { limit: 80 }
         });
         if (!res?.ok)
           return;
-        messages = Array.isArray(res.data?.messages) ? res.data.messages : [];
-        renderMessages();
+        const next = Array.isArray(res.data?.messages) ? res.data.messages : [];
+        const painted = isMessagesThreadPainted();
+        const unchanged = painted && !opts?.forceScrollBottom && next.length === messages.length && next.every((m2, i) => {
+          const cur = messages[i];
+          if (!cur || cur.id !== m2.id)
+            return false;
+          if (Boolean(cur.deleted) !== Boolean(m2.deleted))
+            return false;
+          if (cur.body !== m2.body)
+            return false;
+          if ((cur.attachment?.id || "") !== (m2.attachment?.id || ""))
+            return false;
+          return JSON.stringify(cur.reactions || null) === JSON.stringify(m2.reactions || null);
+        });
+        messages = next;
+        messagesHasMore = next.length >= 80;
+        if (!unchanged) {
+          renderMessages({
+            forceScrollBottom: opts?.forceScrollBottom || !painted
+          });
+        }
         persistAccountCache();
         await req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: "POST", body: {} });
       }
       async function openConversation(id) {
         activeId = id;
         setReplyTo(null);
+        clearTypingState();
+        messagesHasMore = true;
         pendingFiles = [];
         renderPendingFiles();
         setAttachMenuOpen(false);
         renderConversationList();
         renderPeerHeader();
+        applyComposerMuteState();
+        renderPinBar();
         messages = [];
-        renderMessages();
-        await loadMessages(id);
+        renderMessages({ forceScrollBottom: true });
+        await loadMessages(id, { forceScrollBottom: true });
         const res = await req("/conversations");
         if (res?.ok) {
           conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
           renderConversationList();
           renderPeerHeader();
+          applyComposerMuteState();
+          renderPinBar();
         }
       }
       async function sendMessage(text) {
         if (!activeId || busy)
+          return;
+        const conv = conversations.find((c) => c.id === activeId);
+        if (conv?.myMute)
           return;
         const body = text.trim();
         const files = [...pendingFiles];
@@ -31019,7 +31887,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       function applyProfilePresenceMood(online) {
         if (!profileViewer || profileViewer.disposed)
           return;
-        profileViewer.setAnimation((0, skinviewengine_1.createSkinAnimation)(online ? "idle" : "sad"));
+        profileViewer.setAnimation((0, skinviewengine_1.createSkinAnimation)(online ? "idle" : "sleep"));
         profileViewer.setCursorFollow(online);
         if (!online)
           profileViewer.setCursorAim(0, 0);
@@ -31027,7 +31895,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         profileViewer.lighting.hemi.intensity = online ? PROFILE_HEMI_ONLINE : PROFILE_HEMI_OFFLINE;
         profileViewer.lighting.rim.intensity = online ? PROFILE_RIM_ONLINE : PROFILE_RIM_OFFLINE;
       }
-      async function ensureProfileViewer(skinUrl, online = true) {
+      async function ensureProfileViewer(skinUrl, online = true, locatorUuid) {
         const canvas = $2("msgr-profile-canvas");
         const fallback = $2("msgr-profile-skin-fallback");
         if (!canvas)
@@ -31065,6 +31933,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             await profileViewer.setSkin(skinUrl);
             profileSkinLoaded = skinUrl;
           }
+          profileViewer.setLocatorUuid(locatorUuid ?? null);
           applyProfilePresenceMood(online);
           requestAnimationFrame(() => {
             profileViewer?.setUiFlatBackground(readModalBgHex());
@@ -31096,6 +31965,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         return `${hex.slice(0, 8)}\u2026`;
       }
       function profileCardIconHtml(opts) {
+        const color = opts?.iconColor?.trim();
+        if (color) {
+          return `<div class="msgr-profile-card__icon msgr-profile-card__icon--locator" style="--locator-color:${host.escapeHtml(color)}"></div>`;
+        }
         const url = opts?.iconUrl?.trim();
         const size = opts?.iconSize && opts.iconSize > 0 ? opts.iconSize : null;
         if (url) {
@@ -31111,7 +31984,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const clickClass = opts?.clickAct ? " is-clickable" : "";
         const key = opts?.cardKey ? ` data-profile-card="${host.escapeHtml(opts.cardKey)}"` : "";
         return `<div class="msgr-profile-card${clickClass}"${click}${key}>
-    ${profileCardIconHtml({ iconUrl: opts?.iconUrl, iconText: opts?.iconText, title, iconSize: opts?.iconSize })}
+    ${profileCardIconHtml({
+          iconUrl: opts?.iconUrl,
+          iconText: opts?.iconText,
+          title,
+          iconSize: opts?.iconSize,
+          iconColor: opts?.iconColor
+        })}
     <div class="msgr-profile-card__meta">
       <div class="msgr-profile-card__label">${host.escapeHtml(label)}</div>
       <div class="msgr-profile-card__title">${host.escapeHtml(title)}</div>
@@ -31183,11 +32062,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           const titleEl = $2("modal-msgr-prompt-title");
           const subEl = $2("modal-msgr-prompt-sub");
           const input = $2("modal-msgr-prompt-input");
+          const textarea = $2("modal-msgr-prompt-textarea");
           const resultsEl = $2("modal-msgr-prompt-results");
           const ok = $2("modal-msgr-prompt-ok");
           const cancel = $2("modal-msgr-prompt-cancel");
           const closeBtn = $2("modal-msgr-prompt-close");
-          if (!overlay || !input || !ok || !cancel) {
+          const win = overlay?.querySelector(".modal-msgr-prompt");
+          const field = opts.multiline ? textarea : input;
+          if (!overlay || !field || !ok || !cancel || !input) {
             resolve(null);
             return;
           }
@@ -31197,20 +32079,29 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             subEl.textContent = opts.sub || "";
           if (ok)
             ok.textContent = opts.okLabel || host?.t("btn.save") || "OK";
-          input.value = opts.value || "";
-          input.placeholder = opts.placeholder || "";
-          input.readOnly = Boolean(opts.selectAll);
-          const maxLen = opts.maxLength || (opts.searchUsers ? 32 : opts.pickBuild ? 200 : 64);
+          const maxLen = opts.maxLength || (opts.multiline ? 12e3 : opts.searchUsers ? 32 : opts.pickBuild ? 200 : 64);
+          input.hidden = Boolean(opts.multiline);
+          if (textarea) {
+            textarea.hidden = !opts.multiline;
+            textarea.maxLength = maxLen;
+            textarea.value = opts.multiline ? opts.value || "" : "";
+            textarea.placeholder = opts.multiline ? opts.placeholder || "" : "";
+          }
+          input.value = opts.multiline ? "" : opts.value || "";
+          input.placeholder = opts.multiline ? "" : opts.placeholder || "";
+          input.readOnly = Boolean(opts.selectAll) && !opts.multiline;
           input.maxLength = maxLen;
+          win?.classList.toggle("is-multiline", Boolean(opts.multiline));
           if (resultsEl) {
             resultsEl.hidden = !(opts.searchUsers || opts.pickBuild);
             resultsEl.innerHTML = "";
           }
           openOverlay("modal-msgr-prompt");
           setTimeout(() => {
-            input.focus();
-            if (opts.selectAll)
-              input.select();
+            field.focus();
+            if (opts.selectAll && !opts.multiline && "select" in field) {
+              field.select();
+            }
           }, 40);
           let pickedUserId = null;
           let pickedBuildId = null;
@@ -31230,12 +32121,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           const finish = (value) => {
             closeOverlay("modal-msgr-prompt");
             input.readOnly = false;
+            input.hidden = false;
+            if (textarea)
+              textarea.hidden = true;
+            win?.classList.remove("is-multiline");
             ok.removeEventListener("click", onOk);
             cancel.removeEventListener("click", onCancel);
             closeBtn?.removeEventListener("click", onCancel);
             overlay.removeEventListener("click", onBackdrop);
-            input.removeEventListener("keydown", onKey);
-            input.removeEventListener("input", onInput);
+            field.removeEventListener("keydown", onKey);
+            field.removeEventListener("input", onInput);
             resultsEl?.removeEventListener("click", onResultClick);
             if (searchTimerLocal)
               clearTimeout(searchTimerLocal);
@@ -31250,7 +32145,11 @@ Please report this to https://github.com/markedjs/marked.`, e) {
               finish(pickedBuildId || input.value.trim() || null);
               return;
             }
-            const v2 = input.value.trim().slice(0, maxLen);
+            const v2 = field.value.trim().slice(0, maxLen);
+            if (opts.multiline) {
+              finish(v2);
+              return;
+            }
             finish(v2 || null);
           };
           const onCancel = () => finish(null);
@@ -31259,12 +32158,22 @@ Please report this to https://github.com/markedjs/marked.`, e) {
               onCancel();
           };
           const onKey = (e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onOk();
-            } else if (e.key === "Escape") {
+            const ke2 = e;
+            if (ke2.key === "Escape") {
               e.preventDefault();
               onCancel();
+              return;
+            }
+            if (ke2.key === "Enter") {
+              if (opts.multiline) {
+                if (ke2.ctrlKey || ke2.metaKey) {
+                  e.preventDefault();
+                  onOk();
+                }
+                return;
+              }
+              e.preventDefault();
+              onOk();
             }
           };
           const onInput = () => {
@@ -31319,8 +32228,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           cancel.addEventListener("click", onCancel);
           closeBtn?.addEventListener("click", onCancel);
           overlay.addEventListener("click", onBackdrop);
-          input.addEventListener("keydown", onKey);
-          input.addEventListener("input", onInput);
+          field.addEventListener("keydown", onKey);
+          field.addEventListener("input", onInput);
           resultsEl?.addEventListener("click", onResultClick);
         });
       }
@@ -31337,11 +32246,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           return;
         openProfileUser = profile;
         const { titleEl, badgesEl, statusEl, avatarEl, rowsEl, membersEl, actionsEl, fallback } = els;
+        const isBot = isProjectBotUser(profile);
+        const badgeProvider = isBot ? "bot" : profile.provider;
         titleEl.textContent = profile.username;
-        badgesEl.innerHTML = `<span class="msgr-badge ${providerClass(profile.provider)}">${host.escapeHtml(providerLabel(profile.provider))}</span>`;
+        badgesEl.innerHTML = `<span class="msgr-badge ${providerClass(badgeProvider)}">${host.escapeHtml(providerLabel(badgeProvider))}</span>`;
         avatarEl.innerHTML = avatarImgHtml(profile, 44, profile.username.slice(0, 1));
-        const online = isOnline(profile);
-        const p = resolvePresence(profile);
+        const online = isBot ? true : isOnline(profile);
+        const p = isBot ? "online" : resolvePresence(profile);
         statusEl.className = `msgr-profile__status ${online ? "is-online" : ""}`;
         if (!online) {
           statusEl.textContent = formatLastSeen(profile.lastSeenAt);
@@ -31351,6 +32262,46 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.statusDnd"))}`;
         } else {
           statusEl.innerHTML = `<span class="msgr-profile__status-dot"></span>${host.escapeHtml(host.t("msgr.online"))}`;
+        }
+        if (isBot) {
+          const locator2 = (0, skinviewengine_1.locatorColorFromUuid)(profile.uuid);
+          const locatorHex2 = locator2 ? `#${locator2.renderedHex.toUpperCase()}` : "";
+          const locatorCard2 = locator2 ? profileCardHtml(host.t("msgr.profileLocatorBar"), locatorHex2, host.t("msgr.profileLocatorBarSub"), {
+            iconColor: locatorHex2,
+            clickAct: "copy-locator-color",
+            cardKey: "locator"
+          }) : "";
+          rowsEl.innerHTML = `<div class="msgr-profile-bot-banner">
+        <div class="msgr-profile-bot-banner__title">${host.escapeHtml(host.t("msgr.botProfileTitle"))}</div>
+        <div class="msgr-profile-bot-banner__text">${host.escapeHtml(host.t("msgr.botProfileDesc"))}</div>
+      </div>` + profileCardHtml(host.t("msgr.profileLastSeen"), host.t("msgr.online"), host.t("msgr.botAlwaysOnline"), {
+            iconText: "ON",
+            cardKey: "lastSeen"
+          }) + locatorCard2 + `<div class="msgr-profile__cards-row">` + profileCardHtml(host.t("msgr.profileAccountType"), host.t("msgr.botAccountType"), PROJECT_BOT_UACC_ID, {
+            iconUrl: ICON_UACC,
+            iconSize: 24
+          }) + profileCardHtml(host.t("msgr.profileJoined"), formatJoined(profile.createdAt), profile.sharedChats != null ? host.t("msgr.profileShared", { n: String(profile.sharedChats) }) : void 0, { iconUrl: ICON_JOINED, iconSize: 30 }) + `</div>`;
+          rowsEl.onclick = async (e) => {
+            const card = e.target.closest("[data-card-act]");
+            const act = card?.getAttribute("data-card-act");
+            if (act === "copy-locator-color" && locatorHex2) {
+              try {
+                await navigator.clipboard.writeText(locatorHex2);
+                toast(host.t("msgr.profileLocatorCopied", { color: locatorHex2 }));
+              } catch {
+              }
+            }
+          };
+          membersEl.hidden = false;
+          membersEl.innerHTML = "";
+          setProfileTabsVisible(false);
+          setProfileSkinPanel("dm");
+          if (fallback)
+            fallback.textContent = profile.username.slice(0, 1).toUpperCase();
+          await ensureProfileViewer(fullSkinTextureUrl(profile), true, profile.uuid);
+          actionsEl.innerHTML = "";
+          actionsEl.hidden = true;
+          return;
         }
         const a = profile.activity;
         const playingTitle = a?.playing && a.build ? a.build : host.t("msgr.profileIdle");
@@ -31367,6 +32318,13 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         const accountTitle = providerLabelFull(profile.provider);
         const accountSub = shortUuid(profile.uuid);
         const playingIcon = a?.playing && a.build ? resolveBuildCardIcon(a.build, true) : null;
+        const locator = (0, skinviewengine_1.locatorColorFromUuid)(profile.uuid);
+        const locatorHex = locator ? `#${locator.renderedHex.toUpperCase()}` : "";
+        const locatorCard = locator ? profileCardHtml(host.t("msgr.profileLocatorBar"), locatorHex, host.t("msgr.profileLocatorBarSub"), {
+          iconColor: locatorHex,
+          clickAct: "copy-locator-color",
+          cardKey: "locator"
+        }) : "";
         rowsEl.innerHTML = profileCardHtml(host.t("msgr.profileLastSeen"), formatLastSeen(profile.lastSeenAt), void 0, {
           iconText: online ? "ON" : "OFF",
           cardKey: "lastSeen"
@@ -31383,17 +32341,28 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }) + profileCardHtml(host.t("msgr.profileFavorite"), fav, favSub, {
           iconUrl: resolveBuildCardIcon(favRaw, Boolean(favRaw)),
           iconText: fav
-        }) + `<div class="msgr-profile__cards-row">` + profileCardHtml(host.t("msgr.profileAccountType"), accountTitle, accountSub, {
+        }) + locatorCard + `<div class="msgr-profile__cards-row">` + profileCardHtml(host.t("msgr.profileAccountType"), accountTitle, accountSub, {
           iconUrl: providerIconUrl(profile.provider),
           iconSize: 24
         }) + profileCardHtml(host.t("msgr.profileJoined"), formatJoined(profile.createdAt), profile.sharedChats != null ? host.t("msgr.profileShared", { n: String(profile.sharedChats) }) : void 0, { iconUrl: ICON_JOINED, iconSize: 30 }) + `</div>`;
+        rowsEl.onclick = async (e) => {
+          const card = e.target.closest("[data-card-act]");
+          const act = card?.getAttribute("data-card-act");
+          if (act === "copy-locator-color" && locatorHex) {
+            try {
+              await navigator.clipboard.writeText(locatorHex);
+              toast(host.t("msgr.profileLocatorCopied", { color: locatorHex }));
+            } catch {
+            }
+          }
+        };
         membersEl.hidden = false;
         membersEl.innerHTML = "";
         setProfileTabsVisible(false);
         setProfileSkinPanel("dm");
         if (fallback)
           fallback.textContent = profile.username.slice(0, 1).toUpperCase();
-        await ensureProfileViewer(fullSkinTextureUrl(profile), online);
+        await ensureProfileViewer(fullSkinTextureUrl(profile), online, profile.uuid);
         const blocked = Boolean(profile.blockedByMe);
         const fs = String(profile.friendship || "none");
         const canJoin = fs === "friends" && Boolean(profile.activity?.playing && profile.activity?.hosting && profile.activity?.serverHost || lastGameInvite && lastGameInvite.from.id === profile.id);
@@ -31436,6 +32405,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           canJoin ? `<button type="button" class="stngs-btn primary" data-act="join-game">${host.escapeHtml(host.t("msgr.joinPlay"))}</button>` : "",
           `<button type="button" class="stngs-btn ${canJoin ? "ghost" : "primary"}" data-act="write">${host.escapeHtml(host.t("msgr.actionWrite"))}</button>`
         ].filter(Boolean).join("");
+        actionsEl.hidden = false;
         actionsEl.innerHTML = renderProfileActionsBar(primaryBtns, menuItems);
         bindProfileActionsBar(actionsEl, async (act) => {
           if (act === "join-game") {
@@ -31623,19 +32593,28 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           return;
         }
         openProfileUser = null;
-        titleEl.textContent = conv.title;
-        badgesEl.innerHTML = `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
+        const projectTitle = conv.isProject ? host.t("msgr.projectChat") : conv.title;
+        titleEl.textContent = projectTitle;
+        badgesEl.innerHTML = conv.isProject ? `<span class="msgr-badge msgr-badge--project">${host.escapeHtml(host.t("msgr.projectChatBadge"))}</span>` : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t("msgr.group"))}</span>`;
         avatarEl.innerHTML = groupAvatarHtml(conv, 44);
         statusEl.className = "msgr-profile__status";
-        statusEl.textContent = host.t("msgr.members", { n: String(conv.members?.length || 0) });
-        const aboutCard = profileCardHtml(host.t("msgr.profileAbout"), conv.description || host.t("msgr.profileNoAbout"), conv.myRole || "member", { iconText: conv.title });
+        statusEl.textContent = groupOnlineMembersLabel(conv);
+        const aboutCard = profileCardHtml(host.t("msgr.profileAbout"), conv.description || host.t("msgr.profileNoAbout"), conv.myRole || "member", { iconText: projectTitle });
+        const rulesMd = conv.rules?.trim() || "";
+        const rulesBody = rulesMd ? host.renderMarkdown ? host.renderMarkdown(rulesMd) : host.escapeHtml(rulesMd) : host.escapeHtml(host.t("msgr.profileNoRules"));
+        const rulesCard = `<div class="msgr-profile-card msgr-profile-card--rules">
+    <div class="msgr-profile-card__meta msgr-profile-card__meta--wide">
+      <div class="msgr-profile-card__label">${host.escapeHtml(host.t("msgr.profileRules"))}</div>
+      <div class="msgr-md ai-md">${rulesBody}</div>
+    </div>
+  </div>`;
         const buildName = conv.groupBuildName || "";
         const buildCard = buildName ? profileCardHtml(host.t("msgr.profileGroupBuild"), buildName, conv.groupBuildMeta || void 0, {
           iconUrl: resolveBuildCardIcon(buildName, true),
           iconText: buildName,
           clickAct: "open-group-build"
         }) : "";
-        rowsEl.innerHTML = aboutCard + buildCard;
+        rowsEl.innerHTML = aboutCard + rulesCard + buildCard;
         rowsEl.onclick = (e) => {
           const card = e.target.closest("[data-card-act]");
           const act = card?.getAttribute("data-card-act");
@@ -31676,6 +32655,11 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           }
           if (canMod && m2.id !== me2?.id && m2.role !== "owner") {
             menuItems2.push(`<button type="button" class="is-danger" data-kick="${host.escapeHtml(m2.id)}">${host.escapeHtml(host.t("msgr.actionKick"))}</button>`);
+            if (m2.mute) {
+              menuItems2.push(`<button type="button" data-unmute="${host.escapeHtml(m2.id)}">${host.escapeHtml(host.t("msgr.actionUnmuteMember"))}</button>`);
+            } else {
+              menuItems2.push(`<button type="button" data-mute-member="${host.escapeHtml(m2.id)}" data-mute-min="15">${host.escapeHtml(host.t("msgr.actionMuteMember"))}: ${host.escapeHtml(host.t("msgr.mute15m"))}</button>`, `<button type="button" data-mute-member="${host.escapeHtml(m2.id)}" data-mute-min="60">${host.escapeHtml(host.t("msgr.actionMuteMember"))}: ${host.escapeHtml(host.t("msgr.mute1h"))}</button>`, `<button type="button" data-mute-member="${host.escapeHtml(m2.id)}" data-mute-min="1440">${host.escapeHtml(host.t("msgr.actionMuteMember"))}: ${host.escapeHtml(host.t("msgr.mute24h"))}</button>`, `<button type="button" data-mute-member="${host.escapeHtml(m2.id)}" data-mute-forever="1">${host.escapeHtml(host.t("msgr.actionMuteMember"))}: ${host.escapeHtml(host.t("msgr.muteForever"))}</button>`);
+            }
           }
           const more = menuItems2.length ? `<div class="msgr-profile__member-more">
             <button type="button" class="msgr-profile__member-more-btn" data-member-more aria-label="${host.escapeHtml(host.t("msgr.moreActions"))}">\xB7\xB7\xB7</button>
@@ -31734,18 +32718,42 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             void openProfileModal().then(() => setProfilePanelTab("members", false));
             return;
           }
+          const unmuteBtn = e.target.closest("[data-unmute]");
+          const unmuteUid = unmuteBtn?.getAttribute("data-unmute");
+          if (unmuteUid) {
+            await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(unmuteUid)}/mute`, { method: "DELETE", body: {} });
+            await loadConversations();
+            void openProfileModal().then(() => setProfilePanelTab("members", false));
+            return;
+          }
+          const muteBtn = e.target.closest("[data-mute-member]");
+          const muteUid = muteBtn?.getAttribute("data-mute-member");
+          if (muteUid) {
+            const forever = muteBtn?.getAttribute("data-mute-forever") === "1";
+            const minutes = Number(muteBtn?.getAttribute("data-mute-min") || 60);
+            await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(muteUid)}/mute`, {
+              method: "POST",
+              body: forever ? { forever: true } : { minutes }
+            });
+            await loadConversations();
+            void openProfileModal().then(() => setProfilePanelTab("members", false));
+            return;
+          }
           if (e.target.closest(".msgr-profile__member-menu"))
             return;
           const row = e.target.closest(".msgr-profile__member[data-user-id]");
           const userId = row?.getAttribute("data-user-id");
           if (!userId)
             return;
-          closeProfileModal();
-          void openProfileByUserId(userId);
+          e.preventDefault();
+          e.stopPropagation();
+          void openProfileModal({ userId });
         };
         const menuItems = [];
         if (canMod) {
-          menuItems.push({ act: "rename", label: host.t("msgr.actionRename") });
+          if (!conv.isProject) {
+            menuItems.push({ act: "rename", label: host.t("msgr.actionRename") });
+          }
           menuItems.push({ act: "description", label: host.t("msgr.actionDescription") });
           menuItems.push({
             act: "group-build",
@@ -31770,6 +32778,15 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           }
           menuItems.push({ act: "add", label: host.t("msgr.actionAddMembers") });
           menuItems.push({ act: "invite-link", label: host.t("msgr.actionInviteLink") });
+          menuItems.push({ act: "rules", label: host.t("msgr.actionRules") });
+          if (conv.isProject) {
+            menuItems.push({ act: "bot-toggle", label: host.t("msgr.botToggle") });
+            menuItems.push({ act: "bot-name", label: host.t("msgr.botName") });
+            menuItems.push({ act: "bot-avatar", label: host.t("msgr.botAvatar") });
+            menuItems.push({ act: "bot-broadcast", label: host.t("msgr.botBroadcast") });
+            menuItems.push({ act: "bot-command", label: host.t("msgr.botAddCommand") });
+            menuItems.push({ act: "bot-schedule", label: host.t("msgr.botAddSchedule") });
+          }
         }
         menuItems.push({
           act: "mute",
@@ -31789,10 +32806,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           label: host.t(isConvPinned(conv.id) ? "msgr.actionUnpin" : "msgr.actionPin")
         });
         menuItems.push({ act: "copy-title", label: host.t("msgr.actionCopyGroupName") });
-        if (conv.myRole === "owner") {
+        if (conv.myRole === "owner" && !conv.isProject) {
           menuItems.push({ act: "delete", label: host.t("msgr.actionDeleteGroup"), danger: true });
         }
-        actionsEl.innerHTML = renderProfileActionsBar(`<button type="button" class="stngs-btn danger" data-act="leave">${host.escapeHtml(host.t("msgr.actionLeave"))}</button>`, menuItems);
+        const leaveBtn = conv.isProject ? "" : `<button type="button" class="stngs-btn danger" data-act="leave">${host.escapeHtml(host.t("msgr.actionLeave"))}</button>`;
+        actionsEl.hidden = false;
+        actionsEl.innerHTML = renderProfileActionsBar(leaveBtn, menuItems);
         bindProfileActionsBar(actionsEl, async (act) => {
           if (act === "rename") {
             const title = await askPromptText({
@@ -31828,6 +32847,175 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             });
             await loadConversations();
             void openProfileModal();
+            return;
+          }
+          if (act === "rules") {
+            const rules = await askPromptText({
+              title: host.t("msgr.actionRules"),
+              sub: host.t("msgr.rulesMarkdownHint"),
+              value: conv.rules || "",
+              placeholder: host.t("msgr.rulesMarkdownPlaceholder"),
+              okLabel: host.t("btn.save"),
+              maxLength: 12e3,
+              multiline: true
+            });
+            if (rules == null)
+              return;
+            await req(`/conversations/${encodeURIComponent(conv.id)}`, {
+              method: "PATCH",
+              body: { rules }
+            });
+            await loadConversations();
+            void openProfileModal();
+            return;
+          }
+          if (act === "bot-toggle" || act === "bot-name" || act === "bot-avatar" || act === "bot-broadcast" || act === "bot-command" || act === "bot-schedule") {
+            try {
+              if (act === "bot-toggle") {
+                const cur = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`);
+                const enabled = Boolean(cur?.data?.bot?.enabled);
+                const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`, {
+                  method: "PATCH",
+                  body: { enabled: !enabled }
+                });
+                toast(host.t(res?.ok ? "msgr.botOk" : "msgr.botFailed", { msg: res?.error || "" }));
+                return;
+              }
+              if (act === "bot-name") {
+                const cur = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`);
+                const name = await askPromptText({
+                  title: host.t("msgr.botName"),
+                  value: String(cur?.data?.bot?.displayName || ""),
+                  okLabel: host.t("btn.save"),
+                  maxLength: 64
+                });
+                if (!name?.trim())
+                  return;
+                const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`, {
+                  method: "PATCH",
+                  body: { displayName: name.trim() }
+                });
+                toast(host.t(res?.ok ? "msgr.botOk" : "msgr.botFailed", { msg: res?.error || "" }));
+                return;
+              }
+              if (act === "bot-avatar") {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = "image/png,image/jpeg,image/webp";
+                input.onchange = async () => {
+                  const file = input.files?.[0];
+                  if (!file)
+                    return;
+                  const reader = new FileReader();
+                  reader.onload = async () => {
+                    const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot`, {
+                      method: "PATCH",
+                      body: { avatarDataUrl: String(reader.result || "") }
+                    });
+                    if (res?.ok) {
+                      const botId = "bot:project";
+                      avatarCache.delete(botId);
+                      avatarInflight.delete(botId);
+                      const avatarUrl = res.data?.bot?.avatarUrl;
+                      if (avatarUrl) {
+                        for (const c of conversations) {
+                          const member = c.members?.find((u) => u.id === botId);
+                          if (member)
+                            member.skinUrl = avatarUrl;
+                          if (c.peer?.id === botId)
+                            c.peer.skinUrl = avatarUrl;
+                        }
+                        avatarCache.set(botId, resolveMsgrMediaUrl(avatarUrl, Date.now()));
+                        applyAvatarsInDom(botId);
+                      }
+                      toast(host.t("msgr.botOk"));
+                    } else {
+                      toast(host.t("msgr.botFailed", { msg: res?.error || "" }));
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                };
+                input.click();
+                return;
+              }
+              if (act === "bot-broadcast") {
+                const body = await askPromptText({
+                  title: host.t("msgr.botBroadcast"),
+                  placeholder: host.t("msgr.botBroadcastHint"),
+                  okLabel: host.t("msgr.botBroadcast"),
+                  maxLength: 2e3
+                });
+                if (!body?.trim())
+                  return;
+                const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot/broadcast`, {
+                  method: "POST",
+                  body: { body: body.trim() }
+                });
+                if (res?.ok && res.data?.message) {
+                  if (activeId === conv.id)
+                    upsertIncomingMessage(res.data.message);
+                  toast(host.t("msgr.botOk"));
+                } else {
+                  toast(host.t("msgr.botFailed", { msg: res?.error || "" }));
+                }
+                return;
+              }
+              if (act === "bot-command") {
+                const name = await askPromptText({
+                  title: host.t("msgr.botAddCommand"),
+                  sub: host.t("msgr.botCommandName"),
+                  placeholder: "help",
+                  okLabel: host.t("btn.save"),
+                  maxLength: 32
+                });
+                if (!name?.trim())
+                  return;
+                const response = await askPromptText({
+                  title: host.t("msgr.botAddCommand"),
+                  sub: host.t("msgr.botCommandResponse"),
+                  okLabel: host.t("btn.save"),
+                  maxLength: 2e3
+                });
+                if (response == null)
+                  return;
+                const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot/commands`, {
+                  method: "POST",
+                  body: { name: name.trim().replace(/^\//, ""), response }
+                });
+                toast(host.t(res?.ok ? "msgr.botOk" : "msgr.botFailed", { msg: res?.error || "" }));
+                return;
+              }
+              if (act === "bot-schedule") {
+                const time = await askPromptText({
+                  title: host.t("msgr.botAddSchedule"),
+                  sub: host.t("msgr.botScheduleTime"),
+                  placeholder: "09:00",
+                  okLabel: "OK",
+                  maxLength: 5
+                });
+                if (!time?.trim() || !/^\d{1,2}:\d{2}$/.test(time.trim())) {
+                  toast(host.t("msgr.botFailed", { msg: "HH:MM" }));
+                  return;
+                }
+                const body = await askPromptText({
+                  title: host.t("msgr.botAddSchedule"),
+                  sub: host.t("msgr.botScheduleBody"),
+                  okLabel: host.t("btn.save"),
+                  maxLength: 2e3
+                });
+                if (!body?.trim())
+                  return;
+                const hhmm = time.trim().replace(/^(\d):/, "0$1:");
+                const res = await req(`/conversations/${encodeURIComponent(conv.id)}/bot/schedules`, {
+                  method: "POST",
+                  body: { time: hhmm, body: body.trim() }
+                });
+                toast(host.t(res?.ok ? "msgr.botOk" : "msgr.botFailed", { msg: res?.error || "" }));
+                return;
+              }
+            } catch (e) {
+              toast(host.t("msgr.botFailed", { msg: e?.message || "error" }));
+            }
             return;
           }
           if (act === "group-build") {
@@ -32039,6 +33227,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             return;
           }
           if (act === "leave" && me2) {
+            if (conv.isProject)
+              return;
             await req(`/conversations/${encodeURIComponent(conv.id)}/members/${encodeURIComponent(me2.id)}`, {
               method: "DELETE"
             });
@@ -32051,6 +33241,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             return;
           }
           if (act === "delete") {
+            if (conv.isProject)
+              return;
             await req(`/conversations/${encodeURIComponent(conv.id)}`, { method: "DELETE" });
             closeProfileModal();
             activeId = null;
@@ -32085,6 +33277,34 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           void loadConversations();
           return;
         }
+        if (eventName === "reaction" && data?.message) {
+          const msg = data.message;
+          if (msg.conversationId === activeId)
+            upsertIncomingMessage(msg);
+          return;
+        }
+        if ((eventName === "member_muted" || eventName === "member_unmuted") && data?.conversationId) {
+          if (data.conversation) {
+            const idx = conversations.findIndex((c) => c.id === data.conversationId);
+            if (idx >= 0)
+              conversations[idx] = data.conversation;
+            else
+              void loadConversations();
+          } else {
+            void loadConversations();
+          }
+          if (data.conversationId === activeId) {
+            applyComposerMuteState();
+            renderPeerHeader();
+            const overlay = $2("modal-msgr-profile");
+            if (overlay && !overlay.classList.contains("hidden")) {
+              void openProfileModal().then(() => setProfilePanelTab(profilePanelTab, false));
+            }
+          } else {
+            renderConversationList();
+          }
+          return;
+        }
         if (eventName === "friend") {
           if (railTab !== "chats")
             void refreshFriendsRail();
@@ -32107,6 +33327,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           applyActivityToUsers(data.userId, data);
           if (railTab === "worlds")
             renderWorldsList();
+          return;
+        }
+        if (eventName === "typing") {
+          notePeerTyping(data || {});
           return;
         }
         if (eventName === "game_invite" && data?.from?.id) {
@@ -32176,7 +33400,18 @@ Please report this to https://github.com/markedjs/marked.`, e) {
               renderMessages();
             }
           }
-          void loadConversations();
+          if (data?.conversation && data.conversationId) {
+            const idx = conversations.findIndex((c) => c.id === data.conversationId);
+            if (idx >= 0)
+              conversations[idx] = data.conversation;
+          }
+          void loadConversations().then(() => {
+            applyComposerMuteState();
+            renderPinBar();
+            if (activeId && (eventName === "read" || eventName === "conversation_updated")) {
+              renderMessages();
+            }
+          });
         }
       }
       function disconnectStream() {
@@ -32217,12 +33452,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         stream.addEventListener("conversation", handle("conversation"));
         stream.addEventListener("conversation_updated", handle("conversation_updated"));
         stream.addEventListener("member_changed", handle("member_changed"));
+        stream.addEventListener("member_muted", handle("member_muted"));
+        stream.addEventListener("member_unmuted", handle("member_unmuted"));
+        stream.addEventListener("reaction", handle("reaction"));
         stream.addEventListener("activity", handle("activity"));
         stream.addEventListener("presence", handle("presence"));
         stream.addEventListener("read", handle("read"));
         stream.addEventListener("friend", handle("friend"));
         stream.addEventListener("game_invite", handle("game_invite"));
         stream.addEventListener("game_invite_ended", handle("game_invite_ended"));
+        stream.addEventListener("typing", handle("typing"));
         stream.onerror = () => {
         };
       }
@@ -32269,7 +33508,45 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             closeProfileModal();
         });
         $2("msgr-reply-clear")?.addEventListener("click", () => setReplyTo(null));
+        $2("msgr-pin-bar-main")?.addEventListener("click", () => {
+          const conv = conversations.find((c) => c.id === activeId);
+          const id = conv?.pinnedMessageId || conv?.pinnedMessage?.id;
+          if (id)
+            scrollToMessageId(id);
+        });
+        $2("msgr-pin-bar-unpin")?.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void clearPinnedMessage();
+        });
         const messagesEl = $2("msgr-messages");
+        messagesEl?.addEventListener("scroll", () => {
+          if (!messagesEl || messagesLoadingOlder || !messagesHasMore)
+            return;
+          if (messagesEl.scrollTop <= 48)
+            void loadOlderMessages();
+        });
+        messagesEl?.addEventListener("click", (e) => {
+          if (e.target.closest("[data-msgr-open-updates]")) {
+            e.preventDefault();
+            host?.openSettingsTab?.("updates");
+            return;
+          }
+          const replyBtn = e.target.closest("[data-reply-to]");
+          const replyId = replyBtn?.getAttribute("data-reply-to");
+          if (replyId) {
+            e.preventDefault();
+            scrollToMessageId(replyId);
+            return;
+          }
+          const reactBtn = e.target.closest("[data-react-emoji]");
+          const emoji = reactBtn?.getAttribute("data-react-emoji");
+          const reactMsgId = reactBtn?.getAttribute("data-msg-id");
+          if (emoji && reactMsgId) {
+            e.preventDefault();
+            void toggleReaction(reactMsgId, emoji);
+          }
+        });
         messagesEl?.addEventListener("contextmenu", (e) => {
           const row = e.target.closest(".msgr-bubble-row");
           const msgId = row?.getAttribute("data-msg-id");
@@ -32293,10 +33570,23 @@ Please report this to https://github.com/markedjs/marked.`, e) {
               }
             }
           ];
+          for (const emoji of REACTION_EMOJIS) {
+            items.push({
+              label: `${host.t("msgr.react")} ${emoji}`,
+              action: () => void toggleReaction(msg.id, emoji)
+            });
+          }
           if (conv?.type === "group" && msg.senderId && msg.senderId !== me2?.id) {
             items.push({
               label: host.t("msgr.actionOpenProfile"),
               action: () => void openProfileByUserId(msg.senderId)
+            });
+          }
+          if (conv && (conv.myRole === "owner" || conv.myRole === "admin")) {
+            const isPinned = conv.pinnedMessageId === msg.id;
+            items.push({
+              label: host.t(isPinned ? "msgr.unpinMessage" : "msgr.pinMessage"),
+              action: () => void (isPinned ? clearPinnedMessage() : pinMessage(msg.id))
             });
           }
           if (canDelete) {
@@ -32357,8 +33647,11 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             return;
           input.style.height = "auto";
           input.style.height = `${Math.min(160, input.scrollHeight)}px`;
+          if (input.value.trim())
+            scheduleTypingPulse();
         });
         $2("msgr-new-group")?.addEventListener("click", () => void createGroup());
+        $2("msgr-browse-users")?.addEventListener("click", () => setRailTab("users"));
         $2("msgr-retry")?.addEventListener("click", () => void ensureMessengerTab(true));
         $2("msgr-tab-chats")?.addEventListener("click", () => setRailTab("chats"));
         $2("msgr-tab-friends")?.addEventListener("click", () => setRailTab("friends"));
@@ -32368,6 +33661,16 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         });
         $2("msgr-profile-tab-info")?.addEventListener("click", () => setProfilePanelTab("info"));
         $2("msgr-profile-tab-members")?.addEventListener("click", () => setProfilePanelTab("members"));
+        $2("msgr-profile-tab-media")?.addEventListener("click", () => setProfilePanelTab("media"));
+        $2("msgr-profile-media-grid")?.addEventListener("click", (e) => {
+          const mediaBtn = e.target.closest("[data-msgr-media]");
+          const mediaKind = mediaBtn?.getAttribute("data-msgr-media");
+          const mediaMsgId = mediaBtn?.getAttribute("data-msg-id");
+          if (mediaMsgId && (mediaKind === "image" || mediaKind === "video")) {
+            e.preventDefault();
+            openMediaViewer(mediaMsgId, mediaKind);
+          }
+        });
         $2("msgr-rail-tabs")?.setAttribute("data-active", "chats");
         $2("msgr-rail-pages")?.setAttribute("data-dir", "right");
         $2("msgr-chat-list")?.classList.add("is-active");
@@ -32380,6 +33683,11 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         if (worldsInit) {
           worldsInit.hidden = false;
           worldsInit.classList.remove("is-active");
+        }
+        const usersInit = $2("msgr-users-list");
+        if (usersInit) {
+          usersInit.hidden = false;
+          usersInit.classList.remove("is-active");
         }
         $2("msgr-worlds-list")?.addEventListener("click", (e) => {
           const t = e.target;
@@ -32495,6 +33803,25 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             }
           })();
         });
+        $2("msgr-users-list")?.addEventListener("click", (e) => {
+          const dirBtn = e.target.closest("[data-user-dir-act]");
+          const dirAct = dirBtn?.getAttribute("data-user-dir-act");
+          if (dirAct === "back-chats") {
+            setRailTab("chats");
+            return;
+          }
+          const btn = e.target.closest("[data-friend-act]");
+          const act = btn?.getAttribute("data-friend-act");
+          const userId = btn?.getAttribute("data-user-id") || "";
+          if (!act || !userId)
+            return;
+          void (async () => {
+            if (act === "write")
+              await startDm(userId);
+            else if (act === "profile")
+              await openProfileByUserId(userId);
+          })();
+        });
         const attachBtn = $2("msgr-attach");
         attachBtn?.addEventListener("click", (e) => {
           e.preventDefault();
@@ -32510,6 +33837,14 @@ Please report this to https://github.com/markedjs/marked.`, e) {
             void pickMessengerFiles();
           if (kind === "media")
             void pickMessengerFiles({ media: true });
+          if (kind === "build") {
+            setAttachMenuOpen(false);
+            void shareBuildFromChat();
+          }
+          if (kind === "world") {
+            setAttachMenuOpen(false);
+            void shareWorldFromChat();
+          }
         });
         $2("msgr-attach-chips")?.addEventListener("click", (e) => {
           const chip = e.target.closest("[data-pending-idx]");
@@ -32850,10 +34185,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (!pollTimer)
             startPolling();
           void loadConversations();
-          if (activeId)
-            void loadMessages(activeId);
-          else
+          if (activeId) {
+            void loadMessages(activeId, { forceScrollBottom: !isMessagesThreadPainted() });
             renderPeerHeader();
+          } else {
+            renderPeerHeader();
+          }
           updateSharePanel();
           return;
         }
@@ -32889,10 +34226,12 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           connectStream(sessionToken);
         await syncLauncherStats();
         await loadConversations();
-        if (activeId)
-          await loadMessages(activeId);
-        else
+        if (activeId) {
+          await loadMessages(activeId, { forceScrollBottom: true });
           renderPeerHeader();
+        } else {
+          renderPeerHeader();
+        }
         updateSharePanel();
         startPolling();
       }
@@ -35584,6 +36923,72 @@ buildId: ${id}` : ""));
       var savedServers = [];
       var editingBuildId = null;
       var versionsPopulated = false;
+      var versionsPopulatePromise = null;
+      function appendBuildVersionOption(id, label) {
+        const select = document.getElementById("modal-build-version");
+        const menu = document.getElementById("modal-build-version-menu");
+        if (!select)
+          return;
+        if (Array.from(select.options).some((o) => o.value === id))
+          return;
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = label;
+        opt.setAttribute("data-dynamic", "1");
+        select.appendChild(opt);
+        if (menu) {
+          const mi = document.createElement("div");
+          mi.className = "stngs-select-opt";
+          mi.dataset.value = id;
+          mi.setAttribute("data-dynamic", "1");
+          mi.textContent = label;
+          menu.appendChild(mi);
+        }
+      }
+      function syncBuildVersionUI() {
+        const select = document.getElementById("modal-build-version");
+        const wrap = select?.closest(".stngs-select-wrap");
+        if (wrap)
+          syncSelectUI(wrap);
+      }
+      async function ensureBuildVersionsLoaded() {
+        const select = document.getElementById("modal-build-version");
+        if (!select || !api?.getVersions)
+          return;
+        if (select.querySelectorAll("option[data-dynamic]").length > 0) {
+          versionsPopulated = true;
+          return;
+        }
+        if (versionsPopulatePromise)
+          return versionsPopulatePromise;
+        versionsPopulatePromise = (async () => {
+          try {
+            const versions = await api.getVersions();
+            if (!versions || !Array.isArray(versions) || versions.length === 0) {
+              versionsPopulated = false;
+              return;
+            }
+            const seen = /* @__PURE__ */ new Set(["latest_release", "latest_snapshot"]);
+            for (const v2 of versions) {
+              const id = String(v2?.id || "").trim();
+              if (!id || seen.has(id))
+                continue;
+              seen.add(id);
+              const type = String(v2?.type || "");
+              if (type === "old_alpha" || type === "old_beta")
+                continue;
+              appendBuildVersionOption(id, id + (type === "snapshot" ? t("be.snapshotSuffix") : ""));
+            }
+            versionsPopulated = select.querySelectorAll("option[data-dynamic]").length > 0;
+            syncBuildVersionUI();
+          } catch {
+            versionsPopulated = false;
+          } finally {
+            versionsPopulatePromise = null;
+          }
+        })();
+        return versionsPopulatePromise;
+      }
       var runningBuild = null;
       var runningBuildStart = 0;
       var editingServerId = null;
@@ -35874,25 +37279,8 @@ buildId: ${id}` : ""));
       var downloadPrevTime = 0;
       var SPLASH_MIN_MS = 600;
       var SPLASH_SAFETY_MS = 6e3;
-      var STARTUP_AI_SEEN_KEY = "Undefined Client-seen-startup-ai-1.0.5-beta";
       var initStartedAt = performance.now();
       var splashClosed = false;
-      var splashAwaitingWelcome = false;
-      var splashWelcomeShown = false;
-      function needsStartupAiAnnounce() {
-        try {
-          return localStorage.getItem(STARTUP_AI_SEEN_KEY) !== "true";
-        } catch {
-          return false;
-        }
-      }
-      function markStartupAiSeen() {
-        try {
-          localStorage.setItem(STARTUP_AI_SEEN_KEY, "true");
-        } catch {
-        }
-        document.documentElement.classList.remove("splash-first-run", "splash-announce-done");
-      }
       function closeSplash() {
         if (splashClosed)
           return;
@@ -35908,167 +37296,10 @@ buildId: ${id}` : ""));
             splash.style.display = "none";
         }, 500);
       }
-      function showSplashWelcome() {
-        if (splashWelcomeShown || splashClosed)
-          return;
-        splashWelcomeShown = true;
-        splashAwaitingWelcome = false;
-        const loader = document.getElementById("splash-loader");
-        if (loader)
-          loader.classList.add("hidden");
-        const content = document.getElementById("splash-content");
-        if (content) {
-          content.style.opacity = "0";
-          content.style.pointerEvents = "none";
-        }
-        const welcome = document.getElementById("splash-welcome");
-        if (welcome) {
-          welcome.hidden = false;
-          welcome.removeAttribute("hidden");
-        }
-        bindSplashWelcomeWizard();
-      }
-      function bindSplashWelcomeWizard() {
-        let step = "1";
-        const titleEl = document.getElementById("splash-welcome-title");
-        const subEl = document.getElementById("splash-welcome-sub");
-        const nextBtn = document.getElementById("splash-welcome-next");
-        const toggle = document.getElementById("splash-welcome-ai-toggle");
-        const stepsEl = document.getElementById("splash-welcome-steps");
-        const headerFor = (s) => {
-          switch (s) {
-            case "1":
-              return { title: t("splash.welcomeTitle"), sub: t("splash.welcomeSub", { ver: "1.0.5-beta" }) };
-            case "2":
-              return { title: t("splash.welcome.p2.header"), sub: t("splash.welcome.p2.headerSub") };
-            case "3":
-              return { title: t("splash.welcome.p3.header"), sub: t("splash.welcome.p3.headerSub") };
-            case "4-on":
-              return { title: t("splash.welcome.p4on.header"), sub: t("splash.welcome.p4on.headerSub") };
-            case "4-off":
-              return { title: t("splash.welcome.p4off.header"), sub: t("splash.welcome.p4off.headerSub") };
-          }
-        };
-        const render = () => {
-          document.querySelectorAll("[data-welcome-page]").forEach((page) => {
-            const id = page.getAttribute("data-welcome-page");
-            const on = id === step;
-            page.classList.toggle("is-active", on);
-            page.hidden = !on;
-          });
-          const hdr = headerFor(step);
-          if (titleEl)
-            titleEl.textContent = hdr.title;
-          if (subEl)
-            subEl.textContent = hdr.sub;
-          if (nextBtn) {
-            const isFinal = step === "4-on" || step === "4-off";
-            nextBtn.textContent = isFinal ? t("splash.welcomeStart") : t("splash.welcomeNext");
-          }
-          if (stepsEl) {
-            const idx = step === "1" ? 0 : step === "2" ? 1 : 2;
-            const dots = stepsEl.querySelectorAll(".splash-welcome-step");
-            dots.forEach((dot, i) => dot.classList.toggle("is-on", i === idx || step.startsWith("4") && i === 2));
-            stepsEl.style.visibility = step.startsWith("4") ? "hidden" : "";
-          }
-        };
-        const applyAgentChoice = (enabled) => {
-          localStorage.setItem(AI_ENABLED_LS_KEY, String(enabled));
-          const settingsToggle = document.getElementById("setting-ai-enabled");
-          if (settingsToggle)
-            settingsToggle.checked = enabled;
-          applyAiTabVisibility();
-        };
-        const finish = () => {
-          markStartupAiSeen();
-          closeSplash();
-        };
-        nextBtn?.addEventListener("click", () => {
-          if (step === "1") {
-            step = "2";
-            render();
-            return;
-          }
-          if (step === "2") {
-            step = "3";
-            render();
-            return;
-          }
-          if (step === "3") {
-            const enabled = Boolean(toggle?.checked);
-            applyAgentChoice(enabled);
-            step = enabled ? "4-on" : "4-off";
-            render();
-            return;
-          }
-          finish();
-        });
-        render();
-      }
       function requestCloseSplash() {
         if (splashClosed)
           return;
-        if (splashAwaitingWelcome && !splashWelcomeShown) {
-          showSplashWelcome();
-          return;
-        }
-        if (splashWelcomeShown)
-          return;
         closeSplash();
-      }
-      function playStartupAnnounceVideo() {
-        const wrap = document.getElementById("splash-announce");
-        const video = document.getElementById("splash-announce-video");
-        if (!wrap || !video)
-          return Promise.resolve();
-        wrap.hidden = false;
-        wrap.removeAttribute("hidden");
-        return new Promise((resolve) => {
-          let finished = false;
-          const finish = () => {
-            if (finished)
-              return;
-            finished = true;
-            try {
-              video.pause();
-            } catch {
-            }
-            wrap.classList.add("fade-out");
-            document.documentElement.classList.add("splash-announce-done");
-            setTimeout(() => {
-              wrap.hidden = true;
-              wrap.setAttribute("hidden", "");
-              wrap.classList.remove("fade-out");
-              document.documentElement.classList.remove("splash-first-run");
-              const content = document.getElementById("splash-content");
-              if (content) {
-                content.style.opacity = "";
-                content.style.pointerEvents = "";
-              }
-              resolve();
-            }, 420);
-          };
-          video.addEventListener("ended", finish, { once: true });
-          video.addEventListener("error", finish, { once: true });
-          const tryPlay = () => {
-            const p = video.play();
-            if (p && typeof p.then === "function") {
-              p.catch(() => {
-                video.muted = true;
-                video.play().catch(() => finish());
-              });
-            }
-          };
-          if (video.readyState >= 2)
-            tryPlay();
-          else {
-            video.addEventListener("canplay", tryPlay, { once: true });
-            setTimeout(() => {
-              if (!finished && video.readyState < 2)
-                finish();
-            }, 8e3);
-          }
-        });
       }
       async function init() {
         await setLang(localStorage.getItem("Undefined Client-language") || "ru");
@@ -36081,6 +37312,15 @@ buildId: ${id}` : ""));
           getAccount: () => currentAccount,
           openModal,
           closeModal,
+          openSettingsTab: (tab) => {
+            openModal("modal-settings");
+            queueMicrotask(() => {
+              document.querySelector(`[data-settings-tab="${tab}"]`)?.click();
+              if (tab === "updates")
+                void checkForUpdatesUI();
+            });
+          },
+          renderMarkdown: (md) => sanitizeHtml(markedParse(md || "")),
           updateStatus,
           showToast: showAppToast,
           getLauncherStats: () => {
@@ -36183,11 +37423,6 @@ buildId: ${id}` : ""));
               await refreshAccountInBackground(currentAccount);
           }
         });
-        const firstAiRun = needsStartupAiAnnounce();
-        if (firstAiRun) {
-          splashAwaitingWelcome = true;
-          await playStartupAnnounceVideo();
-        }
         initStartedAt = performance.now();
         setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
         const videoEl = document.getElementById("quick-banner-bg");
@@ -36449,8 +37684,9 @@ buildId: ${id}` : ""));
         await loadServers();
         renderSavedAccounts();
         loadTheme();
-        if (localStorage.getItem("Undefined Client-check-updates-start") !== "false") {
-          void checkForUpdatesUI();
+        {
+          const autoLaunch = localStorage.getItem("Undefined Client-check-updates-start") !== "false";
+          void checkForUpdatesUI({ autoLaunch });
         }
         setupDownloadProgress();
         if (api?.getPlatformInfo) {
@@ -36472,26 +37708,7 @@ buildId: ${id}` : ""));
             });
           }
         }
-        const versionSelect = document.getElementById("modal-build-version");
-        if (versionSelect && !versionsPopulated && api?.getVersions) {
-          versionsPopulated = true;
-          api.getVersions().then((versions) => {
-            if (!versions || !Array.isArray(versions))
-              return;
-            const seen = /* @__PURE__ */ new Set();
-            for (const v2 of versions) {
-              const id = v2.id;
-              if (seen.has(id))
-                continue;
-              seen.add(id);
-              if (["old_alpha", "old_beta"].includes(v2.type))
-                continue;
-              appendBuildVersionOption(id, id + (v2.type === "snapshot" ? t("be.snapshotSuffix") : ""));
-            }
-            syncBuildVersionUI();
-          }).catch(() => {
-          });
-        }
+        void ensureBuildVersionsLoaded();
         const remaining = SPLASH_MIN_MS - (performance.now() - initStartedAt);
         setTimeout(requestCloseSplash, Math.max(0, remaining));
         api?.onDeepLink?.((payload) => void handleDeepLinkPayload(payload));
@@ -36506,29 +37723,6 @@ buildId: ${id}` : ""));
           void ensureSkinTab();
           scheduleIdle(() => ensureModsCatalog(), 3e3);
         }, 2e3);
-      }
-      function appendBuildVersionOption(id, label) {
-        const select = document.getElementById("modal-build-version");
-        const menu = document.getElementById("modal-build-version-menu");
-        if (!select)
-          return;
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = label;
-        select.appendChild(opt);
-        if (menu) {
-          const mi = document.createElement("div");
-          mi.className = "stngs-select-opt";
-          mi.dataset.value = id;
-          mi.textContent = label;
-          menu.appendChild(mi);
-        }
-      }
-      function syncBuildVersionUI() {
-        const select = document.getElementById("modal-build-version");
-        const wrap = select?.closest(".stngs-select-wrap");
-        if (wrap)
-          syncSelectUI(wrap);
       }
       async function loadBuilds() {
         if (api?.loadBuilds) {
@@ -36719,27 +37913,26 @@ buildId: ${id}` : ""));
         });
       }
       var detectedJava = [];
-      function populateJavaOptions() {
+      async function populateJavaOptions(force = false) {
         const select = document.getElementById("modal-build-java");
         const menu = document.getElementById("modal-build-java-menu");
         if (!select || !menu)
-          return Promise.resolve();
-        if (detectedJava.length === 0 && api?.detectJava) {
-          return api.detectJava().then((list) => {
-            detectedJava = list || [];
-            appendJavaOptions(select, menu);
-          }).catch(() => {
+          return;
+        if ((force || detectedJava.length === 0) && api?.detectJava) {
+          try {
+            detectedJava = await api.detectJava(force) || [];
+          } catch {
             detectedJava = [];
-          });
+          }
         }
         appendJavaOptions(select, menu);
-        return Promise.resolve();
       }
       function appendJavaOptions(select, menu) {
         menu.querySelectorAll(".stngs-select-opt[data-java-dyn]").forEach((o) => o.remove());
         select.querySelectorAll("option[data-java-dyn]").forEach((o) => o.remove());
         for (const j2 of detectedJava) {
-          const label = `Java ${j2.version} \xB7 ${j2.name}`;
+          const kind = j2.managed ? t("jm.managed") : t("jm.system");
+          const label = `Java ${j2.version} \xB7 ${j2.name} (${kind})`;
           const opt = document.createElement("option");
           opt.dataset.javaDyn = "1";
           opt.value = j2.path;
@@ -36750,12 +37943,20 @@ buildId: ${id}` : ""));
           item.dataset.javaDyn = "1";
           item.dataset.value = j2.path;
           item.textContent = label;
+          item.title = j2.path;
           menu.appendChild(item);
         }
       }
       var javaManagerData = [];
       var javaBusy = {};
       var javaProgressCleanup = null;
+      function truncateJavaPath(p, max = 42) {
+        if (!p)
+          return "";
+        if (p.length <= max)
+          return p;
+        return `\u2026${p.slice(-(max - 1))}`;
+      }
       function renderJavaManager(list) {
         const container = document.getElementById("java-manager-list");
         if (!container)
@@ -36769,33 +37970,44 @@ buildId: ${id}` : ""));
             metaParts.push(j2.managed ? t("jm.managed") : t("jm.system"));
           if (j2.systemPaths.length > 0 && j2.managed)
             metaParts.push(t("jm.systemFound", { n: String(j2.systemPaths.length) }));
+          else if (j2.systemPaths.length > 1)
+            metaParts.push(t("jm.systemFound", { n: String(j2.systemPaths.length) }));
+          if (!j2.installed)
+            metaParts.push(t("jm.available"));
           const pathText = j2.installed && j2.path ? j2.path : "";
+          const canInstall = j2.canInstall !== false;
+          const installDisabled = !canInstall || j2.managed || !!busy;
+          const removeDisabled = !j2.managed || !!busy;
           return `
       <div class="list-row" data-java-ver="${j2.version}">
         <div class="java-row-badge ${j2.installed ? "installed" : ""}">${j2.version}</div>
         <div class="list-row-info">
           <div class="java-row-title">Java ${j2.version}</div>
-          <div class="list-row-meta">${metaParts.join(" \xB7 ") || t("jm.available")}</div>
+          <div class="list-row-meta">${metaParts.join(" \xB7 ")}</div>
         </div>
-        <div class="java-row-path" title="${pathText}">${pathText}</div>
+        <div class="java-row-path" title="${escapeHtml(pathText)}">${escapeHtml(truncateJavaPath(pathText))}</div>
         <div class="java-row-status ${statusCls}">${statusText}</div>
         <div class="java-row-actions">
-          <button class="list-row-btn java-install-btn" data-java-ver="${j2.version}" ${j2.installed || busy ? "disabled" : ""}>${t("jm.install")}</button>
-          <button class="list-row-btn danger java-remove-btn" data-java-ver="${j2.version}" ${!j2.managed || busy ? "disabled" : ""}>${t("jm.remove")}</button>
+          <button class="list-row-btn java-install-btn" data-java-ver="${j2.version}" ${installDisabled ? "disabled" : ""}>${t("jm.install")}</button>
+          <button class="list-row-btn danger java-remove-btn" data-java-ver="${j2.version}" ${removeDisabled ? "disabled" : ""}>${t("jm.remove")}</button>
         </div>
       </div>`;
         }).join("");
       }
-      async function refreshJavaManager() {
+      async function refreshJavaManager(force = true) {
         if (!api?.listJavaVersions)
           return;
         try {
-          javaManagerData = await api.listJavaVersions();
+          javaManagerData = await api.listJavaVersions(force);
         } catch {
           javaManagerData = [];
         }
         renderJavaManager(javaManagerData);
-        detectedJava = [];
+        try {
+          detectedJava = await api.detectJava?.(false) || [];
+        } catch {
+          detectedJava = [];
+        }
       }
       function initJavaManager() {
         const container = document.getElementById("java-manager-list");
@@ -36813,7 +38025,7 @@ buildId: ${id}` : ""));
               const dp = document.getElementById("download-progress");
               if (dp)
                 dp.classList.add("hidden");
-              void refreshJavaManager();
+              void refreshJavaManager(true);
               return;
             }
             javaBusy[version] = true;
@@ -36824,6 +38036,9 @@ buildId: ${id}` : ""));
             }
           });
         }
+        document.getElementById("java-manager-rescan")?.addEventListener("click", () => {
+          void refreshJavaManager(true);
+        });
         container.addEventListener("click", async (e) => {
           const btn = e.target.closest("button");
           if (!btn)
@@ -36841,7 +38056,7 @@ buildId: ${id}` : ""));
             javaBusy[version] = false;
             if (!result?.success)
               updateStatus(result?.error ? String(result.error) : t("jm.installFailed"));
-            await refreshJavaManager();
+            await refreshJavaManager(true);
           } else if (btn.classList.contains("java-remove-btn")) {
             if (!await confirmAction(t("jm.removeConfirm", { ver: String(version) })))
               return;
@@ -36851,7 +38066,7 @@ buildId: ${id}` : ""));
             javaBusy[version] = false;
             if (!result?.success)
               updateStatus(result?.error ? String(result.error) : t("jm.removeFailed"));
-            await refreshJavaManager();
+            await refreshJavaManager(true);
           }
         });
       }
@@ -36915,12 +38130,51 @@ buildId: ${id}` : ""));
       }
       document.getElementById("modal-build-java")?.addEventListener("change", () => {
         const select = document.getElementById("modal-build-java");
+        const javaCustomRow = document.getElementById("be-java-custom-row");
         if (!select)
           return;
         if (select.value !== lastAutoJavaPath) {
           javaManualChoice = true;
           javaAutoApplied = false;
           setJavaAutoHint("", "", false);
+        }
+        if (javaCustomRow)
+          javaCustomRow.classList.toggle("hidden", select.value !== "__custom");
+      });
+      document.getElementById("be-java-browse")?.addEventListener("click", async () => {
+        if (!api?.pickJava)
+          return;
+        const picked = await api.pickJava();
+        if (!picked?.path)
+          return;
+        const pathInput = document.getElementById("modal-build-java-path");
+        const select = document.getElementById("modal-build-java");
+        const javaCustomRow = document.getElementById("be-java-custom-row");
+        if (pathInput)
+          pathInput.value = picked.path;
+        if (select) {
+          select.value = "__custom";
+          const wrap = select.closest(".stngs-select-wrap");
+          if (wrap)
+            syncSelectUI(wrap);
+        }
+        if (javaCustomRow)
+          javaCustomRow.classList.remove("hidden");
+        javaManualChoice = true;
+        javaAutoApplied = false;
+        setJavaAutoHint(picked.version > 0 ? t("jm.compatibleSelected", { ver: String(picked.version) }) : "", picked.version > 0 ? "ok" : "", picked.version > 0);
+        if (picked.version > 0 && !detectedJava.some((j2) => j2.path === picked.path)) {
+          detectedJava.push({
+            name: picked.name || `Java ${picked.version}`,
+            path: picked.path,
+            version: picked.version,
+            managed: false
+          });
+          if (select) {
+            const menu = document.getElementById("modal-build-java-menu");
+            if (menu)
+              appendJavaOptions(select, menu);
+          }
         }
       });
       async function loadServers() {
@@ -37800,19 +39054,23 @@ buildId: ${id}` : ""));
         "idle",
         "run",
         "wave",
+        "hello",
         "sneak",
         "look",
         "cool",
+        "think",
+        "dab",
         "glide",
         "victory",
-        "sad",
+        "sleep",
         "dance"
       ];
       var SKIN_SHOT_FRAMES = {
         hero: { fillY: 0.56, maxFillX: 0.7, offsetY: -0.16 },
-        bust: { fillY: 0.72, maxFillX: 0.55, offsetY: 0.06 },
+        // Мягче заполнение: иначе bust/discord слишком крупно и «ныряют» в торс/руку
+        bust: { fillY: 0.58, maxFillX: 0.62, offsetY: 0.04 },
         back: { fillY: 0.54, maxFillX: 0.72, offsetY: -0.16 },
-        discord: { fillY: 0.78, maxFillX: 0.5, offsetY: 0.1 }
+        discord: { fillY: 0.6, maxFillX: 0.58, offsetY: 0.05 }
       };
       var skinAnimMode = "idle";
       var skinShotPreset = null;
@@ -37835,7 +39093,8 @@ buildId: ${id}` : ""));
             autoDetectModel: true,
             idleAnimation: true,
             enableControls: true,
-            antialias: true,
+            // Силуэт сглаживает SMAA в post-FX; MSAA канваса ломает pixel-art UV
+            antialias: false,
             transparent: false,
             presentation: "full"
           });
@@ -37843,6 +39102,7 @@ buildId: ${id}` : ""));
           viewerCapeUrl = void 0;
           skinViewer.controls.enableZoom = false;
           skinViewer.setCursorFollow(true);
+          updateSkinLocatorBadge();
           skinAnimMode = "idle";
           skinShotPreset = null;
           syncSkinAnimButtons();
@@ -38179,12 +39439,15 @@ buildId: ${id}` : ""));
         idle: "skins.animIdle",
         run: "skins.animRun",
         wave: "skins.animWave",
+        hello: "skins.animHello",
         sneak: "skins.animSneak",
         look: "skins.animLook",
         cool: "skins.animCool",
+        think: "skins.animThink",
+        dab: "skins.animDab",
         glide: "skins.animGlide",
         victory: "skins.animVictory",
-        sad: "skins.animSad",
+        sleep: "skins.animSleep",
         dance: "skins.animDance"
       };
       var SKIN_POSE_I18N = {
@@ -38216,6 +39479,7 @@ buildId: ${id}` : ""));
         fitSkinViewer();
         syncSkinAnimButtons();
         syncSkinPoseButtons();
+        updateSkinLocatorBadge();
         setSkinAnimDropdownOpen(false);
       }
       function setSkinShotPreset(id) {
@@ -38232,6 +39496,7 @@ buildId: ${id}` : ""));
         fitSkinViewer();
         syncSkinAnimButtons();
         syncSkinPoseButtons();
+        updateSkinLocatorBadge();
         setSkinAnimDropdownOpen(false);
       }
       function syncSkinPoseButtons() {
@@ -38285,6 +39550,7 @@ buildId: ${id}` : ""));
         if (!skinTabPromise) {
           skinTabPromise = (async () => {
             initSkinViewer();
+            bindSkinLocatorBadge();
             updateSkinsAccountUi();
             const auth = accountAuthType();
             if (auth === "msa" || auth === "yggdrasil") {
@@ -38342,6 +39608,7 @@ buildId: ${id}` : ""));
           viewerSkinUrl = dataUrl;
           fitSkinViewer();
           updateSkinModelBadge();
+          updateSkinLocatorBadge();
         } catch (e) {
           console.error("loadSkin failed", e);
         }
@@ -38368,6 +39635,46 @@ buildId: ${id}` : ""));
           return;
         }
         el.textContent = skinViewer.modelType === skinviewengine_1.SkinModelType.Slim ? t("skins.modelSlim") : t("skins.modelClassic");
+      }
+      function updateSkinLocatorBadge() {
+        const el = document.getElementById("skin-locator-badge");
+        const uuid = String(currentAccount?.uuid || "");
+        const color = !isOfflineAccount() && uuid ? (0, skinviewengine_1.locatorColorFromUuid)(uuid) : null;
+        if (skinViewer && !skinViewer.disposed) {
+          skinViewer.setLocatorUuid(color ? uuid : null);
+        }
+        if (!el)
+          return;
+        if (!color || skinShotPreset) {
+          el.hidden = true;
+          el.classList.add("hidden");
+          el.textContent = "";
+          el.style.removeProperty("--locator-color");
+          return;
+        }
+        const hex = `#${color.renderedHex.toUpperCase()}`;
+        el.hidden = false;
+        el.classList.remove("hidden");
+        el.textContent = hex;
+        el.style.setProperty("--locator-color", hex);
+        el.title = t("skins.locatorBarHint");
+        el.setAttribute("aria-label", t("skins.locatorBar"));
+      }
+      function bindSkinLocatorBadge() {
+        const el = document.getElementById("skin-locator-badge");
+        if (!el || el.dataset.bound === "1")
+          return;
+        el.dataset.bound = "1";
+        el.addEventListener("click", async () => {
+          const hex = el.textContent?.trim();
+          if (!hex)
+            return;
+          try {
+            await navigator.clipboard.writeText(hex);
+            showAppToast(t("skins.locatorCopied", { color: hex }));
+          } catch {
+          }
+        });
       }
       function accountAuthType() {
         return String(currentAccount?.meta?.type || currentAccount?.type || "offline");
@@ -38440,7 +39747,7 @@ buildId: ${id}` : ""));
         if (!accKey || accKey === "offline")
           return false;
         const nick = String(currentAccount?.username || "").trim();
-        let skinUrl = String(currentAccount?.skinUrl || "").trim() || (nick ? `https://skinsystem.ely.by/skins/${encodeURIComponent(nick)}.png` : "");
+        let skinUrl = String(currentAccount?.skinUrl || "").trim() || (nick ? `https://skinsystem.ely.by/skins/${encodeURIComponent(nick)}.png` : "") || "https://s.namemc.com/i/cbe20ed58814c5e1.png";
         if (api.getSkinData && currentAccount?.uuid) {
           try {
             const data = await api.getSkinData(String(currentAccount.uuid).replace(/-/g, ""), ELY_AUTH_SERVER);
@@ -38450,9 +39757,11 @@ buildId: ${id}` : ""));
             console.warn("[skins] ely getSkinData fallback failed", e);
           }
         }
-        if (!skinUrl)
-          return false;
-        const b64 = await api.fetchSkinImage(skinUrl);
+        let b64 = await api.fetchSkinImage(skinUrl);
+        if (!b64) {
+          skinUrl = "https://s.namemc.com/i/cbe20ed58814c5e1.png";
+          b64 = await api.fetchSkinImage(skinUrl);
+        }
         if (!b64)
           return false;
         const dataUrl = `data:image/png;base64,${b64}`;
@@ -38483,6 +39792,7 @@ buildId: ${id}` : ""));
           uploadBtn.disabled = offline;
           uploadBtn.classList.toggle("hidden", offline);
         }
+        updateSkinLocatorBadge();
       }
       async function refreshSkinsUiForAccount() {
         updateSkinsAccountUi();
@@ -39283,13 +40593,19 @@ buildId: ${id}` : ""));
       function setUpdatesTabIndicator(hasUpdate) {
         if (updatesTabEl)
           updatesTabEl.classList.toggle("has-update", hasUpdate);
+        const badge = document.getElementById("tb-update-badge");
+        if (badge) {
+          badge.hidden = !hasUpdate;
+          badge.classList.toggle("is-visible", hasUpdate);
+        }
       }
-      async function checkForUpdatesUI() {
-        if (!api?.checkForUpdates || !updateStatusEl)
+      async function checkForUpdatesUI(opts) {
+        if (!api?.checkForUpdates)
           return;
         if (updateBtn)
           updateBtn.disabled = true;
-        updateStatusEl.textContent = t("updates.checking");
+        if (updateStatusEl)
+          updateStatusEl.textContent = t("updates.checking");
         let info;
         try {
           info = await api.checkForUpdates();
@@ -39297,7 +40613,8 @@ buildId: ${id}` : ""));
           info = null;
         }
         if (!info || info.error) {
-          updateStatusEl.textContent = t("updates.checkFailed");
+          if (updateStatusEl)
+            updateStatusEl.textContent = t("updates.checkFailed");
           if (updateBtn) {
             updateBtn.disabled = false;
             updateBtn.textContent = t("btn.check");
@@ -39310,16 +40627,33 @@ buildId: ${id}` : ""));
         if (info.updateAvailable) {
           updatePending = true;
           setUpdatesTabIndicator(true);
-          updateStatusEl.textContent = t("updates.available", { latest: info.latest, current: info.current });
+          if (updateStatusEl) {
+            updateStatusEl.textContent = t("updates.available", { latest: info.latest, current: info.current });
+          }
           if (updateBtn) {
             updateBtn.disabled = false;
             updateBtn.textContent = t("btn.updateRestart");
             updateBtn.classList.add("has-update");
           }
+          if (opts?.autoLaunch && api.launchUpdater) {
+            const platform = api.getPlatformInfo?.()?.platform;
+            if (platform === "win32") {
+              if (updateStatusEl) {
+                updateStatusEl.textContent = t("updates.launching", { latest: info.latest });
+              }
+              const result = await api.launchUpdater();
+              if (result?.success)
+                return;
+              if (updateStatusEl)
+                updateStatusEl.textContent = t("updates.launchFailed");
+            }
+          }
         } else {
           updatePending = false;
           setUpdatesTabIndicator(false);
-          updateStatusEl.textContent = t("updates.latest", { current: info.current });
+          if (updateStatusEl) {
+            updateStatusEl.textContent = t("updates.latest", { current: info.current });
+          }
           if (updateBtn) {
             updateBtn.disabled = false;
             updateBtn.textContent = t("btn.check");
@@ -39340,6 +40674,17 @@ buildId: ${id}` : ""));
           return;
         }
         await checkForUpdatesUI();
+      });
+      document.getElementById("tb-update-badge")?.addEventListener("click", async () => {
+        if (updatePending) {
+          const result = await api?.launchUpdater();
+          if (result?.success)
+            return;
+        }
+        document.querySelector('.tab-btn[data-tab="settings"]')?.click();
+        window.setTimeout(() => {
+          document.querySelector('.stngs-sidebar [data-settings-tab="updates"]')?.click();
+        }, 80);
       });
       document.getElementById("about-copy-btn")?.addEventListener("click", () => {
         const lines = ["Undefined Client - Minecraft Launcher"];
@@ -39387,6 +40732,8 @@ buildId: ${id}` : ""));
           void runInstanceExport("zip", build);
         else if (action === "mrpack")
           void runInstanceExport("mrpack", build);
+        else if (action === "shortcut")
+          void createBuildDesktopShortcut(build);
       });
       document.addEventListener("click", () => hideBuildShareMenu());
       document.addEventListener("keydown", (e) => {
@@ -39583,6 +40930,7 @@ buildId: ${id}` : ""));
       function setAccentColorPopOpen(open) {
         const pop = document.getElementById("settings-accent-color-pop");
         const btn = document.getElementById("settings-custom-accent");
+        const wrap = btn?.closest(".accent-custom-wrap");
         if (!pop || !btn)
           return;
         accentPickerOpen = open;
@@ -39592,11 +40940,13 @@ buildId: ${id}` : ""));
           if (rgb)
             accentPickerHsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
           syncAccentColorPopUi();
+          wrap?.classList.add("is-open");
           pop.classList.remove("hidden");
           requestAnimationFrame(() => pop.classList.add("is-open"));
           btn.setAttribute("aria-expanded", "true");
         } else if (pop.classList.contains("is-open") || !pop.classList.contains("hidden")) {
           pop.classList.remove("is-open");
+          wrap?.classList.remove("is-open");
           btn.setAttribute("aria-expanded", "false");
           window.setTimeout(() => {
             if (!pop.classList.contains("is-open"))
@@ -39881,6 +41231,8 @@ buildId: ${id}` : ""));
         const scaleKey = "Undefined Client-ui-scale";
         const applyScale = (v2) => {
           document.body.style.zoom = String(v2 / 100);
+          if (typeof syncCustomCaret === "function")
+            syncCustomCaret();
         };
         const snapScale = (raw) => {
           let best = UI_SCALE_STEPS[0];
@@ -40255,6 +41607,32 @@ buildId: ${id}` : ""));
     ${btn}
   </div>`;
       }
+      function modsSkeletonHtml(count = 8) {
+        const mode = getModsViewMode();
+        if (mode === "cards") {
+          return Array.from({ length: count }, () => `<article class="mod-skel mod-skel--tile" aria-hidden="true">
+        <div class="mod-skel__hero"></div>
+        <div class="mod-skel__body">
+          <div class="mod-skel__head">
+            <div class="mod-skel__icon"></div>
+            <div class="mod-skel__lines">
+              <div class="mod-skel__bar mod-skel__bar--title"></div>
+              <div class="mod-skel__bar mod-skel__bar--sub"></div>
+            </div>
+          </div>
+          <div class="mod-skel__bar mod-skel__bar--desc"></div>
+          <div class="mod-skel__bar mod-skel__bar--desc-short"></div>
+        </div>
+      </article>`).join("");
+        }
+        return Array.from({ length: count }, () => `<div class="mod-skel mod-skel--row" aria-hidden="true">
+      <div class="mod-skel__icon"></div>
+      <div class="mod-skel__lines">
+        <div class="mod-skel__bar mod-skel__bar--title"></div>
+        <div class="mod-skel__bar mod-skel__bar--sub"></div>
+      </div>
+    </div>`).join("");
+      }
       async function renderSavedAccounts() {
         const list = document.getElementById("acc-popup-list");
         if (!list || !api?.loadAccounts)
@@ -40385,9 +41763,40 @@ buildId: ${id}` : ""));
       var modsLoaders = /* @__PURE__ */ new Set();
       var modsTags = /* @__PURE__ */ new Set();
       var modsKnownVersions = /* @__PURE__ */ new Set();
+      var modsVersionsManifestLoaded = false;
+      var modsVersionsManifestPromise = null;
       function modsPageSize() {
         const v2 = Number(localStorage.getItem("Undefined Client-mods-page-size") || "20");
         return [10, 20, 50].includes(v2) ? v2 : 20;
+      }
+      function ensureModsVersionFilter() {
+        if (modsVersionsManifestLoaded) {
+          updateModsVersionSelect();
+          return Promise.resolve();
+        }
+        if (modsVersionsManifestPromise)
+          return modsVersionsManifestPromise;
+        if (!api?.getVersions)
+          return Promise.resolve();
+        modsVersionsManifestPromise = api.getVersions().then((versions) => {
+          if (!Array.isArray(versions))
+            return;
+          for (const v2 of versions) {
+            const id = String(v2?.id || "").trim();
+            const type = String(v2?.type || "");
+            if (!id || type !== "release")
+              continue;
+            if (!/^\d+\.\d+(\.\d+)?$/.test(id))
+              continue;
+            modsKnownVersions.add(id);
+          }
+          modsVersionsManifestLoaded = modsKnownVersions.size > 0;
+          updateModsVersionSelect();
+        }).catch(() => {
+        }).finally(() => {
+          modsVersionsManifestPromise = null;
+        });
+        return modsVersionsManifestPromise;
       }
       function getModsViewMode() {
         return localStorage.getItem("Undefined Client-mods-view-mode") === "cards" ? "cards" : "list";
@@ -40448,7 +41857,7 @@ buildId: ${id}` : ""));
         return source === "curseforge" ? `<span class="mod-source-badge mod-source-badge--cf">CurseForge</span>` : `<span class="mod-source-badge mod-source-badge--mr">Modrinth</span>`;
       }
       function absolutizeCatalogHtml(html) {
-        return String(html || "").replace(/(<img\b[^>]*?\bsrc=(["']))([^"']+)(\2)/gi, (_m, pre, _q, src, post) => {
+        return String(html || "").replace(/(<img\b[^>]*?\bsrc=(["']))([^"']+)(\2)/gi, (_m2, pre, _q2, src, post) => {
           const abs = (0, apiBase_1.catalogImageUrl)(src) || absoluteApiUrl(src) || src;
           return `${pre}${abs}${post}`;
         });
@@ -40688,6 +42097,7 @@ buildId: ${id}` : ""));
       }
       var modsCatalogRequested = false;
       function ensureModsCatalog() {
+        void ensureModsVersionFilter();
         if (modsCatalogRequested)
           return;
         modsCatalogRequested = true;
@@ -40706,7 +42116,8 @@ buildId: ${id}` : ""));
         currentCategory = category;
         if (api?.getModrinthProjects) {
           if (!append) {
-            grid.innerHTML = catalogStateHtml("mods.loadingTitle");
+            applyModsViewModeUi();
+            grid.innerHTML = modsSkeletonHtml();
             modsRenderedCount = 0;
           }
           try {
@@ -40729,10 +42140,19 @@ buildId: ${id}` : ""));
             }
             const hits = result.hits || [];
             for (const h of hits) {
-              for (const gv of h.versions || [])
-                modsKnownVersions.add(gv);
+              const list = h.versions || h.game_versions || [];
+              if (!Array.isArray(list))
+                continue;
+              for (const gv of list) {
+                const id = String(gv || "").trim();
+                if (id)
+                  modsKnownVersions.add(id);
+              }
             }
-            updateModsVersionSelect();
+            if (!modsVersionsManifestLoaded)
+              void ensureModsVersionFilter();
+            else
+              updateModsVersionSelect();
             modsTotal = result.total_hits || 0;
             if (append) {
               modsData = modsData.concat(hits);
@@ -40751,6 +42171,7 @@ buildId: ${id}` : ""));
       }
       var pendingDownloadVersionId = "";
       var pendingDownloadGameVersions = [];
+      var pendingDownloadLoaders = [];
       var pendingVersionsAll = [];
       var pendingProjectType = "mod";
       var versionsUiMode = "quick";
@@ -41064,18 +42485,21 @@ buildId: ${id}` : ""));
             const vid = el.getAttribute("data-version-id");
             const vobj = versions.find((v2) => v2.id === vid);
             pendingDownloadGameVersions = vobj?.game_versions || [];
+            pendingDownloadLoaders = (vobj?.loaders || []).map((l3) => String(l3).toLowerCase());
           });
         });
       }
       function openModalVersionsForDownload(projectId) {
         pendingDownloadVersionId = "";
         pendingDownloadGameVersions = [];
+        pendingDownloadLoaders = [];
         pendingTargetProjectId = projectId;
         pendingVersionsAll = [];
         pendingProjectType = "mod";
         versionsUiMode = "quick";
-        versionsPickGame = modsVersion || "";
-        versionsPickLoader = modsLoaders.size === 1 ? [...modsLoaders][0] : "";
+        const beMeta = editingBuildId ? getEditingBuildCatalogMeta() : null;
+        versionsPickGame = beMeta?.gameVersion || modsVersion || "";
+        versionsPickLoader = beMeta?.loader && beMeta.loader !== "vanilla" ? beMeta.loader : modsLoaders.size === 1 ? [...modsLoaders][0] : "";
         versionsShowAll = false;
         versionsOpenDd = null;
         const titleEl = document.getElementById("modal-versions-title");
@@ -41150,6 +42574,7 @@ buildId: ${id}` : ""));
           pendingDownloadVersionId = installBtn.getAttribute("data-vdd-install") || "";
           const vobj = pendingVersionsAll.find((v2) => v2.id === pendingDownloadVersionId);
           pendingDownloadGameVersions = vobj?.game_versions || [];
+          pendingDownloadLoaders = (vobj?.loaders || []).map((l3) => String(l3).toLowerCase());
           void confirmPendingVersionInstall();
         }
       });
@@ -41200,9 +42625,31 @@ buildId: ${id}` : ""));
         if (!selected || !pendingTargetProjectId)
           return;
         pendingDownloadVersionId = selected.getAttribute("data-version-id") || "";
+        const vobj = pendingVersionsAll.find((v2) => v2.id === pendingDownloadVersionId);
+        pendingDownloadGameVersions = vobj?.game_versions || [];
+        pendingDownloadLoaders = (vobj?.loaders || []).map((l3) => String(l3).toLowerCase());
         await confirmPendingVersionInstall();
       });
+      function contentVersionFitsBuild(gameVersions, loaders, build, type) {
+        const anyGame = build.gameVersion === "latest_release" || build.gameVersion === "latest_snapshot";
+        if (!anyGame && gameVersions.length && !gameVersions.includes(build.gameVersion))
+          return false;
+        if (type === "mod" && loaders.length) {
+          const real = loaders.map((l3) => String(l3).toLowerCase()).filter((l3) => l3 && l3 !== "minecraft" && l3 !== "datapack");
+          if (real.length && !real.includes(String(build.loader || "").toLowerCase()))
+            return false;
+        }
+        return true;
+      }
       function openModalTargetBuildForDownload(projectId) {
+        if (editingBuildId) {
+          const editing = savedBuilds.find((b2) => b2.id === editingBuildId);
+          if (editing && contentVersionFitsBuild(pendingDownloadGameVersions, pendingDownloadLoaders, editing, pendingProjectType)) {
+            updateStatus(t("status.downloading"));
+            void downloadModToBuild(projectId, editing.id, pendingDownloadVersionId, pendingProjectType);
+            return;
+          }
+        }
         const list = document.getElementById("target-build-list");
         const confirmBtn = document.getElementById("modal-target-confirm");
         if (!list)
@@ -41214,7 +42661,7 @@ buildId: ${id}` : ""));
         } else {
           list.innerHTML = savedBuilds.map((b2) => {
             const iconSrc = b2.icon ? buildIconSrc(b2.icon) : DEFAULT_BUILD_ICON_SRC;
-            const compatible = pendingDownloadGameVersions.length === 0 || b2.gameVersion === "latest_release" || b2.gameVersion === "latest_snapshot" || pendingDownloadGameVersions.includes(b2.gameVersion);
+            const compatible = contentVersionFitsBuild(pendingDownloadGameVersions, pendingDownloadLoaders, b2, pendingProjectType);
             const compatCls = compatible ? "" : " incompatible";
             const compatAttr = compatible ? "" : ` title="${t("mods.incompatibleBuild")}"`;
             return `<div class="build-option-item${compatCls}" data-build-id="${b2.id}"${compatAttr}>
@@ -41247,7 +42694,7 @@ buildId: ${id}` : ""));
           return;
         closeModal("modal-target-build");
         updateStatus(t("status.downloading"));
-        await downloadModToBuild(pendingTargetProjectId, buildId, pendingDownloadVersionId);
+        await downloadModToBuild(pendingTargetProjectId, buildId, pendingDownloadVersionId, pendingProjectType);
       });
       async function downloadModToBuild(projectId, buildId, versionId, contentTypeHint, options) {
         try {
@@ -41689,7 +43136,27 @@ ${lines.join("\n")}${depsNote}`);
           await (0, ui_1.openGroupInviteModal)(payload.token);
           return;
         }
+        if (payload.action === "launch") {
+          await handleDeepLinkLaunch(payload.id);
+          return;
+        }
         await handleDeepLinkInstall(payload);
+      }
+      async function handleDeepLinkLaunch(buildId) {
+        const id = String(buildId || "").trim();
+        if (!id)
+          return;
+        if (!savedBuilds.length && api?.loadBuilds) {
+          await loadBuilds();
+        }
+        const build = savedBuilds.find((b2) => b2.id === id);
+        if (!build) {
+          updateStatus(t("status.error", { msg: t("share.errBuild") }));
+          switchTab("builds");
+          return;
+        }
+        switchTab("builds");
+        await launchBuild(build);
       }
       async function handleDeepLinkInstall(payload) {
         if (!payload || payload.action !== "install")
@@ -41828,6 +43295,26 @@ ${lines.join("\n")}${depsNote}`);
           menu.removeEventListener("animationend", onEnd);
           finish();
         }, 200);
+      }
+      async function createBuildDesktopShortcut(build) {
+        if (!api?.createBuildShortcut) {
+          updateStatus(t("share.shortcutFail"));
+          return;
+        }
+        try {
+          const res = await api.createBuildShortcut(build.id);
+          if (res?.success) {
+            updateStatus(t("share.shortcutDone", { name: res.name || build.name }));
+            return;
+          }
+          if (res?.error === "unsupported_platform") {
+            updateStatus(t("share.shortcutUnsupported"));
+            return;
+          }
+          updateStatus(t("share.shortcutFail"));
+        } catch {
+          updateStatus(t("share.shortcutFail"));
+        }
       }
       function openBuildShareMenu(anchor, build) {
         const menu = document.getElementById("build-share-menu");
@@ -42021,6 +43508,12 @@ ${lines.join("\n")}${depsNote}`);
         const stats = document.getElementById("share-import-stats");
         if (stats)
           stats.innerHTML = "";
+        const filesWrap = document.getElementById("share-import-files-wrap");
+        const filesEl = document.getElementById("share-import-files");
+        if (filesWrap)
+          filesWrap.classList.add("hidden");
+        if (filesEl)
+          filesEl.innerHTML = "";
         const iconEl = document.getElementById("share-import-icon");
         if (iconEl)
           iconEl.innerHTML = "";
@@ -42077,6 +43570,18 @@ ${lines.join("\n")}${depsNote}`);
       <div class="share-import-stat"><span>${t("share.statShaders")}</span><b>${c.shaders}</b></div>
       <div class="share-import-stat"><span>${t("share.statDataPacks")}</span><b>${c.dataPacks}</b></div>
     `;
+        }
+        if (filesEl && filesWrap && Array.isArray(m2.files) && m2.files.length) {
+          const shown = m2.files.slice(0, 40);
+          const more = m2.files.length - shown.length;
+          filesEl.innerHTML = shown.map((f) => {
+            const kind = String(f.contentType || "mod");
+            const kindKey = `import.manifest.kind.${kind === "resourcepack" ? "resourcepack" : kind}`;
+            const kindLabel = t(kindKey) !== kindKey ? t(kindKey) : kind;
+            const label = f.name || f.filename || "\u2014";
+            return `<div class="import-manifest-file"><span class="import-manifest-file-kind">${escapeManifestText(kindLabel)}</span><span class="import-manifest-file-name" title="${escapeManifestText(label)}">${escapeManifestText(label)}</span></div>`;
+          }).join("") + (more > 0 ? `<div class="import-manifest-more">${t("import.manifest.more", { n: more })}</div>` : "");
+          filesWrap.classList.remove("hidden");
         }
         if (confirmBtn)
           confirmBtn.disabled = false;
@@ -42294,6 +43799,7 @@ ${lines.join("\n")}${depsNote}`);
       }
       initToolbarSticky("tab-mods", "mods-search-bar", "mods-toolbar-sentinel");
       initToolbarSticky("tab-servers", "servers-search-bar", "servers-toolbar-sentinel");
+      initToolbarSticky("be-install-scroll", "be-install-search-bar", "be-install-toolbar-sentinel");
       document.addEventListener("click", (e) => {
         const wrap = document.getElementById("mods-filters-toggle")?.parentElement;
         if (!wrap || !modsFiltersPopup?.classList.contains("open"))
@@ -42713,10 +44219,16 @@ ${lines.join("\n")}${depsNote}`);
       }
       var PRESENCE_MODALS = { "modal-settings": "settings", "modal-about": "about" };
       var modalZCounter = 1500;
+      var modalCloseTimers = /* @__PURE__ */ new Map();
       function openModal(id) {
         const el = document.getElementById(id);
         if (!el)
           return;
+        const pending = modalCloseTimers.get(id);
+        if (pending != null) {
+          clearTimeout(pending);
+          modalCloseTimers.delete(id);
+        }
         el.classList.remove("hidden", "closing");
         let maxZ = modalZCounter;
         document.querySelectorAll(".modal-overlay").forEach((node) => {
@@ -42738,12 +44250,17 @@ ${lines.join("\n")}${depsNote}`);
           return;
         if (id === "modal-mod-details")
           closeBeShotViewer();
+        const prev = modalCloseTimers.get(id);
+        if (prev != null)
+          clearTimeout(prev);
         el.classList.add("closing");
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+          modalCloseTimers.delete(id);
           el.classList.add("hidden");
           el.classList.remove("closing");
           el.style.removeProperty("z-index");
         }, 120);
+        modalCloseTimers.set(id, timer);
         if (PRESENCE_MODALS[id])
           pushPresence(presenceTab);
       }
@@ -42838,6 +44355,7 @@ ${lines.join("\n")}${depsNote}`);
         { id: "modal-settings", close: () => closeModal("modal-settings") },
         { id: "modal-stats", close: () => closeModal("modal-stats") },
         { id: "modal-target-build", close: () => closeModal("modal-target-build") },
+        { id: "modal-be-install", close: () => closeModal("modal-be-install") },
         { id: "modal-versions", close: () => closeModal("modal-versions") },
         { id: "modal-mod-details", close: () => closeModal("modal-mod-details") },
         { id: "modal-news-details", close: () => closeModal("modal-news-details") },
@@ -42918,27 +44436,13 @@ ${lines.join("\n")}${depsNote}`);
         if (preview)
           preview.style.background = "";
         setBuildIconPreview(pendingBuildIcon);
-        if (versionSelect && !versionsPopulated && api?.getVersions) {
-          versionsPopulated = true;
-          api.getVersions().then((versions) => {
-            if (!versions || !Array.isArray(versions))
-              return;
-            const seen = /* @__PURE__ */ new Set();
-            for (const v2 of versions) {
-              const id = v2.id;
-              if (seen.has(id))
-                continue;
-              seen.add(id);
-              if (["old_alpha", "old_beta"].includes(v2.type))
-                continue;
-              appendBuildVersionOption(id, id + (v2.type === "snapshot" ? t("be.snapshotSuffix") : ""));
-            }
-            if (build && build.gameVersion && build.gameVersion !== "latest_release" && build.gameVersion !== "latest_snapshot") {
-              versionSelect.value = build.gameVersion;
-            }
-            syncBuildVersionUI();
-          }).catch(() => {
-          });
+        await ensureBuildVersionsLoaded();
+        if (build && versionSelect && build.gameVersion && build.gameVersion !== "latest_release" && build.gameVersion !== "latest_snapshot") {
+          if (!Array.from(versionSelect.options).some((o) => o.value === build.gameVersion)) {
+            appendBuildVersionOption(build.gameVersion, build.gameVersion);
+          }
+          versionSelect.value = build.gameVersion;
+          syncBuildVersionUI();
         }
         if (build) {
           editingBuildId = build.id;
@@ -42952,9 +44456,9 @@ ${lines.join("\n")}${depsNote}`);
             build.shaders = [];
           if (!build.dataPacks)
             build.dataPacks = [];
-          const openSection = document.getElementById("modal-build-open-section");
-          if (openSection)
-            openSection.style.display = "";
+          const openFolderBtn = document.getElementById("modal-build-open-folder");
+          if (openFolderBtn)
+            openFolderBtn.hidden = false;
           if (title)
             title.textContent = t("be.manageTitle");
           if (sub)
@@ -43008,9 +44512,9 @@ ${lines.join("\n")}${depsNote}`);
           lastAutoJavaPath = "";
           javaManualChoice = false;
           setJavaAutoHint("", "", false);
-          const openSection = document.getElementById("modal-build-open-section");
-          if (openSection)
-            openSection.style.display = "none";
+          const openFolderBtn = document.getElementById("modal-build-open-folder");
+          if (openFolderBtn)
+            openFolderBtn.hidden = true;
           if (title)
             title.textContent = t("be.newTitle");
           if (sub)
@@ -43076,7 +44580,8 @@ ${lines.join("\n")}${depsNote}`);
         }
         openModal("modal-build");
         populateLoaderVersions(document.getElementById("modal-build-loader")?.value || "vanilla", document.getElementById("modal-build-version")?.value || "latest_release");
-        void populateJavaOptions().then(() => {
+        updateBeLoaderTabsVisibility();
+        void populateJavaOptions(true).then(() => {
           const javaSelect = document.getElementById("modal-build-java");
           const javaCustomRow = document.getElementById("be-java-custom-row");
           let val = "";
@@ -43227,6 +44732,34 @@ ${lines.join("\n")}${depsNote}`);
         "be-shaders-list": "shaderpacks",
         "be-dp-list": "datapacks"
       };
+      var BE_DROP_EXTS = {
+        "be-mods-list": /* @__PURE__ */ new Set([".jar", ".litemod", ".zip", ".disabled"]),
+        "be-rp-list": /* @__PURE__ */ new Set([".zip"]),
+        "be-shaders-list": /* @__PURE__ */ new Set([".zip"]),
+        "be-dp-list": /* @__PURE__ */ new Set([".zip"])
+      };
+      function isOsFileDrag(dt) {
+        if (!dt)
+          return false;
+        return Array.from(dt.types || []).includes("Files");
+      }
+      function extractDroppedFilePaths(dt, listId) {
+        if (!dt?.files?.length)
+          return [];
+        const allow = BE_DROP_EXTS[listId];
+        const paths = [];
+        for (let i = 0; i < dt.files.length; i++) {
+          const f = dt.files.item(i);
+          if (!f?.path)
+            continue;
+          const lower = f.path.toLowerCase();
+          const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".")) : "";
+          if (allow && ext && !allow.has(ext))
+            continue;
+          paths.push(f.path);
+        }
+        return paths;
+      }
       function listIdToBuildKey(listId) {
         return LIST_ID_TO_BUILD_KEY[listId];
       }
@@ -43235,7 +44768,7 @@ ${lines.join("\n")}${depsNote}`);
         if (!list)
           return;
         if (items.length === 0) {
-          list.innerHTML = '<div class="be-file-empty">' + t("be.noItems") + "</div>";
+          list.innerHTML = '<div class="be-file-empty"><div>' + t("be.noItems") + '</div><div class="be-file-drop-hint">' + t("be.dropHint") + "</div></div>";
           return;
         }
         list.innerHTML = items.map((item, i) => {
@@ -43266,18 +44799,31 @@ ${lines.join("\n")}${depsNote}`);
         }).join("");
         list.querySelectorAll(".be-file-item[draggable]").forEach((el) => {
           el.addEventListener("dragstart", (e) => {
+            if (isOsFileDrag(e.dataTransfer))
+              return;
             el.classList.add("dragging");
             e.dataTransfer?.setData("text/plain", String(el.dataset.index));
           });
           el.addEventListener("dragend", () => el.classList.remove("dragging"));
           el.addEventListener("dragover", (e) => {
             e.preventDefault();
+            if (isOsFileDrag(e.dataTransfer)) {
+              list.classList.add("be-file-list--drop");
+              return;
+            }
             el.classList.add("drag-over");
           });
           el.addEventListener("dragleave", () => el.classList.remove("drag-over"));
           el.addEventListener("drop", (e) => {
             e.preventDefault();
             el.classList.remove("drag-over");
+            const paths = extractDroppedFilePaths(e.dataTransfer, listId);
+            if (paths.length) {
+              e.stopPropagation();
+              list.classList.remove("be-file-list--drop");
+              void runBeImportFiles(listId, paths);
+              return;
+            }
             const fromIdx = parseInt(e.dataTransfer?.getData("text/plain") || "", 10);
             const toIdx = parseInt(el.dataset.index || "", 10);
             if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx)
@@ -43822,12 +45368,29 @@ ${lines.join("\n")}${depsNote}`);
       document.getElementById("news-refresh-btn")?.addEventListener("click", () => void loadNews(true));
       var detailsProjectId = "";
       var modDetailsTab = "desc";
+      function unwrapCatalogImageUrl(raw) {
+        const text = String(raw || "").trim();
+        if (!text)
+          return "";
+        try {
+          const abs = text.startsWith("http") ? text : (0, apiBase_1.catalogImageUrl)(text);
+          const u = new URL(abs);
+          if (u.pathname.includes("/api/catalog/image")) {
+            const inner = u.searchParams.get("url");
+            if (inner)
+              return inner;
+          }
+        } catch {
+        }
+        return text;
+      }
       function modGalleryFullUrl(item) {
-        const raw = String(item?.raw_url || "").trim();
-        if (raw)
-          return raw;
-        const url = String(item?.url || item || "").trim();
-        return url.replace(/_350(?=\.(webp|png|jpe?g|gif)(?:\?|$))/i, "");
+        const raw = unwrapCatalogImageUrl(String(item?.raw_url || "").trim());
+        const url = unwrapCatalogImageUrl(String(item?.url || item || "").trim());
+        const candidate = raw || url;
+        if (!candidate)
+          return "";
+        return candidate.replace(/_(?:[1-9]\d{2,3})(?=\.(webp|png|jpe?g|gif)(?:\?|$))/i, "").replace(/([?&])(?:width|w|height|h)=\d+/gi, "$1").replace(/\?&/, "?").replace(/[?&]$/, "");
       }
       function modProjectGallery(project) {
         const out = [];
@@ -43896,7 +45459,9 @@ ${lines.join("\n")}${depsNote}`);
       </button>`;
         }).join("");
         gallery.querySelectorAll("[data-gallery-index]").forEach((btn) => {
-          btn.addEventListener("click", () => {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             const idx = Number(btn.getAttribute("data-gallery-index"));
             if (!Number.isFinite(idx))
               return;
@@ -44091,11 +45656,68 @@ ${lines.join("\n")}${depsNote}`);
         zone?.classList.remove("is-busy");
         if (infoText)
           infoText.textContent = "";
+        clearImportManifestPreview();
         if (linkInput)
           linkInput.value = "";
         setImportLinkError("");
         syncImportConfirmEnabled();
         openModal("modal-import");
+      }
+      function clearImportManifestPreview() {
+        const stats = document.getElementById("import-manifest-stats");
+        const files = document.getElementById("import-manifest-files");
+        if (stats) {
+          stats.innerHTML = "";
+          stats.classList.add("hidden");
+        }
+        if (files) {
+          files.innerHTML = "";
+          files.classList.add("hidden");
+        }
+      }
+      function escapeManifestText(s) {
+        return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+      function renderImportManifestPreview(inspect) {
+        const statsEl = document.getElementById("import-manifest-stats");
+        const filesEl = document.getElementById("import-manifest-files");
+        if (!statsEl || !filesEl)
+          return;
+        const c = inspect.counts;
+        const chips = [];
+        if (c) {
+          if (c.mods)
+            chips.push(`<span class="import-manifest-stat">${t("import.manifest.mods", { n: c.mods })}</span>`);
+          if (c.resourcePacks)
+            chips.push(`<span class="import-manifest-stat">${t("import.manifest.resourcePacks", { n: c.resourcePacks })}</span>`);
+          if (c.shaders)
+            chips.push(`<span class="import-manifest-stat">${t("import.manifest.shaders", { n: c.shaders })}</span>`);
+          if (c.dataPacks)
+            chips.push(`<span class="import-manifest-stat">${t("import.manifest.dataPacks", { n: c.dataPacks })}</span>`);
+          if (c.configs)
+            chips.push(`<span class="import-manifest-stat">${t("import.manifest.configs", { n: c.configs })}</span>`);
+        }
+        if (chips.length) {
+          statsEl.innerHTML = chips.join("");
+          statsEl.classList.remove("hidden");
+        } else {
+          statsEl.innerHTML = "";
+          statsEl.classList.add("hidden");
+        }
+        const preview = Array.isArray(inspect.previewFiles) ? inspect.previewFiles : [];
+        if (!preview.length) {
+          filesEl.innerHTML = "";
+          filesEl.classList.add("hidden");
+          return;
+        }
+        const shown = preview.slice(0, 24);
+        const more = preview.length - shown.length;
+        filesEl.innerHTML = shown.map((f) => {
+          const kindKey = `import.manifest.kind.${f.kind}`;
+          const kindLabel = t(kindKey) !== kindKey ? t(kindKey) : f.kind;
+          return `<div class="import-manifest-file"><span class="import-manifest-file-kind">${escapeManifestText(kindLabel)}</span><span class="import-manifest-file-name" title="${escapeManifestText(f.name)}">${escapeManifestText(f.name)}</span></div>`;
+        }).join("") + (more > 0 ? `<div class="import-manifest-more">${t("import.manifest.more", { n: more })}</div>` : "");
+        filesEl.classList.remove("hidden");
       }
       async function selectImportModpackFile() {
         if (!api?.pickModpack)
@@ -44114,6 +45736,7 @@ ${lines.join("\n")}${depsNote}`);
           info.classList.add("is-loading");
         }
         zone?.classList.add("is-busy");
+        clearImportManifestPreview();
         if (infoText)
           infoText.textContent = t("import.detecting");
         if (confirmBtn)
@@ -44133,6 +45756,7 @@ ${lines.join("\n")}${depsNote}`);
                 loaderVer,
                 n: String(i.fileCount ?? 0)
               })}`;
+              renderImportManifestPreview(i);
             } else if (infoText) {
               infoText.textContent = t("import.selected", { name });
             }
@@ -44355,9 +45979,13 @@ ${lines.join("\n")}${depsNote}`);
       async function openModGalleryViewer(index) {
         if (index < 0 || index >= modDetailsGalleryItems.length)
           return;
+        const body = document.querySelector("#modal-mod-details .modal-body");
+        const savedScroll = body?.scrollTop ?? 0;
         beShotViewerMode = "gallery";
         beShotViewerIndex = index;
         await showBeShotViewer();
+        if (body)
+          body.scrollTop = savedScroll;
       }
       async function loadBeShotViewerSlide() {
         const img = document.getElementById("be-shot-viewer-img");
@@ -44387,8 +46015,6 @@ ${lines.join("\n")}${depsNote}`);
               loading.classList.add("hidden");
             return;
           }
-          if (item.thumb)
-            img.src = (0, apiBase_1.catalogImageUrl)(item.thumb);
           const src = (0, apiBase_1.catalogImageUrl)(item.url);
           const slideIndex = beShotViewerIndex;
           await new Promise((resolve) => {
@@ -44398,7 +46024,20 @@ ${lines.join("\n")}${depsNote}`);
               }
               resolve();
             };
-            img.onerror = () => resolve();
+            img.onerror = () => {
+              if (item.thumb && img.src !== (0, apiBase_1.catalogImageUrl)(item.thumb)) {
+                img.onload = () => {
+                  if (beShotViewerMode === "gallery" && beShotViewerIndex === slideIndex) {
+                    img.classList.add("is-ready");
+                  }
+                  resolve();
+                };
+                img.onerror = () => resolve();
+                img.src = (0, apiBase_1.catalogImageUrl)(item.thumb);
+                return;
+              }
+              resolve();
+            };
             img.src = src;
           });
           if (loading)
@@ -44709,10 +46348,20 @@ ${lines.join("\n")}${depsNote}`);
       document.getElementById("modal-build-open-folder")?.addEventListener("click", async () => {
         if (!editingBuildId)
           return;
-        if (api?.getInstancePath && api?.openPath) {
+        if (!api?.getInstancePath || !api?.openPath)
+          return;
+        try {
           const instanceDir = await api.getInstancePath(editingBuildId);
-          if (instanceDir)
-            await api.openPath(instanceDir);
+          if (!instanceDir)
+            return;
+          const err = await api.openPath(instanceDir);
+          if (err) {
+            updateStatus(String(err));
+            return;
+          }
+        } catch (e) {
+          updateStatus(e instanceof Error ? e.message : String(e));
+          return;
         }
         closeModalBuildModal();
       });
@@ -44726,6 +46375,280 @@ ${lines.join("\n")}${depsNote}`);
         "be-shaders-add": "be-shaders-list",
         "be-dp-add": "be-dp-list"
       };
+      var BE_LIST_TO_CONTENT = {
+        "be-mods-list": {
+          type: "mod",
+          titleKey: "be.install.titleMod",
+          localHintKey: "be.install.localHintMod"
+        },
+        "be-rp-list": {
+          type: "resourcepack",
+          titleKey: "be.install.titleResourcepack",
+          localHintKey: "be.install.localHintResourcepack"
+        },
+        "be-shaders-list": {
+          type: "shader",
+          titleKey: "be.install.titleShader",
+          localHintKey: "be.install.localHintShader"
+        },
+        "be-dp-list": {
+          type: "datapack",
+          titleKey: "be.install.titleDatapack",
+          localHintKey: "be.install.localHintDatapack"
+        }
+      };
+      var BE_LOADER_CATALOG = /* @__PURE__ */ new Set(["fabric", "forge", "neoforge", "quilt"]);
+      var beInstallListId = "be-mods-list";
+      var beInstallType = "mod";
+      var beInstallQuery = "";
+      var beInstallOffset = 0;
+      var beInstallTotal = 0;
+      var beInstallData = [];
+      var beInstallLoading = false;
+      var beInstallToken = 0;
+      var beInstallSearchTimer = null;
+      var beInstallSource = "both";
+      var beInstallSort = "relevance";
+      function getEditingBuildCatalogMeta() {
+        const versionSelect = document.getElementById("modal-build-version");
+        const loaderSelect = document.getElementById("modal-build-loader");
+        const gameVersion = String(versionSelect?.value || editingBuild?.gameVersion || "").trim();
+        const loader = String(loaderSelect?.value || editingBuild?.loader || "vanilla").trim().toLowerCase();
+        return { gameVersion, loader: loader || "vanilla" };
+      }
+      function beInstallNeedsLoaderFilter(type) {
+        return type === "mod";
+      }
+      function updateBeLoaderTabsVisibility() {
+        const loader = getEditingBuildCatalogMeta().loader;
+        const isVanilla = !BE_LOADER_CATALOG.has(loader);
+        document.querySelectorAll('.be-tab[data-be-tab="mods"], .be-tab[data-be-tab="shaders"]').forEach((el) => {
+          el.hidden = isVanilla;
+        });
+        document.querySelectorAll('.be-panel[data-be-panel="mods"], .be-panel[data-be-panel="shaders"]').forEach((el) => {
+          el.hidden = isVanilla;
+        });
+        const active = document.querySelector(".be-tab.active");
+        const tab = active?.getAttribute("data-be-tab") || "";
+        if (isVanilla && (tab === "mods" || tab === "shaders")) {
+          switchBeTab("general");
+        }
+      }
+      function applyBeInstallViewModeUi() {
+        const mode = getModsViewMode();
+        const grid = document.getElementById("be-install-grid");
+        const btn = document.getElementById("be-install-view-toggle");
+        grid?.classList.toggle("is-cards", mode === "cards");
+        if (btn) {
+          btn.setAttribute("aria-pressed", mode === "cards" ? "true" : "false");
+          btn.dataset.mode = mode;
+          const titleKey = mode === "cards" ? "mods.view.toggleToList" : "mods.view.toggleToCards";
+          btn.setAttribute("title", t(titleKey));
+          btn.setAttribute("aria-label", t(titleKey));
+        }
+      }
+      function syncBeInstallFilterSelects() {
+        const sourceSel = document.getElementById("be-install-source-select");
+        const sortSel = document.getElementById("be-install-sort-select");
+        if (sourceSel) {
+          sourceSel.value = beInstallSource;
+          const wrap = sourceSel.closest(".stngs-select-wrap");
+          if (wrap)
+            syncSelectUI(wrap);
+        }
+        if (sortSel) {
+          sortSel.value = beInstallSort;
+          const wrap = sortSel.closest(".stngs-select-wrap");
+          if (wrap)
+            syncSelectUI(wrap);
+        }
+      }
+      function renderBeInstallCard(p, mode) {
+        const id = escapeHtml(String(p.project_id || p.slug || p.id || ""));
+        const title = escapeHtml(String(p.title || "Unknown"));
+        const desc = escapeHtml(String(p.description || "").substring(0, mode === "cards" ? 120 : 110));
+        const accent = modAccentColor(p);
+        const source = modSourceOf(p);
+        const sourceBadge = modSourceBadge(source);
+        const icon = p.icon_url ? `<img src="${escapeHtml((0, apiBase_1.catalogImageUrl)(p.icon_url))}" alt="">` : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
+        const actions = `<div class="mod-card-actions${mode === "cards" ? " mod-tile__actions" : ""}">
+    <button type="button" class="details-btn" data-be-install-details="${id}">${t("btn.details")}</button>
+    <button type="button" class="list-row-btn download-btn" data-be-install-pick="${id}">${t("btn.install")}</button>
+  </div>`;
+        if (mode === "cards") {
+          const authorRaw = String(p.author || "").trim();
+          const gallery = modGalleryUrl(p);
+          const placeholder = source === "curseforge" ? MOD_CF_GALLERY_PLACEHOLDER : MOD_GALLERY_PLACEHOLDER;
+          const hero = gallery ? `<img class="mod-tile__hero-img" src="${escapeHtml((0, apiBase_1.catalogImageUrl)(gallery))}" alt="" loading="lazy">` : placeholder;
+          const downloads = formatAiDownloads(p.downloads);
+          const follows = formatAiDownloads(p.follows);
+          const updated = formatModsRelativeDate(p.date_modified);
+          return `<article class="mod-tile" data-modrinth-id="${id}" data-mod-source="${escapeHtml(source)}">
+      <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
+      <div class="mod-tile__body">
+        <div class="mod-tile__head">
+          <div class="mod-tile__icon" style="background:${accent}">${icon}</div>
+          <div class="mod-tile__titles">
+            <div class="mod-tile__name">${title} ${sourceBadge}</div>
+            ${authorRaw ? `<div class="mod-tile__author">${escapeHtml(t("mods.byAuthor", { author: authorRaw }))}</div>` : ""}
+          </div>
+        </div>
+        <p class="mod-tile__desc">${desc}</p>
+        <div class="mod-tile__stats">
+          <span title="${escapeHtml(t("mods.stat.downloads"))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v6.5M3.5 5.5L6 8l2.5-2.5M2 10.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            ${escapeHtml(downloads)}
+          </span>
+          <span title="${escapeHtml(t("mods.stat.follows"))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 10.2l-4.1-3.7A2.6 2.6 0 016 2.7a2.6 2.6 0 014.1 3.8L6 10.2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+            ${escapeHtml(follows)}
+          </span>
+          ${updated ? `<span title="${escapeHtml(t("mods.stat.updated"))}">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5V6l1.8 1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            ${escapeHtml(updated)}
+          </span>` : ""}
+        </div>
+        ${actions}
+      </div>
+    </article>`;
+        }
+        return `<div class="mod-card" data-modrinth-id="${id}" data-mod-source="${escapeHtml(source)}">
+    <div class="mod-card-icon" style="background:${accent}">${icon}</div>
+    <div class="mod-card-info">
+      <div class="mod-card-name">${title} ${sourceBadge}</div>
+      <div class="mod-card-desc">${desc}</div>
+    </div>
+    ${actions}
+  </div>`;
+      }
+      async function openBeInstallModal(listId) {
+        if (!editingBuildId) {
+          window.alert(t("be.importNeedSave"));
+          return;
+        }
+        const cfg = BE_LIST_TO_CONTENT[listId];
+        if (!cfg)
+          return;
+        const meta = getEditingBuildCatalogMeta();
+        if ((cfg.type === "mod" || cfg.type === "shader") && !BE_LOADER_CATALOG.has(meta.loader)) {
+          await runBeImportFiles(listId);
+          return;
+        }
+        beInstallListId = listId;
+        beInstallType = cfg.type;
+        beInstallQuery = "";
+        beInstallOffset = 0;
+        beInstallTotal = 0;
+        beInstallData = [];
+        beInstallSource = modsSource;
+        beInstallSort = modsSort || "relevance";
+        const titleEl = document.getElementById("be-install-title");
+        const subEl = document.getElementById("be-install-sub");
+        const hintEl = document.getElementById("be-install-local-hint");
+        const metaEl = document.getElementById("be-install-meta");
+        const searchEl = document.getElementById("be-install-search");
+        if (titleEl)
+          titleEl.textContent = t(cfg.titleKey);
+        if (subEl) {
+          subEl.textContent = beInstallNeedsLoaderFilter(cfg.type) ? t("be.install.sub") : t("be.install.subVersionOnly");
+        }
+        if (hintEl)
+          hintEl.textContent = t(cfg.localHintKey);
+        if (searchEl)
+          searchEl.value = "";
+        if (metaEl) {
+          const chips = [];
+          if (meta.gameVersion) {
+            chips.push(`<span class="be-install-chip">${escapeHtml(t("be.install.metaVersion", { version: meta.gameVersion }))}</span>`);
+          }
+          if (beInstallNeedsLoaderFilter(cfg.type) && meta.loader) {
+            chips.push(`<span class="be-install-chip">${escapeHtml(t("be.install.metaLoader", { loader: meta.loader }))}</span>`);
+          }
+          metaEl.innerHTML = chips.join("");
+        }
+        syncBeInstallFilterSelects();
+        applyBeInstallViewModeUi();
+        const scrollEl = document.getElementById("be-install-scroll");
+        if (scrollEl)
+          scrollEl.scrollTop = 0;
+        document.getElementById("be-install-search-bar")?.classList.remove("is-stuck");
+        openModal("modal-be-install");
+        await searchBeInstallCatalog("", false);
+      }
+      function renderBeInstallGrid(append) {
+        const grid = document.getElementById("be-install-grid");
+        if (!grid)
+          return;
+        applyBeInstallViewModeUi();
+        if (!beInstallData.length) {
+          grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t("be.install.empty"))}</div>`;
+          return;
+        }
+        const mode = getModsViewMode();
+        const rows = beInstallData.map((p) => renderBeInstallCard(p, mode)).join("");
+        const more = beInstallOffset < beInstallTotal ? `<div class="be-install-empty" id="be-install-more" style="padding:10px;cursor:pointer">${escapeHtml(t("common.loading"))}</div>` : "";
+        if (append) {
+          grid.querySelector("#be-install-more")?.remove();
+          grid.insertAdjacentHTML("beforeend", rows + more);
+        } else {
+          grid.innerHTML = rows + more;
+        }
+      }
+      async function searchBeInstallCatalog(query, append) {
+        const grid = document.getElementById("be-install-grid");
+        if (!grid || !api?.getModrinthProjects)
+          return;
+        if (beInstallLoading)
+          return;
+        beInstallLoading = true;
+        const token = ++beInstallToken;
+        if (!append) {
+          beInstallOffset = 0;
+          beInstallData = [];
+          grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t("be.install.loading"))}</div>`;
+        }
+        beInstallQuery = query;
+        const meta = getEditingBuildCatalogMeta();
+        const loaders = beInstallNeedsLoaderFilter(beInstallType) && meta.loader !== "vanilla" ? [meta.loader] : [];
+        const version = meta.gameVersion && meta.gameVersion !== "latest_release" && meta.gameVersion !== "latest_snapshot" ? meta.gameVersion : void 0;
+        try {
+          const result = await api.getModrinthProjects(query || "", beInstallType, beInstallOffset, 20, {
+            loaders,
+            version,
+            index: beInstallSort || "relevance",
+            source: beInstallSource
+          });
+          if (token !== beInstallToken)
+            return;
+          if (result?.error) {
+            if (!append) {
+              grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t("mods.loadError"))}: ${escapeHtml(String(result.error))}</div>`;
+            }
+            return;
+          }
+          const hits = result?.hits || [];
+          beInstallTotal = result?.total_hits || 0;
+          beInstallData = append ? beInstallData.concat(hits) : hits;
+          beInstallOffset += hits.length;
+          if (append && hits.length === 0)
+            beInstallTotal = beInstallOffset;
+          renderBeInstallGrid(append);
+        } catch {
+          if (token !== beInstallToken)
+            return;
+          if (!append) {
+            grid.innerHTML = `<div class="be-install-empty">${escapeHtml(t("mods.loadError"))}</div>`;
+          }
+        } finally {
+          if (token === beInstallToken)
+            beInstallLoading = false;
+        }
+      }
+      function pickBeInstallProject(projectId) {
+        if (!projectId)
+          return;
+        openModalVersionsForDownload(projectId);
+      }
       async function runBeScanInstance() {
         if (!editingBuildId) {
           window.alert(t("be.importNeedSave"));
@@ -44753,7 +46676,7 @@ ${lines.join("\n")}${depsNote}`);
           updateStatus(t("be.scanFailed"));
         }
       }
-      async function runBeImportFiles(listId) {
+      async function runBeImportFiles(listId, sourcePaths) {
         const sub = LIST_ID_TO_INSTANCE_SUB[listId];
         if (!sub)
           return;
@@ -44766,9 +46689,10 @@ ${lines.join("\n")}${depsNote}`);
           window.alert(t("be.importUnavailable"));
           return;
         }
-        updateStatus(t("be.importPicking"));
+        const fromDrop = Array.isArray(sourcePaths) && sourcePaths.length > 0;
+        updateStatus(fromDrop ? t("be.importing") : t("be.importPicking"));
         try {
-          const result = await api.importInstanceFiles(editingBuildId, sub);
+          const result = await api.importInstanceFiles(editingBuildId, sub, fromDrop ? sourcePaths : void 0);
           if (!result || result.canceled)
             return;
           if (!result.success) {
@@ -44785,6 +46709,64 @@ ${lines.join("\n")}${depsNote}`);
           window.alert(t("be.importFailed"));
         }
       }
+      function setupBeFileListOsDrop() {
+        const panelToList = {
+          mods: "be-mods-list",
+          resourcepacks: "be-rp-list",
+          shaders: "be-shaders-list",
+          datapacks: "be-dp-list"
+        };
+        const bindDropTarget = (el, listId) => {
+          if (el._beOsDropBound)
+            return;
+          el._beOsDropBound = true;
+          let depth = 0;
+          el.addEventListener("dragenter", (e) => {
+            if (!isOsFileDrag(e.dataTransfer))
+              return;
+            e.preventDefault();
+            depth += 1;
+            el.classList.add("be-file-list--drop");
+          });
+          el.addEventListener("dragleave", () => {
+            depth = Math.max(0, depth - 1);
+            if (depth === 0)
+              el.classList.remove("be-file-list--drop");
+          });
+          el.addEventListener("dragover", (e) => {
+            if (!isOsFileDrag(e.dataTransfer))
+              return;
+            e.preventDefault();
+            const dt = e.dataTransfer;
+            if (dt)
+              dt.dropEffect = "copy";
+          });
+          el.addEventListener("drop", (e) => {
+            depth = 0;
+            el.classList.remove("be-file-list--drop");
+            if (!isOsFileDrag(e.dataTransfer))
+              return;
+            e.preventDefault();
+            e.stopPropagation();
+            const paths = extractDroppedFilePaths(e.dataTransfer, listId);
+            if (!paths.length)
+              return;
+            void runBeImportFiles(listId, paths);
+          });
+        };
+        Object.keys(LIST_ID_TO_INSTANCE_SUB).forEach((listId) => {
+          const list = document.getElementById(listId);
+          if (list)
+            bindDropTarget(list, listId);
+        });
+        document.querySelectorAll("#modal-build .be-panel[data-be-panel]").forEach((panel) => {
+          const key = panel.getAttribute("data-be-panel") || "";
+          const listId = panelToList[key];
+          if (!listId)
+            return;
+          bindDropTarget(panel, listId);
+        });
+      }
       document.querySelectorAll("#modal-build .be-scan-btn").forEach((btn) => {
         btn.addEventListener("click", (e) => {
           e.preventDefault();
@@ -44796,8 +46778,83 @@ ${lines.join("\n")}${depsNote}`);
         document.getElementById(btnId)?.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void runBeImportFiles(BE_ADD_BTN_TO_LIST[btnId]);
+          void openBeInstallModal(BE_ADD_BTN_TO_LIST[btnId]);
         });
+      });
+      setupBeFileListOsDrop();
+      document.getElementById("be-install-close")?.addEventListener("click", () => closeModal("modal-be-install"));
+      document.getElementById("be-install-cancel")?.addEventListener("click", () => closeModal("modal-be-install"));
+      document.getElementById("modal-be-install")?.addEventListener("click", (e) => {
+        if (e.target === e.currentTarget)
+          closeModal("modal-be-install");
+      });
+      document.getElementById("be-install-local-btn")?.addEventListener("click", () => {
+        closeModal("modal-be-install");
+        void runBeImportFiles(beInstallListId);
+      });
+      document.getElementById("be-install-view-toggle")?.addEventListener("click", () => {
+        setModsViewMode(getModsViewMode() === "cards" ? "list" : "cards");
+        applyBeInstallViewModeUi();
+        renderBeInstallGrid(false);
+      });
+      document.getElementById("be-install-source-select")?.addEventListener("change", (e) => {
+        const v2 = e.target.value;
+        beInstallSource = v2 === "modrinth" || v2 === "curseforge" ? v2 : "both";
+        void searchBeInstallCatalog(beInstallQuery, false);
+      });
+      document.getElementById("be-install-sort-select")?.addEventListener("change", (e) => {
+        beInstallSort = e.target.value || "relevance";
+        void searchBeInstallCatalog(beInstallQuery, false);
+      });
+      document.getElementById("be-install-search")?.addEventListener("input", (e) => {
+        const q2 = e.target.value || "";
+        if (beInstallSearchTimer)
+          clearTimeout(beInstallSearchTimer);
+        beInstallSearchTimer = setTimeout(() => {
+          void searchBeInstallCatalog(q2.trim(), false);
+        }, 280);
+      });
+      document.getElementById("be-install-search")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (beInstallSearchTimer)
+            clearTimeout(beInstallSearchTimer);
+          const q2 = e.target.value || "";
+          void searchBeInstallCatalog(q2.trim(), false);
+        }
+      });
+      document.getElementById("be-install-grid")?.addEventListener("click", (e) => {
+        const target = e.target;
+        const pick = target.closest("[data-be-install-pick]");
+        if (pick) {
+          e.preventDefault();
+          e.stopPropagation();
+          pickBeInstallProject(pick.getAttribute("data-be-install-pick") || "");
+          return;
+        }
+        const details = target.closest("[data-be-install-details]");
+        if (details) {
+          e.preventDefault();
+          e.stopPropagation();
+          const id = details.getAttribute("data-be-install-details") || "";
+          if (id)
+            void openModalDetails(id);
+          return;
+        }
+        if (target.closest("#be-install-more")) {
+          e.preventDefault();
+          void searchBeInstallCatalog(beInstallQuery, true);
+        }
+      });
+      document.getElementById("be-install-scroll")?.addEventListener("scroll", () => {
+        const scrollEl = document.getElementById("be-install-scroll");
+        if (!scrollEl || beInstallLoading)
+          return;
+        if (beInstallOffset >= beInstallTotal)
+          return;
+        if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 80) {
+          void searchBeInstallCatalog(beInstallQuery, true);
+        }
       });
       void ensureInstanceIconGrid();
       document.getElementById("modal-build-icon-input")?.addEventListener("change", function() {
@@ -44819,6 +46876,7 @@ ${lines.join("\n")}${depsNote}`);
         const loaderSelect = document.getElementById("modal-build-loader");
         const versionSelect = document.getElementById("modal-build-version");
         populateLoaderVersions(loaderSelect.value, versionSelect?.value || "latest_release");
+        updateBeLoaderTabsVisibility();
       });
       document.getElementById("modal-build-version")?.addEventListener("change", () => {
         const loaderSelect = document.getElementById("modal-build-loader");
@@ -45699,9 +47757,18 @@ ${summary}`
           caret.className = "uc-caret";
           caret.setAttribute("aria-hidden", "true");
           caret.hidden = true;
-          document.body.appendChild(caret);
+          document.documentElement.appendChild(caret);
+        } else if (caret.parentElement !== document.documentElement) {
+          document.documentElement.appendChild(caret);
         }
         return caret;
+      }
+      function getUiZoomFactor() {
+        const raw = String(document.body?.style?.zoom || "").trim();
+        if (!raw)
+          return 1;
+        const n = parseFloat(raw);
+        return Number.isFinite(n) && n > 0 ? n : 1;
       }
       var UC_CARET_W = 2;
       var UC_CARET_H = 16;
@@ -45846,14 +47913,19 @@ ${summary}`
           return;
         }
         const { top, left, height } = getTextFieldCaretOffset(el);
+        const zoom = getUiZoomFactor();
+        const viewLeft = left * zoom;
+        const viewTop = top * zoom;
+        const viewW = UC_CARET_W * zoom;
+        const viewH = height * zoom;
         if (left < -1 || left > el.clientWidth + 1 || top < -2 || top > el.clientHeight + 2) {
           caret.hidden = true;
           return;
         }
         caret.hidden = false;
-        caret.style.width = `${UC_CARET_W}px`;
-        caret.style.height = `${UC_CARET_H}px`;
-        caret.style.transform = `translate(${Math.round(rect.left + left)}px, ${Math.round(rect.top + top)}px)`;
+        caret.style.width = `${viewW}px`;
+        caret.style.height = `${viewH}px`;
+        caret.style.transform = `translate(${Math.round(rect.left + viewLeft)}px, ${Math.round(rect.top + viewTop)}px)`;
         caret.style.animation = "none";
         void caret.offsetWidth;
         caret.style.animation = "";

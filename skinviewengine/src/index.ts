@@ -25,8 +25,12 @@ export {
   CoolPoseAnimation,
   GlideAnimation,
   VictoryAnimation,
+  SleepAnimation,
   SadAnimation,
   DanceAnimation,
+  DabAnimation,
+  ThinkAnimation,
+  HelloNodAnimation,
   createSkinAnimation,
   animationControlsLegs,
   resetPlayerRootPose,
@@ -45,6 +49,20 @@ export {
   type SkinDebugStats,
   type SkinDebugOptions,
 } from "./types.js";
+
+export {
+  EmoteClipAnimation,
+  type EmoteClip,
+  type EmoteFrame,
+  type EmotePartPose,
+} from "./core/emote-animation.js";
+export { BendableSkeleton } from "./core/bendable-skeleton.js";
+export {
+  locatorColorFromUuid,
+  javaUuidHashCode,
+  normalizeMinecraftUuid,
+  type LocatorColor,
+} from "./core/locator-color.js";
 
 // Анимации skin3d (idle, walk и др.) — совместимы с PlayerObject
 export {

@@ -68,8 +68,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getVersions: () => ipcRenderer.invoke('launcher:versions:list'),
   getLoaderVersions: (loader: string, mcVersion: string) => ipcRenderer.invoke('launcher:loader:versions', loader, mcVersion),
-  detectJava: () => ipcRenderer.invoke('launcher:java:detect'),
-  listJavaVersions: () => ipcRenderer.invoke('launcher:java:list'),
+  detectJava: (refresh?: boolean) => ipcRenderer.invoke('launcher:java:detect', refresh),
+  listJavaVersions: (refresh?: boolean) => ipcRenderer.invoke('launcher:java:list', refresh),
+  pickJava: () => ipcRenderer.invoke('launcher:java:pick') as Promise<{ path: string; version: number; name: string } | null>,
   installJava: (version: number) => ipcRenderer.invoke('launcher:java:install', version),
   removeJava: (version: number) => ipcRenderer.invoke('launcher:java:remove', version),
   resolveJavaVersion: (gameVersion: string) => ipcRenderer.invoke('launcher:java:resolve', gameVersion),
@@ -317,7 +318,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
         fileCount: number;
         hasOverrides: boolean;
         archiveName: string;
+        counts?: {
+          mods: number;
+          resourcePacks: number;
+          shaders: number;
+          dataPacks: number;
+          configs: number;
+        };
+        previewFiles?: Array<{
+          name: string;
+          kind: 'mod' | 'resourcepack' | 'shader' | 'datapack' | 'config' | 'other';
+        }>;
       };
+      error?: string;
+    }>,
+  createBuildShortcut: (buildId: string) =>
+    ipcRenderer.invoke('launcher:create-build-shortcut', buildId) as Promise<{
+      success: boolean;
+      path?: string;
+      name?: string;
       error?: string;
     }>,
   importModpack: (archivePath: string) =>
