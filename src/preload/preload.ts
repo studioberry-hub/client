@@ -149,14 +149,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('game-relay:tunnel', handler);
   },
 
-  // AI-агент: чат через сайт, MCP-tools исполняются локально в main
-  aiStatus: (opts?: { testerKey?: string }) => ipcRenderer.invoke('ai:status', opts || {}),
-  aiValidateKey: (testerKey: string) => ipcRenderer.invoke('ai:validateKey', testerKey),
+  // AI-агент: чат через сайт, доступ по JWT мессенджера
+  aiStatus: () => ipcRenderer.invoke('ai:status'),
   aiChat: (payload: {
     messages: Array<Record<string, unknown>>;
     tools?: boolean;
     context?: { buildId?: string; buildName?: string } | null;
-    testerKey?: string;
   }) => ipcRenderer.invoke('ai:chat', payload),
   aiToolsList: () => ipcRenderer.invoke('ai:tools:list'),
   aiToolsRun: (

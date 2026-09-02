@@ -4,11 +4,34 @@
 
 ### История изменений
 
-[![Версия](https://img.shields.io/badge/версия-1.0.6--beta-brightgreen)](CHANGELOG.md)
-[![Дата](https://img.shields.io/badge/релиз-01.09.2026-blue)](CHANGELOG.md)
+[![Версия](https://img.shields.io/badge/версия-1.0.7--beta-brightgreen)](CHANGELOG.md)
+[![Дата](https://img.shields.io/badge/релиз-02.09.2026-blue)](CHANGELOG.md)
 [![Лицензия](https://img.shields.io/badge/license-GPL--3.0--only-brightgreen)](LICENSE)
 
 </div>
+
+---
+
+## 📦 v1.0.7-beta — UAgent по аккаунту и умнее контекст
+
+*2 сентября 2026*
+
+Доступ к агенту через Microsoft / Ely.by и заявку боту в чатах; точнее контекст сборки, Java и проверка модов перед установкой.
+
+Подробности — в [CHANGELOG-v1.0.7-beta.md](CHANGELOG-v1.0.7-beta.md).
+
+### 🚀 Новое
+
+- UAgent без ключей тестировщика: доступ по аккаунту + заявка боту
+- Pixi 1.0 в UI; tool `find_mod_in_build`
+
+### ⚡ Улучшения
+
+- Контекст сборки и auto-Java в tools; меньше ложных «установи мод / Java не настроена»
+
+### 🔧 Исправления
+
+- Удалены IPC/UI ключей `uag_*`; стабильнее выбор активной сборки в чате агента
 
 ---
 

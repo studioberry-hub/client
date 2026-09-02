@@ -848,14 +848,14 @@ registerMessengerIpc();
 setMessengerTokenProvider(() => getMessengerSessionToken());
 registerGameRelayIpc();
 
-ipcMain.handle('ai:status', async (_event, opts?: { testerKey?: string }) => {
+ipcMain.handle('ai:status', async () => {
   try {
-    const testerKey = String(opts?.testerKey || '').trim();
+    const token = getMessengerSessionToken();
     const headers: Record<string, string> = {
       'User-Agent': 'Undefined-Client',
       Accept: 'application/json',
     };
-    if (testerKey) headers['X-UAgent-Key'] = testerKey;
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(`${getApiBase()}/api/ai/status`, { headers });
     if (!res.ok) return { configured: false, access: false, error: `HTTP ${res.status}` };
     return await res.json();
@@ -864,39 +864,10 @@ ipcMain.handle('ai:status', async (_event, opts?: { testerKey?: string }) => {
   }
 });
 
-ipcMain.handle('ai:validateKey', async (_event, rawKey: string) => {
-  const testerKey = String(rawKey || '').trim();
-  if (!testerKey) return { ok: false, reason: 'missing_key', code: 'access_denied' };
-  try {
-    const res = await fetch(`${getApiBase()}/api/ai/validate-key`, {
-      method: 'POST',
-      headers: {
-        'User-Agent': 'Undefined-Client',
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'X-UAgent-Key': testerKey,
-      },
-      body: JSON.stringify({ testerKey }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return {
-        ok: false,
-        reason: data?.reason || data?.error || 'access_denied',
-        code: data?.code || 'access_denied',
-      };
-    }
-    return { ok: true, label: data?.label || '', prefix: data?.prefix || '' };
-  } catch (e: any) {
-    return { ok: false, reason: e?.message || 'Network error' };
-  }
-});
-
 ipcMain.handle('ai:chat', async (_event, payload: any) => {
   const messages = Array.isArray(payload) ? payload : payload?.messages;
   const enableTools = Array.isArray(payload) ? true : payload?.tools !== false;
   const context = Array.isArray(payload) ? null : payload?.context || null;
-  const testerKey = Array.isArray(payload) ? '' : String(payload?.testerKey || '').trim();
   if (!Array.isArray(messages) || !messages.length) {
     return { error: 'empty_messages' };
   }
@@ -973,13 +944,14 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
       };
     }
 
+    const token = getMessengerSessionToken();
     const res = await fetch(`${getApiBase()}/api/ai/chat`, {
       method: 'POST',
       headers: {
         'User-Agent': 'Undefined-Client',
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        ...(testerKey ? { 'X-UAgent-Key': testerKey } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
     });

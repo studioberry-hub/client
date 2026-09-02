@@ -142,6 +142,7 @@ function safeJoinInstance(buildId: string, sub: string, name: string): string | 
 
 function buildSummary(b: any) {
   const id = String(b.id || '');
+  const java = resolveEffectiveJava(b);
   return {
     id,
     name: b.name,
@@ -149,12 +150,100 @@ function buildSummary(b: any) {
     loader: b.loader || 'vanilla',
     loaderVersion: b.loaderVersion || null,
     javaPath: b.javaPath || null,
+    java: java,
     memory: b.memory || null,
     window: b.window || null,
     jvmArgs: b.jvmArgs || '',
     mcArgs: b.mcArgs || '',
     instancePath: id ? getInstanceRoot(id) : null,
   };
+}
+
+/** Major Java по версии MC — та же логика, что у лаунчера при авто-выборе. */
+function requiredJavaMajor(gameVersion: string): { required: number; reason: string } {
+  const raw = String(gameVersion || '').trim().toLowerCase();
+  if (!raw || raw === 'latest_release' || raw === 'latest_snapshot') {
+    return { required: 21, reason: 'Для новых версий Minecraft безопаснее брать Java 21.' };
+  }
+  const match = raw.match(/^1\.(\d+)(?:\.(\d+))?/);
+  if (!match) return { required: 17, reason: 'Версия не распознана, используется безопасная рекомендация Java 17.' };
+  const minor = Number(match[1] || 0);
+  const patch = Number(match[2] || 0);
+  if (minor >= 21) return { required: 21, reason: 'Minecraft 1.21+ рассчитан на Java 21.' };
+  if (minor === 20 && patch >= 5) {
+    return { required: 21, reason: 'Minecraft 1.20.5+ требует Java 21.' };
+  }
+  if (minor >= 18) return { required: 17, reason: 'Minecraft 1.18-1.20.4 обычно запускается на Java 17.' };
+  if (minor === 17) return { required: 16, reason: 'Minecraft 1.17 требует Java 16.' };
+  return { required: 8, reason: 'Для старых версий Minecraft обычно нужна Java 8.' };
+}
+
+/**
+ * Эффективная Java сборки: pinned path или авто-выбор managed runtime
+ * (как при запуске, когда javaPath пустой).
+ */
+function resolveEffectiveJava(build: any): {
+  mode: 'pinned' | 'auto' | 'missing';
+  path: string | null;
+  requiredMajor: number;
+  reason: string;
+  selectedMajor: number | null;
+} {
+  const info = requiredJavaMajor(String(build?.gameVersion || build?.version || ''));
+  const pinned = String(build?.javaPath || '').trim();
+  if (pinned && fs.existsSync(pinned)) {
+    return {
+      mode: 'pinned',
+      path: pinned,
+      requiredMajor: info.required,
+      reason: info.reason,
+      selectedMajor: null,
+    };
+  }
+  const installed = listInstalledJava().filter((j) => j.installed && j.path);
+  const exact = installed.find((j) => j.version === info.required);
+  const fallback = installed
+    .filter((j) => j.version >= info.required)
+    .sort((a, b) => a.version - b.version)[0];
+  const pick = exact || fallback || null;
+  return {
+    mode: pick?.path ? 'auto' : 'missing',
+    path: pick?.path || null,
+    requiredMajor: info.required,
+    reason: info.reason,
+    selectedMajor: pick?.version ?? null,
+  };
+}
+
+function normalizeModQuery(raw: string): string {
+  return String(raw || '')
+    .toLowerCase()
+    .replace(/\.jar$/i, '')
+    .replace(/\.disabled$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function findModsByQuery(
+  mods: { name: string; size: number; enabled: boolean }[],
+  query: string,
+): { name: string; size: number; enabled: boolean; score: number }[] {
+  const q = normalizeModQuery(query);
+  if (!q) return [];
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const scored = mods
+    .map((m) => {
+      const base = normalizeModQuery(m.name);
+      let score = 0;
+      if (base === q) score = 100;
+      else if (base.includes(q) || q.includes(base)) score = 80;
+      else if (tokens.every((t) => base.includes(t))) score = 60;
+      else if (tokens.some((t) => t.length >= 3 && base.includes(t))) score = 35;
+      return { ...m, score };
+    })
+    .filter((m) => m.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored.slice(0, 12);
 }
 
 // Managed Java: tools/java{N}/bin/java.exe в каталоге данных лаунчера
@@ -472,9 +561,19 @@ const TOOLS: Record<string, ToolEntry> = {
       const build = findBuild(buildId);
       if (!build) return { error: 'build_not_found' };
       const root = getInstanceRoot(buildId);
+      const mods = listDirFiles(path.join(root, 'mods'), ['.jar', '.litemod']);
+      const java = resolveEffectiveJava(build);
       return {
         ...buildSummary(build),
         instanceExists: fs.existsSync(root),
+        modsCount: mods.length,
+        modsEnabled: mods.filter((m) => m.enabled).length,
+        javaNote:
+          java.mode === 'auto'
+            ? 'javaPath пустой — лаунчер сам подставит managed Java при запуске (см. java.path).'
+            : java.mode === 'pinned'
+              ? 'Java закреплена в настройках сборки.'
+              : 'Подходящая Java не найдена.',
         note: 'Метаданные сборок в .Undefined Client; файлы игры/модов — в .uclient.',
       };
     },
@@ -1096,6 +1195,50 @@ const TOOLS: Record<string, ToolEntry> = {
     },
   },
 
+  find_mod_in_build: {
+    risk: 'read',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'find_mod_in_build',
+        description:
+          'Проверить, есть ли мод уже в mods выбранной сборки (по имени/slug/фрагменту jar). Вызывай ПЕРЕД предложением install_mod или вопросом «установить?».',
+        parameters: {
+          type: 'object',
+          properties: {
+            buildId: { type: 'string' },
+            query: {
+              type: 'string',
+              description: 'Название мода, slug Modrinth или фрагмент имени файла',
+            },
+          },
+          required: ['buildId', 'query'],
+          additionalProperties: false,
+        },
+      },
+    },
+    run: async (args) => {
+      const buildId = asString(args.buildId);
+      const query = asString(args.query);
+      if (!buildId) return { error: 'buildId_required' };
+      if (!query) return { error: 'query_required' };
+      if (!findBuild(buildId)) return { error: 'build_not_found' };
+      const modsDir = path.join(getInstanceRoot(buildId), 'mods');
+      const mods = listDirFiles(modsDir, ['.jar', '.litemod']);
+      const matches = findModsByQuery(mods, query);
+      return {
+        buildId,
+        query,
+        alreadyInstalled: matches.length > 0,
+        matches,
+        modsTotal: mods.length,
+        hint: matches.length
+          ? 'Мод уже в сборке — не предлагай установку, сообщи пользователю.'
+          : 'Совпадений нет — можно предлагать install_mod.',
+      };
+    },
+  },
+
   list_build_content: {
     risk: 'read',
     schema: {
@@ -1443,7 +1586,7 @@ const TOOLS: Record<string, ToolEntry> = {
       function: {
         name: 'install_mod',
         description:
-          'Установить проект Modrinth в сборку. Без versionId подбирает файл под gameVersion и loader. Автоматически ставит транзитивные required-зависимости (как Prism), возвращает conflicts/optional/unresolved. contentType: mod|resourcepack|shader|datapack.',
+          'Установить проект Modrinth в сборку. Перед вызовом обязательно find_mod_in_build (или list_build_mods): если мод уже есть — не вызывай. Без versionId подбирает файл под gameVersion и loader. Автозависимости required. contentType: mod|resourcepack|shader|datapack.',
         parameters: {
           type: 'object',
           properties: {
@@ -1930,6 +2073,20 @@ async function installContentDirect(
   const targetLoader = normalizeLoaderId(String(loader || build?.loader || ''));
   const instanceRoot = getInstanceRoot(buildId);
   const installedIds = collectInstalledProjectIds(instanceRoot, build);
+
+  // Уже стоит (по projectId из метаданных инстанса) — не ставим повторно
+  if (installedIds.has(String(projectId))) {
+    const mods = listDirFiles(path.join(instanceRoot, 'mods'), ['.jar', '.litemod']);
+    return {
+      success: true,
+      alreadyInstalled: true,
+      projectId,
+      buildId,
+      matches: findModsByQuery(mods, String(projectId)),
+      hint: 'Проект уже установлен в этой сборке — установка не нужна.',
+    };
+  }
+
   installedIds.delete(String(projectId));
 
   const result = await installModWithDependencies({

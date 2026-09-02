@@ -816,7 +816,10 @@
                   </svg>
                 </span>
                 <span class="ai-rail__name" data-i18n="ai.brand">UAgent</span>
-                <span class="ai-rail__ver" id="ai-agent-ver" title="Version">?</span>
+                <div class="ai-rail__ver-wrap">
+                  <button type="button" class="ai-rail__ver" id="ai-agent-ver" data-i18n="ai.model.pill" data-i18n-title="ai.model.title" title="Kolibra Pixi 1.0" aria-haspopup="dialog" aria-expanded="false">Pixi 1.0</button>
+                  <div class="ai-model-menu hidden" id="ai-model-menu" role="dialog" aria-label="Model info"></div>
+                </div>
               </div>
 
               <div class="ai-rail__section-title" data-i18n="ai.sectionMain">???????? ???????</div>
@@ -1131,42 +1134,6 @@
       </div>
     </div>
 
-  <!-- ===== MODAL: Account required ===== -->
-  <div id="modal-ai-key" class="modal-overlay hidden">
-    <div class="modal-window md modal-ai-key">
-      <div class="modal-header">
-        <div class="modal-header-icon">
-          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-            <rect width="36" height="36" rx="9" fill="currentColor"/>
-            <path d="M11 18C11 14.6863 13.6863 12 17 12H19C22.3137 12 25 14.6863 25 18V20C25 21.1046 24.1046 22 23 22H13C11.8954 22 11 21.1046 11 20V18Z" fill="white" fill-opacity="0.9"/>
-            <rect x="15" y="15" width="6" height="8" rx="1.5" fill="white"/>
-            <circle cx="18" cy="18" r="1.5" fill="currentColor"/>
-            <rect x="17.25" y="19" width="1.5" height="2.5" rx="0.75" fill="currentColor"/>
-          </svg>
-        </div>
-        <div class="modal-header-text">
-          <div class="modal-header-title" data-i18n="ai.keyModal.title">??? ???????????? UAgent</div>
-          <div class="modal-header-sub" data-i18n="ai.keyModal.sub">??????? ???? ????????????</div>
-        </div>
-        <button class="modal-close" id="modal-ai-key-close" type="button" aria-label="Close">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="modal-ai-key__informer" data-i18n="ai.keyModal.informer">??? ?????? UAgent, ??? ?????????? ?????? ???? ????????????, ????? ???????? ?????? ? ???????? ?? ? ??????</div>
-        <div class="modal-field">
-          <label for="modal-ai-key-input" data-i18n="ai.keyModal.label">???</label>
-          <input type="text" id="modal-ai-key-input" autocomplete="off" spellcheck="false" placeholder="uag_?" data-i18n-ph="ai.keyModal.placeholder">
-        </div>
-        <div class="modal-ai-key-status" id="modal-ai-key-status" aria-live="polite"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="stngs-btn ghost" type="button" id="modal-ai-key-cancel" data-i18n="btn.cancel">??????</button>
-        <button class="stngs-btn primary" type="button" id="modal-ai-key-save" data-i18n="ai.keyModal.save">?????????</button>
-      </div>
-    </div>
-  </div>
-
   <div id="modal-ai-access" class="modal-overlay hidden">
     <div class="modal-window md modal-ai-access">
       <div class="modal-header">
@@ -1180,18 +1147,18 @@
         </div>
         <div class="modal-header-text">
           <div class="modal-header-title" data-i18n="ai.accessDenied.title">Нет доступа к UAgent</div>
-          <div class="modal-header-sub" data-i18n="ai.accessDenied.sub">Нужен ключ тестировщика</div>
+          <div class="modal-header-sub" data-i18n="ai.accessDenied.sub">Нужна одобренная заявка</div>
         </div>
         <button class="modal-close" id="modal-ai-access-close" type="button" aria-label="Close">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
         </button>
       </div>
       <div class="modal-body">
-        <div class="modal-ai-access__message" data-i18n="ai.accessDenied.message">Доступ ограничен.</div>
+        <div class="modal-ai-access__message" data-i18n="ai.accessDenied.message">Доступ к UAgent выдаётся по аккаунту Microsoft или Ely.by. Подайте заявку боту в чатах или дождитесь одобрения.</div>
       </div>
       <div class="modal-footer">
-        <button class="stngs-btn ghost" type="button" id="modal-ai-access-settings" data-i18n="ai.accessDenied.settings">Открыть настройки</button>
-        <button class="stngs-btn primary" type="button" id="modal-ai-access-ok" data-i18n="ai.accessDenied.ok">Понятно</button>
+        <button class="stngs-btn ghost" type="button" id="modal-ai-access-ok" data-i18n="ai.accessDenied.ok">Понятно</button>
+        <button class="stngs-btn primary" type="button" id="modal-ai-access-apply" data-i18n="ai.accessDenied.apply">Подать заявку</button>
       </div>
     </div>
   </div>
@@ -2024,17 +1991,10 @@
               </div>
               <div class="stngs-setting-row">
                 <div class="stngs-setting-label">
-                  <span data-i18n="stngs.agentEnabled">???????? UAgent</span>
-                  <div class="stngs-setting-hint" data-i18n="stngs.agentEnabledHint">?????????? ??????? ??????. ??? ????????? ??????????? ??? ????????????</div>
+                  <span data-i18n="stngs.agentEnabled">Включить UAgent</span>
+                  <div class="stngs-setting-hint" data-i18n="stngs.agentEnabledHint">Показывать вкладку агента. Доступ проверяется по аккаунту Microsoft / Ely.by.</div>
                 </div>
                 <label class="toggle"><input type="checkbox" id="setting-ai-enabled" checked><span class="toggle-track"></span></label>
-              </div>
-              <div class="stngs-setting-row" id="setting-ai-key-row">
-                <div class="stngs-setting-label">
-                  <span data-i18n="stngs.agentKey">??? ????????????</span>
-                  <div class="stngs-setting-hint" id="setting-ai-key-hint" data-i18n="stngs.agentKeyHint">???? ??????? ???????????????. ??? ???? ?? ??????????</div>
-                </div>
-                <button type="button" class="stngs-btn ghost" id="setting-ai-key-btn" data-i18n="stngs.agentKeyEnter">?????? ???</button>
               </div>
             </div>
           </div>
