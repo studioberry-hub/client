@@ -87,6 +87,8 @@ export type MessengerConversation = {
   title: string;
   /** Официальный «Чат проекта» — всегда сверху, нельзя выйти/удалить */
   isProject?: boolean;
+  /** DM с ботом Undefined Studio — выше Чата проекта */
+  isBotDm?: boolean;
   description?: string | null;
   rules?: string | null;
   avatarUrl?: string | null;
@@ -2121,6 +2123,9 @@ function renderConversationList(): void {
   }
   const prefs = pruneExpiredMutes(loadMsgrPrefs());
   const ordered = [...conversations].sort((a, b) => {
+    const aBot = a.isBotDm ? 0 : 1;
+    const bBot = b.isBotDm ? 0 : 1;
+    if (aBot !== bBot) return aBot - bBot;
     const aProj = a.isProject ? 0 : 1;
     const bProj = b.isProject ? 0 : 1;
     if (aProj !== bProj) return aProj - bProj;
@@ -2889,6 +2894,17 @@ function renderBotPostHtml(
     m.kind === 'client_update'
       ? `<button type="button" class="stngs-btn ghost msgr-update-btn" data-msgr-open-updates>${host.escapeHtml(host.t('msgr.updateClient'))}</button>`
       : '';
+  const buttons = Array.isArray((m.meta as any)?.buttons) ? ((m.meta as any).buttons as { id?: string; label?: string }[]) : [];
+  const keyboardBlock =
+    !m.deleted && (m.kind === 'bot_keyboard' || buttons.length)
+      ? `<div class="msgr-bot-keyboard">${buttons
+          .filter((b) => b && b.id && b.label)
+          .map(
+            (b) =>
+              `<button type="button" class="msgr-bot-keyboard__btn" data-bot-btn="${host!.escapeHtml(String(b.id))}" data-bot-msg="${host!.escapeHtml(m.id)}">${host!.escapeHtml(String(b.label))}</button>`,
+          )
+          .join('')}</div>`
+      : '';
   const bodyRaw = m.body && (!m.attachment || m.body !== m.attachment.name) ? m.body : '';
   const bodyHtml = bodyRaw
     ? host.renderMarkdown
@@ -2910,6 +2926,7 @@ function renderBotPostHtml(
           ${bodyHtml}
           ${fileBlock}
           ${updateBlock}
+          ${keyboardBlock}
           <div class="msgr-bot-post__meta">
             <span>${host.escapeHtml(formatMsgTime(m.createdAt))}</span>
           </div>
@@ -3395,6 +3412,43 @@ async function startDm(userId: string): Promise<void> {
   } else if (!res?.ok) {
     toast(host?.t('msgr.dmFailed', { msg: res?.error || res?.code || '' }) || 'DM failed');
   }
+}
+
+async function sendBotCallback(conversationId: string, buttonId: string, messageId: string): Promise<void> {
+  const res = await req('/bot/callback', {
+    method: 'POST',
+    body: { conversationId, buttonId, messageId },
+  });
+  if (!res?.ok) {
+    toast(res?.error || host?.t('msgr.errorHint') || 'Error');
+    return;
+  }
+  if (res.data?.message) {
+    await loadMessages(conversationId, { forceScrollBottom: true });
+  }
+  await loadConversations();
+}
+
+/** Открыть DM с ботом (заявка на UAgent и меню) */
+export async function openAssistantBotDm(): Promise<boolean> {
+  await ensureMessengerTab(true);
+  await loadConversations();
+  let bot = conversations.find((c) => c.isBotDm);
+  if (!bot) {
+    // listConversations на сервере создаёт DM — перезагрузка
+    await loadConversations();
+    bot = conversations.find((c) => c.isBotDm);
+  }
+  if (!bot && conversations.length) {
+    // fallback: peer bot:project
+    bot = conversations.find(
+      (c) => c.type === 'dm' && (c.peer?.id === 'bot:project' || c.peer?.provider === 'bot'),
+    );
+  }
+  if (!bot) return false;
+  setRailTab('chats');
+  await openConversation(bot.id);
+  return true;
 }
 
 async function createGroup(): Promise<void> {
@@ -5384,6 +5438,14 @@ function bindUi(): void {
     if ((e.target as HTMLElement).closest('[data-msgr-open-updates]')) {
       e.preventDefault();
       host?.openSettingsTab?.('updates');
+      return;
+    }
+    const botBtn = (e.target as HTMLElement).closest('[data-bot-btn]') as HTMLElement | null;
+    if (botBtn) {
+      e.preventDefault();
+      const buttonId = botBtn.getAttribute('data-bot-btn') || '';
+      const messageId = botBtn.getAttribute('data-bot-msg') || '';
+      if (buttonId && activeId) void sendBotCallback(activeId, buttonId, messageId);
       return;
     }
     const replyBtn = (e.target as HTMLElement).closest('[data-reply-to]') as HTMLElement | null;

@@ -13,7 +13,7 @@ import { marked } from 'marked';
 import { setApiBase, getApiBase, catalogImageUrl, skinImageUrl } from '../shared/apiBase';
 import { previewBadge, resolvePreviewStrategy } from '../shared/world-preview-matrix';
 import type { AiUiHost } from './ai/types';
-import { initMessenger, ensureMessengerTab, notifyMessengerAccountChanged, notifyMessengerGameRunning, notifyMessengerGameStopped, openGroupInviteModal } from './messenger/ui';
+import { initMessenger, ensureMessengerTab, notifyMessengerAccountChanged, notifyMessengerGameRunning, notifyMessengerGameStopped, openGroupInviteModal, openAssistantBotDm } from './messenger/ui';
 import {
   askAiConfirmBatch,
   askAiConfirmInChat,
@@ -335,7 +335,7 @@ interface ElectronAPI {
     body?: unknown;
     query?: Record<string, string | number | undefined>;
   }) => Promise<{ ok: boolean; data?: any; code?: string; error?: string; status?: number }>;
-  aiStatus: (opts?: { testerKey?: string }) => Promise<{
+  aiStatus: () => Promise<{
     configured?: boolean;
     access?: boolean;
     reason?: string;
@@ -344,18 +344,10 @@ interface ElectronAPI {
     toolNames?: string[];
     error?: string;
   }>;
-  aiValidateKey: (testerKey: string) => Promise<{
-    ok?: boolean;
-    label?: string;
-    prefix?: string;
-    reason?: string;
-    code?: string;
-  }>;
   aiChat: (payload: {
     messages: Array<Record<string, unknown>>;
     tools?: boolean;
     context?: { buildId?: string; buildName?: string } | null;
-    testerKey?: string;
   }) => Promise<{
     reply?: string;
     model?: string | null;
@@ -722,11 +714,6 @@ function switchTab(target: string): void {
       showAiAccessDeniedModal();
       return;
     }
-    // Вкладка видна, но без валидного ключа — модалка доступа
-    if (!getAiTesterKey()) {
-      showAiAccessDeniedModal();
-      return;
-    }
   }
   if (target === 'messenger') {
     if (isOfflineAccount()) {
@@ -761,7 +748,7 @@ function switchTab(target: string): void {
   if (target === 'ai') {
     ensureAiTab();
     void refreshAiAccessStatus().then(() => {
-      if (!getAiTesterKey() || aiAccessOk === false) showAiAccessDeniedModal();
+      if (aiAccessOk === false) showAiAccessDeniedModal();
     });
   }
   if (target === 'messenger') {
@@ -2230,8 +2217,6 @@ async function init(): Promise<void> {
     if (aboutVer && api?.getAppVersion) {
       api.getAppVersion().then(ver => {
         appVersion = ver;
-        const aiVer = document.getElementById('ai-agent-ver');
-        if (aiVer && ver) aiVer.textContent = ver;
         aboutVer.textContent = `${t('about.version')} ${ver}`;
       });
     }
@@ -12257,6 +12242,7 @@ const AI_TOOL_LABELS: Record<string, string> = {
   search_shaders: 'Поиск шейдеров',
   get_mod: 'Карточка проекта',
   list_build_mods: 'Моды сборки',
+  find_mod_in_build: 'Проверка мода в сборке',
   list_build_content: 'Содержимое сборки',
   toggle_mod: 'Переключение мода',
   remove_build_file: 'Удаление файла',
@@ -12298,21 +12284,10 @@ let aiActiveRound: HTMLElement | null = null;
 let aiLastDividerDay = '';
 
 const AI_ENABLED_LS_KEY = 'Undefined Client-ai-enabled';
-const AI_TESTER_LS_KEY = 'Undefined Client-ai-tester-key';
 
 function isAiFeatureEnabled(): boolean {
   // По умолчанию включено
   return localStorage.getItem(AI_ENABLED_LS_KEY) !== 'false';
-}
-
-function getAiTesterKey(): string {
-  return String(localStorage.getItem(AI_TESTER_LS_KEY) || '').trim();
-}
-
-function setAiTesterKey(raw: string): void {
-  const key = String(raw || '').trim();
-  if (key) localStorage.setItem(AI_TESTER_LS_KEY, key);
-  else localStorage.removeItem(AI_TESTER_LS_KEY);
 }
 
 function applyAiTabVisibility(): void {
@@ -12321,26 +12296,23 @@ function applyAiTabVisibility(): void {
     el.style.display = enabled ? '' : 'none';
   });
   if (!enabled && presenceTab === 'ai') switchTab('home');
-  syncAiSettingsKeyUi();
-}
-
-function syncAiSettingsKeyUi(): void {
-  const hint = document.getElementById('setting-ai-key-hint');
-  const btn = document.getElementById('setting-ai-key-btn');
-  const key = getAiTesterKey();
-  if (btn) btn.textContent = key ? t('stngs.agentKeyChange') : t('stngs.agentKeyEnter');
-  if (hint) {
-    if (key) {
-      const prefix = key.slice(0, 12);
-      hint.textContent = t('stngs.agentKeyHintSet', { prefix });
-    } else {
-      hint.textContent = t('stngs.agentKeyHint');
-    }
-  }
 }
 
 function showAiAccessDeniedModal(): void {
   openModal('modal-ai-access');
+}
+
+/** Закрыть модалку доступа и открыть DM с ботом для заявки на UAgent. */
+function openUagentApplyFromModal(): void {
+  closeModal('modal-ai-access');
+  if (isOfflineAccount()) {
+    showMessengerOfflineModal();
+    return;
+  }
+  switchTab('messenger');
+  void openAssistantBotDm().then((ok) => {
+    if (!ok) void ensureMessengerTab(true);
+  });
 }
 
 function showMessengerOfflineModal(): void {
@@ -12365,72 +12337,15 @@ function applyOnlineOnlyTabsVisibility(): void {
   }
 }
 
-function openAiKeyModal(opts?: { required?: boolean }): void {
-  const input = document.getElementById('modal-ai-key-input') as HTMLInputElement | null;
-  const status = document.getElementById('modal-ai-key-status');
-  if (input) input.value = getAiTesterKey();
-  if (status) {
-    status.textContent = '';
-    status.className = 'modal-ai-key-status';
-  }
-  (window as any).__aiKeyModalRequired = Boolean(opts?.required);
-  openModal('modal-ai-key');
-  setTimeout(() => input?.focus(), 30);
-}
-
-function closeAiKeyModal(cancelled = false): void {
-  const required = Boolean((window as any).__aiKeyModalRequired);
-  closeModal('modal-ai-key');
-  if (cancelled && required) {
-    // Включение без кода откатываем
-    const toggle = document.getElementById('setting-ai-enabled') as HTMLInputElement | null;
-    if (toggle) toggle.checked = false;
-    localStorage.setItem(AI_ENABLED_LS_KEY, 'false');
-    applyAiTabVisibility();
-  }
-  (window as any).__aiKeyModalRequired = false;
-}
-
-async function saveAiTesterKeyFromModal(): Promise<void> {
-  const input = document.getElementById('modal-ai-key-input') as HTMLInputElement | null;
-  const status = document.getElementById('modal-ai-key-status');
-  const raw = String(input?.value || '').trim();
-  if (!raw) {
-    if (status) {
-      status.textContent = t('ai.keyModal.empty');
-      status.className = 'modal-ai-key-status is-error';
-    }
-    return;
-  }
-  if (status) {
-    status.textContent = t('common.loading');
-    status.className = 'modal-ai-key-status';
-  }
-  const result = await api?.aiValidateKey?.(raw);
-  if (!result?.ok) {
-    if (status) {
-      status.textContent = t('ai.keyModal.invalid');
-      status.className = 'modal-ai-key-status is-error';
-    }
-    aiAccessOk = false;
-    return;
-  }
-  setAiTesterKey(raw);
-  aiAccessOk = true;
-  aiConfigured = true;
-  if (status) {
-    status.textContent = t('ai.keyModal.ok');
-    status.className = 'modal-ai-key-status is-ok';
-  }
-  syncAiSettingsKeyUi();
-  (window as any).__aiKeyModalRequired = false;
-  closeModal('modal-ai-key');
-}
-
 function isAiAccessDeniedResult(result: { error?: string; code?: string; reason?: string } | null | undefined): boolean {
   if (!result) return false;
   const code = String(result.code || result.reason || result.error || '').toLowerCase();
-  return code.includes('access_denied') || code === 'missing_key';
+  return (
+    code.includes('access_denied') ||
+    code === 'missing_key' ||
+    code === 'missing_auth' ||
+    code === 'auth_unavailable'
+  );
 }
 
 /** Человекочитаемое описание ошибки AI для чата. */
@@ -12484,30 +12399,14 @@ async function refreshAiAccessStatus(): Promise<void> {
     aiAccessOk = false;
     return;
   }
-  const key = getAiTesterKey();
-  if (!key) {
-    aiConfigured = true;
-    aiAccessOk = false;
-    return;
-  }
   try {
-    const status = await api?.aiStatus?.({ testerKey: key });
+    const status = await api?.aiStatus?.();
     aiConfigured = status?.configured !== false;
     aiAccessOk = Boolean(status?.access);
-    if (status && status.access === false && (status.reason === 'access_denied' || status.reason === 'missing_key')) {
-      // Ключ отозван — чистим локально, чтобы не слать мёртвый секрет
-      if (status.reason === 'access_denied') setAiTesterKey('');
-      syncAiSettingsKeyUi();
-    }
   } catch {
     aiConfigured = false;
     aiAccessOk = false;
   }
-}
-
-function withAiTesterKey<T extends Record<string, unknown>>(payload: T): T & { testerKey?: string } {
-  const key = getAiTesterKey();
-  return key ? { ...payload, testerKey: key } : { ...payload };
 }
 
 const AI_WRITE_TOOLS = new Set([
@@ -12657,10 +12556,26 @@ function sessionBuild(session: AiSession | null): Build | null {
   return savedBuilds.find((b) => b.id === session.buildId) || null;
 }
 
-function aiContextPayload(session: AiSession | null): { buildId?: string; buildName?: string } | null {
+function aiContextPayload(session: AiSession | null): {
+  buildId?: string;
+  buildName?: string;
+  gameVersion?: string;
+  loader?: string;
+  javaPath?: string | null;
+  javaMode?: 'pinned' | 'auto' | 'missing';
+} | null {
   const build = sessionBuild(session);
   if (!build) return null;
-  return { buildId: build.id, buildName: build.name };
+  const pinned = String(build.javaPath || '').trim();
+  const javaMode: 'pinned' | 'auto' | 'missing' = pinned ? 'pinned' : 'auto';
+  return {
+    buildId: build.id,
+    buildName: build.name,
+    gameVersion: build.gameVersion || (build as any).version || undefined,
+    loader: build.loader || 'vanilla',
+    javaPath: pinned || null,
+    javaMode,
+  };
 }
 
 type AiContextBucket = {
@@ -12879,6 +12794,95 @@ function closeAiPopovers(except?: string): void {
   if (except !== 'ai-context-menu') setAiContextMenuOpen(false);
   if (except !== 'ai-attach-menu') closeAiAttachMenu();
   if (except !== 'ai-chat-menu-pop') setAiChatMenuOpen(false);
+  if (except !== 'ai-model-menu') setAiModelMenuOpen(false);
+}
+
+function renderAiModelMenu(): void {
+  const menu = document.getElementById('ai-model-menu');
+  if (!menu) return;
+  const pills = [
+    t('ai.model.pillParams'),
+    t('ai.model.pillContext'),
+    t('ai.model.pillTools'),
+    t('ai.model.pillLang'),
+  ];
+  menu.innerHTML = `
+    <div class="ai-model-menu__head">
+      <div class="ai-model-menu__title">${escapeAiHtml(t('ai.model.title'))}</div>
+      <div class="ai-model-menu__desc">${escapeAiHtml(t('ai.model.desc'))}</div>
+    </div>
+    <div class="ai-model-menu__pills">
+      ${pills.map((p) => `<span class="ai-model-menu__pill">${escapeAiHtml(p)}</span>`).join('')}
+    </div>
+    <div class="ai-model-menu__foot">${escapeAiHtml(t('ai.model.foot'))}</div>
+  `;
+}
+
+/** Меню модели — на documentElement + fixed, чтобы не резалось overflow rail/tab */
+function ensureAiModelMenuHost(menu: HTMLElement): void {
+  if (menu.parentElement !== document.documentElement) {
+    document.documentElement.appendChild(menu);
+  }
+}
+
+function positionAiModelMenu(): void {
+  const menu = document.getElementById('ai-model-menu');
+  const btn = document.getElementById('ai-agent-ver');
+  if (!menu || !btn || menu.classList.contains('hidden')) return;
+  const rect = btn.getBoundingClientRect();
+  const gap = 8;
+  const pad = 12;
+  // Сначала ставим примерно, потом меряем реальную ширину
+  menu.style.top = `${Math.round(rect.bottom + gap)}px`;
+  menu.style.left = `${pad}px`;
+  const mw = Math.max(menu.offsetWidth, 280);
+  const mh = menu.offsetHeight;
+  let left = rect.left;
+  // Если не влезает вправо — прижимаем к правому краю кнопки / окна
+  if (left + mw > window.innerWidth - pad) {
+    left = Math.min(rect.right, window.innerWidth - pad) - mw;
+  }
+  left = Math.max(pad, Math.min(left, window.innerWidth - mw - pad));
+  let top = rect.bottom + gap;
+  if (top + mh > window.innerHeight - pad && rect.top - gap - mh > pad) {
+    top = rect.top - gap - mh;
+    menu.style.transformOrigin = 'bottom left';
+  } else {
+    menu.style.transformOrigin = 'top left';
+  }
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+}
+
+function setAiModelMenuOpen(open: boolean): void {
+  const menu = document.getElementById('ai-model-menu');
+  const btn = document.getElementById('ai-agent-ver');
+  if (!menu || !btn) return;
+  if (open) {
+    ensureAiModelMenuHost(menu);
+    renderAiModelMenu();
+    menu.classList.remove('hidden');
+    positionAiModelMenu();
+    requestAnimationFrame(() => {
+      positionAiModelMenu();
+      menu.classList.add('is-open');
+    });
+    btn.setAttribute('aria-expanded', 'true');
+  } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
+    menu.classList.remove('is-open');
+    btn.setAttribute('aria-expanded', 'false');
+    window.setTimeout(() => {
+      if (!menu.classList.contains('is-open')) menu.classList.add('hidden');
+    }, 160);
+  }
+}
+
+function toggleAiModelMenu(): void {
+  const menu = document.getElementById('ai-model-menu');
+  if (!menu) return;
+  const willOpen = !menu.classList.contains('is-open');
+  closeAiPopovers(willOpen ? 'ai-model-menu' : undefined);
+  setAiModelMenuOpen(willOpen);
 }
 
 function toggleAiContextMenu(): void {
@@ -12915,7 +12919,7 @@ async function compactAiSession(session: AiSession): Promise<boolean> {
   const status = appendAiToolStatus('compact', 'running', { label: t('ai.compacting') });
   const started = Date.now();
   try {
-    const result = await api?.aiChat?.(withAiTesterKey({
+    const result = await api?.aiChat?.({
       tools: false,
       context: aiContextPayload(session),
       messages: [
@@ -12931,7 +12935,7 @@ async function compactAiSession(session: AiSession): Promise<boolean> {
           ].join('\n'),
         },
       ],
-    }));
+    });
     const summary = String(result?.reply || '').trim();
     if (!summary || result?.error) {
       if (isAiAccessDeniedResult(result)) handleAiAccessDenied();
@@ -13877,11 +13881,11 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
     setAiAgentStatus('thinking');
     syncAiComposerBusyUi();
     showAiSkeleton(messagesRoot);
-    const result = await api?.aiChat?.(withAiTesterKey({
+    const result = await api?.aiChat?.({
       messages: prepareAiWireMessages(session.messages) as any,
       tools: true,
       context: aiContextPayload(session),
-    }));
+    });
     hideAiSkeleton();
 
     if (aiStopRequested) break;
@@ -13993,7 +13997,18 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
                 : null,
             );
           if (selectedId && savedBuilds.some((b) => b.id === selectedId)) {
+            const prevId = session.buildId;
             session.buildId = selectedId;
+            if (selectedId !== prevId) {
+              const b = savedBuilds.find((x) => x.id === selectedId);
+              const label = b
+                ? `«${b.name}» (id=${b.id}, ${b.gameVersion || '?'} · ${b.loader || 'vanilla'})`
+                : selectedId;
+              session.messages.push({
+                role: 'user',
+                content: `[Контекст] Активная сборка сменена на ${label}. Дальше работай только с ней.`,
+              } as any);
+            }
             session.updatedAt = Date.now();
             saveAiSessions();
             updateAiBuildChip(session);
@@ -14177,7 +14192,7 @@ async function sendAiMessage(text: string): Promise<void> {
     appendAiText('system', t('ai.unavailable'));
     return;
   }
-  if (!getAiTesterKey() || aiAccessOk === false) {
+  if (aiAccessOk === false) {
     handleAiAccessDenied();
     return;
   }
@@ -14366,18 +14381,24 @@ function initAiAssistant(): void {
     requestAiStop();
   });
 
-  // Версия клиента в pill рядом с брендом агента
-  const setAiRailVersion = (v?: string): void => {
-    const el = document.getElementById('ai-agent-ver');
-    if (!el) return;
-    const ver = String(v || appVersion || '').trim();
-    if (ver) el.textContent = ver;
-  };
-  setAiRailVersion();
+  // Pill бренда: всегда Pixi 1.0 (публичное имя модели)
+  const verBtn = document.getElementById('ai-agent-ver');
+  if (verBtn) verBtn.textContent = t('ai.model.pill');
   void api?.getAppVersion?.().then((v) => {
     if (!v) return;
     appVersion = String(v);
-    setAiRailVersion(appVersion);
+  });
+
+  verBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleAiModelMenu();
+  });
+  document.getElementById('ai-model-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+  window.addEventListener('resize', () => {
+    const menu = document.getElementById('ai-model-menu');
+    if (menu?.classList.contains('is-open')) positionAiModelMenu();
   });
 
   newBtn?.addEventListener('click', () => {
@@ -14507,7 +14528,21 @@ function initAiAssistant(): void {
     if (!btn) return;
     const session = activeAiSession();
     if (!session) return;
-    session.buildId = btn.dataset.build || null;
+    const nextId = btn.dataset.build || null;
+    const prevId = session.buildId;
+    session.buildId = nextId;
+    // Явная смена контекста в истории — модель не должна цепляться за старую сборку
+    if (nextId && nextId !== prevId) {
+      const b = savedBuilds.find((x) => x.id === nextId);
+      const label = b
+        ? `«${b.name}» (id=${b.id}, ${b.gameVersion || '?'} · ${b.loader || 'vanilla'})`
+        : nextId;
+      session.messages.push({
+        role: 'user',
+        content: `[Контекст] Активная сборка сменена на ${label}. Дальше работай только с ней; не ссылайся на предыдущие сборки, пока я сам их не назову.`,
+      } as any);
+    }
+    session.updatedAt = Date.now();
     saveAiSessions();
     updateAiBuildChip(session);
     updateAiContextRing(session);
@@ -14557,13 +14592,9 @@ function initAiAssistant(): void {
     closeAiPopovers();
   });
 
-  void api?.aiStatus?.({ testerKey: getAiTesterKey() }).then((status) => {
+  void api?.aiStatus?.().then((status) => {
     aiConfigured = status?.configured !== false;
     aiAccessOk = Boolean(status?.access);
-    if (status?.reason === 'access_denied') {
-      setAiTesterKey('');
-      syncAiSettingsKeyUi();
-    }
   });
 }
 
@@ -14571,7 +14602,6 @@ let aiAccessSettingsBound = false;
 
 function bindAiAccessSettingsUi(): void {
   if (aiAccessSettingsBound) {
-    syncAiSettingsKeyUi();
     applyAiTabVisibility();
     return;
   }
@@ -14582,34 +14612,14 @@ function bindAiAccessSettingsUi(): void {
     toggle.addEventListener('change', () => {
       const on = toggle.checked;
       localStorage.setItem(AI_ENABLED_LS_KEY, String(on));
+      applyAiTabVisibility();
       if (on) {
-        // При включении всегда запрашиваем/подтверждаем код
-        openAiKeyModal({ required: true });
-        applyAiTabVisibility();
-      } else {
-        applyAiTabVisibility();
+        void refreshAiAccessStatus().then(() => {
+          if (!aiAccessOk) showAiAccessDeniedModal();
+        });
       }
     });
   }
-
-  document.getElementById('setting-ai-key-btn')?.addEventListener('click', () => {
-    openAiKeyModal({ required: false });
-  });
-
-  document.getElementById('modal-ai-key-close')?.addEventListener('click', () => closeAiKeyModal(true));
-  document.getElementById('modal-ai-key-cancel')?.addEventListener('click', () => closeAiKeyModal(true));
-  document.getElementById('modal-ai-key-save')?.addEventListener('click', () => {
-    void saveAiTesterKeyFromModal();
-  });
-  document.getElementById('modal-ai-key')?.addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) closeAiKeyModal(true);
-  });
-  document.getElementById('modal-ai-key-input')?.addEventListener('keydown', (e) => {
-    if ((e as KeyboardEvent).key === 'Enter') {
-      e.preventDefault();
-      void saveAiTesterKeyFromModal();
-    }
-  });
 
   const closeAccess = () => closeModal('modal-ai-access');
   document.getElementById('modal-ai-access-close')?.addEventListener('click', closeAccess);
@@ -14617,11 +14627,11 @@ function bindAiAccessSettingsUi(): void {
   document.getElementById('modal-ai-access')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeAccess();
   });
+  document.getElementById('modal-ai-access-apply')?.addEventListener('click', () => {
+    openUagentApplyFromModal();
+  });
   document.getElementById('modal-ai-access-settings')?.addEventListener('click', () => {
-    closeAccess();
-    openModal('modal-settings');
-    const tab = document.querySelector<HTMLElement>('.stngs-sidebar [data-settings-tab="agent"]');
-    tab?.click();
+    openUagentApplyFromModal();
   });
 
   const closeMsgrOffline = () => closeModal('modal-msgr-offline');

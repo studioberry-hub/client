@@ -529,7 +529,18 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
         if (!build.name) issues.push('build_name_missing');
         if (!build.gameVersion) issues.push('game_version_missing');
         if (!build.loader) warnings.push('loader_missing');
-        if (!build.javaPath) warnings.push('java_not_pinned');
+        const javaEffective = recommendation.recommendedPath
+          ? {
+              mode: build.javaPath && fs.existsSync(String(build.javaPath)) ? 'pinned' : 'auto',
+              path: (build.javaPath && fs.existsSync(String(build.javaPath))
+                ? String(build.javaPath)
+                : recommendation.recommendedPath) as string,
+            }
+          : { mode: 'missing' as const, path: null as string | null };
+        if (javaEffective.mode === 'missing') warnings.push('java_not_available');
+        else if (javaEffective.mode === 'auto') {
+          // Пустой javaPath — норма: лаунчер подставит managed Java
+        }
         if (build.javaPath && !fs.existsSync(build.javaPath)) issues.push('java_path_missing');
         if (!content.mods.count) warnings.push('mods_folder_empty');
         const latestLog = path.join(root, 'logs', 'latest.log');
@@ -551,7 +562,15 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
           },
           java: {
             configuredPath: build.javaPath || null,
+            effectivePath: javaEffective.path,
+            mode: javaEffective.mode,
             recommendation,
+            note:
+              javaEffective.mode === 'auto'
+                ? 'javaPath не задан — при запуске лаунчер сам выберет managed Java (effectivePath).'
+                : javaEffective.mode === 'pinned'
+                  ? 'Java закреплена в сборке.'
+                  : 'Подходящая Java не найдена.',
           },
           issues,
           warnings,
@@ -1021,32 +1040,38 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
         const build = ensureBuildOrThrow(deps, buildId);
         const recommendation = await recommendJava(build);
         const configuredPath = asString(build.javaPath);
-        if (!configuredPath) {
+        const pinnedOk = Boolean(configuredPath && fs.existsSync(configuredPath));
+        const effectivePath = pinnedOk ? configuredPath : recommendation.recommendedPath;
+        const mode = pinnedOk ? 'pinned' : effectivePath ? 'auto' : 'missing';
+
+        if (!effectivePath) {
           return {
             buildId,
             valid: false,
-            error: 'java_not_configured',
+            mode,
+            error: 'java_not_available',
+            configuredPath: configuredPath || null,
+            effectivePath: null,
             recommendation,
+            note: 'Нет ни закреплённой, ни managed Java под версию Minecraft сборки.',
           };
         }
-        if (!fs.existsSync(configuredPath)) {
-          return {
-            buildId,
-            valid: false,
-            error: 'java_path_missing',
-            configuredPath,
-            recommendation,
-          };
-        }
-        const detectedVersion = await detectJavaVersion(configuredPath);
+
+        const detectedVersion = await detectJavaVersion(effectivePath);
         const valid = !!detectedVersion && detectedVersion >= recommendation.required;
         return {
           buildId,
           valid,
-          configuredPath,
+          mode,
+          configuredPath: configuredPath || null,
+          effectivePath,
           detectedVersion,
           requiredVersion: recommendation.required,
           recommendation,
+          note:
+            mode === 'auto'
+              ? 'javaPath пустой — лаунчер использует авто-выбор (effectivePath). Это нормально, Java «настроена».'
+              : 'Java закреплена в настройках сборки.',
         };
       },
     ),
@@ -1091,15 +1116,24 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
         const buildId = asString(args.buildId);
         const build = ensureBuildOrThrow(deps, buildId);
         const recommendation = await recommendJava(build);
+        const configuredPath = build.javaPath || null;
+        const pinnedOk = Boolean(configuredPath && fs.existsSync(String(configuredPath)));
+        const effectivePath = pinnedOk ? String(configuredPath) : recommendation.recommendedPath;
         return {
           buildId,
           gameVersion: getBuildGameVersion(build),
           loader: getBuildLoader(build),
           requiredVersion: recommendation.required,
           reason: recommendation.reason,
-          configuredPath: build.javaPath || null,
+          configuredPath,
+          effectivePath,
+          mode: pinnedOk ? 'pinned' : effectivePath ? 'auto' : 'missing',
           recommendedPath: recommendation.recommendedPath,
           installed: recommendation.installed,
+          note:
+            !configuredPath && effectivePath
+              ? 'В сборке javaPath не задан — при запуске лаунчер сам выберет effectivePath. Не говори, что Java не настроена.'
+              : undefined,
         };
       },
     ),

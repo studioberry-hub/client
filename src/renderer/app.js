@@ -28850,6 +28850,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.notifyMessengerGameRunning = notifyMessengerGameRunning;
+      exports.openAssistantBotDm = openAssistantBotDm;
       exports.openGroupInviteModal = openGroupInviteModal;
       exports.ensureMessengerTab = ensureMessengerTab;
       exports.notifyMessengerAccountChanged = notifyMessengerAccountChanged;
@@ -30559,6 +30560,10 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         }
         const prefs = pruneExpiredMutes(loadMsgrPrefs());
         const ordered = [...conversations].sort((a, b2) => {
+          const aBot = a.isBotDm ? 0 : 1;
+          const bBot = b2.isBotDm ? 0 : 1;
+          if (aBot !== bBot)
+            return aBot - bBot;
           const aProj = a.isProject ? 0 : 1;
           const bProj = b2.isProject ? 0 : 1;
           if (aProj !== bProj)
@@ -31242,6 +31247,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         <div class="msgr-bot-post__quote-text">${host.escapeHtml(m2.replyTo.deleted ? host.t("msgr.messageDeleted") : m2.replyTo.attachment ? m2.replyTo.attachment.name : m2.replyTo.body)}</div>
       </div>` : "";
         const updateBlock = m2.kind === "client_update" ? `<button type="button" class="stngs-btn ghost msgr-update-btn" data-msgr-open-updates>${host.escapeHtml(host.t("msgr.updateClient"))}</button>` : "";
+        const buttons = Array.isArray(m2.meta?.buttons) ? m2.meta.buttons : [];
+        const keyboardBlock = !m2.deleted && (m2.kind === "bot_keyboard" || buttons.length) ? `<div class="msgr-bot-keyboard">${buttons.filter((b2) => b2 && b2.id && b2.label).map((b2) => `<button type="button" class="msgr-bot-keyboard__btn" data-bot-btn="${host.escapeHtml(String(b2.id))}" data-bot-msg="${host.escapeHtml(m2.id)}">${host.escapeHtml(String(b2.label))}</button>`).join("")}</div>` : "";
         const bodyRaw = m2.body && (!m2.attachment || m2.body !== m2.attachment.name) ? m2.body : "";
         const bodyHtml = bodyRaw ? host.renderMarkdown ? `<div class="msgr-bot-post__md ai-md">${host.renderMarkdown(bodyRaw)}</div>` : `<div class="msgr-bot-post__md">${host.escapeHtml(bodyRaw)}</div>` : "";
         const fileBlock = renderAttachmentBlock(m2);
@@ -31259,6 +31266,7 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           ${bodyHtml}
           ${fileBlock}
           ${updateBlock}
+          ${keyboardBlock}
           <div class="msgr-bot-post__meta">
             <span>${host.escapeHtml(formatMsgTime(m2.createdAt))}</span>
           </div>
@@ -31725,6 +31733,37 @@ Please report this to https://github.com/markedjs/marked.`, e) {
         } else if (!res?.ok) {
           toast(host?.t("msgr.dmFailed", { msg: res?.error || res?.code || "" }) || "DM failed");
         }
+      }
+      async function sendBotCallback(conversationId, buttonId, messageId) {
+        const res = await req("/bot/callback", {
+          method: "POST",
+          body: { conversationId, buttonId, messageId }
+        });
+        if (!res?.ok) {
+          toast(res?.error || host?.t("msgr.errorHint") || "Error");
+          return;
+        }
+        if (res.data?.message) {
+          await loadMessages(conversationId, { forceScrollBottom: true });
+        }
+        await loadConversations();
+      }
+      async function openAssistantBotDm() {
+        await ensureMessengerTab(true);
+        await loadConversations();
+        let bot = conversations.find((c) => c.isBotDm);
+        if (!bot) {
+          await loadConversations();
+          bot = conversations.find((c) => c.isBotDm);
+        }
+        if (!bot && conversations.length) {
+          bot = conversations.find((c) => c.type === "dm" && (c.peer?.id === "bot:project" || c.peer?.provider === "bot"));
+        }
+        if (!bot)
+          return false;
+        setRailTab("chats");
+        await openConversation(bot.id);
+        return true;
       }
       async function createGroup() {
         if (!host)
@@ -33530,6 +33569,15 @@ Please report this to https://github.com/markedjs/marked.`, e) {
           if (e.target.closest("[data-msgr-open-updates]")) {
             e.preventDefault();
             host?.openSettingsTab?.("updates");
+            return;
+          }
+          const botBtn = e.target.closest("[data-bot-btn]");
+          if (botBtn) {
+            e.preventDefault();
+            const buttonId = botBtn.getAttribute("data-bot-btn") || "";
+            const messageId = botBtn.getAttribute("data-bot-msg") || "";
+            if (buttonId && activeId)
+              void sendBotCallback(activeId, buttonId, messageId);
             return;
           }
           const replyBtn = e.target.closest("[data-reply-to]");
@@ -36306,10 +36354,6 @@ buildId: ${id}` : ""));
             showAiAccessDeniedModal();
             return;
           }
-          if (!getAiTesterKey()) {
-            showAiAccessDeniedModal();
-            return;
-          }
         }
         if (target === "messenger") {
           if (isOfflineAccount()) {
@@ -36350,7 +36394,7 @@ buildId: ${id}` : ""));
         if (target === "ai") {
           ensureAiTab();
           void refreshAiAccessStatus().then(() => {
-            if (!getAiTesterKey() || aiAccessOk === false)
+            if (aiAccessOk === false)
               showAiAccessDeniedModal();
           });
         }
@@ -37701,9 +37745,6 @@ buildId: ${id}` : ""));
           if (aboutVer && api?.getAppVersion) {
             api.getAppVersion().then((ver) => {
               appVersion = ver;
-              const aiVer = document.getElementById("ai-agent-ver");
-              if (aiVer && ver)
-                aiVer.textContent = ver;
               aboutVer.textContent = `${t("about.version")} ${ver}`;
             });
           }
@@ -47025,6 +47066,7 @@ ${lines.join("\n")}${depsNote}`);
         search_shaders: "\u041F\u043E\u0438\u0441\u043A \u0448\u0435\u0439\u0434\u0435\u0440\u043E\u0432",
         get_mod: "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u043F\u0440\u043E\u0435\u043A\u0442\u0430",
         list_build_mods: "\u041C\u043E\u0434\u044B \u0441\u0431\u043E\u0440\u043A\u0438",
+        find_mod_in_build: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u043C\u043E\u0434\u0430 \u0432 \u0441\u0431\u043E\u0440\u043A\u0435",
         list_build_content: "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
         toggle_mod: "\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u043C\u043E\u0434\u0430",
         remove_build_file: "\u0423\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0444\u0430\u0439\u043B\u0430",
@@ -47060,19 +47102,8 @@ ${lines.join("\n")}${depsNote}`);
       var aiActiveRound = null;
       var aiLastDividerDay = "";
       var AI_ENABLED_LS_KEY = "Undefined Client-ai-enabled";
-      var AI_TESTER_LS_KEY = "Undefined Client-ai-tester-key";
       function isAiFeatureEnabled() {
         return localStorage.getItem(AI_ENABLED_LS_KEY) !== "false";
-      }
-      function getAiTesterKey() {
-        return String(localStorage.getItem(AI_TESTER_LS_KEY) || "").trim();
-      }
-      function setAiTesterKey(raw) {
-        const key = String(raw || "").trim();
-        if (key)
-          localStorage.setItem(AI_TESTER_LS_KEY, key);
-        else
-          localStorage.removeItem(AI_TESTER_LS_KEY);
       }
       function applyAiTabVisibility() {
         const enabled = isAiFeatureEnabled();
@@ -47081,25 +47112,21 @@ ${lines.join("\n")}${depsNote}`);
         });
         if (!enabled && presenceTab === "ai")
           switchTab("home");
-        syncAiSettingsKeyUi();
-      }
-      function syncAiSettingsKeyUi() {
-        const hint = document.getElementById("setting-ai-key-hint");
-        const btn = document.getElementById("setting-ai-key-btn");
-        const key = getAiTesterKey();
-        if (btn)
-          btn.textContent = key ? t("stngs.agentKeyChange") : t("stngs.agentKeyEnter");
-        if (hint) {
-          if (key) {
-            const prefix = key.slice(0, 12);
-            hint.textContent = t("stngs.agentKeyHintSet", { prefix });
-          } else {
-            hint.textContent = t("stngs.agentKeyHint");
-          }
-        }
       }
       function showAiAccessDeniedModal() {
         openModal("modal-ai-access");
+      }
+      function openUagentApplyFromModal() {
+        closeModal("modal-ai-access");
+        if (isOfflineAccount()) {
+          showMessengerOfflineModal();
+          return;
+        }
+        switchTab("messenger");
+        void (0, ui_1.openAssistantBotDm)().then((ok) => {
+          if (!ok)
+            void (0, ui_1.ensureMessengerTab)(true);
+        });
       }
       function showMessengerOfflineModal() {
         openModal("modal-msgr-offline");
@@ -47119,71 +47146,11 @@ ${lines.join("\n")}${depsNote}`);
           switchTab("home");
         }
       }
-      function openAiKeyModal(opts) {
-        const input = document.getElementById("modal-ai-key-input");
-        const status = document.getElementById("modal-ai-key-status");
-        if (input)
-          input.value = getAiTesterKey();
-        if (status) {
-          status.textContent = "";
-          status.className = "modal-ai-key-status";
-        }
-        window.__aiKeyModalRequired = Boolean(opts?.required);
-        openModal("modal-ai-key");
-        setTimeout(() => input?.focus(), 30);
-      }
-      function closeAiKeyModal(cancelled = false) {
-        const required = Boolean(window.__aiKeyModalRequired);
-        closeModal("modal-ai-key");
-        if (cancelled && required) {
-          const toggle = document.getElementById("setting-ai-enabled");
-          if (toggle)
-            toggle.checked = false;
-          localStorage.setItem(AI_ENABLED_LS_KEY, "false");
-          applyAiTabVisibility();
-        }
-        window.__aiKeyModalRequired = false;
-      }
-      async function saveAiTesterKeyFromModal() {
-        const input = document.getElementById("modal-ai-key-input");
-        const status = document.getElementById("modal-ai-key-status");
-        const raw = String(input?.value || "").trim();
-        if (!raw) {
-          if (status) {
-            status.textContent = t("ai.keyModal.empty");
-            status.className = "modal-ai-key-status is-error";
-          }
-          return;
-        }
-        if (status) {
-          status.textContent = t("common.loading");
-          status.className = "modal-ai-key-status";
-        }
-        const result = await api?.aiValidateKey?.(raw);
-        if (!result?.ok) {
-          if (status) {
-            status.textContent = t("ai.keyModal.invalid");
-            status.className = "modal-ai-key-status is-error";
-          }
-          aiAccessOk = false;
-          return;
-        }
-        setAiTesterKey(raw);
-        aiAccessOk = true;
-        aiConfigured = true;
-        if (status) {
-          status.textContent = t("ai.keyModal.ok");
-          status.className = "modal-ai-key-status is-ok";
-        }
-        syncAiSettingsKeyUi();
-        window.__aiKeyModalRequired = false;
-        closeModal("modal-ai-key");
-      }
       function isAiAccessDeniedResult(result) {
         if (!result)
           return false;
         const code = String(result.code || result.reason || result.error || "").toLowerCase();
-        return code.includes("access_denied") || code === "missing_key";
+        return code.includes("access_denied") || code === "missing_key" || code === "missing_auth" || code === "auth_unavailable";
       }
       function formatAiChatError(result) {
         const code = String(result?.code || result?.reason || "").toLowerCase();
@@ -47223,29 +47190,14 @@ ${lines.join("\n")}${depsNote}`);
           aiAccessOk = false;
           return;
         }
-        const key = getAiTesterKey();
-        if (!key) {
-          aiConfigured = true;
-          aiAccessOk = false;
-          return;
-        }
         try {
-          const status = await api?.aiStatus?.({ testerKey: key });
+          const status = await api?.aiStatus?.();
           aiConfigured = status?.configured !== false;
           aiAccessOk = Boolean(status?.access);
-          if (status && status.access === false && (status.reason === "access_denied" || status.reason === "missing_key")) {
-            if (status.reason === "access_denied")
-              setAiTesterKey("");
-            syncAiSettingsKeyUi();
-          }
         } catch {
           aiConfigured = false;
           aiAccessOk = false;
         }
-      }
-      function withAiTesterKey(payload) {
-        const key = getAiTesterKey();
-        return key ? { ...payload, testerKey: key } : { ...payload };
       }
       var AI_WRITE_TOOLS = /* @__PURE__ */ new Set([
         "create_build",
@@ -47385,7 +47337,16 @@ ${lines.join("\n")}${depsNote}`);
         const build = sessionBuild(session);
         if (!build)
           return null;
-        return { buildId: build.id, buildName: build.name };
+        const pinned = String(build.javaPath || "").trim();
+        const javaMode = pinned ? "pinned" : "auto";
+        return {
+          buildId: build.id,
+          buildName: build.name,
+          gameVersion: build.gameVersion || build.version || void 0,
+          loader: build.loader || "vanilla",
+          javaPath: pinned || null,
+          javaMode
+        };
       }
       function charsToTokens(chars) {
         return Math.max(0, Math.ceil(chars / 4));
@@ -47574,6 +47535,93 @@ ${lines.join("\n")}${depsNote}`);
           (0, attach_ui_1.closeAiAttachMenu)();
         if (except !== "ai-chat-menu-pop")
           setAiChatMenuOpen(false);
+        if (except !== "ai-model-menu")
+          setAiModelMenuOpen(false);
+      }
+      function renderAiModelMenu() {
+        const menu = document.getElementById("ai-model-menu");
+        if (!menu)
+          return;
+        const pills = [
+          t("ai.model.pillParams"),
+          t("ai.model.pillContext"),
+          t("ai.model.pillTools"),
+          t("ai.model.pillLang")
+        ];
+        menu.innerHTML = `
+    <div class="ai-model-menu__head">
+      <div class="ai-model-menu__title">${escapeAiHtml(t("ai.model.title"))}</div>
+      <div class="ai-model-menu__desc">${escapeAiHtml(t("ai.model.desc"))}</div>
+    </div>
+    <div class="ai-model-menu__pills">
+      ${pills.map((p) => `<span class="ai-model-menu__pill">${escapeAiHtml(p)}</span>`).join("")}
+    </div>
+    <div class="ai-model-menu__foot">${escapeAiHtml(t("ai.model.foot"))}</div>
+  `;
+      }
+      function ensureAiModelMenuHost(menu) {
+        if (menu.parentElement !== document.documentElement) {
+          document.documentElement.appendChild(menu);
+        }
+      }
+      function positionAiModelMenu() {
+        const menu = document.getElementById("ai-model-menu");
+        const btn = document.getElementById("ai-agent-ver");
+        if (!menu || !btn || menu.classList.contains("hidden"))
+          return;
+        const rect = btn.getBoundingClientRect();
+        const gap = 8;
+        const pad = 12;
+        menu.style.top = `${Math.round(rect.bottom + gap)}px`;
+        menu.style.left = `${pad}px`;
+        const mw = Math.max(menu.offsetWidth, 280);
+        const mh = menu.offsetHeight;
+        let left = rect.left;
+        if (left + mw > window.innerWidth - pad) {
+          left = Math.min(rect.right, window.innerWidth - pad) - mw;
+        }
+        left = Math.max(pad, Math.min(left, window.innerWidth - mw - pad));
+        let top = rect.bottom + gap;
+        if (top + mh > window.innerHeight - pad && rect.top - gap - mh > pad) {
+          top = rect.top - gap - mh;
+          menu.style.transformOrigin = "bottom left";
+        } else {
+          menu.style.transformOrigin = "top left";
+        }
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
+      }
+      function setAiModelMenuOpen(open) {
+        const menu = document.getElementById("ai-model-menu");
+        const btn = document.getElementById("ai-agent-ver");
+        if (!menu || !btn)
+          return;
+        if (open) {
+          ensureAiModelMenuHost(menu);
+          renderAiModelMenu();
+          menu.classList.remove("hidden");
+          positionAiModelMenu();
+          requestAnimationFrame(() => {
+            positionAiModelMenu();
+            menu.classList.add("is-open");
+          });
+          btn.setAttribute("aria-expanded", "true");
+        } else if (menu.classList.contains("is-open") || !menu.classList.contains("hidden")) {
+          menu.classList.remove("is-open");
+          btn.setAttribute("aria-expanded", "false");
+          window.setTimeout(() => {
+            if (!menu.classList.contains("is-open"))
+              menu.classList.add("hidden");
+          }, 160);
+        }
+      }
+      function toggleAiModelMenu() {
+        const menu = document.getElementById("ai-model-menu");
+        if (!menu)
+          return;
+        const willOpen = !menu.classList.contains("is-open");
+        closeAiPopovers(willOpen ? "ai-model-menu" : void 0);
+        setAiModelMenuOpen(willOpen);
       }
       function toggleAiContextMenu() {
         const menu = document.getElementById("ai-context-menu");
@@ -47607,7 +47655,7 @@ ${lines.join("\n")}${depsNote}`);
         const status = appendAiToolStatus("compact", "running", { label: t("ai.compacting") });
         const started = Date.now();
         try {
-          const result = await api?.aiChat?.(withAiTesterKey({
+          const result = await api?.aiChat?.({
             tools: false,
             context: aiContextPayload(session),
             messages: [
@@ -47623,7 +47671,7 @@ ${lines.join("\n")}${depsNote}`);
                 ].join("\n")
               }
             ]
-          }));
+          });
           const summary = String(result?.reply || "").trim();
           if (!summary || result?.error) {
             if (isAiAccessDeniedResult(result))
@@ -48491,11 +48539,11 @@ ${summary}`
           (0, turn_ui_1.setAiAgentStatus)("thinking");
           syncAiComposerBusyUi();
           (0, turn_ui_1.showAiSkeleton)(messagesRoot);
-          const result = await api?.aiChat?.(withAiTesterKey({
+          const result = await api?.aiChat?.({
             messages: prepareAiWireMessages(session.messages),
             tools: true,
             context: aiContextPayload(session)
-          }));
+          });
           (0, turn_ui_1.hideAiSkeleton)();
           if (aiStopRequested)
             break;
@@ -48584,7 +48632,16 @@ ${summary}`
               if (exec?.ok && tc.function.name === "select_build") {
                 const selectedId = asStringMaybe(args.buildId) || asStringMaybe(exec.result && typeof exec.result === "object" ? exec.result.id : null);
                 if (selectedId && savedBuilds.some((b2) => b2.id === selectedId)) {
+                  const prevId = session.buildId;
                   session.buildId = selectedId;
+                  if (selectedId !== prevId) {
+                    const b2 = savedBuilds.find((x2) => x2.id === selectedId);
+                    const label = b2 ? `\xAB${b2.name}\xBB (id=${b2.id}, ${b2.gameVersion || "?"} \xB7 ${b2.loader || "vanilla"})` : selectedId;
+                    session.messages.push({
+                      role: "user",
+                      content: `[\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442] \u0410\u043A\u0442\u0438\u0432\u043D\u0430\u044F \u0441\u0431\u043E\u0440\u043A\u0430 \u0441\u043C\u0435\u043D\u0435\u043D\u0430 \u043D\u0430 ${label}. \u0414\u0430\u043B\u044C\u0448\u0435 \u0440\u0430\u0431\u043E\u0442\u0430\u0439 \u0442\u043E\u043B\u044C\u043A\u043E \u0441 \u043D\u0435\u0439.`
+                    });
+                  }
                   session.updatedAt = Date.now();
                   saveAiSessions();
                   updateAiBuildChip(session);
@@ -48749,7 +48806,7 @@ ${summary}`
           appendAiText("system", t("ai.unavailable"));
           return;
         }
-        if (!getAiTesterKey() || aiAccessOk === false) {
+        if (aiAccessOk === false) {
           handleAiAccessDenied();
           return;
         }
@@ -48918,20 +48975,25 @@ ${summary}`
           e.stopPropagation();
           requestAiStop();
         });
-        const setAiRailVersion = (v2) => {
-          const el = document.getElementById("ai-agent-ver");
-          if (!el)
-            return;
-          const ver = String(v2 || appVersion || "").trim();
-          if (ver)
-            el.textContent = ver;
-        };
-        setAiRailVersion();
+        const verBtn = document.getElementById("ai-agent-ver");
+        if (verBtn)
+          verBtn.textContent = t("ai.model.pill");
         void api?.getAppVersion?.().then((v2) => {
           if (!v2)
             return;
           appVersion = String(v2);
-          setAiRailVersion(appVersion);
+        });
+        verBtn?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleAiModelMenu();
+        });
+        document.getElementById("ai-model-menu")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
+        window.addEventListener("resize", () => {
+          const menu = document.getElementById("ai-model-menu");
+          if (menu?.classList.contains("is-open"))
+            positionAiModelMenu();
         });
         newBtn?.addEventListener("click", () => {
           createAiSession(true);
@@ -49054,7 +49116,18 @@ ${summary}`
           const session = activeAiSession();
           if (!session)
             return;
-          session.buildId = btn.dataset.build || null;
+          const nextId = btn.dataset.build || null;
+          const prevId = session.buildId;
+          session.buildId = nextId;
+          if (nextId && nextId !== prevId) {
+            const b2 = savedBuilds.find((x2) => x2.id === nextId);
+            const label = b2 ? `\xAB${b2.name}\xBB (id=${b2.id}, ${b2.gameVersion || "?"} \xB7 ${b2.loader || "vanilla"})` : nextId;
+            session.messages.push({
+              role: "user",
+              content: `[\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442] \u0410\u043A\u0442\u0438\u0432\u043D\u0430\u044F \u0441\u0431\u043E\u0440\u043A\u0430 \u0441\u043C\u0435\u043D\u0435\u043D\u0430 \u043D\u0430 ${label}. \u0414\u0430\u043B\u044C\u0448\u0435 \u0440\u0430\u0431\u043E\u0442\u0430\u0439 \u0442\u043E\u043B\u044C\u043A\u043E \u0441 \u043D\u0435\u0439; \u043D\u0435 \u0441\u0441\u044B\u043B\u0430\u0439\u0441\u044F \u043D\u0430 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0435 \u0441\u0431\u043E\u0440\u043A\u0438, \u043F\u043E\u043A\u0430 \u044F \u0441\u0430\u043C \u0438\u0445 \u043D\u0435 \u043D\u0430\u0437\u043E\u0432\u0443.`
+            });
+          }
+          session.updatedAt = Date.now();
           saveAiSessions();
           updateAiBuildChip(session);
           updateAiContextRing(session);
@@ -49098,19 +49171,14 @@ ${summary}`
         document.addEventListener("click", () => {
           closeAiPopovers();
         });
-        void api?.aiStatus?.({ testerKey: getAiTesterKey() }).then((status) => {
+        void api?.aiStatus?.().then((status) => {
           aiConfigured = status?.configured !== false;
           aiAccessOk = Boolean(status?.access);
-          if (status?.reason === "access_denied") {
-            setAiTesterKey("");
-            syncAiSettingsKeyUi();
-          }
         });
       }
       var aiAccessSettingsBound = false;
       function bindAiAccessSettingsUi() {
         if (aiAccessSettingsBound) {
-          syncAiSettingsKeyUi();
           applyAiTabVisibility();
           return;
         }
@@ -49121,32 +49189,15 @@ ${summary}`
           toggle.addEventListener("change", () => {
             const on = toggle.checked;
             localStorage.setItem(AI_ENABLED_LS_KEY, String(on));
+            applyAiTabVisibility();
             if (on) {
-              openAiKeyModal({ required: true });
-              applyAiTabVisibility();
-            } else {
-              applyAiTabVisibility();
+              void refreshAiAccessStatus().then(() => {
+                if (!aiAccessOk)
+                  showAiAccessDeniedModal();
+              });
             }
           });
         }
-        document.getElementById("setting-ai-key-btn")?.addEventListener("click", () => {
-          openAiKeyModal({ required: false });
-        });
-        document.getElementById("modal-ai-key-close")?.addEventListener("click", () => closeAiKeyModal(true));
-        document.getElementById("modal-ai-key-cancel")?.addEventListener("click", () => closeAiKeyModal(true));
-        document.getElementById("modal-ai-key-save")?.addEventListener("click", () => {
-          void saveAiTesterKeyFromModal();
-        });
-        document.getElementById("modal-ai-key")?.addEventListener("click", (e) => {
-          if (e.target === e.currentTarget)
-            closeAiKeyModal(true);
-        });
-        document.getElementById("modal-ai-key-input")?.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void saveAiTesterKeyFromModal();
-          }
-        });
         const closeAccess = () => closeModal("modal-ai-access");
         document.getElementById("modal-ai-access-close")?.addEventListener("click", closeAccess);
         document.getElementById("modal-ai-access-ok")?.addEventListener("click", closeAccess);
@@ -49154,11 +49205,11 @@ ${summary}`
           if (e.target === e.currentTarget)
             closeAccess();
         });
+        document.getElementById("modal-ai-access-apply")?.addEventListener("click", () => {
+          openUagentApplyFromModal();
+        });
         document.getElementById("modal-ai-access-settings")?.addEventListener("click", () => {
-          closeAccess();
-          openModal("modal-settings");
-          const tab = document.querySelector('.stngs-sidebar [data-settings-tab="agent"]');
-          tab?.click();
+          openUagentApplyFromModal();
         });
         const closeMsgrOffline = () => closeModal("modal-msgr-offline");
         document.getElementById("modal-msgr-offline-close")?.addEventListener("click", closeMsgrOffline);
