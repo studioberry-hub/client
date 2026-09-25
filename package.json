@@ -3,21 +3,30 @@
   "version": "1.0.7-beta",
   "description": "Minecraft Launcher",
   "license": "GPL-3.0-only",
+  "author": "StudioBerry Hub <contact@studioberry.org>",
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc && esbuild --bundle dist/renderer/app.js --outfile=src/renderer/app.js --format=iife --global-name=app --platform=browser && esbuild --bundle dist/renderer/console.js --outfile=src/renderer/console.js --format=iife --global-name=consoleWin --platform=browser",
     "build:world": "node scripts/copy-world-assets.mjs && node scripts/build-world.mjs",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --dev",
-    "dist": "npm run build && electron-builder --win",
-    "dist:dir": "npm run build && electron-builder --win --dir",
-    "dist:pack-only": "electron-builder --win --dir"
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:win:dir": "npm run build && electron-builder --win --dir",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:linux:appimage": "npm run build && electron-builder --linux AppImage",
+    "dist:linux:deb": "npm run build && electron-builder --linux deb",
+    "dist:linux:rpm": "npm run build && electron-builder --linux rpm",
+    "dist:linux:tar": "npm run build && electron-builder --linux tar.gz",
+    "dist:linux:dir": "npm run build && electron-builder --linux --dir",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:pack-only": "electron-builder --dir"
   },
   "build": {
     "appId": "undefined-client",
     "productName": "Undefined Client",
     "directories": {
-      "output": "dist-windows"
+      "output": "release"
     },
     "afterPack": "./scripts/after-pack.cjs",
     "electronLanguages": [
@@ -36,11 +45,14 @@
       "!assets/MusicForUClient{,/**}",
       "!assets/screenshots{,/**}",
       "IconForBuild/icon.ico",
+      "IconForBuild/*.png",
+      "IconForBuild/icons/*.png",
       "!**/*.{map,md,markdown}",
       "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,README,readme}",
       "!**/node_modules/*/{test,tests,__tests__,docs,doc,example,examples,bench,benchmark}",
       "!**/node_modules/**/{src,Source}/**",
       "node_modules/protodef/src/**",
+      "node_modules/discord-rpc/src/**",
       "!**/node_modules/**/*.d.ts",
       "!**/node_modules/**/*.ts",
       "!node_modules/minecraft-data{,/**}",
@@ -79,6 +91,23 @@
       "createDesktopShortcut": true,
       "installerIcon": "IconForBuild/icon.ico",
       "uninstallerIcon": "IconForBuild/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz",
+        "deb"
+      ],
+      "maintainer": "StudioBerry Hub <contact@studioberry.org>",
+      "icon": "IconForBuild/icons",
+      "executableName": "uclient",
+      "category": "Game",
+      "synopsis": "Undefined Client - Minecraft Launcher",
+      "description": "Minecraft Launcher with Modrinth mod catalog, 3D skin preview, and Forge/Fabric support",
+      "syncDesktopName": true,
+      "mimeTypes": [
+        "x-scheme-handler/uclient"
+      ]
     }
   },
   "devDependencies": {

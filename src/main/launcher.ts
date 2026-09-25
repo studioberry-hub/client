@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { execSync } from 'child_process';
+import AdmZip from 'adm-zip';
+import { getLauncherDataDir, getInstancesDir, getInstanceRoot } from './paths';
 import {
   downloadModrinthFile,
   runWithConcurrency,
@@ -332,7 +334,7 @@ function getFileSha1(filePath: string): Promise<string> {
   });
 }
 
-const manifestCacheDir = path.join(process.env.APPDATA || process.cwd(), '.Undefined Client', 'manifest-cache');
+const manifestCacheDir = path.join(getLauncherDataDir(), 'manifest-cache');
 const MANIFEST_CACHE_TTL = 30 * 60 * 1000;
 
 async function fetchJsonCached(url: string, ttlMs: number = MANIFEST_CACHE_TTL): Promise<any> {
@@ -566,28 +568,10 @@ async function patchEMLCache(): Promise<void> {
 
 const INSTANCE_BASE = 'UClient';
 
-/** Корень изолированного инстанса сборки: %APPDATA%\.uclient\<buildId-sanitized>. */
-export function getInstanceRoot(buildId: string): string {
-  const sanitized = buildId.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-  let appData: string;
-  if (process.platform === 'win32') {
-    appData = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
-  } else if (process.platform === 'darwin') {
-    appData = path.join(process.env.HOME || '', 'Library', 'Application Support');
-  } else {
-    appData = process.env.HOME || '';
-  }
-  const prefix = process.platform === 'darwin' ? '' : '.';
-  return path.join(appData, prefix + INSTANCE_BASE.toLowerCase(), sanitized);
-}
-
-/** Каталог всех инстансов (родитель папок сборок). */
-export function getInstancesDir(): string {
-  return path.dirname(getInstanceRoot('x'));
-}
+export { getInstanceRoot, getInstancesDir } from './paths';
 
 export function initLauncher(mainWindow: BrowserWindow): void {
-  const appDataDir = path.join(process.env.APPDATA || process.cwd(), '.Undefined Client');
+  const appDataDir = getLauncherDataDir();
 
   // Подключение к Discord и патч загрузчика уводим с пути запуска: первый тянет
   // discord-rpc (~200 мс на require), второй — модуль eml-lib. На старте окна
@@ -742,9 +726,18 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
         // Extract .mrpack (renamed to .zip)
         try {
-          execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${instanceDir}' -Force"`, { timeout: 30000 });
+          const zip = new AdmZip(zipPath);
+          zip.extractAllTo(instanceDir, true);
         } catch {
-          return { success: false, error: 'Failed to extract modpack archive' };
+          try {
+            if (process.platform === 'win32') {
+              execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${instanceDir}' -Force"`, { timeout: 30000 });
+            } else {
+              execSync(`unzip -o -q "${zipPath}" -d "${instanceDir}"`, { timeout: 30000 });
+            }
+          } catch {
+            return { success: false, error: 'Failed to extract modpack archive' };
+          }
         }
         // Remove the archive after extraction
         try { fs.unlinkSync(zipPath); } catch {}
@@ -1689,9 +1682,6 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('launcher:create-build-shortcut', async (_event, buildId: string) => {
     try {
-      if (process.platform !== 'win32') {
-        return { success: false, error: 'unsupported_platform' };
-      }
       const id = String(buildId || '').trim();
       if (!/^[A-Za-z0-9_-]{2,128}$/.test(id)) {
         return { success: false, error: 'bad_build_id' };
@@ -1702,28 +1692,60 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
       const rawName = String(build.name || id).trim() || id;
       const safeName = rawName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || id;
-      const desktop = app.getPath('desktop');
-      const linkPath = path.join(desktop, `${safeName}.lnk`);
 
-      const iconPath = await prepareBuildShortcutIcon(id, String(build.icon || ''));
+      if (process.platform === 'win32') {
+        const desktop = app.getPath('desktop');
+        const linkPath = path.join(desktop, `${safeName}.lnk`);
 
-      const deepLink = `uclient://launch?id=${encodeURIComponent(id)}`;
-      const target = process.execPath;
-      const args = process.defaultApp
-        ? `"${path.resolve(process.argv[1] || '.')}" "${deepLink}"`
-        : `"${deepLink}"`;
+        const iconPath = await prepareBuildShortcutIcon(id, String(build.icon || ''));
 
-      const ok = shell.writeShortcutLink(linkPath, {
-        target,
-        args,
-        cwd: path.dirname(target),
-        description: `Undefined Client — ${rawName}`,
-        icon: iconPath,
-        iconIndex: 0,
-        appUserModelId: 'undefined-client',
-      });
-      if (!ok) return { success: false, error: 'write_failed' };
-      return { success: true, path: linkPath, name: safeName };
+        const deepLink = `uclient://launch?id=${encodeURIComponent(id)}`;
+        const target = process.execPath;
+        const args = process.defaultApp
+          ? `"${path.resolve(process.argv[1] || '.')}" "${deepLink}"`
+          : `"${deepLink}"`;
+
+        const ok = shell.writeShortcutLink(linkPath, {
+          target,
+          args,
+          cwd: path.dirname(target),
+          description: `Undefined Client — ${rawName}`,
+          icon: iconPath,
+          iconIndex: 0,
+          appUserModelId: 'undefined-client',
+        });
+        if (!ok) return { success: false, error: 'write_failed' };
+        return { success: true, path: linkPath, name: safeName };
+      } else if (process.platform === 'linux') {
+        const desktop = app.getPath('desktop');
+        const linkPath = path.join(desktop, `uclient-${id}.desktop`);
+        const deepLink = `uclient://launch?id=${encodeURIComponent(id)}`;
+        const target = process.execPath;
+        const execCmd = process.defaultApp
+          ? `"${target}" "${path.resolve(process.argv[1] || '.')}" "${deepLink}"`
+          : `"${target}" "${deepLink}"`;
+        let iconPath = path.join(__dirname, '../../IconForBuild/512.png');
+        if (build.icon) {
+          const custom = path.isAbsolute(build.icon) ? build.icon : path.join(appDataDir, build.icon);
+          if (fs.existsSync(custom)) iconPath = custom;
+        }
+        const desktopContent = [
+          '[Desktop Entry]',
+          'Type=Application',
+          `Name=Undefined Client — ${safeName}`,
+          `Comment=Minecraft Launcher — ${rawName}`,
+          `Exec=${execCmd}`,
+          `Icon=${iconPath}`,
+          'Terminal=false',
+          'Categories=Game;',
+          'StartupWMClass=undefined-client',
+        ].join('\n') + '\n';
+
+        fs.writeFileSync(linkPath, desktopContent, { mode: 0o755 });
+        return { success: true, path: linkPath, name: safeName };
+      } else {
+        return { success: false, error: 'unsupported_platform' };
+      }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -3320,7 +3342,8 @@ export function initLauncher(mainWindow: BrowserWindow): void {
   async function ensureJava(javaVer: number, onProgress?: (data: { status: 'download' | 'extract' | 'done'; ver: number }) => void): Promise<string> {
     const toolsDir = javaToolsDir();
     const javaDir = path.join(toolsDir, `java${javaVer}`);
-    const javaExe = path.join(javaDir, 'bin', 'java.exe');
+    const binName = javaBinaryName();
+    const javaExe = path.join(javaDir, 'bin', binName);
     if (fs.existsSync(javaExe)) {
       if (onProgress) onProgress({ status: 'done', ver: javaVer });
       return javaExe;
@@ -3328,11 +3351,17 @@ export function initLauncher(mainWindow: BrowserWindow): void {
 
     if (onProgress) onProgress({ status: 'download', ver: javaVer });
 
-    const arch = process.arch === 'x64' ? 'x64' : 'x86';
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const osName = isWin ? 'windows' : isMac ? 'mac' : 'linux';
+    const arch = process.arch === 'arm64' ? 'aarch64' : (process.arch === 'x64' ? 'x64' : 'x86');
+    const zuluArch = process.arch === 'arm64' ? 'aarch64' : (process.arch === 'x64' ? 'x86_64' : 'x86');
+    const ext = isWin ? 'zip' : 'tar.gz';
+
     const downloadUrls = [
-      `https://api.adoptium.net/v3/binary/latest/${javaVer}/ga/windows/${arch}/jdk/hotspot/normal/eclipse`,
-      `https://api.adoptium.net/v3/binary/latest/${javaVer}/ga/windows/${arch}/jdk/hotspot/normal/eclipse?project=jdk`,
-      `https://api.azul.com/zulu/download/community/v1.0/bundles/latest/binary/?java_version=${javaVer}&os=windows&arch=${arch === 'x64' ? 'x86_64' : 'x86'}&ext=zip&javafx=false&community=true`,
+      `https://api.adoptium.net/v3/binary/latest/${javaVer}/ga/${osName}/${arch}/jdk/hotspot/normal/eclipse`,
+      `https://api.adoptium.net/v3/binary/latest/${javaVer}/ga/${osName}/${arch}/jdk/hotspot/normal/eclipse?project=jdk`,
+      `https://api.azul.com/zulu/download/community/v1.0/bundles/latest/binary/?java_version=${javaVer}&os=${osName}&arch=${zuluArch}&ext=${ext}&javafx=false&community=true`,
     ];
 
     const reportJavaProgress = (receivedNow: number, totalBytes: number, speed?: number) => {
@@ -3385,24 +3414,40 @@ export function initLauncher(mainWindow: BrowserWindow): void {
     if (!buffer) throw new Error(`Failed to download Java ${javaVer}`);
 
     if (!fs.existsSync(toolsDir)) fs.mkdirSync(toolsDir, { recursive: true });
-    const zipPath = path.join(toolsDir, `java${javaVer}.zip`);
-    fs.writeFileSync(zipPath, buffer);
+    const archivePath = path.join(toolsDir, `java${javaVer}.${ext}`);
+    fs.writeFileSync(archivePath, buffer);
 
     if (onProgress) onProgress({ status: 'extract', ver: javaVer });
     else sendProgress({ kind: 'status', key: 'smp.extractJava', params: { ver: javaVer } });
-    execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${toolsDir}' -Force"`, { timeout: 60000 });
-    try { fs.unlinkSync(zipPath); } catch {}
+
+    if (isWin) {
+      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${toolsDir}' -Force"`, { timeout: 60000 });
+    } else {
+      execSync(`tar -xzf "${archivePath}" -C "${toolsDir}"`, { timeout: 60000 });
+    }
+    try { fs.unlinkSync(archivePath); } catch {}
 
     const entries = fs.readdirSync(toolsDir);
-    const jdkDir = entries.find(e => e.startsWith('jdk-') || e.startsWith(`jdk${javaVer}`) || e.startsWith(`zulu`));
+    const jdkDir = entries.find(e => (e.startsWith('jdk-') || e.startsWith(`jdk${javaVer}`) || e.startsWith('zulu')) && !e.includes('.tar') && !e.includes('.zip'));
     if (jdkDir) {
-      const extractedExe = path.join(toolsDir, jdkDir, 'bin', 'java.exe');
+      const extractedExe = path.join(toolsDir, jdkDir, 'bin', binName);
       if (fs.existsSync(extractedExe)) {
         try { fs.renameSync(path.join(toolsDir, jdkDir), javaDir); } catch {}
       }
     }
 
     if (!fs.existsSync(javaExe)) throw new Error(`Java ${javaVer} not found after extraction`);
+
+    if (!isWin) {
+      try {
+        fs.chmodSync(javaExe, 0o755);
+        const binDir = path.dirname(javaExe);
+        for (const file of fs.readdirSync(binDir)) {
+          try { fs.chmodSync(path.join(binDir, file), 0o755); } catch {}
+        }
+      } catch {}
+    }
+
     return javaExe;
   }
 
@@ -3592,12 +3637,17 @@ export function initLauncher(mainWindow: BrowserWindow): void {
       local ? path.join(local, 'Programs') : '',
       local ? path.join(local, 'Programs', 'Eclipse Adoptium') : '',
       userProfile ? path.join(userProfile, 'scoop', 'apps') : '',
-      programData ? path.join(programData, 'chocolatey', 'lib') : '',
       // macOS / Linux типичные пути
       '/Library/Java/JavaVirtualMachines',
       '/usr/lib/jvm',
+      '/usr/lib64/jvm',
       '/usr/java',
-      path.join(userProfile, '.sdkman', 'candidates', 'java'),
+      '/opt/java',
+      '/opt/jdk',
+      '/usr/local/java',
+      path.join(process.env.HOME || userProfile, '.jdks'),
+      path.join(process.env.HOME || userProfile, '.sdkman', 'candidates', 'java'),
+      path.join(process.env.HOME || userProfile, '.asdf', 'installs', 'java'),
     ];
 
     for (const root of roots) {

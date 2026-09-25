@@ -5,6 +5,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getLauncherDataDir } from './paths';
 import {
   catalogCfFileUrl,
   catalogFingerprintsUrl,
@@ -292,7 +293,7 @@ async function collectShareFiles(
 }
 
 function buildsPath(): string {
-  return path.join(process.env.APPDATA || process.cwd(), '.Undefined Client', 'builds.json');
+  return path.join(getLauncherDataDir(), 'builds.json');
 }
 
 function readBuilds(): any[] {

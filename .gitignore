@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-windows/
 dist-windows-new/
+release/
 *.tsbuildinfo
 
 # ===== Артефакты установщиков / PyInstaller =====

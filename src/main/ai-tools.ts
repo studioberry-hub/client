@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { BrowserWindow, ipcMain, shell } from 'electron';
 import { getInstanceRoot, getInstancesDir } from './launcher';
+import { getLauncherDataDir } from './paths';
 import { getExtendedAiTools } from './ai-tools-extended';
 import { callRendererAiAction } from './ai-action-bridge';
 import {
@@ -56,7 +57,7 @@ const OPEN_SUBDIRS = new Set([
 ]);
 
 function launcherDataDir(): string {
-  return path.join(process.env.APPDATA || process.cwd(), '.Undefined Client');
+  return getLauncherDataDir();
 }
 
 function buildsPath(): string {

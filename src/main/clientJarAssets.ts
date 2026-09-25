@@ -7,27 +7,20 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import AdmZip from 'adm-zip';
 
+import { getInstancesDir, getDefaultMinecraftDir, getLauncherDataDir } from './paths';
+
 const BLOCK_PREFIX = 'assets/minecraft/textures/block/';
-
-function appDataRoaming(): string {
-  return process.env.APPDATA
-    || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
-}
-
-function uclientRoot(): string {
-  return path.join(appDataRoaming(), '.uclient');
-}
 
 /** Кандидаты пути к client jar для строки версии (26.2, 1.21.6, …). */
 export function findClientJar(gameVersion: string): string | null {
   const ver = String(gameVersion || '').trim();
   if (!ver || ver === 'latest_release' || ver === 'latest_snapshot') return null;
 
-  const roaming = appDataRoaming();
-  const root = uclientRoot();
+  const root = getInstancesDir();
+  const mcDir = getDefaultMinecraftDir();
   const candidates: string[] = [
     path.join(root, 'versions', ver, `${ver}.jar`),
-    path.join(roaming, '.minecraft', 'versions', ver, `${ver}.jar`),
+    path.join(mcDir, 'versions', ver, `${ver}.jar`),
   ];
 
   try {
@@ -51,7 +44,7 @@ function textureCacheDir(gameVersion: string, jarPath: string): string {
   try {
     userData = app.getPath('userData');
   } catch {
-    userData = path.join(appDataRoaming(), 'Undefined Client');
+    userData = getLauncherDataDir();
   }
   return path.join(userData, 'cache', 'block-textures', `${gameVersion}-${hash}`);
 }

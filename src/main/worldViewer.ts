@@ -15,6 +15,7 @@ import {
   type WireColumn, type ColumnGeometry,
 } from './anvil';
 import { getInstancesDir } from './launcher';
+import { getLauncherDataDir, getDefaultMinecraftDir } from './paths';
 
 // ===== Профиль игрока для маркера в предпросмотре =====
 
@@ -40,7 +41,7 @@ export function setWorldPreviewProfile(profile: WorldPreviewProfile | null): voi
 export function getWorldPreviewProfile(): WorldPreviewProfile {
   if (previewProfile?.username) return previewProfile;
   try {
-    const launcherData = path.join(process.env.APPDATA || process.cwd(), '.Undefined Client');
+    const launcherData = getLauncherDataDir();
     const accountsPath = path.join(launcherData, 'accounts.json');
     let username = 'Player';
     let uuid: string | undefined;
@@ -670,8 +671,10 @@ export function listAllWorlds(): WorldEntry[] {
     }
   } catch { /* инстансов ещё нет */ }
 
-  const appData = process.env.APPDATA;
-  if (appData) roots.push({ buildId: '.minecraft', savesDir: path.join(appData, '.minecraft', 'saves') });
+  const defaultMcSaves = path.join(getDefaultMinecraftDir(), 'saves');
+  if (fs.existsSync(defaultMcSaves)) {
+    roots.push({ buildId: '.minecraft', savesDir: defaultMcSaves });
+  }
 
   for (const { buildId, savesDir } of roots) {
     try {

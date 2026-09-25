@@ -8,7 +8,8 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
+import AdmZip from 'adm-zip';
 import * as https from 'https';
 import * as http from 'http';
 import * as os from 'os';
@@ -89,17 +90,22 @@ export async function ensureWorldViewer(onProgress?: (msg: string) => void): Pro
     const archive = path.join(dir, 'viewer.zip');
     await downloadToFile(zipUrl, archive, onProgress);
     onProgress?.('Распаковка viewer…');
-    if (process.platform === 'win32') {
-      await new Promise<void>((resolve, reject) => {
-        const ps = spawn('powershell.exe', [
-          '-NoProfile', '-Command',
-          `Expand-Archive -LiteralPath '${archive.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`,
-        ], { windowsHide: true });
-        ps.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`Expand-Archive: ${code}`))));
-        ps.on('error', reject);
-      });
-    } else {
-      return { ok: false, error: 'Автоустановка viewer на этой ОС пока не поддерживается.' };
+    try {
+      const zip = new AdmZip(archive);
+      zip.extractAllTo(dir, true);
+    } catch {
+      if (process.platform === 'win32') {
+        await new Promise<void>((resolve, reject) => {
+          const ps = spawn('powershell.exe', [
+            '-NoProfile', '-Command',
+            `Expand-Archive -LiteralPath '${archive.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`,
+          ], { windowsHide: true });
+          ps.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`Expand-Archive: ${code}`))));
+          ps.on('error', reject);
+        });
+      } else {
+        execSync(`unzip -o -q "${archive}" -d "${dir}"`, { timeout: 60000 });
+      }
     }
 
     const index = findIndexHtml(dir);
@@ -120,8 +126,12 @@ function exporterExePath(): string {
     for (const c of candidates) if (fs.existsSync(c)) return c;
     return candidates[0];
   }
-  const unix = path.join(dir, 'MinecraftWebExporter');
-  return unix;
+  const candidates = [
+    path.join(dir, 'MinecraftWebExporter'),
+    path.join(dir, 'MinecraftWebExporter', 'MinecraftWebExporter'),
+  ];
+  for (const c of candidates) if (fs.existsSync(c)) return c;
+  return candidates[0];
 }
 
 function worldExportHash(worldPath: string): string {
@@ -167,12 +177,18 @@ export async function ensureWorldExporter(onProgress?: (msg: string) => void): P
     if (api.status !== 200) throw new Error(`GitHub API: HTTP ${api.status}`);
     const release = JSON.parse(api.body.toString('utf8'));
     const assets: Array<{ name: string; browser_download_url: string }> = release.assets ?? [];
-    const asset = assets.find((a) => /win-x64|windows|win64/i.test(a.name) && /\.(zip|exe)$/i.test(a.name))
-      ?? assets.find((a) => /\.zip$/i.test(a.name));
+    const isWin = process.platform === 'win32';
+    const isLinux = process.platform === 'linux';
+    const asset = isWin
+      ? (assets.find((a) => /win-x64|windows|win64/i.test(a.name) && /\.(zip|exe)$/i.test(a.name)) ?? assets.find((a) => /\.zip$/i.test(a.name)))
+      : isLinux
+        ? (assets.find((a) => /linux[-_]x64|linux64/i.test(a.name) && /\.(zip|tar\.gz|tar\.xz)$/i.test(a.name)) ?? assets.find((a) => /linux/i.test(a.name)))
+        : (assets.find((a) => /osx|macos|darwin/i.test(a.name)) ?? assets.find((a) => /\.zip$/i.test(a.name)));
+
     if (!asset) {
       return {
         ok: false,
-        error: 'В релизе exporter нет win-x64 ассета. Положите MinecraftWebExporter.exe в tools вручную.',
+        error: `В релизе exporter нет ассета под ${process.platform}. Положите MinecraftWebExporter в tools вручную.`,
       };
     }
 
@@ -185,24 +201,35 @@ export async function ensureWorldExporter(onProgress?: (msg: string) => void): P
       fs.renameSync(archive, exe);
     } else {
       onProgress?.('Распаковка exporter…');
-      // Простая распаковка через PowerShell на Windows (без доп. зависимостей).
-      if (process.platform === 'win32') {
-        await new Promise<void>((resolve, reject) => {
-          const ps = spawn('powershell.exe', [
-            '-NoProfile', '-Command',
-            `Expand-Archive -LiteralPath '${archive.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`,
-          ], { windowsHide: true });
-          ps.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`Expand-Archive: ${code}`))));
-          ps.on('error', reject);
-        });
-      } else {
-        return { ok: false, error: 'Автоустановка exporter на этой ОС пока не поддерживается.' };
+      try {
+        if (/\.tar\.gz$/i.test(asset.name)) {
+          execSync(`tar -xzf "${archive}" -C "${dir}"`, { timeout: 60000 });
+        } else {
+          const zip = new AdmZip(archive);
+          zip.extractAllTo(dir, true);
+        }
+      } catch {
+        if (isWin) {
+          await new Promise<void>((resolve, reject) => {
+            const ps = spawn('powershell.exe', [
+              '-NoProfile', '-Command',
+              `Expand-Archive -LiteralPath '${archive.replace(/'/g, "''")}' -DestinationPath '${dir.replace(/'/g, "''")}' -Force`,
+            ], { windowsHide: true });
+            ps.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`Expand-Archive: ${code}`))));
+            ps.on('error', reject);
+          });
+        } else {
+          execSync(`tar -xzf "${archive}" -C "${dir}" 2>/dev/null || unzip -o -q "${archive}" -d "${dir}"`, { timeout: 60000 });
+        }
       }
     }
 
     const found = exporterExePath();
     if (!fs.existsSync(found)) {
-      return { ok: false, error: 'Exporter скачан, но exe не найден — проверьте папку tools.' };
+      return { ok: false, error: 'Exporter скачан, но бинарный файл не найден — проверьте папку tools.' };
+    }
+    if (!isWin) {
+      try { fs.chmodSync(found, 0o755); } catch {}
     }
     return { ok: true, exe: found };
   } catch (e: any) {

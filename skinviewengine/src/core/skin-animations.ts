@@ -60,7 +60,7 @@ export function easeOutCubic(t: number): number {
 }
 
 /** Плавный in-out для ванильных циклов (мягче сырого sin) */
-function smoothWave(t: number): number {
+export function smoothWave(t: number): number {
   // sin → почти-синусоида с более мягкими краями
   const s = Math.sin(t);
   return Math.sign(s) * Math.pow(Math.abs(s), 0.85);
@@ -669,7 +669,8 @@ export type SkinAnimId =
   | "dance"
   | "dab"
   | "think"
-  | "hello";
+  | "hello"
+  | "sad";
 
 /** Dab — быстрый snap в позу */
 export class DabAnimation extends BaseSkinAnimation {

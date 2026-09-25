@@ -60,7 +60,7 @@ protocol.registerSchemesAsPrivileged([
 
 const REPO_OWNER = 'studioberry-hub';
 const REPO_NAME = 'client';
-const UPDATE_ASSET = 'latest-windows-amd64.zip';
+const UPDATE_ASSET = process.platform === 'win32' ? 'latest-windows-amd64.zip' : 'latest-linux-x64.AppImage';
 // ===== Базовый адрес нашего API =====
 // Один адрес на все обращения к сайту лаунчера: новости, каталог, прокси CDN.
 // UC_NEWS_API_BASE оставлен ради совместимости с уже настроенными окружениями.
@@ -351,7 +351,9 @@ function createWindow(): void {
     transparent: false,
     backgroundColor: '#2A2A2A',
     show: false,
-    icon: path.join(__dirname, '../../assets/icons/Icon.svg'),
+    icon: process.platform === 'win32'
+      ? path.join(__dirname, '../../IconForBuild/icon.ico')
+      : path.join(__dirname, '../../IconForBuild/512.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -775,7 +777,12 @@ ipcMain.handle('updates:check', async () => {
     const latest = String(release.tag_name || '');
     const assets: any[] = release.assets || [];
     const asset = assets.find((a: any) => a.name === UPDATE_ASSET)
-      ?? assets.find((a: any) => String(a.name || '').toLowerCase().endsWith('.zip'));
+      ?? assets.find((a: any) => {
+        const n = String(a.name || '').toLowerCase();
+        return process.platform === 'win32'
+          ? n.endsWith('.zip')
+          : (n.endsWith('.appimage') || n.endsWith('.tar.gz') || n.endsWith('.zip'));
+      });
     return {
       current,
       latest,
@@ -790,9 +797,14 @@ ipcMain.handle('updates:check', async () => {
 
 ipcMain.handle('updates:launch', () => {
   try {
+    if (process.platform !== 'win32') {
+      shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+      return { success: true };
+    }
     const updater = path.join(path.dirname(app.getPath('exe')), 'updater.exe');
     if (!fs.existsSync(updater)) {
-      return { success: false, error: 'updater.exe not found' };
+      shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+      return { success: true };
     }
     const child = spawn(updater, [], { detached: true, stdio: 'ignore' });
     child.unref();

@@ -33,7 +33,7 @@ var app = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // node_modules/three/build/three.module.js
+  // skinviewengine/node_modules/three/build/three.module.js
   function generateUUID() {
     const d0 = Math.random() * 4294967295 | 0;
     const d1 = Math.random() * 4294967295 | 0;
@@ -6923,7 +6923,7 @@ var app = (() => {
   }
   var REVISION, MOUSE, TOUCH, CullFaceNone, CullFaceBack, CullFaceFront, PCFShadowMap, PCFSoftShadowMap, VSMShadowMap, FrontSide, BackSide, DoubleSide, NoBlending, NormalBlending, AdditiveBlending, SubtractiveBlending, MultiplyBlending, CustomBlending, AddEquation, SubtractEquation, ReverseSubtractEquation, MinEquation, MaxEquation, ZeroFactor, OneFactor, SrcColorFactor, OneMinusSrcColorFactor, SrcAlphaFactor, OneMinusSrcAlphaFactor, DstAlphaFactor, OneMinusDstAlphaFactor, DstColorFactor, OneMinusDstColorFactor, SrcAlphaSaturateFactor, NeverDepth, AlwaysDepth, LessDepth, LessEqualDepth, EqualDepth, GreaterEqualDepth, GreaterDepth, NotEqualDepth, MultiplyOperation, MixOperation, AddOperation, NoToneMapping, LinearToneMapping, ReinhardToneMapping, CineonToneMapping, ACESFilmicToneMapping, CustomToneMapping, UVMapping, CubeReflectionMapping, CubeRefractionMapping, EquirectangularReflectionMapping, EquirectangularRefractionMapping, CubeUVReflectionMapping, RepeatWrapping, ClampToEdgeWrapping, MirroredRepeatWrapping, NearestFilter, NearestMipmapNearestFilter, NearestMipmapLinearFilter, LinearFilter, LinearMipmapNearestFilter, LinearMipmapLinearFilter, UnsignedByteType, ByteType, ShortType, UnsignedShortType, IntType, UnsignedIntType, FloatType, HalfFloatType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedInt248Type, AlphaFormat, RGBAFormat, LuminanceFormat, LuminanceAlphaFormat, DepthFormat, DepthStencilFormat, RedFormat, RedIntegerFormat, RGFormat, RGIntegerFormat, RGBAIntegerFormat, RGB_S3TC_DXT1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGB_PVRTC_4BPPV1_Format, RGB_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_PVRTC_2BPPV1_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGBA_ETC2_EAC_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_10x10_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_BPTC_Format, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RED_RGTC1_Format, SIGNED_RED_RGTC1_Format, RED_GREEN_RGTC2_Format, SIGNED_RED_GREEN_RGTC2_Format, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, ZeroCurvatureEnding, ZeroSlopeEnding, WrapAroundEnding, LinearEncoding, sRGBEncoding, BasicDepthPacking, RGBADepthPacking, TangentSpaceNormalMap, ObjectSpaceNormalMap, NoColorSpace, SRGBColorSpace, LinearSRGBColorSpace, DisplayP3ColorSpace, KeepStencilOp, AlwaysStencilFunc, NeverCompare, LessCompare, EqualCompare, LessEqualCompare, GreaterCompare, NotEqualCompare, GreaterEqualCompare, AlwaysCompare, StaticDrawUsage, GLSL3, _SRGBAFormat, WebGLCoordinateSystem, WebGPUCoordinateSystem, EventDispatcher, _lut, _seed, DEG2RAD, RAD2DEG, MathUtils, Vector2, Matrix3, _m3, _cache, LINEAR_SRGB_TO_LINEAR_DISPLAY_P3, LINEAR_DISPLAY_P3_TO_LINEAR_SRGB, TO_LINEAR, FROM_LINEAR, ColorManagement, _canvas, ImageUtils, sourceId, Source, _textureId, Texture, Vector4, RenderTarget, WebGLRenderTarget, DataArrayTexture, Data3DTexture, Quaternion, Vector3, _vector$b, _quaternion$4, Box3, _points, _vector$a, _box$3, _v0$2, _v1$7, _v2$4, _f0, _f1, _f2, _center, _extents, _triangleNormal, _testAxis, _box$2, _v1$6, _v2$3, Sphere, _vector$9, _segCenter, _segDir, _diff, _edge1, _edge2, _normal$1, Ray, Matrix4, _v1$5, _m1$2, _zero, _one, _x, _y, _z, _matrix, _quaternion$3, Euler, Layers, _object3DId, _v1$4, _q1, _m1$1, _target, _position$3, _scale$2, _quaternion$2, _xAxis, _yAxis, _zAxis, _addedEvent, _removedEvent, Object3D, _v0$1, _v1$3, _v2$2, _v3$1, _vab, _vac, _vbc, _vap, _vbp, _vcp, warnedGetUV, Triangle, _materialId, Material, _colorKeywords, _hslA, _hslB, Color, _color, MeshBasicMaterial, _vector$8, _vector2$1, BufferAttribute, Uint16BufferAttribute, Uint32BufferAttribute, Float32BufferAttribute, _id$2, _m1, _obj, _offset, _box$1, _boxMorphTargets, _vector$7, BufferGeometry, _inverseMatrix$3, _ray$3, _sphere$5, _sphereHitAt, _vA$1, _vB$1, _vC$1, _tempA, _morphA, _uvA$1, _uvB$1, _uvC$1, _normalA, _normalB, _normalC, _intersectionPoint, _intersectionPointWorld, Mesh, BoxGeometry, UniformsUtils, default_vertex, default_fragment, ShaderMaterial, Camera, PerspectiveCamera, fov, aspect, CubeCamera, CubeTexture, WebGLCubeRenderTarget, _vector1, _vector2, _normalMatrix, Plane, _sphere$4, _vector$6, Frustum, PlaneGeometry, alphahash_fragment, alphahash_pars_fragment, alphamap_fragment, alphamap_pars_fragment, alphatest_fragment, alphatest_pars_fragment, aomap_fragment, aomap_pars_fragment, begin_vertex, beginnormal_vertex, bsdfs, iridescence_fragment, bumpmap_pars_fragment, clipping_planes_fragment, clipping_planes_pars_fragment, clipping_planes_pars_vertex, clipping_planes_vertex, color_fragment, color_pars_fragment, color_pars_vertex, color_vertex, common, cube_uv_reflection_fragment, defaultnormal_vertex, displacementmap_pars_vertex, displacementmap_vertex, emissivemap_fragment, emissivemap_pars_fragment, colorspace_fragment, colorspace_pars_fragment, envmap_fragment, envmap_common_pars_fragment, envmap_pars_fragment, envmap_pars_vertex, envmap_vertex, fog_vertex, fog_pars_vertex, fog_fragment, fog_pars_fragment, gradientmap_pars_fragment, lightmap_fragment, lightmap_pars_fragment, lights_lambert_fragment, lights_lambert_pars_fragment, lights_pars_begin, envmap_physical_pars_fragment, lights_toon_fragment, lights_toon_pars_fragment, lights_phong_fragment, lights_phong_pars_fragment, lights_physical_fragment, lights_physical_pars_fragment, lights_fragment_begin, lights_fragment_maps, lights_fragment_end, logdepthbuf_fragment, logdepthbuf_pars_fragment, logdepthbuf_pars_vertex, logdepthbuf_vertex, map_fragment, map_pars_fragment, map_particle_fragment, map_particle_pars_fragment, metalnessmap_fragment, metalnessmap_pars_fragment, morphcolor_vertex, morphnormal_vertex, morphtarget_pars_vertex, morphtarget_vertex, normal_fragment_begin, normal_fragment_maps, normal_pars_fragment, normal_pars_vertex, normal_vertex, normalmap_pars_fragment, clearcoat_normal_fragment_begin, clearcoat_normal_fragment_maps, clearcoat_pars_fragment, iridescence_pars_fragment, opaque_fragment, packing, premultiplied_alpha_fragment, project_vertex, dithering_fragment, dithering_pars_fragment, roughnessmap_fragment, roughnessmap_pars_fragment, shadowmap_pars_fragment, shadowmap_pars_vertex, shadowmap_vertex, shadowmask_pars_fragment, skinbase_vertex, skinning_pars_vertex, skinning_vertex, skinnormal_vertex, specularmap_fragment, specularmap_pars_fragment, tonemapping_fragment, tonemapping_pars_fragment, transmission_fragment, transmission_pars_fragment, uv_pars_fragment, uv_pars_vertex, uv_vertex, worldpos_vertex, vertex$h, fragment$h, vertex$g, fragment$g, vertex$f, fragment$f, vertex$e, fragment$e, vertex$d, fragment$d, vertex$c, fragment$c, vertex$b, fragment$b, vertex$a, fragment$a, vertex$9, fragment$9, vertex$8, fragment$8, vertex$7, fragment$7, vertex$6, fragment$6, vertex$5, fragment$5, vertex$4, fragment$4, vertex$3, fragment$3, vertex$2, fragment$2, vertex$1, fragment$1, ShaderChunk, UniformsLib, ShaderLib, _rgb, OrthographicCamera, LOD_MIN, EXTRA_LOD_SIGMA, MAX_SAMPLES, _flatCamera, _clearColor, _oldTarget, PHI, INV_PHI, _axisDirections, PMREMGenerator, emptyTexture, emptyArrayTexture, empty3dTexture, emptyCubeTexture, arrayCacheF32, arrayCacheI32, mat4array, mat3array, mat2array, SingleUniform, PureArrayUniform, StructuredUniform, RePathPart, WebGLUniforms, programIdCount, includePattern, shaderChunkMap, unrollLoopPattern, _id$1, WebGLShaderCache, WebGLShaderStage, nextVersion, MeshDepthMaterial, MeshDistanceMaterial, vertex, fragment, LinearTransferFunction, SRGBTransferFunction, ArrayCamera, Group, _moveEvent, WebXRController, DepthTexture, WebXRManager, WebGLRenderer, WebGL1Renderer, Scene, InterleavedBuffer, _vector$5, InterleavedBufferAttribute, SpriteMaterial, _geometry, _intersectPoint, _worldScale, _mvPosition, _alignedPosition, _rotatedPosition, _viewWorldMatrix, _vA, _vB, _vC, _uvA, _uvB, _uvC, Sprite, LineBasicMaterial, _start$1, _end$1, _inverseMatrix$1, _ray$1, _sphere$1, Line, _start, _end, LineSegments, CanvasTexture, SphereGeometry, ShadowMaterial, RawShaderMaterial, MeshStandardMaterial, Interpolant, CubicInterpolant, LinearInterpolant, DiscreteInterpolant, KeyframeTrack, BooleanKeyframeTrack, ColorKeyframeTrack, NumberKeyframeTrack, QuaternionLinearInterpolant, QuaternionKeyframeTrack, StringKeyframeTrack, VectorKeyframeTrack, LoadingManager, DefaultLoadingManager, Loader, Light, HemisphereLight, _projScreenMatrix$1, _lightPositionWorld$1, _lookTarget$1, LightShadow, _projScreenMatrix, _lightPositionWorld, _lookTarget, PointLightShadow, PointLight, DirectionalLightShadow, DirectionalLight, AmbientLight, Clock, _RESERVED_CHARS_RE, _reservedRe, _wordChar, _wordCharOrDot, _directoryRe, _nodeRe, _objectRe, _propertyRe, _trackRe, _supportedObjectNames, Composite, PropertyBinding, _controlInterpolantsResultBuffer, Raycaster, Spherical, GridHelper, _v1, _v2, _v3, DirectionalLightHelper, _vector, _camera, CameraHelper, _box, BoxHelper, AxesHelper;
   var init_three_module = __esm({
-    "node_modules/three/build/three.module.js"() {
+    "skinviewengine/node_modules/three/build/three.module.js"() {
       REVISION = "156";
       MOUSE = { LEFT: 0, MIDDLE: 1, RIGHT: 2, ROTATE: 0, DOLLY: 1, PAN: 2 };
       TOUCH = { ROTATE: 0, PAN: 1, DOLLY_PAN: 2, DOLLY_ROTATE: 3 };
@@ -20055,7 +20055,7 @@ var app = (() => {
     }
   });
 
-  // node_modules/skin3d/dist/Model.js
+  // skinviewengine/node_modules/skin3d/dist/Model.js
   function setUVs(box, u, v2, width, height, depth, textureWidth, textureHeight) {
     const toFaceVertices = (x1, y1, x2, y2) => [
       new Vector2(x1 / textureWidth, 1 - y2 / textureHeight),
@@ -20093,7 +20093,7 @@ var app = (() => {
   }
   var BodyPart, SkinObject, CapeObject, ElytraObject, EarsObject, CapeDefaultAngle, PlayerObject;
   var init_Model = __esm({
-    "node_modules/skin3d/dist/Model.js"() {
+    "skinviewengine/node_modules/skin3d/dist/Model.js"() {
       init_three_module();
       BodyPart = class extends Group {
         constructor(innerLayer, outerLayer) {
@@ -20666,16 +20666,16 @@ var app = (() => {
     }
   });
 
-  // node_modules/skinview-utils/build/types.js
+  // skinviewengine/node_modules/skinview-utils/build/types.js
   function isTextureSource(value) {
     return value instanceof HTMLImageElement || value instanceof HTMLVideoElement || value instanceof HTMLCanvasElement || typeof ImageBitmap !== "undefined" && value instanceof ImageBitmap || typeof OffscreenCanvas !== "undefined" && value instanceof OffscreenCanvas;
   }
   var init_types = __esm({
-    "node_modules/skinview-utils/build/types.js"() {
+    "skinviewengine/node_modules/skinview-utils/build/types.js"() {
     }
   });
 
-  // node_modules/skinview-utils/build/process.js
+  // skinviewengine/node_modules/skinview-utils/build/process.js
   function hasTransparency(context, x0, y0, w2, h) {
     const imgData = context.getImageData(x0, y0, w2, h);
     for (let x2 = 0; x2 < w2; x2++) {
@@ -20838,11 +20838,11 @@ var app = (() => {
     return isSlim ? "slim" : "default";
   }
   var init_process = __esm({
-    "node_modules/skinview-utils/build/process.js"() {
+    "skinviewengine/node_modules/skinview-utils/build/process.js"() {
     }
   });
 
-  // node_modules/skinview-utils/build/load-image.js
+  // skinviewengine/node_modules/skinview-utils/build/load-image.js
   async function loadImage(source) {
     const image = document.createElement("img");
     return new Promise((resolve, reject) => {
@@ -20863,23 +20863,23 @@ var app = (() => {
     });
   }
   var init_load_image = __esm({
-    "node_modules/skinview-utils/build/load-image.js"() {
+    "skinviewengine/node_modules/skinview-utils/build/load-image.js"() {
     }
   });
 
-  // node_modules/skinview-utils/build/index.js
+  // skinviewengine/node_modules/skinview-utils/build/index.js
   var init_build = __esm({
-    "node_modules/skinview-utils/build/index.js"() {
+    "skinviewengine/node_modules/skinview-utils/build/index.js"() {
       init_types();
       init_process();
       init_load_image();
     }
   });
 
-  // node_modules/three/examples/jsm/controls/OrbitControls.js
+  // skinviewengine/node_modules/three/examples/jsm/controls/OrbitControls.js
   var _changeEvent, _startEvent, _endEvent, _ray, _plane, TILT_LIMIT, OrbitControls;
   var init_OrbitControls = __esm({
-    "node_modules/three/examples/jsm/controls/OrbitControls.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/controls/OrbitControls.js"() {
       init_three_module();
       _changeEvent = { type: "change" };
       _startEvent = { type: "start" };
@@ -21584,10 +21584,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/shaders/CopyShader.js
+  // skinviewengine/node_modules/three/examples/jsm/shaders/CopyShader.js
   var CopyShader;
   var init_CopyShader = __esm({
-    "node_modules/three/examples/jsm/shaders/CopyShader.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/shaders/CopyShader.js"() {
       CopyShader = {
         name: "CopyShader",
         uniforms: {
@@ -21629,10 +21629,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/Pass.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/Pass.js
   var Pass, _camera2, _geometry2, FullScreenQuad;
   var init_Pass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/Pass.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/Pass.js"() {
       init_three_module();
       Pass = class {
         constructor() {
@@ -21674,10 +21674,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/ShaderPass.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/ShaderPass.js
   var ShaderPass;
   var init_ShaderPass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/ShaderPass.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/ShaderPass.js"() {
       init_three_module();
       init_Pass();
       ShaderPass = class extends Pass {
@@ -21721,10 +21721,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/MaskPass.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/MaskPass.js
   var MaskPass, ClearMaskPass;
   var init_MaskPass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/MaskPass.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/MaskPass.js"() {
       init_Pass();
       MaskPass = class extends Pass {
         constructor(scene, camera) {
@@ -21784,10 +21784,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/EffectComposer.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/EffectComposer.js
   var EffectComposer;
   var init_EffectComposer = __esm({
-    "node_modules/three/examples/jsm/postprocessing/EffectComposer.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/EffectComposer.js"() {
       init_three_module();
       init_CopyShader();
       init_ShaderPass();
@@ -21916,10 +21916,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/RenderPass.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/RenderPass.js
   var RenderPass;
   var init_RenderPass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/RenderPass.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/RenderPass.js"() {
       init_three_module();
       init_Pass();
       RenderPass = class extends Pass {
@@ -21974,10 +21974,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/skin3d/dist/Animation.js
+  // skinviewengine/node_modules/skin3d/dist/Animation.js
   var PlayerAnimation, IdleAnimation, WalkingAnimation, RunningAnimation;
   var init_Animation = __esm({
-    "node_modules/skin3d/dist/Animation.js"() {
+    "skinviewengine/node_modules/skin3d/dist/Animation.js"() {
       init_Model();
       PlayerAnimation = class {
         constructor() {
@@ -22119,15 +22119,15 @@ var app = (() => {
     }
   });
 
-  // node_modules/skin3d/dist/Nametag.js
+  // skinviewengine/node_modules/skin3d/dist/Nametag.js
   var init_Nametag = __esm({
-    "node_modules/skin3d/dist/Nametag.js"() {
+    "skinviewengine/node_modules/skin3d/dist/Nametag.js"() {
     }
   });
 
-  // node_modules/skin3d/dist/skin3d.js
+  // skinviewengine/node_modules/skin3d/dist/skin3d.js
   var init_skin3d = __esm({
-    "node_modules/skin3d/dist/skin3d.js"() {
+    "skinviewengine/node_modules/skin3d/dist/skin3d.js"() {
       init_build();
       init_Animation();
       init_Model();
@@ -22135,9 +22135,9 @@ var app = (() => {
     }
   });
 
-  // node_modules/skin3d/dist/index.mjs
+  // skinviewengine/node_modules/skin3d/dist/index.mjs
   var init_dist = __esm({
-    "node_modules/skin3d/dist/index.mjs"() {
+    "skinviewengine/node_modules/skin3d/dist/index.mjs"() {
       init_Model();
       init_skin3d();
       init_skin3d();
@@ -22635,7 +22635,7 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/utils/BufferGeometryUtils.js
+  // skinviewengine/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js
   function mergeGeometries(geometries, useGroups = false) {
     const isIndexed = geometries[0].index !== null;
     const attributesUsed = new Set(Object.keys(geometries[0].attributes));
@@ -22778,7 +22778,7 @@ var app = (() => {
     return result;
   }
   var init_BufferGeometryUtils = __esm({
-    "node_modules/three/examples/jsm/utils/BufferGeometryUtils.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js"() {
       init_three_module();
     }
   });
@@ -23713,7 +23713,7 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/environments/RoomEnvironment.js
+  // skinviewengine/node_modules/three/examples/jsm/environments/RoomEnvironment.js
   function createAreaLightMaterial(intensity) {
     const material = new MeshBasicMaterial();
     material.color.setScalar(intensity);
@@ -23721,7 +23721,7 @@ var app = (() => {
   }
   var RoomEnvironment;
   var init_RoomEnvironment = __esm({
-    "node_modules/three/examples/jsm/environments/RoomEnvironment.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/environments/RoomEnvironment.js"() {
       init_three_module();
       RoomEnvironment = class extends Scene {
         constructor(renderer = null) {
@@ -24618,10 +24618,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/shaders/OutputShader.js
+  // skinviewengine/node_modules/three/examples/jsm/shaders/OutputShader.js
   var OutputShader;
   var init_OutputShader = __esm({
-    "node_modules/three/examples/jsm/shaders/OutputShader.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/shaders/OutputShader.js"() {
       init_three_module();
       OutputShader = {
         uniforms: {
@@ -24698,10 +24698,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/OutputPass.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/OutputPass.js
   var OutputPass;
   var init_OutputPass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/OutputPass.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/OutputPass.js"() {
       init_three_module();
       init_Pass();
       init_OutputShader();
@@ -24750,10 +24750,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js
+  // skinviewengine/node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js
   var LuminosityHighPassShader;
   var init_LuminosityHighPassShader = __esm({
-    "node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/shaders/LuminosityHighPassShader.js"() {
       init_three_module();
       LuminosityHighPassShader = {
         shaderID: "luminosityHighPass",
@@ -24810,10 +24810,10 @@ var app = (() => {
     }
   });
 
-  // node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js
+  // skinviewengine/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js
   var UnrealBloomPass;
   var init_UnrealBloomPass = __esm({
-    "node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js"() {
+    "skinviewengine/node_modules/three/examples/jsm/postprocessing/UnrealBloomPass.js"() {
       init_three_module();
       init_Pass();
       init_CopyShader();
@@ -39218,13 +39218,13 @@ buildId: ${id}` : ""));
         return stored === "true";
       }
       function skinDebugOptStorageKey(key) {
-        return SKIN_DEBUG_OPT_PREFIX + key;
+        return SKIN_DEBUG_OPT_PREFIX + String(key);
       }
       function skinDebugHudStorageKey(key) {
-        return SKIN_DEBUG_HUD_PREFIX + key;
+        return SKIN_DEBUG_HUD_PREFIX + String(key);
       }
       function skinDebugOptInputId(key) {
-        return "setting-skin-viewer-debug-" + key;
+        return "setting-skin-viewer-debug-" + String(key);
       }
       function skinDebugHudInputId(key) {
         return "setting-skin-viewer-debug-hud-" + key;
@@ -39270,8 +39270,8 @@ buildId: ${id}` : ""));
             for (const def of SKIN_DEBUG_OPT_DEFS.filter((d2) => d2.group === group)) {
               wrap.appendChild(buildSkinDebugToggleRow({
                 id: skinDebugOptInputId(def.key),
-                labelKey: `stngs.debugOpt.${def.key}`,
-                hintKey: `stngs.debugOpt.${def.key}Hint`,
+                labelKey: `stngs.debugOpt.${String(def.key)}`,
+                hintKey: `stngs.debugOpt.${String(def.key)}Hint`,
                 checked: readSkinDebugFlag(skinDebugOptStorageKey(def.key), skinviewengine_1.DEFAULT_SKIN_DEBUG_OPTIONS[def.key]),
                 storageKey: skinDebugOptStorageKey(def.key)
               }));
@@ -39489,7 +39489,8 @@ buildId: ${id}` : ""));
         glide: "skins.animGlide",
         victory: "skins.animVictory",
         sleep: "skins.animSleep",
-        dance: "skins.animDance"
+        dance: "skins.animDance",
+        sad: "skins.animSad"
       };
       var SKIN_POSE_I18N = {
         hero: "skins.poseHero",

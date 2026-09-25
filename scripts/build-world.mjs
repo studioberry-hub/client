@@ -76,7 +76,9 @@ try {
   process.exit(1);
 }
 
-writeFileSync(join(root, '.spike2', 'world-meta.json'), JSON.stringify(result.metafile));
+const metaDir = join(root, '.spike2');
+mkdirSync(metaDir, { recursive: true });
+writeFileSync(join(metaDir, 'world-meta.json'), JSON.stringify(result.metafile));
 
 const size = statSync(outFile).size;
 console.log(`[build-world] world.js — ${(size / 1024 / 1024).toFixed(2)} MB`);

@@ -1,4 +1,4 @@
-﻿import {
+import {
   BustPoseAnimation,
   createSkinAnimation,
   DEFAULT_SKIN_DEBUG_OPTIONS,
@@ -3810,15 +3810,15 @@ function readSkinDebugFlag(key: string, fallback: boolean): boolean {
 }
 
 function skinDebugOptStorageKey(key: keyof SkinDebugOptions): string {
-  return SKIN_DEBUG_OPT_PREFIX + key;
+  return SKIN_DEBUG_OPT_PREFIX + String(key);
 }
 
 function skinDebugHudStorageKey(key: SkinDebugHudSec): string {
-  return SKIN_DEBUG_HUD_PREFIX + key;
+  return SKIN_DEBUG_HUD_PREFIX + String(key);
 }
 
 function skinDebugOptInputId(key: keyof SkinDebugOptions): string {
-  return 'setting-skin-viewer-debug-' + key;
+  return 'setting-skin-viewer-debug-' + String(key);
 }
 
 function skinDebugHudInputId(key: SkinDebugHudSec): string {
@@ -3875,8 +3875,8 @@ function ensureSkinDebugOptionsUi(): void {
         wrap.appendChild(
           buildSkinDebugToggleRow({
             id: skinDebugOptInputId(def.key),
-            labelKey: `stngs.debugOpt.${def.key}`,
-            hintKey: `stngs.debugOpt.${def.key}Hint`,
+            labelKey: `stngs.debugOpt.${String(def.key)}`,
+            hintKey: `stngs.debugOpt.${String(def.key)}Hint`,
             checked: readSkinDebugFlag(
               skinDebugOptStorageKey(def.key),
               DEFAULT_SKIN_DEBUG_OPTIONS[def.key],
@@ -4137,6 +4137,7 @@ const SKIN_ANIM_I18N: Record<SkinAnimId, string> = {
   victory: 'skins.animVictory',
   sleep: 'skins.animSleep',
   dance: 'skins.animDance',
+  sad: 'skins.animSad',
 };
 
 const SKIN_POSE_I18N: Record<ShotPresetId, string> = {

@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { app, shell } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import AdmZip from 'adm-zip';
 import { importLocalModpack } from './importModpack';
 import { getApiBase, releaseLatestUrl } from '../shared/apiBase';
 
@@ -1399,22 +1400,18 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
           path.join(root, 'options.txt'),
         ].filter((item) => fs.existsSync(item));
         if (!items.length) return { ok: false, error: 'nothing_to_backup' };
-        const command = [
-          '$ErrorActionPreference = "Stop"',
-          `$dest = ${psQuote(destinationPath)}`,
-          'if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Force }',
-          `$items = @(${items.map(psQuote).join(', ')})`,
-          '$existing = @()',
-          'foreach ($item in $items) { if (Test-Path -LiteralPath $item) { $existing += $item } }',
-          'if ($existing.Count -eq 0) { throw "nothing_to_backup" }',
-          'Compress-Archive -LiteralPath $existing -DestinationPath $dest -Force',
-        ].join('; ');
         try {
-          await execFileAsync(
-            'powershell.exe',
-            ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-            { windowsHide: true, timeout: 10 * 60_000 },
-          );
+          const zip = new AdmZip();
+          for (const item of items) {
+            const stat = fs.statSync(item);
+            const baseName = path.basename(item);
+            if (stat.isDirectory()) {
+              zip.addLocalFolder(item, baseName);
+            } else {
+              zip.addLocalFile(item);
+            }
+          }
+          zip.writeZip(destinationPath);
           return { ok: true, destinationPath, items: items.map((item) => relativeInstancePath(root, item)) };
         } catch (error: any) {
           return {

@@ -37,19 +37,11 @@ export function sanitizeBuildId(buildId: string): string {
     .replace(/[^a-z0-9\-]/g, '');
 }
 
+import { getInstanceRoot } from './paths';
+
 /** Корень инстанса — тот же алгоритм, что getInstanceRoot в launcher.ts */
 export function instanceRootFor(buildId: string): string {
-  const sanitized = sanitizeBuildId(buildId);
-  let appData: string;
-  if (process.platform === 'win32') {
-    appData = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
-  } else if (process.platform === 'darwin') {
-    appData = path.join(process.env.HOME || '', 'Library', 'Application Support');
-  } else {
-    appData = process.env.HOME || '';
-  }
-  const prefix = process.platform === 'darwin' ? '' : '.';
-  return path.join(appData, prefix + INSTANCE_BASE.toLowerCase(), sanitized);
+  return getInstanceRoot(buildId);
 }
 
 export function saveRunningGameMarker(appDataDir: string, marker: RunningGameMarker): void {
