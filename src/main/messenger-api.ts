@@ -4,7 +4,7 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getApiBase } from '../shared/apiBase';
-import { tryRestoreGameRelayShare } from './game-relay';
+import { friendWorldEndpoint, tryRestoreGameRelayShare } from './game-relay';
 
 function tryRestoreShareAfterSession(): void {
   void tryRestoreGameRelayShare()
@@ -17,6 +17,11 @@ function tryRestoreShareAfterSession(): void {
           (session?.user as { username?: string; name?: string } | null)?.name ||
           '',
       ).trim();
+      // Свой сервер восстановлен на том же реле — в миры друзей его не кладём.
+      if (meta?.serverId) {
+        repostActivity();
+        return;
+      }
       const serverName =
         String(meta?.serverName || '').trim() ||
         (nick ? `Мир игрока ${nick}` : 'Friends world');
@@ -24,6 +29,7 @@ function tryRestoreShareAfterSession(): void {
       pushMessengerActivity({
         playing: true,
         hosting: true,
+        worldShare: true,
         buildName: meta?.buildName,
         gameVersion: meta?.gameVersion,
         loader: meta?.loader,
@@ -60,6 +66,8 @@ export type MessengerActivityPayload = {
   serverHost?: string;
   playing?: boolean;
   hosting?: boolean;
+  /** true только у мира, который открыли для друзей. Вход на сервер и свой хост — false. */
+  worldShare?: boolean;
 };
 
 let session: MessengerSession | null = null;
@@ -116,6 +124,23 @@ async function postActivityOnce(payload: MessengerActivityPayload): Promise<void
   });
 }
 
+function activityForFriends(payload: MessengerActivityPayload): MessengerActivityPayload {
+  if (!payload.playing) return { playing: false, hosting: false, worldShare: false };
+  const share = friendWorldEndpoint();
+  if (share) {
+    return {
+      ...payload,
+      playing: true,
+      hosting: true,
+      worldShare: true,
+      serverHost: share.serverHost,
+      serverName: share.serverName || payload.serverName,
+    };
+  }
+  // Игра на сервере и свой хост не являются миром для друзей.
+  return { ...payload, playing: true, hosting: false, worldShare: false };
+}
+
 /** Heartbeat активности в MC Messenger (сборка / версия / сервер). */
 export function pushMessengerActivity(payload: MessengerActivityPayload): void {
   lastActivity = payload?.playing === false ? { playing: false } : { ...payload, playing: true };
@@ -123,17 +148,54 @@ export function pushMessengerActivity(payload: MessengerActivityPayload): void {
     clearInterval(activityHeartbeat);
     activityHeartbeat = null;
   }
-  void postActivityOnce(lastActivity);
+  void postActivityOnce(activityForFriends(lastActivity));
   if (lastActivity.playing) {
     activityHeartbeat = setInterval(() => {
       if (!lastActivity?.playing) return;
-      void postActivityOnce(lastActivity);
+      void postActivityOnce(activityForFriends(lastActivity));
     }, 45000);
   }
 }
 
+/** Переотправить активность после смены туннеля: свой сервер не должен остаться миром. */
+export function repostActivity(): void {
+  if (!session?.token) return;
+  if (!lastActivity?.playing) {
+    void postActivityOnce({ hosting: false, worldShare: false });
+    return;
+  }
+  void postActivityOnce(activityForFriends(lastActivity));
+}
+
 export function getMessengerSessionToken(): string | null {
   return session?.token || null;
+}
+
+/** Читает тело ответа, пока размер не больше лимита. Иначе отменяет поток. */
+async function readCappedBody(res: Response, max: number): Promise<Buffer | null> {
+  if (!res.body) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length > max ? null : buf;
+  }
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const step = await reader.read();
+    if (step.done) break;
+    const piece = Buffer.from(step.value);
+    total += piece.length;
+    if (total > max) {
+      try {
+        await reader.cancel();
+      } catch {
+        /* ignore */
+      }
+      return null;
+    }
+    chunks.push(piece);
+  }
+  return Buffer.concat(chunks);
 }
 
 export function registerMessengerIpc(): void {
@@ -353,6 +415,71 @@ export function registerMessengerIpc(): void {
         return { ok: true, path: save.filePath };
       } catch (e: any) {
         return { ok: false, error: e?.message || 'download_failed' };
+      }
+    },
+  );
+
+  // ===== Перемотка видео =====
+  // Chromium на currentTime шлёт Range. Ответ 200 с начала файла сбрасывает ролик в 0:00.
+  // 206 — можно перематывать сеть. Иначе отдаём байты, плеер играет их как blob.
+  ipcMain.handle(
+    'media:prepareSeek',
+    async (_event, raw: { url?: string; forceBlob?: boolean } | string) => {
+      const url = typeof raw === 'string' ? raw : String(raw?.url || '');
+      const forceBlob = typeof raw === 'object' && raw != null && Boolean(raw.forceBlob);
+      const clean = String(url || '').trim();
+      let parsed: URL;
+      try {
+        parsed = new URL(clean);
+      } catch {
+        return { ok: false, error: 'bad_url' };
+      }
+      if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || clean.length > 8000) {
+        return { ok: false, error: 'bad_url' };
+      }
+      const maxBytes = 80 * 1024 * 1024;
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 120000);
+      try {
+        const headers: Record<string, string> = {};
+        if (!forceBlob) headers.Range = 'bytes=0-1';
+        const res = await fetch(clean, { headers, signal: ac.signal, redirect: 'follow' });
+        if (!forceBlob && res.status === 206) {
+          try {
+            await res.body?.cancel();
+          } catch {
+            /* пробный диапазон не нужен */
+          }
+          return { ok: true, ranges: true };
+        }
+        if (res.status !== 200 && res.status !== 206) {
+          try {
+            await res.body?.cancel();
+          } catch {
+            /* ignore */
+          }
+          return { ok: false, error: `http_${res.status}` };
+        }
+        const declared = Number(res.headers.get('content-length') || 0);
+        if (Number.isFinite(declared) && declared > maxBytes) {
+          try {
+            await res.body?.cancel();
+          } catch {
+            /* ignore */
+          }
+          return { ok: true, ranges: false, tooLarge: true };
+        }
+        const data = await readCappedBody(res, maxBytes);
+        if (!data) return { ok: true, ranges: false, tooLarge: true };
+        const mime = String(res.headers.get('content-type') || '')
+          .split(';')[0]
+          .trim();
+        return { ok: true, ranges: false, mime, data };
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'fetch_failed';
+        return { ok: false, error: message };
+      } finally {
+        clearTimeout(timer);
       }
     },
   );

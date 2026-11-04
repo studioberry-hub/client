@@ -5,7 +5,26 @@ export {
   EmptyUsernameError,
   normalizeUsername,
 } from "./core/skin-username.js";
-export { DEFAULT_LIGHT_SETTINGS, ProductLighting } from "./core/product-visuals.js";
+export {
+  DEFAULT_LIGHT_SETTINGS,
+  FLOOR_Y,
+  ProductLighting,
+  configureProductRenderer,
+  createFloorAndContactShadow,
+  createPlasticEnvironment,
+  enableShadows,
+  normalizeSkinDepthBias,
+  setupSceneEnvironment,
+  tuneSkinMaterials,
+} from "./core/product-visuals.js";
+export { OuterVoxelLayers } from "./core/skin-outer-voxel.js";
+export {
+  configureSkinCanvasTexture,
+  padTextureEdgeRGB,
+  sanitizeSkinCanvas,
+} from "./core/skin-texture.js";
+export { applySkinUVInsets } from "./core/skin-uv-inset.js";
+export { SkinLineup, LineupActor, type SkinLineupOptions } from "./core/skin-lineup.js";
 export {
   computeVisibleBounds,
   fitObjectToFrame,
@@ -17,7 +36,10 @@ export {
 } from "./core/camera-framing.js";
 export {
   HeroIdleAnimation,
+  HoverAnimation,
   TrailerRunAnimation,
+  WalkCycleAnimation,
+  HitAnimation,
   BustPoseAnimation,
   WaveHelloAnimation,
   SneakAnimation,

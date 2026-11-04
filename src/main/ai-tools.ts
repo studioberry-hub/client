@@ -3,12 +3,15 @@ import fs from 'fs';
 import path from 'path';
 import { BrowserWindow, ipcMain, shell } from 'electron';
 import { getInstanceRoot, getInstancesDir } from './launcher';
+import { deleteBuildInstance, getLauncherDataDir } from './paths';
 import { getExtendedAiTools } from './ai-tools-extended';
+import { agentHostedAction } from './hostedServers';
 import { callRendererAiAction } from './ai-action-bridge';
 import {
   collectInstalledProjectIds,
   installModWithDependencies,
 } from './modDependencies';
+import { listLoaderVersions } from './loaderVersions';
 
 export type AiToolRisk = 'read' | 'write';
 
@@ -56,7 +59,7 @@ const OPEN_SUBDIRS = new Set([
 ]);
 
 function launcherDataDir(): string {
-  return path.join(process.env.APPDATA || process.cwd(), '.Undefined Client');
+  return getLauncherDataDir();
 }
 
 function buildsPath(): string {
@@ -585,7 +588,7 @@ const TOOLS: Record<string, ToolEntry> = {
       type: 'function',
       function: {
         name: 'get_instance_path',
-        description: 'Абсолютный путь инстанса сборки в %APPDATA%\\.uclient\\<sanitized-id>.',
+        description: 'Путь папки сборки (моды и миры). Свои серверы здесь не лежат — для них list_hosted_servers.',
         parameters: {
           type: 'object',
           properties: { buildId: { type: 'string' } },
@@ -751,15 +754,13 @@ const TOOLS: Record<string, ToolEntry> = {
       const before = getBuilds();
       const next = before.filter((b: any) => b.id !== buildId);
       if (next.length === before.length) return { error: 'build_not_found' };
-      saveBuilds(next);
       let deletedFiles = false;
       if (asBool(args.deleteFiles, false)) {
-        const root = getInstanceRoot(buildId);
-        if (fs.existsSync(root)) {
-          fs.rmSync(root, { recursive: true, force: true });
-          deletedFiles = true;
-        }
+        const removed = await deleteBuildInstance(buildId);
+        if (!removed.ok) return { error: removed.error || 'delete_failed' };
+        deletedFiles = true;
       }
+      saveBuilds(next);
       return { ok: true, deletedFiles };
     },
   },
@@ -939,66 +940,14 @@ const TOOLS: Record<string, ToolEntry> = {
       const gameVersion = asString(args.gameVersion);
       const limit = Math.min(40, Math.max(3, asNumber(args.limit, 12)));
       if (!loader || !gameVersion) return { error: 'loader_and_gameVersion_required' };
-
-      if (loader === 'fabric') {
-        const res = await fetch(
-          `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(gameVersion)}`,
-          { headers: { 'User-Agent': 'Undefined-Client-AI' } },
-        );
-        if (!res.ok) return { error: `fabric HTTP ${res.status}` };
-        const list = await res.json();
-        return {
-          loader,
-          gameVersion,
-          versions: (Array.isArray(list) ? list : [])
-            .slice(0, limit)
-            .map((x: any) => x?.loader?.version)
-            .filter(Boolean),
-        };
-      }
-      if (loader === 'quilt') {
-        const res = await fetch(
-          `https://meta.quiltmc.org/v3/versions/loader/${encodeURIComponent(gameVersion)}`,
-          { headers: { 'User-Agent': 'Undefined-Client-AI' } },
-        );
-        if (!res.ok) return { error: `quilt HTTP ${res.status}` };
-        const list = await res.json();
-        return {
-          loader,
-          gameVersion,
-          versions: (Array.isArray(list) ? list : [])
-            .slice(0, limit)
-            .map((x: any) => x?.loader?.version)
-            .filter(Boolean),
-        };
-      }
-      if (loader === 'forge') {
-        const res = await fetch('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json', {
-          headers: { 'User-Agent': 'Undefined-Client-AI' },
-        });
-        if (!res.ok) return { error: `forge HTTP ${res.status}` };
-        const data = await res.json();
-        const promos = data?.promos || {};
-        const recommended = promos[`${gameVersion}-recommended`];
-        const latest = promos[`${gameVersion}-latest`];
-        const versions = [recommended, latest].filter(Boolean);
-        return { loader, gameVersion, versions: versions.slice(0, limit), recommended, latest };
-      }
-      if (loader === 'neoforge') {
-        const res = await fetch(
-          `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge`,
-          { headers: { 'User-Agent': 'Undefined-Client-AI' } },
-        );
-        if (!res.ok) return { error: `neoforge HTTP ${res.status}` };
-        const data = await res.json();
-        const mcMinor = gameVersion.replace(/^1\./, '');
-        const versions = (Array.isArray(data?.versions) ? data.versions : [])
-          .filter((v: string) => String(v).startsWith(mcMinor) || String(v).includes(gameVersion))
-          .reverse()
-          .slice(0, limit);
-        return { loader, gameVersion, versions };
-      }
-      return { error: 'unsupported_loader' };
+      const listed = await listLoaderVersions(loader, gameVersion);
+      return {
+        loader,
+        gameVersion,
+        versions: (listed.versions || []).slice(0, limit),
+        unavailable: !!listed.unavailable,
+        error: listed.error,
+      };
     },
   },
 
@@ -1750,7 +1699,7 @@ const TOOLS: Record<string, ToolEntry> = {
       type: 'function',
       function: {
         name: 'list_configs',
-        description: 'Файлы в config/ инстанса (имена, до 80).',
+        description: 'Конфиги. Если buildId начинается с hs, это файлы своего сервера в plugins/ и config/.',
         parameters: {
           type: 'object',
           properties: { buildId: { type: 'string' } },
@@ -1807,7 +1756,7 @@ const TOOLS: Record<string, ToolEntry> = {
       type: 'function',
       function: {
         name: 'list_servers',
-        description: 'Сохранённые серверы лаунчера.',
+        description: 'Серверы для подключения из вкладки «Серверы». Свой сервер на этом ПК — list_hosted_servers, не этот список.',
         parameters: { type: 'object', properties: {}, additionalProperties: false },
       },
     },
@@ -2175,6 +2124,66 @@ async function installContentDirect(
   };
 }
 
+const HOSTED_CONFIG_TOOLS = new Set([
+  'read_config',
+  'write_config',
+  'list_configs',
+  'list_build_content',
+  'get_instance_path',
+]);
+
+function isHostedServerId(id: string): boolean {
+  return /^hs[0-9a-f]{8,}$/i.test(id);
+}
+
+function hostedQueryFromPath(rel: string): string {
+  const parts = rel.split('/').filter(Boolean);
+  const dirs = parts.slice(0, -1).filter((part) => !/^(config|plugins|mods)$/i.test(part));
+  return (dirs[dirs.length - 1] || parts[parts.length - 1] || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/** id вида hs… — это свой сервер. Конфиг плагина лежит в его папке, не в сборке. */
+async function runHostedConfigTool(name: string, id: string, args: Record<string, unknown>): Promise<unknown> {
+  if (name === 'list_configs' || name === 'list_build_content' || name === 'get_instance_path') {
+    const found = (await agentHostedAction('find-files', { id, query: '' })) as { files?: string[] };
+    return {
+      ok: true,
+      hostedServerId: id,
+      files: found.files || [],
+      note: 'Это свой сервер, не сборка. Читай и записывай файл через read_config и write_config с этим buildId и relativePath из files.',
+    };
+  }
+  const rel = String(args.relativePath || args.path || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (name === 'read_config') {
+    const direct = (await agentHostedAction('read-file', { id, path: rel })) as { ok?: boolean; text?: string; error?: string };
+    if (direct.ok) return { ok: true, hostedServerId: id, relativePath: rel, content: direct.text };
+    const found = (await agentHostedAction('find-files', { id, query: hostedQueryFromPath(rel) })) as { files?: string[] };
+    const files = found.files || [];
+    if (files.length === 1) {
+      const file = (await agentHostedAction('read-file', { id, path: files[0] })) as { ok?: boolean; text?: string };
+      if (file.ok) {
+        return { ok: true, hostedServerId: id, relativePath: files[0], content: file.text, note: `Файл найден как ${files[0]}` };
+      }
+    }
+    return { ok: false, error: 'file_not_found', tried: rel, files, hostedServerId: id };
+  }
+  const text = String(args.content ?? args.text ?? '');
+  let target = rel;
+  const existing = (await agentHostedAction('read-file', { id, path: rel })) as { ok?: boolean };
+  if (!existing.ok) {
+    const found = (await agentHostedAction('find-files', { id, query: hostedQueryFromPath(rel) })) as { files?: string[] };
+    const files = found.files || [];
+    if (files.length !== 1) {
+      return { ok: false, error: 'file_not_found', tried: rel, files, hostedServerId: id };
+    }
+    target = files[0];
+  }
+  const written = (await agentHostedAction('write-file', { id, path: target, text })) as { ok?: boolean; error?: string };
+  return written.ok
+    ? { ok: true, hostedServerId: id, relativePath: target }
+    : { ok: false, error: written.error || 'write_failed', hostedServerId: id };
+}
+
 export async function runAiTool(
   name: string,
   args: Record<string, unknown> = {},
@@ -2182,6 +2191,14 @@ export async function runAiTool(
   // result заполняется и при ok:false для install_mod (детали no_compatible_version)
   const tool = TOOLS[name];
   if (!tool) return { ok: false, error: `unknown_tool:${name}` };
+  const hostedId = String(args.buildId || args.id || '');
+  if (HOSTED_CONFIG_TOOLS.has(name) && isHostedServerId(hostedId)) {
+    const result = await runHostedConfigTool(name, hostedId, args || {});
+    const failed = Boolean(result && typeof result === 'object' && (result as { ok?: boolean }).ok === false);
+    return failed
+      ? { ok: false, risk: tool.risk, error: String((result as { error?: string }).error || 'hosted_failed'), result }
+      : { ok: true, risk: tool.risk, result };
+  }
   try {
     let result = await tool.run(args || {});
 

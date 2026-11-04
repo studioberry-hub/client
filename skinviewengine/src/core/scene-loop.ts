@@ -27,6 +27,7 @@ import {
   Raycaster,
   Scene,
   SphereGeometry,
+  Spherical,
   Sprite,
   SpriteMaterial,
   Vector2,
@@ -140,6 +141,33 @@ export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   maxPolarAngleDeg: 96,
 };
 
+/** Внутренние части, по которым кадрируем: без плаща, элитр и воксельной оболочки */
+const BODY_CORE_PARTS = new Set(["head", "body", "leftArm", "rightArm", "leftLeg", "rightLeg"]);
+
+/**
+ * Только inner-меш тела. Outer и outer3d торчат в одну сторону
+ * и уводят look-at вправо, если мерить ими центр.
+ */
+function isBodyCoreMesh(mesh: Mesh): boolean {
+  if (mesh.name !== "inner") return false;
+  let node: Object3D | null = mesh.parent;
+  while (node) {
+    if (
+      node.name === "outer" ||
+      node.name === "outer3d" ||
+      node.name === "outer3dGroup" ||
+      node.name === "cape" ||
+      node.name === "elytra" ||
+      node.name === "ears"
+    ) {
+      return false;
+    }
+    if (BODY_CORE_PARTS.has(node.name)) return true;
+    node = node.parent;
+  }
+  return false;
+}
+
 /** Преобразование типа модели в формат skin3d */
 function toSkin3dModelType(type: SkinModelType): "default" | "slim" {
   return type === SkinModelType.Slim ? "slim" : "default";
@@ -237,6 +265,9 @@ export class SkinViewEngine {
   private readonly _raycaster = new Raycaster();
   private readonly _pointerNdc = new Vector2();
   private readonly _feetWorld = new Vector3();
+  /** Скретч для orbitBy — без аллокаций на каждом кадре стика */
+  private readonly _orbitOffset = new Vector3();
+  private readonly _orbitSpherical = new Spherical();
   private readonly _particles = new PixelParticles();
   /** Клик по модели: запомнить попадание и точку, чтобы отличить от вращения */
   private _nudgePointerId: number | null = null;
@@ -301,13 +332,15 @@ export class SkinViewEngine {
     // alpha всегда включён — прозрачный режим переключается setClearColor/background
     // При post-FX MSAA канваса выключаем: с NearestFilter он даёт кайму по UV,
     // силуэт сглаживает суперсэмплинг (pixelRatio≥2); blur кадра не используем.
-    const useCanvasAA = options.antialias ?? !this._enableEffects;
+    const isLinux = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('linux');
+    const useCanvasAA = isLinux ? false : (options.antialias ?? !this._enableEffects);
     this.renderer = new WebGLRenderer({
       canvas: this.canvas,
       antialias: useCanvasAA,
       alpha: true,
       premultipliedAlpha: false,
       powerPreference: "high-performance",
+      logarithmicDepthBuffer: true,
     });
     this.renderer.setPixelRatio(resolveProductPixelRatio(this._enableEffects));
     this.renderer.setClearColor(0x222222, 1);
@@ -961,6 +994,27 @@ export class SkinViewEngine {
     this.applyCameraDistance(clamped);
   }
 
+  /**
+   * Орбита камеры вокруг персонажа.
+   * yaw > 0 — как мышь вправо, pitch > 0 — как мышь вниз. Радианы за вызов.
+   */
+  orbitBy(yaw: number, pitch: number): void {
+    if (this._disposed || !this.controls.enabled) return;
+    if (yaw === 0 && pitch === 0) return;
+    this._orbitOffset.copy(this.camera.position).sub(this.controls.target);
+    this._orbitSpherical.setFromVector3(this._orbitOffset);
+    this._orbitSpherical.theta -= yaw;
+    this._orbitSpherical.phi -= pitch;
+    this._orbitSpherical.phi = Math.max(
+      this.controls.minPolarAngle,
+      Math.min(this.controls.maxPolarAngle, this._orbitSpherical.phi),
+    );
+    this._orbitSpherical.makeSafe();
+    this._orbitOffset.setFromSpherical(this._orbitSpherical);
+    this.camera.position.copy(this.controls.target).add(this._orbitOffset);
+    this.camera.lookAt(this.controls.target);
+  }
+
   /** Автовращение орбиты */
   getAutoRotate(): boolean {
     return this.controls.autoRotate;
@@ -1020,7 +1074,7 @@ export class SkinViewEngine {
   resetCamera(): void {
     this._fov = DEFAULT_CAMERA_SETTINGS.fov;
     this._zoom = DEFAULT_CAMERA_SETTINGS.zoom;
-    this.lookTarget.y = DEFAULT_CAMERA_SETTINGS.lookTargetY;
+    this.lookTarget.set(0, DEFAULT_CAMERA_SETTINGS.lookTargetY, 0);
     this.setPolarLimitsDeg(
       DEFAULT_CAMERA_SETTINGS.minPolarAngleDeg,
       DEFAULT_CAMERA_SETTINGS.maxPolarAngleDeg,
@@ -1046,6 +1100,9 @@ export class SkinViewEngine {
    *
    * Перед замером кратко ставится нейтральная стойка (без смещений анимации),
    * иначе бег/плащ уводят центр кадра. После замера поза восстанавливается.
+   *
+   * Горизонталь считается только по внутреннему телу (голова, торс, ноги).
+   * Плащ и воксельная оболочка в замер не входят и ось орбиты не сдвигают.
    */
   fitPlayerToFrame(options: FrameFitOptions = {}): FrameFitResult | null {
     const savedPose = capturePose(this.playerObject);
@@ -1061,8 +1118,10 @@ export class SkinViewEngine {
       // Важно: не применять stock-ноги — иначе presentation=full снова
       // показывает ноги и кадр «ныряет» в конечности на пресетах bust/discord
       const variant = this._shotPreset === "discord" ? 1 : 0;
-      const bust = new BustPoseAnimation(variant);
-      bust.progress = 0.8;
+      // Карточка ставит upright-позу: замер и кадр должны совпадать, иначе бюст «кривой».
+      const upright = this._animation instanceof BustPoseAnimation && this._animation.upright;
+      const bust = new BustPoseAnimation(variant, upright);
+      bust.progress = upright ? 0 : 0.8;
       bust.update(this.playerObject, 0);
       this.playerObject.skin.leftLeg.visible = false;
       this.playerObject.skin.rightLeg.visible = false;
@@ -1071,9 +1130,13 @@ export class SkinViewEngine {
       this._applyPresentationVisibility();
     }
 
+    // Ось тела — pivot торса, не центр оболочки. XZ камеры смотрит сюда на всех кадрах
+    const axis = new Vector3();
+    this.playerObject.skin.body.getWorldPosition(axis);
     const result = fitObjectToFrame(this.playerWrapper, this.camera, this.lookTarget, {
       ...options,
-      centerX: true,
+      includeMesh: isBodyCoreMesh,
+      pinPivotXZ: { x: axis.x, z: axis.z },
       // По умолчанию строго по центру; явный offsetY от вызывающего сохраняем
       offsetY: options.offsetY ?? 0,
     });
@@ -1138,6 +1201,10 @@ export class SkinViewEngine {
     // В статичном кадре кроссфейд не нужен — сразу конечная поза
     this._blendFrom = null;
     this._sampleAnimationPose(0);
+    if (this._isBustLikeFrame()) {
+      this.playerObject.skin.leftLeg.visible = false;
+      this.playerObject.skin.rightLeg.visible = false;
+    }
     this.controls.update();
     this._renderFrame();
   }
@@ -1262,8 +1329,9 @@ export class SkinViewEngine {
   }
 
   /**
-   * В idle полностью задаёт угол головы/корпуса по курсору
-   * (idle при этом не крутит голову — см. suppressAutoLook).
+   * Взгляд за курсором поверх idle.
+   * У центра кадра остаётся дыхание и редкий поворот головы;
+   * чем дальше указатель, тем сильнее его перебивает курсор.
    */
   private _applyCursorLook(deltaTime: number): void {
     // Толчок — головой управляет idle
@@ -1292,11 +1360,15 @@ export class SkinViewEngine {
 
     const head = this.playerObject.skin.head;
     const body = this.playerObject.skin.body;
-    // В skin3d: +y — влево/вправо, +x — вниз; нейтральный pitch −0.04
-    head.rotation.y = this._smoothAimX * 0.72;
-    head.rotation.x = -0.04 - this._smoothAimY * 0.4;
-    head.rotation.z = this._smoothAimX * 0.05;
-    body.rotation.y = -0.08 + this._smoothAimX * 0.22;
+    const aim = Math.hypot(this._smoothAimX, this._smoothAimY);
+    const u = Math.max(0, Math.min(1, aim / 0.28));
+    const take = u * u * (3 - 2 * u);
+    if (take <= 0) return;
+    // В skin3d: +y — влево/вправо, +x — вниз
+    head.rotation.y += (this._smoothAimX * 0.72 - head.rotation.y) * take;
+    head.rotation.x += (-0.04 - this._smoothAimY * 0.4 - head.rotation.x) * take;
+    head.rotation.z += (this._smoothAimX * 0.05 - head.rotation.z) * take;
+    body.rotation.y += (-0.06 + this._smoothAimX * 0.22 - body.rotation.y) * take;
   }
 
   private _tick = (): void => {
@@ -1652,6 +1724,7 @@ export class SkinViewEngine {
 
     if (this._animation instanceof SleepAnimation) {
       // Точка над макушкой в локали персонажа — не внутри наклонённой головы
+      // Точка над макушкой в локали стоящего персонажа
       this._feetWorld.set(0.8, 14.2, 0);
       this.playerObject.localToWorld(this._feetWorld);
       this._particles.ensureSleepZzz(this._feetWorld, deltaTime);

@@ -213,19 +213,42 @@ export function wrapAiToolCollapsible(
 
 // ===== Группировка раунда =====
 
-/** Создаёт контейнер раунда агента внутри host. */
+/** Создаёт контейнер раунда агента внутри host. Шаги инструментов сворачиваются в «Работал N с». */
 export function beginAiRound(host: HTMLElement): HTMLElement {
   const round = document.createElement('div');
   round.className = 'ai-round is-active';
   round.setAttribute('data-ai-round', '1');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ai-worked';
+  btn.hidden = true;
+  btn.innerHTML = '<span class="ai-worked__chev" aria-hidden="true"></span><span class="ai-worked__label"></span>';
+  btn.addEventListener('click', () => {
+    const open = round.classList.toggle('is-open');
+    round.classList.toggle('is-collapsed', !open);
+  });
+  round.appendChild(btn);
   host.appendChild(round);
   return round;
 }
 
-/** Завершает раунд (убирает active-состояние). */
-export function endAiRound(container: HTMLElement): void {
-  container.classList.remove('is-active');
+/** Завершает раунд. Сводка «Работал N с» только если в раунде были шаги инструментов. */
+export function endAiRound(container: HTMLElement, label?: string): void {
+  container.classList.remove('is-active', 'is-open');
   container.classList.add('is-ended');
+  const btn = container.querySelector<HTMLButtonElement>('.ai-worked');
+  const hasSteps = Boolean(container.querySelector('.ai-msg--tool, .ai-plan, .ai-tool'));
+  if (!hasSteps) {
+    btn?.remove();
+    container.classList.remove('is-collapsed');
+    return;
+  }
+  container.classList.add('is-collapsed');
+  const text = container.querySelector('.ai-worked__label');
+  if (btn && text) {
+    text.textContent = label || 'Шаги';
+    btn.hidden = false;
+  }
 }
 
 // ===== Статус в titlebar =====

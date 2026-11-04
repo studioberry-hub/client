@@ -206,7 +206,10 @@ function buildPartVoxels(
         const [mx, my, mz] = uvToModXYZ(dims, face, fu, fv);
         const [x, y, z] = modToThreeCenter(mx, my, mz, w, h, d);
 
-        const geo = new BoxGeometry(1, 1, 1);
+        // Слегка увеличиваем воксель (1.002), чтобы они накладывались друг на друга.
+        // Это полностью устраняет прозрачные швы (rasterization gaps) на Linux,
+        // где драйвер может терять пиксели на стыке идеально прилегающих полигонов.
+        const geo = new BoxGeometry(1.002, 1.002, 1.002);
         geo.translate(x, y, z);
         paintBoxUvToTexel(geo, tu, tv);
         geos.push(geo);
@@ -310,11 +313,14 @@ function isPresent(
 function paintBoxUvToTexel(geo: BufferGeometry, tu: number, tv: number): void {
   const uv = geo.attributes.uv as BufferAttribute;
   if (!uv) return;
-  const u0 = tu / TEX;
-  const u1 = (tu + 1) / TEX;
+  // Делаем микро-отступ (inset) внутрь пикселя, чтобы избежать артефактов на стыке
+  // (texture bleeding) из-за погрешности float-вычислений на некоторых GPU Linux.
+  const INSET = 0.01;
+  const u0 = (tu + INSET) / TEX;
+  const u1 = (tu + 1 - INSET) / TEX;
   // V в three: 0 снизу; атлас скина — v сверху
-  const v0 = 1 - (tv + 1) / TEX;
-  const v1 = 1 - tv / TEX;
+  const v0 = 1 - (tv + 1 - INSET) / TEX;
+  const v1 = 1 - (tv + INSET) / TEX;
   for (let i = 0; i < uv.count; i += 4) {
     uv.setXY(i, u0, v1);
     uv.setXY(i + 1, u1, v1);

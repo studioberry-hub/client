@@ -1,0 +1,95 @@
+/* Frame 1313 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 410px;
+height: 442px;
+left: 677px;
+top: 295px;
+
+background: #202020;
+border: 1px solid rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* Frame 1319 */
+
+position: absolute;
+width: 410px;
+height: 220px;
+left: 0px;
+top: 0px;
+
+background: #262626;
+
+
+/* m3dv5_friendship 1 */
+
+position: absolute;
+width: 429px;
+height: 220px;
+left: -10px;
+top: 0px;
+
+background: url(m3dv5_friendship.png);
+
+
+/* Frame 1320 */
+
+position: absolute;
+width: 410px;
+height: 222px;
+left: 0px;
+top: 220px;
+
+
+
+/* Море функций с аккаунтом */
+
+position: absolute;
+width: 377px;
+height: 24px;
+left: 16px;
+top: 16px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 24px;
+line-height: 29px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Получите доступ к функциям лаунчера и запускайте игру, создавайте сборки и делайте многое другое в Undefined Client.  Для получения ко всем функциям лаунчера, включая чаты, UAgent, посты сообщества и многого другого, рекомендуем войти в аккаунт Ely.by или Microsoft. */
+
+position: absolute;
+width: 378px;
+height: 150px;
+left: 16px;
+top: 56px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+

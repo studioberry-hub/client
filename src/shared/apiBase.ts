@@ -98,13 +98,29 @@ export function isModrinthCdnUrl(raw: string | null | undefined): boolean {
   return isCatalogCdnUrl(raw);
 }
 
+/** true, если ссылка уже ведёт на наш прокси файлов каталога. */
+export function isCatalogProxyFileUrl(raw: string | null | undefined): boolean {
+  const text = String(raw ?? '').trim();
+  if (!text) return false;
+  return (
+    text.startsWith('/client/api/catalog/file') ||
+    text.includes('/api/catalog/file?') ||
+    /\/client\/api\/catalog\/file\?/i.test(text)
+  );
+}
+
 /**
  * Адрес файла версии через наш прокси. Не-CDN ссылки возвращаются как есть:
  * проксировать произвольный домен сервер всё равно откажется.
+ * Относительные `/client/api/catalog/file?...` с сайта делаем абсолютными —
+ * иначе Node fetch в main падает с «Failed to parse URL».
  */
 export function catalogFileUrl(rawUrl: string, reason?: DownloadReason): string {
-  if (!isCatalogCdnUrl(rawUrl)) return rawUrl;
-  const qs = new URLSearchParams({ url: rawUrl });
+  const text = String(rawUrl ?? '').trim();
+  if (!text) return '';
+  if (isCatalogProxyFileUrl(text)) return absoluteApiUrl(text);
+  if (!isCatalogCdnUrl(text)) return text;
+  const qs = new URLSearchParams({ url: text });
   if (reason) qs.set('reason', reason);
   return `${apiBase}/api/catalog/file?${qs.toString()}`;
 }
@@ -198,4 +214,9 @@ export function skinImageUrl(rawUrl: string | null | undefined): string {
 export function skinProfileUrl(uuid: string): string {
   const clean = String(uuid ?? '').replace(/-/g, '').toLowerCase();
   return `${apiBase}/api/skin/profile?${new URLSearchParams({ uuid: clean }).toString()}`;
+}
+
+/** Актуальная текстура Ely.by через наш сервер (у браузера нет CORS на skinsystem). */
+export function skinElyUrl(username: string): string {
+  return `${apiBase}/api/skin/ely?${new URLSearchParams({ username: String(username ?? '').trim() }).toString()}`;
 }

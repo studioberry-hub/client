@@ -38,7 +38,7 @@
 ## 🛠️ Технологии
 
 - **Electron 43** + **TypeScript 5.3** — ядро лаунчера
-- **eml-lib 2.6** — запуск Minecraft (версии, загрузчики, auth)
+- **eml-lib 2.7** — запуск Minecraft (версии, загрузчики, auth)
 - **Modrinth API** — каталог модов и установка
 - **three.js / skin3d** — 3D-просмотр скинов
 - **marked** — рендер описаний модов в markdown

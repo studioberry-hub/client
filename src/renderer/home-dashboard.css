@@ -1,250 +1,184 @@
-/* ===== Главная: герой, инсайты, пустые состояния ===== */
+/* Главная: видео на всю область страницы, компактная сводка и панель запуска */
 
-#tab-home #quick-banner.home-hero,
-#quick-banner.home-hero {
-  height: min(280px, 36vh);
-  min-height: 220px;
-}
-
-#quick-banner-gradient {
-  height: 70%;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0) 0%,
-    rgba(0, 0, 0, 0.35) 45%,
-    rgba(0, 0, 0, 0.72) 100%
-  );
-}
-
-.home-hero-status {
-  margin-top: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.72);
-  max-width: min(520px, 70vw);
-  line-height: 1.35;
-}
-
-#quick-banner-actions {
-  gap: 10px;
-}
-
-.home-insights {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.home-insight {
-  appearance: none;
-  position: relative;
-  isolation: isolate;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 14px 16px;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-  font: inherit;
-  transition: background 0.15s ease;
-}
-
-.home-insight:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.home-insight:active {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.home-insight__label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.42);
-  margin-bottom: 6px;
-}
-
-.home-insight__value {
-  font-size: 16px;
-  font-weight: 650;
-  color: #fff;
-  line-height: 1.3;
+#tab-home.tab-view {
+  padding: 0;
+  gap: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  scrollbar-gutter: auto;
+  position: relative;
+  background: #111;
 }
 
-.home-insight__hint {
-  margin-top: 4px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
-  line-height: 1.35;
-  min-height: 1.2em;
-}
-
-.home-empty {
-  display: grid;
-  gap: 10px;
-  padding: 22px 18px;
-  text-align: center;
-  place-items: center;
-}
-
-.home-empty__title {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.home-empty__desc {
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.4);
-  max-width: 260px;
-}
-
-.home-empty__btn {
-  appearance: none;
-  border: none;
-  margin-top: 4px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: rgba(var(--accent-rgb), 0.22);
-  color: #fff;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  background: rgba(var(--accent-rgb), 0.34);
-}
-
-@media (max-width: 980px) {
-  .home-insights {
-    grid-template-columns: 1fr;
-  }
-
-  #quick-banner.home-hero {
-    height: 210px;
-    min-height: 190px;
-  }
-
-  #quick-banner-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    max-width: 46%;
-  }
-}
-
-/* ===== Нижний отступ при прокрутке ===== */
-/* Только Главная: вложенный скролл у модов/серверов не должен оставлять полосу под списком */
 #tab-home.tab-view::after {
-  content: "";
-  display: block;
-  flex: 0 0 24px;
-  width: 100%;
-  pointer-events: none;
+  display: none;
 }
 
-/* У вкладок со списком на всю высоту — без padding-bottom у .tab-view */
-#tab-mods.tab-view,
-#tab-servers.tab-view,
-#tab-builds.tab-view,
+/* Новости: внешний padding вкладки сбрасываем — 16px только внутри ленты */
 #tab-news.tab-view {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+#tab-mods.tab-view,
+#tab-builds.tab-view {
   padding-bottom: 0;
 }
 
-/* Новости: скролл только у ленты, без пустой полосы под карточками */
-#tab-news.tab-view {
+.home-stage {
+  position: absolute;
+  inset: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ===== Кнопка «Играть» в герое ===== */
-#quick-banner.home-hero #quick-banner-play {
-  background: var(--accent);
-  color: var(--on-accent);
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.2s ease,
-    filter 0.2s ease,
-    background 0.15s ease,
-    color 0.15s ease;
-  box-shadow:
-    0 6px 22px rgba(0, 0, 0, 0.32),
-    0 0 0 1px rgba(255, 255, 255, 0.06);
+/* Клип на всю область вкладки: блюр того же кадра, без отдельного фона в щели */
+.home-video-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
 }
 
-#quick-banner.home-hero #quick-banner-play:hover {
-  background: var(--accent);
-  color: var(--on-accent);
-  filter: brightness(1.14);
-  transform: translateY(-2px);
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(255, 255, 255, 0.1);
+.home-video-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  background: transparent;
+  transform-origin: center center;
 }
 
-#quick-banner.home-hero #quick-banner-play:active {
-  transform: translateY(0) scale(0.97);
-  filter: brightness(1.05);
+/* Размытие только слоя видео: край кадра уходит за клип, карточки остаются резкими */
+.home-video-bg.is-blurred {
+  transform: scale(1.14);
 }
 
-/* Системный outline Chromium после старта (программный фокус) */
-#quick-banner.home-hero #quick-banner-play:focus {
-  outline: none;
-}
-#quick-banner.home-hero #quick-banner-play:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--on-accent) 75%, transparent);
-  outline-offset: 2px;
+/* Верхний и нижний градиенты кадра — как в NewHomePage.css, середина видео чистая */
+.home-video-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
 }
 
-/* ===== Свежий пост на Главной (плоский) ===== */
+.home-video-shade::before,
+.home-video-shade::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+.home-video-shade::before {
+  top: 0;
+  height: 122px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 100%);
+}
+
+.home-video-shade::after {
+  bottom: 0;
+  height: 188px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+.home-stage-body {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 24px;
+  pointer-events: none;
+}
+
+.home-stage-bottom,
 .home-news-attribution {
-  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.home-welcome-sub {
+  display: none;
+}
+
+/* ===== Стекло карточек из референса ===== */
+
+.home-glass {
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+}
+
+/* ===== Свежая новость — 400×80, сверху по центру ===== */
+
+.home-news-attribution {
+  box-sizing: border-box;
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  width: min(400px, calc(100% - 32px));
+  height: 80px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  text-align: left;
+}
+
+.home-news-attribution,
+.home-continue,
+.home-stat,
+.build-run-face {
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.home-news-attribution:hover,
+.home-continue:not(:disabled):hover,
+.home-stat:hover,
+.build-run-face:hover {
+  transform: scale(1.03);
 }
 
 .home-news-attribution:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.14);
-}
-
-.home-news-attribution:active {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .home-news-attribution-media {
   position: relative;
   flex-shrink: 0;
-  width: 96px;
-  height: 72px;
+  width: 114px;
+  height: 64px;
   overflow: hidden;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.home-news-attribution-cover {
-  width: 100%;
-  height: 100%;
-  border: none;
-  border-radius: 0;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.04);
-}
-
+.home-news-attribution-cover,
 .home-news-attribution-cover img {
   width: 100%;
   height: 100%;
+}
+
+.home-news-attribution-cover img {
   object-fit: cover;
   display: block;
 }
@@ -253,67 +187,664 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 5px;
-  flex: 1;
+  gap: 2px;
   min-width: 0;
-  padding: 0;
+  height: 64px;
 }
 
 .home-news-attribution-badges {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .home-news-badge {
   display: inline-flex;
   align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  white-space: nowrap;
+  justify-content: center;
+  height: 16px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 240, 156, 0.25);
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #FFF09C;
 }
 
 .home-news-badge--brand {
-  color: var(--accent);
-  background: rgba(var(--accent-rgb), 0.14);
-  border-color: rgba(var(--accent-rgb), 0.28);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 11px;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 
 .home-news-attribution-title {
+  display: block;
   font-family: 'Nekst', Arial, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 19px;
   color: #fff;
-  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: unset;
+}
+
+.home-news-attribution .news-home-row-summary {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  margin: 0;
+  max-height: 24px;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 12px;
+  color: rgba(255, 255, 255, 0.8);
 }
 
-.home-news-attribution .news-home-row-summary {
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.48);
-  margin-top: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
+.home-news-attribution .news-home-row-summary.hidden,
 .home-news-attribution.hidden {
   display: none !important;
+}
+
+/* ===== Нижний ряд: прошлая игра, две карточки, панель ===== */
+
+.home-stage-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.home-continue {
+  appearance: none;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: 100%;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  color: #fff;
+  font-family: 'Nekst', Arial, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-continue:disabled {
+  cursor: default;
+}
+
+.home-continue:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.03);
+}
+
+.home-continue__icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.home-continue__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.home-continue__text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-continue__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.home-continue__ask {
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 19px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgba(255, 240, 156, 0.25);
+  font-family: 'Nekst', Arial, sans-serif;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 14px;
+  color: #FFF09C;
+}
+
+.home-continue__meta {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 17px;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+.home-stats {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.home-stat {
+  appearance: none;
+  box-sizing: border-box;
+  width: 240px;
+  max-width: calc(50% - 4px);
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  color: #fff;
+  font-family: 'Nekst', Arial, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-stat:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.03);
+}
+
+.home-stat__icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-stat__icon img {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.home-stat__text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  min-width: 0;
+}
+
+.home-stat__title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 19px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-stat__sub {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 17px;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#tab-home #quick-banner-sub.home-status-line {
+  position: static;
+  margin: 0;
+  min-height: 0;
+  max-width: 480px;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.62);
+  text-align: center;
+}
+
+#tab-home #quick-banner-sub.home-status-line:empty {
+  display: none;
+}
+
+/* Панель без transform и backdrop-filter: иначе список блюрит пустой слой, а не страницу */
+.build-run-panel {
+  position: relative;
+  box-sizing: border-box;
+  width: 400px;
+  max-width: 100%;
+  height: 56px;
+}
+
+.build-run-face {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 16px;
+  transform-origin: center center;
+}
+
+.build-run-selector {
+  appearance: none;
+  box-sizing: border-box;
+  width: 276px;
+  max-width: calc(100% - 108px);
+  height: 40px;
+  flex: 1 1 276px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 17px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.build-run-selector__icon,
+.build-run-item__icon {
+  flex-shrink: 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.build-run-selector__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.build-run-selector__icon img,
+.build-run-item__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.build-run-selector__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  height: 40px;
+}
+
+.build-run-selector__name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 16px;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-run-selector__meta {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-run-selector__meta:empty,
+.build-run-selector__meta.hidden {
+  display: none;
+}
+
+.build-run-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.build-run-panel.is-open .build-run-chevron {
+  transform: rotate(180deg);
+}
+
+.build-run-play {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100px;
+  height: 40px;
+  flex: 0 0 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 19px;
+  cursor: pointer;
+}
+
+.build-run-play svg {
+  flex-shrink: 0;
+}
+
+.build-run-play:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.build-run-play:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.build-run-play:disabled.is-running {
+  opacity: 1;
+  cursor: default;
+}
+
+/* Растёт из селектора: масштаб и появление, точка снизу. Закрытие — обратно, потом снятие */
+.build-run-list {
+  position: absolute;
+  left: 8px;
+  bottom: calc(100% + 8px);
+  box-sizing: border-box;
+  width: 276px;
+  max-height: 320px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border-radius: 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 6;
+  transform-origin: center bottom;
+  opacity: 0;
+  transform: scale(0.92);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 180ms;
+}
+
+.build-run-panel.is-open .build-run-list {
+  opacity: 1;
+  /* none, а не scale(1): открытый список без transform, блюр берёт саму страницу */
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 0s linear 0s;
+}
+
+/* Тот же бегунок 4px на выпадающем списке: без дорожки и без стрелок */
+.build-run-list::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  -webkit-appearance: none;
+}
+
+.build-run-list::-webkit-scrollbar-track,
+.build-run-list::-webkit-scrollbar-track-piece,
+.build-run-list::-webkit-scrollbar-corner {
+  background: transparent;
+  border: none;
+}
+
+.build-run-list::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 6px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+
+.build-run-list::-webkit-scrollbar-thumb:hover,
+.build-run-list::-webkit-scrollbar-thumb:active {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+
+.build-run-list::-webkit-scrollbar-button,
+.build-run-list::-webkit-scrollbar-button:single-button,
+.build-run-list::-webkit-scrollbar-button:vertical:start:decrement,
+.build-run-list::-webkit-scrollbar-button:vertical:end:increment,
+.build-run-list::-webkit-scrollbar-button:vertical:start:increment,
+.build-run-list::-webkit-scrollbar-button:vertical:end:decrement {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+  border: none;
+}
+
+.build-run-item {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 8px;
+  color: #fff;
+  font-family: 'Nekst', Arial, sans-serif;
+  cursor: pointer;
+}
+
+.build-run-item.is-selected {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.build-run-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.build-run-item.is-selected:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.build-run-item__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+}
+
+.build-run-item__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.build-run-item__name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 16px;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-run-item__meta {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-run-item__edit {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.build-run-item__edit span {
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: #fff;
+}
+
+.build-run-empty {
+  padding: 12px 8px;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+
+/* Короткое появление карточек главной, без длинного интро */
+@keyframes homeCardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* backwards, чтобы после появления transform снова был свободен для hover */
+.home-continue,
+.home-stat,
+.build-run-face {
+  animation: homeCardIn 200ms ease backwards;
+}
+
+.home-stat:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.build-run-face {
+  animation-delay: 80ms;
+}
+
+.home-news-attribution:not(.hidden) {
+  animation: homeCardIn 200ms ease backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-continue,
+  .home-stat,
+  .build-run-face,
+  .home-news-attribution,
+  .build-run-list {
+    animation: none;
+    transition: none;
+  }
+
+  .home-news-attribution:hover,
+  .home-continue:not(:disabled):hover,
+  .home-stat:hover,
+  .build-run-face:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .home-stage-body {
+    padding: 20px 16px;
+  }
+
+  .home-news-attribution {
+    width: calc(100% - 32px);
+  }
+
+  .home-stats {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .home-stat {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .build-run-panel,
+  .home-continue {
+    width: 100%;
+  }
 }

@@ -1,23 +1,40 @@
 {
   "name": "uclient",
-  "version": "1.0.7-beta",
-  "description": "Minecraft Launcher",
+  "version": "1.0.8-beta",
+  "description": "Powerfull Minecraft client with support Mods, AI, Social and more",
+  "homepage": "https://uprojects.site/client",
   "license": "GPL-3.0-only",
+  "author": "Undefined Studio <vovaberezin2200@gmail.com>",
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc && esbuild --bundle dist/renderer/app.js --outfile=src/renderer/app.js --format=iife --global-name=app --platform=browser && esbuild --bundle dist/renderer/console.js --outfile=src/renderer/console.js --format=iife --global-name=consoleWin --platform=browser",
+    "build:skinviewengine": "npm install --prefix skinviewengine && npm run build --prefix skinviewengine",
+    "build:uclient": "tsc && node scripts/bundle-renderer.mjs",
+    "build": "npm run build:skinviewengine && npm run build:uclient",
+    "postinstall": "npm run build:skinviewengine",
     "build:world": "node scripts/copy-world-assets.mjs && node scripts/build-world.mjs",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron . --dev",
-    "dist": "npm run build && electron-builder --win",
-    "dist:dir": "npm run build && electron-builder --win --dir",
-    "dist:pack-only": "electron-builder --win --dir"
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:win:dir": "npm run build && electron-builder --win --dir",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:linux:appimage": "npm run build && electron-builder --linux AppImage",
+    "dist:linux:deb": "npm run build && electron-builder --linux deb",
+    "dist:linux:rpm": "npm run build && electron-builder --linux rpm",
+    "dist:linux:tar": "npm run build && electron-builder --linux tar.gz",
+    "dist:linux:dir": "npm run build && electron-builder --linux --dir",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:pack-only": "electron-builder --dir",
+    "dist:linux:snap": "npm run build && electron-builder --linux snap",
+    "dist:linux:flatpak": "npm run build && electron-builder --linux flatpak",
+    "dist:linux:pacman": "npm run build && electron-builder --linux pacman",
+    "dist:linux:all": "npm run build && electron-builder --linux"
   },
   "build": {
-    "appId": "undefined-client",
+    "appId": "org.studioberry.uclient",
     "productName": "Undefined Client",
     "directories": {
-      "output": "dist-windows"
+      "output": "release"
     },
     "afterPack": "./scripts/after-pack.cjs",
     "electronLanguages": [
@@ -36,6 +53,7 @@
       "!assets/MusicForUClient{,/**}",
       "!assets/screenshots{,/**}",
       "IconForBuild/icon.ico",
+      "IconForBuild/512.png",
       "!**/*.{map,md,markdown}",
       "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,README,readme}",
       "!**/node_modules/*/{test,tests,__tests__,docs,doc,example,examples,bench,benchmark}",
@@ -79,6 +97,45 @@
       "createDesktopShortcut": true,
       "installerIcon": "IconForBuild/icon.ico",
       "uninstallerIcon": "IconForBuild/icon.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz",
+        "deb",
+        "snap",
+        "flatpak",
+        "pacman",
+        "rpm"
+      ],
+      "maintainer": "Undefined Studio <vovaberezin2200@gmail.com>",
+      "icon": "IconForBuild/512.png",
+      "executableName": "uclient",
+      "category": "Game",
+      "synopsis": "This is Undefined Client",
+      "description": "Undefined Client is an open source launcher with a mod catalog, instances, and UAgent: the AI helps find mods, fix crashes, and manage builds — all in one app.",
+      "mimeTypes": [
+        "x-scheme-handler/uclient"
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libdecor-0-0"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "libdecor"
+      ]
+    },
+    "pacman": {
+      "depends": [
+        "libdecor"
+      ]
+    },
+    "flatpak": {
+      "runtimeVersion": "23.08",
+      "baseVersion": "23.08"
     }
   },
   "devDependencies": {
@@ -99,11 +156,12 @@
   "dependencies": {
     "adm-zip": "^0.6.0",
     "discord-rpc": "^4.0.1",
-    "eml-lib": "^2.6.0",
+    "eml-lib": "^2.7.3",
+    "lottie-web": "^5.12.2",
     "marked": "^18.0.7",
     "minecraft-server-util": "^5.4.4",
-    "pngjs": "^7.0.0",
     "prismarine-nbt": "^2.8.0",
-    "skinviewengine": "file:skinviewengine"
+    "skinviewengine": "file:skinviewengine",
+    "uisfx": "^0.4.0"
   }
 }

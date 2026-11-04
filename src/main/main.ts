@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, protocol, net, WebContentsView } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, protocol, net, session, WebContentsView } from 'electron';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,6 +7,7 @@ import { initLauncher, addProgressSink } from './launcher';
 import { setApiBase, getApiBase, releaseLatestUrl } from '../shared/apiBase';
 import { registerMessengerIpc, getMessengerSessionToken } from './messenger-api';
 import { registerGameRelayIpc, setMessengerTokenProvider, stopGameRelayOnQuit } from './game-relay';
+import { registerHostedServersIpc, stopHostedServersOnQuit } from './hostedServers';
 import {
   DEEP_LINK_SCHEME,
   findDeepLinkInArgv,
@@ -18,12 +19,18 @@ import {
 import { registerInstanceShareIpc } from './instanceShare';
 import { registerInstanceExportIpc } from './exportInstance';
 import { listAiToolSchemas, registerAiToolIpc } from './ai-tools';
+import { chatWithProvider, listProviderModels, publicAiProvider, readAiProvider, writeAiProvider } from './ai-provider';
 
 // ===== GPU / DirectX (ANGLE) до app.ready =====
 // На Windows Chromium рисует WebGL через ANGLE→D3D11 — стабильный путь для
 // суперсэмплинга и композитинга skinviewengine. Обязательно до whenReady().
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('use-angle', 'd3d11');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+} else if (process.platform === 'linux') {
+  // На Linux нельзя применять 'use-angle=d3d11' (из-за него были артефакты).
+  // Оставляем дефолтный рендерер Electron, но отключаем блокировку проблемных GPU
+  // (иначе WebGL может вообще отключиться на некоторых драйверах).
   app.commandLine.appendSwitch('ignore-gpu-blocklist');
 }
 
@@ -56,11 +63,16 @@ protocol.registerSchemesAsPrivileged([
     scheme: 'app',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
   },
+  {
+    // Свой фон главной лежит в userData и отдаётся потоком, без data-URL.
+    scheme: 'wall',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
+  },
 ]);
 
 const REPO_OWNER = 'studioberry-hub';
 const REPO_NAME = 'client';
-const UPDATE_ASSET = 'latest-windows-amd64.zip';
+const UPDATE_ASSET = process.platform === 'win32' ? 'latest-windows-amd64.zip' : 'latest-linux-x64.AppImage';
 // ===== Базовый адрес нашего API =====
 // Один адрес на все обращения к сайту лаунчера: новости, каталог, прокси CDN.
 // UC_NEWS_API_BASE оставлен ради совместимости с уже настроенными окружениями.
@@ -86,6 +98,15 @@ function isNewerVersion(latest: string, current: string): boolean {
   if (l.pre !== c.pre) return c.pre;
   return false;
 }
+
+// Ctrl+R в меню Electron перезагружает окно. В лаунчере это сочетание не нужно.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.code !== 'KeyR' || !input.control || input.alt || input.meta || input.shift) return;
+    event.preventDefault();
+  });
+});
 
 let mainWindow: BrowserWindow | null = null;
 let consoleWindow: BrowserWindow | null = null;
@@ -120,7 +141,9 @@ function createConsoleWindow(): void {
     transparent: false,
     backgroundColor: '#2A2A2A',
     show: false,
-    icon: path.join(__dirname, '../../assets/icons/Icon.svg'),
+    icon: process.platform === 'win32'
+      ? path.join(__dirname, '../../IconForBuild/icon.ico')
+      : path.join(__dirname, '../../IconForBuild/512.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -341,6 +364,29 @@ function createWorldWindow(worldPath = ''): void {
   requestWorldModal(worldPath);
 }
 
+// Sony, Nintendo, Microsoft, 8BitDo, Razer, Valve. USB и Bluetooth — одно и то же HID-устройство для системы.
+const GAMEPAD_VENDORS = new Set([0x054c, 0x057e, 0x045e, 0x2dc8, 0x1532, 0x28de]);
+
+function hidVendor(value: string | number | undefined): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : -1;
+}
+
+function grantGamepadHid(): void {
+  const ses = session.defaultSession;
+  ses.setDevicePermissionHandler((details) => {
+    if (details.deviceType !== 'hid') return false;
+    return GAMEPAD_VENDORS.has(hidVendor(details.device.vendorId));
+  });
+  ses.removeAllListeners('select-hid-device');
+  ses.on('select-hid-device', (event, details, callback) => {
+    event.preventDefault();
+    const list = details.deviceList || [];
+    const match = list.find((device) => GAMEPAD_VENDORS.has(hidVendor(device.vendorId)));
+    callback(match?.deviceId != null ? String(match.deviceId) : '');
+  });
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -351,7 +397,9 @@ function createWindow(): void {
     transparent: false,
     backgroundColor: '#2A2A2A',
     show: false,
-    icon: path.join(__dirname, '../../assets/icons/Icon.svg'),
+    icon: process.platform === 'win32'
+      ? path.join(__dirname, '../../IconForBuild/icon.ico')
+      : path.join(__dirname, '../../IconForBuild/512.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -360,6 +408,7 @@ function createWindow(): void {
     },
   });
 
+  grantGamepadHid();
   mainWindow.loadFile(path.join(__dirname, '../../src/renderer/index.html'));
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -478,6 +527,42 @@ if (!hasInstanceLock) {
   app.quit();
 }
 
+// ===== Свой фон главной =====
+// Файл копируется в userData/wallpapers и отдаётся как wall://local/custom.ext,
+// чтобы видео шло потоком и проходило CSP (media-src / img-src wall:).
+
+const WALL_MEDIA: Record<string, 'image' | 'video'> = {
+  '.png': 'image',
+  '.jpg': 'image',
+  '.jpeg': 'image',
+  '.webp': 'image',
+  '.gif': 'image',
+  '.mp4': 'video',
+  '.webm': 'video',
+};
+
+function wallpaperDir(): string {
+  return path.join(app.getPath('userData'), 'wallpapers');
+}
+
+function registerWallpaperProtocol(): void {
+  protocol.handle('wall', (request) => {
+    try {
+      const name = path.basename(decodeURIComponent(new URL(request.url).pathname));
+      // custom.mp4 — старые выборы, custom-<время>.mp4 — каждый новый файл со своим именем.
+      if (!/^custom(?:-\d+)?\.[a-z0-9]+$/i.test(name)) return new Response('forbidden', { status: 403 });
+      const root = path.resolve(wallpaperDir());
+      const file = path.resolve(root, name);
+      if (path.dirname(file) !== root || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        return new Response('missing', { status: 404 });
+      }
+      return net.fetch(pathToFileURL(file).toString(), { method: request.method, headers: request.headers });
+    } catch {
+      return new Response('bad', { status: 400 });
+    }
+  });
+}
+
 app.on('second-instance', (_event, argv) => {
   if (!mainWindow) return;
   // На Windows ссылка запущенному приложению приезжает аргументом второго экземпляра.
@@ -493,6 +578,7 @@ app.whenReady().then(() => {
   if (!hasInstanceLock) return;
 
   registerWorldProtocol();
+  registerWallpaperProtocol();
   registerDeepLinkScheme();
   createWindow();
 
@@ -527,6 +613,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   // Если модуль так и не понадобился, грузить его ради закрытия сессий незачем.
   worldViewerModule?.closeAllWorldSessions();
+  stopHostedServersOnQuit();
   stopGameRelayOnQuit();
   if (process.platform !== 'darwin') {
     app.quit();
@@ -668,6 +755,38 @@ ipcMain.handle('shell:openExternal', async (_event, url: string) => {
 });
 
 // ===== Вложения AI: выбор файлов + безопасное чтение текста =====
+ipcMain.handle('wallpaper:pick', async () => {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  const result = await dialog.showOpenDialog(win!, {
+    title: 'Фон главной',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Фото и видео', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'webm'] },
+    ],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const src = result.filePaths[0];
+  const ext = path.extname(src).toLowerCase();
+  const media = WALL_MEDIA[ext];
+  if (!media) return { error: 'bad_type' };
+  try {
+    const dir = wallpaperDir();
+    fs.mkdirSync(dir, { recursive: true });
+    // Новое имя, а не перезапись custom.mp4: плеер держит старый файл открытым,
+    // и тот же адрес wall:// остаётся в кэше, поэтому фон визуально не менялся.
+    const name = `custom-${Date.now()}${ext}`;
+    fs.copyFileSync(src, path.join(dir, name));
+    for (const entry of fs.readdirSync(dir)) {
+      if (entry !== name && /^custom(?:-\d+)?\./i.test(entry)) {
+        try { fs.unlinkSync(path.join(dir, entry)); } catch { /* файл ещё открыт плеером */ }
+      }
+    }
+    return { name, media };
+  } catch (e: any) {
+    return { error: e?.message || String(e) };
+  }
+});
+
 ipcMain.handle('dialog:pickFiles', async () => {
   const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
   const result = await dialog.showOpenDialog(win!, {
@@ -775,7 +894,12 @@ ipcMain.handle('updates:check', async () => {
     const latest = String(release.tag_name || '');
     const assets: any[] = release.assets || [];
     const asset = assets.find((a: any) => a.name === UPDATE_ASSET)
-      ?? assets.find((a: any) => String(a.name || '').toLowerCase().endsWith('.zip'));
+      ?? assets.find((a: any) => {
+        const n = String(a.name || '').toLowerCase();
+        return process.platform === 'win32'
+          ? n.endsWith('.zip')
+          : (n.endsWith('.appimage') || n.endsWith('.tar.gz') || n.endsWith('.zip'));
+      });
     return {
       current,
       latest,
@@ -790,9 +914,16 @@ ipcMain.handle('updates:check', async () => {
 
 ipcMain.handle('updates:launch', () => {
   try {
+    // На Linux автообновщика нет — открываем страницу релизов
+    if (process.platform !== 'win32') {
+      shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+      return { success: true };
+    }
     const updater = path.join(path.dirname(app.getPath('exe')), 'updater.exe');
     if (!fs.existsSync(updater)) {
-      return { success: false, error: 'updater.exe not found' };
+      // Если updater.exe не найден — тоже открываем GitHub
+      shell.openExternal(`https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
+      return { success: true };
     }
     const child = spawn(updater, [], { detached: true, stdio: 'ignore' });
     child.unref();
@@ -824,6 +955,21 @@ ipcMain.handle('news:list', async (_event, lang?: string, limit?: number) => {
   }
 });
 
+ipcMain.handle('news:view', async (_event, id: string) => {
+  if (typeof id !== 'string' || !id.trim()) return { error: 'invalid id' };
+  try {
+    const res = await fetch(`${getApiBase()}/api/news/${encodeURIComponent(id)}/view`, {
+      method: 'POST',
+      headers: { 'User-Agent': 'Undefined-Client', Accept: 'application/json' },
+    });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    const data = await res.json();
+    return { views: Number(data.views || 0) };
+  } catch (e: any) {
+    return { error: e?.message || 'Network error' };
+  }
+});
+
 ipcMain.handle('news:get', async (_event, id: string, lang?: string) => {
   if (typeof id !== 'string' || !id.trim()) return { error: 'invalid id' };
   const apiLang = newsApiLang(lang);
@@ -847,6 +993,24 @@ registerAiToolIpc();
 registerMessengerIpc();
 setMessengerTokenProvider(() => getMessengerSessionToken());
 registerGameRelayIpc();
+registerHostedServersIpc();
+
+ipcMain.handle('ai:provider:get', () => publicAiProvider());
+
+ipcMain.handle('ai:provider:set', (_event, patch: Record<string, unknown>) => {
+  writeAiProvider({
+    kind: patch?.kind as 'pixi' | 'openai' | 'anthropic' | undefined,
+    baseUrl: patch?.baseUrl != null ? String(patch.baseUrl) : undefined,
+    apiKey: patch?.apiKey != null ? String(patch.apiKey) : undefined,
+    model: patch?.model != null ? String(patch.model) : undefined,
+  });
+  return publicAiProvider();
+});
+
+ipcMain.handle('ai:provider:models', async () => {
+  const cfg = readAiProvider();
+  return listProviderModels(cfg);
+});
 
 ipcMain.handle('ai:status', async () => {
   try {
@@ -868,6 +1032,7 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
   const messages = Array.isArray(payload) ? payload : payload?.messages;
   const enableTools = Array.isArray(payload) ? true : payload?.tools !== false;
   const context = Array.isArray(payload) ? null : payload?.context || null;
+  const model = Array.isArray(payload) ? '' : String(payload?.model || '').slice(0, 40);
   if (!Array.isArray(messages) || !messages.length) {
     return { error: 'empty_messages' };
   }
@@ -934,8 +1099,22 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
   flushPending('incomplete');
   if (!safe.length) return { error: 'empty_messages' };
 
+  const provider = readAiProvider();
+  const useCustom = model === 'custom' && provider.kind !== 'pixi';
+  if (useCustom) {
+    const result = await chatWithProvider(provider, safe, enableTools ? listAiToolSchemas() : null);
+    if (result.error) return { error: result.error };
+    return {
+      reply: String(result.reply || ''),
+      model: result.model || provider.model,
+      toolsEnabled: enableTools,
+      toolCalls: Array.isArray(result.toolCalls) ? result.toolCalls : [],
+    };
+  }
+
   try {
     const body: any = { messages: safe };
+    if (model === 'pixi-1.0' || model === 'pixi-1.5') body.model = model;
     if (enableTools) body.tools = listAiToolSchemas({ compact: true });
     if (context && typeof context === 'object') {
       body.context = {

@@ -45,6 +45,16 @@ export interface FrameFitOptions {
   centerX?: boolean;
   /** Итераций подгонки: перспектива нелинейна, 4–6 достаточно (по умолчанию 6) */
   iterations?: number;
+  /**
+   * Какие меши участвуют в замере.
+   * Плащ и внешняя оболочка сюда не входят: они торчат в одну сторону и уводят кадр.
+   */
+  includeMesh?: (mesh: Mesh) => boolean;
+  /**
+   * Жёсткая вертикальная ось орбиты в мировых XZ.
+   * Экранный сдвиг по X её не двигает — персонаж крутится вокруг тела, а не точки сбоку.
+   */
+  pinPivotXZ?: { x: number; z: number };
 }
 
 export interface FrameFitResult extends FrameMeasure {
@@ -96,7 +106,7 @@ class PointCloud {
     this.count++;
   }
 
-  collect(root: Object3D): void {
+  collect(root: Object3D, includeMesh?: (mesh: Mesh) => boolean): void {
     this.count = 0;
     if (!root.visible) return;
     root.updateWorldMatrix(true, true);
@@ -106,7 +116,8 @@ class PointCloud {
       const mesh = obj as Mesh;
       const geometry = mesh.isMesh ? (mesh.geometry as BufferGeometry | undefined) : undefined;
       const position = geometry?.getAttribute("position");
-      if (position) {
+      const take = !includeMesh || !mesh.isMesh || includeMesh(mesh);
+      if (position && take) {
         for (let i = 0; i < position.count; i++) {
           POINT.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
           this.push(POINT.x, POINT.y, POINT.z);
@@ -198,8 +209,12 @@ function toMeasure(camera: PerspectiveCamera): FrameMeasure {
 }
 
 /** Замер кадрирования объекта без изменения камеры */
-export function measureObjectFrame(root: Object3D, camera: PerspectiveCamera): FrameMeasure | null {
-  CLOUD.collect(root);
+export function measureObjectFrame(
+  root: Object3D,
+  camera: PerspectiveCamera,
+  includeMesh?: (mesh: Mesh) => boolean,
+): FrameMeasure | null {
+  CLOUD.collect(root, includeMesh);
   if (CLOUD.count === 0) return null;
   camera.updateMatrixWorld(true);
   return toMeasure(camera);
@@ -218,15 +233,17 @@ export function fitObjectToFrame(
   target: Vector3,
   options: FrameFitOptions = {},
 ): FrameFitResult | null {
-  CLOUD.collect(root);
+  CLOUD.collect(root, options.includeMesh);
   if (CLOUD.count === 0) return null;
 
   const fillY = clamp(options.fillY ?? 0.86, 0.05, 1);
   const maxFillX = clamp(options.maxFillX ?? 0.9, 0.05, 1);
   const offsetY = options.offsetY ?? 0;
-  const centerX = options.centerX !== false;
+  const pin = options.pinPivotXZ;
+  const centerX = options.centerX !== false && !pin;
   const iterations = Math.max(1, Math.round(options.iterations ?? 6));
 
+  // Направление берём до сдвига цели: угол 3/4 сохраняется, ось смотрит в тело
   DIRECTION.subVectors(camera.position, target);
   let distance = DIRECTION.length();
   if (!(distance > 1e-4)) {
@@ -234,6 +251,10 @@ export function fitObjectToFrame(
     distance = 100;
   }
   DIRECTION.normalize();
+  if (pin) {
+    target.x = pin.x;
+    target.z = pin.z;
+  }
 
   const halfFovTan = Math.tan(((camera.fov / 180) * Math.PI) / 2);
   let measure: FrameMeasure;
@@ -257,6 +278,11 @@ export function fitObjectToFrame(
     UP.setFromMatrixColumn(camera.matrixWorld, 1);
     target.addScaledVector(UP, (measure.offsetY - offsetY) * halfHeight);
     if (centerX) target.addScaledVector(RIGHT, measure.offsetX * halfWidth);
+    // Вектор up камеры не совпадает с мировой Y и иначе утаскивает цель вбок
+    if (pin) {
+      target.x = pin.x;
+      target.z = pin.z;
+    }
 
     distance = nextDistance;
   }

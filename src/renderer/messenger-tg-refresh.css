@@ -1,0 +1,38 @@
+/* ===== Свежий UI чатов в духе Telegram + акцент ===== */
+
+.msgr-bubble-row.is-mine .msgr-bubble {
+  background: rgba(var(--accent-rgb), 0.22);
+  border: none !important;
+  box-shadow: none;
+  outline: none;
+}
+
+.msgr-thread {
+  /* Removed gradient */
+}
+
+#msgr-composer-bar {
+  border-top: none !important;
+  background: #1b1b1b !important;
+  backdrop-filter: none !important;
+}
+
+.msgr-verified {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.msgr-profile-posts {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.msgr-profile-posts__title {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 4px 2px 0;
+}

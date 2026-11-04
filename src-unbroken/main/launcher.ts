@@ -1,0 +1,5101 @@
+import type { Config } from 'eml-lib';
+import { app, BrowserWindow, ipcMain, dialog, nativeImage, clipboard, shell } from 'electron';
+import * as http from 'http';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as crypto from 'crypto';
+import * as zlib from 'zlib';
+import { execSync } from 'child_process';
+import AdmZip from 'adm-zip';
+import { getLauncherDataDir, getInstancesDir, getInstanceRoot } from './paths';
+import {
+  downloadModrinthFile,
+  runWithConcurrency,
+  PROXY_MAX_CONCURRENT_DOWNLOADS,
+} from './modrinthDownload';
+import { importLocalModpack, inspectLocalModpack } from './importModpack';
+import {
+  collectInstalledProjectIds,
+  installModWithDependencies,
+  type ModInstallOptions,
+} from './modDependencies';
+import { skinImageUrl, skinProfileUrl, getApiBase, catalogImageUrl } from '../shared/apiBase';
+import {
+  clearRunningGameMarker,
+  detectRunningMinecraft,
+  findJavaForBuild,
+  getAdoptedWatch,
+  isPidAlive,
+  loadRunningGameMarker,
+  saveRunningGameMarker,
+  startAdoptedGameWatch,
+  stopAdoptedGameWatch,
+  type DetectedGame,
+} from './game-process';
+
+// ===== Ленивая загрузка тяжёлых зависимостей =====
+// require этих пакетов стоит заметного времени (discord-rpc ~200 мс,
+// prismarine-nbt ~100 мс, minecraft-server-util ~20 мс) и раньше выполнялся при
+// импорте модуля, то есть до создания окна. На старте ни один из них не нужен:
+// Discord RPC подключается отложенно, NBT читается при открытии списков миров и
+// серверов, пинг — по запросу вкладки серверов.
+let rpcModule: typeof import('discord-rpc') | null = null;
+function rpcLib(): typeof import('discord-rpc') {
+  if (!rpcModule) rpcModule = require('discord-rpc') as typeof import('discord-rpc');
+  return rpcModule;
+}
+
+let nbtModule: typeof import('prismarine-nbt') | null = null;
+function nbtLib(): typeof import('prismarine-nbt') {
+  if (!nbtModule) nbtModule = require('prismarine-nbt') as typeof import('prismarine-nbt');
+  return nbtModule;
+}
+
+let msuModule: typeof import('minecraft-server-util') | null = null;
+function msuLib(): typeof import('minecraft-server-util') {
+  if (!msuModule) msuModule = require('minecraft-server-util') as typeof import('minecraft-server-util');
+  return msuModule;
+}
+
+type ProgressSink = (data: any) => void;
+const progressSinks: ProgressSink[] = [];
+
+export function addProgressSink(sink: ProgressSink): void {
+  progressSinks.push(sink);
+}
+
+let launcherInstance: any = null;
+let launchInProgress = false;
+/** buildId текущего/усыновлённого MC — для маркера и launch_close */
+let activeGameBuildId: string | null = null;
+let discordClient: any = null;
+let discordConnectPromise: Promise<void> | null = null;
+let discordRpcEnabled = true;
+let currentUiScreen = 'home';
+let currentAccountInfo: { name: string; avatar: string } | null = null;
+
+function logPhase(name: string): void {
+  console.log(`[phase] ${name} @ ${new Date().toISOString().slice(11, 23)}`);
+}
+
+const DISCORD_CLIENT_ID = '1532393186591375390'; // Undefined Client Discord App
+const DISCORD_LARGE_IMAGE = 'logo'; // ключ арта, загруженного в Rich Presence приложения
+let rpcLang: string = 'ru';
+type GamePresence = {
+  name: string;
+  gameVersion: string;
+  loader: string;
+  serverName?: string;
+  serverHost?: string;
+};
+let currentPresence: GamePresence | null = null;
+// Начало отсчёта времени в презенсе. Обновляется только при смене сборки, иначе
+// каждый переход по вкладкам сбрасывал бы таймер «в игре» на ноль.
+let presenceStartedAt = Date.now();
+
+/* ===== Ely.by OAuth2 ===== */
+const ELY_CLIENT_ID = 'uclient';
+const ELY_CLIENT_SECRET = 'KPapApmB4JpjLQ63b_LzZ_PVrGKNEJeu8mGe1NZHxAQpGssI039iZmvZjnmAxZX3';
+const ELY_REDIRECT_URI = 'http://127.0.0.1:29123/oauth2/ely';
+const ELY_AUTHORIZE_URL = 'https://account.ely.by/oauth2/v1';
+const ELY_TOKEN_URL = 'https://account.ely.by/api/oauth2/v1/token';
+const ELY_INFO_URL = 'https://account.ely.by/api/account/v1/info';
+const ELY_AUTH_SERVER = 'https://authserver.ely.by';
+const ELY_SCOPES = 'account_info offline_access minecraft_server_session';
+
+const RPC_TEXT: Record<string, { tg: string; vanilla: string; build: string; screens: Record<string, string> }> = {
+  ru: {
+    tg: 'Перейти в Telegram проекта',
+    vanilla: 'Ванилла',
+    build: 'Сборка',
+    screens: { home: 'В главной', builds: 'В сборках', mods: 'В каталоге модов', servers: 'На серверах', skins: 'В скинах', ai: 'В агенте', settings: 'В настройках', about: 'О программе', console: 'В логе загрузки' },
+  },
+  en: {
+    tg: 'Project Telegram',
+    vanilla: 'Vanilla',
+    build: 'Build',
+    screens: { home: 'On the main screen', builds: 'In builds', mods: 'In the mod catalog', servers: 'On servers', skins: 'In skins', ai: 'In the agent', settings: 'In settings', about: 'About the program', console: 'In the launch log' },
+  },
+  tt: {
+    tg: "Проект Telegram'ына күчү",
+    vanilla: 'Ванилла',
+    build: 'Сборка',
+    screens: { home: 'Баш биттә', builds: 'Сборкаларда', mods: 'Модлар каталогында', servers: 'Серверларда', skins: 'Скиннарда', ai: 'Агентта', settings: 'Көйләнмәләрдә', about: 'Программа турында', console: 'Йөкләү журналында' },
+  },
+  kk: {
+    tg: 'Жобаның Telegram-ына өту',
+    vanilla: 'Ванилла',
+    build: 'Жинақ',
+    screens: { home: 'Бас бетте', builds: 'Жинақтарда', mods: 'Модтар каталогында', servers: 'Серверлерде', skins: 'Скиндерде', ai: 'Агентте', settings: 'Баптауларда', about: 'Бағдарлама туралы', console: 'Жүктеу журналында' },
+  },
+  uk: {
+    tg: 'Перейти у Telegram проєкту',
+    vanilla: 'Ванілла',
+    build: 'Збірка',
+    screens: { home: 'На головній', builds: 'У збірках', mods: 'У каталозі модів', servers: 'На серверах', skins: 'У скінах', ai: 'В агенті', settings: 'У налаштуваннях', about: 'Про програму', console: 'У лозі завантаження' },
+  },
+};
+
+/**
+ * Подключение к Discord. Промис кэшируется, чтобы его могли дождаться те, кому
+ * нужен готовый клиент. Неудачная попытка не запоминается: Discord мог быть ещё
+ * не запущен, и следующий запрос презенса обязан попробовать снова.
+ */
+function initDiscordRPC(): Promise<void> {
+  if (!discordConnectPromise) discordConnectPromise = connectDiscordRPC();
+  return discordConnectPromise;
+}
+
+async function connectDiscordRPC(): Promise<void> {
+  if (discordClient) return;
+  try {
+    discordClient = new (rpcLib().Client)({ transport: 'ipc' });
+    discordClient.on('ready', () => {
+      console.log('Discord RPC connected');
+      sendDiscordPresence();
+    });
+    discordClient.on('disconnected', () => {
+      discordClient = null;
+      discordConnectPromise = null;
+    });
+    await discordClient.login({ clientId: DISCORD_CLIENT_ID });
+  } catch (err) {
+    console.log('Discord RPC connection failed:', err);
+    discordClient = null;
+    discordConnectPromise = null;
+  }
+}
+
+function sendDiscordPresence(): void {
+  if (!discordClient || !discordClient.user) return;
+  const rpcText = RPC_TEXT[rpcLang] || RPC_TEXT.ru;
+  const accountName = currentAccountInfo?.name;
+  // discord-rpc берёт поля картинок с верхнего уровня объекта (largeImageKey,
+  // largeImageText, smallImageKey, smallImageText) и полностью игнорирует
+  // вложенный assets. Ключ большой картинки задаём всегда: подпись без самой
+  // картинки даёт невалидную активность, и Discord её не отображает.
+  const presence: any = {
+    details: accountName || 'Undefined Client',
+    largeImageKey: DISCORD_LARGE_IMAGE,
+    largeImageText: 'Undefined Client',
+    startTimestamp: presenceStartedAt,
+    buttons: [{ label: rpcText.tg, url: 'https://t.me/undefinedlauncher' }],
+  };
+  if (currentAccountInfo?.avatar) {
+    presence.smallImageKey = currentAccountInfo.avatar;
+    presence.smallImageText = accountName;
+  }
+  if (currentPresence) {
+    const loaderLabel = currentPresence.loader === 'vanilla' ? rpcText.vanilla : currentPresence.loader.charAt(0).toUpperCase() + currentPresence.loader.slice(1);
+    presence.state = currentPresence.name;
+    presence.largeImageText = `${currentPresence.gameVersion} - ${loaderLabel}`;
+  } else {
+    presence.state = rpcText.screens[currentUiScreen] || rpcText.screens.home;
+  }
+  discordClient.setActivity(presence, process.pid)
+    .then(() => console.log('Discord presence set'))
+    .catch((e: any) => console.log('Discord setActivity error:', e));
+}
+
+function setDiscordPresence(build: GamePresence | null): void {
+  if ((currentPresence?.name ?? null) !== (build?.name ?? null)) presenceStartedAt = Date.now();
+  currentPresence = build;
+  // Параллельно шлём activity в MC Messenger (сборка / версия / сервер)
+  try {
+    const { pushMessengerActivity } = require('./messenger-api') as typeof import('./messenger-api');
+    if (build) {
+      pushMessengerActivity({
+        buildName: build.name,
+        gameVersion: build.gameVersion,
+        loader: build.loader,
+        serverName: build.serverName,
+        serverHost: build.serverHost,
+        playing: true,
+      });
+    } else {
+      pushMessengerActivity({ playing: false });
+    }
+  } catch {
+    /* messenger ещё не готов */
+  }
+  if (discordClient?.user) {
+    sendDiscordPresence();
+    return;
+  }
+  // Игра могла стартовать раньше, чем поднялось отложенное соединение с Discord.
+  // Дожидаемся подключения и только потом отправляем презенс, иначе название
+  // сборки просто не дойдёт до Discord.
+  if (discordRpcEnabled) void initDiscordRPC().then(() => sendDiscordPresence());
+}
+
+const LOADER_VERSIONS: Record<string, string> = {
+  fabric: '0.16.10',
+  forge: '52.0.16',
+  neoforge: '21.4.77-beta',
+  quilt: '0.28.0',
+};
+
+async function loadEML(): Promise<typeof import('eml-lib')> {
+  return eval('import("eml-lib")') as Promise<typeof import('eml-lib')>;
+}
+
+let downloaderPatched = false;
+let skipServerDownloads = false;
+
+function usesQuickPlay(gameVersion: string): boolean {
+  if (gameVersion.startsWith('1.20') || gameVersion.startsWith('1.21')) return true;
+  const hidden = /^(2[3-9]|post)/.test(gameVersion); // snapshot 23w14a+ era
+  if (hidden) return true;
+  return false;
+}
+
+/**
+ * Патч применяется один раз; промис кэшируется, чтобы запуск игры мог его
+ * дождаться, даже если патч ещё выполняется после отложенного старта.
+ */
+let downloaderPatchPromise: Promise<void> | null = null;
+function ensureDownloaderPatched(): Promise<void> {
+  if (!downloaderPatchPromise) downloaderPatchPromise = patchDownloaderVerification();
+  return downloaderPatchPromise;
+}
+
+async function patchDownloaderVerification(): Promise<void> {
+  if (downloaderPatched) return;
+  downloaderPatched = true;
+  try {
+    const mod = await (eval('import("eml-lib/lib/utils/downloader.js")') as Promise<any>);
+    const Downloader = mod?.default || mod?.Downloader;
+    if (!Downloader || !Downloader.prototype) return;
+    const orig = Downloader.prototype.getFilesToDownload;
+    if (typeof orig !== 'function') return;
+
+    Downloader.prototype.getFilesToDownload = async function (files: any[]) {
+      if (skipServerDownloads) return [];
+      const dest = String(this.dest || '');
+      const cachePath = path.join(dest, 'eml-verify-cache.json');
+      let cache: Record<string, { mtime: number; size: number; sha1: string }> = {};
+      try {
+        if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      } catch {}
+
+      const results: any[] = [];
+      const queue = [...files];
+      let idx = 0;
+      const workerCount = 8;
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (idx < queue.length) {
+          const file = queue[idx++];
+          if (!file) continue;
+          const filePath = path.join(dest, file.path || '', file.name || '');
+          const relative = path.relative(dest, filePath);
+          const isSafe = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+          if (!isSafe) {
+            this.emit('download_error', { filename: file.name, type: file.type, message: 'Unsafe file path detected, skipping.' });
+            continue;
+          }
+          if (file.type === 'FOLDER') {
+            try { await fs.promises.access(filePath); } catch { await fs.promises.mkdir(filePath, { recursive: true }); }
+            continue;
+          }
+          let needsDownload = false;
+          try {
+            await fs.promises.access(filePath);
+            const stat = await fs.promises.stat(filePath);
+            const key = relative.replace(/\\/g, '/');
+            let sha1 = '';
+            const entry = cache[key];
+            if (file.sha1) {
+              if (entry && entry.size === stat.size && entry.mtime === stat.mtimeMs) {
+                sha1 = entry.sha1;
+              } else {
+                sha1 = await getFileSha1(filePath);
+                cache[key] = { mtime: stat.mtimeMs, size: stat.size, sha1 };
+              }
+              if (sha1 !== file.sha1) needsDownload = true;
+            }
+          } catch { needsDownload = true; }
+          if (needsDownload && file.url) results.push(file);
+        }
+      });
+      await Promise.all(workers);
+      try { fs.writeFileSync(cachePath, JSON.stringify(cache)); } catch {}
+      return results;
+    };
+  } catch { /* patch failed, fall back to original behaviour */ }
+}
+
+function getFileSha1(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha1');
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (d) => hash.update(d));
+    stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+
+const manifestCacheDir = path.join(process.env.APPDATA || process.cwd(), '.Undefined Client', 'manifest-cache');
+const MANIFEST_CACHE_TTL = 30 * 60 * 1000;
+
+async function fetchJsonCached(url: string, ttlMs: number = MANIFEST_CACHE_TTL): Promise<any> {
+  const key = crypto.createHash('sha1').update(url).digest('hex') + '.json';
+  const file = path.join(manifestCacheDir, key);
+  try {
+    if (fs.existsSync(file) && Date.now() - fs.statSync(file).mtimeMs < ttlMs) {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    }
+  } catch {}
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  try {
+    if (!fs.existsSync(manifestCacheDir)) fs.mkdirSync(manifestCacheDir, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data));
+  } catch {}
+  return data;
+}
+
+let emlCachePatched = false;
+
+async function patchEMLCache(): Promise<void> {
+  if (emlCachePatched) return;
+  emlCachePatched = true;
+  try {
+    // eml-lib 2.7: FileManager (было FilesManager), Manifest — singleton default export
+    const [manifestsMod, filesMod] = await Promise.all([
+      eval('import("eml-lib/lib/utils/manifests.js")') as Promise<any>,
+      eval('import("eml-lib/lib/launcher/filemanager.js")') as Promise<any>,
+    ]);
+    const ManifestSingleton = manifestsMod?.default;
+    const ManifestProto = ManifestSingleton ? Object.getPrototypeOf(ManifestSingleton) : null;
+    if (ManifestProto) {
+      const origUrl = ManifestProto.getMinecraftManifestUrl;
+      if (typeof origUrl === 'function') {
+        // 2.7: аргумент — ResolvedConfig, не строка версии
+        ManifestProto.getMinecraftManifestUrl = async function (config: any) {
+          try {
+            if (config?.minecraft?.loader?.loader === 'vanilla' && config?.minecraft?.loader?.manifestUrl) {
+              return String(config.minecraft.loader.manifestUrl);
+            }
+            const data = await fetchJsonCached('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json');
+            const raw = config?.minecraft?.version;
+            const resolved = raw === 'latest_release'
+              ? data.latest?.release
+              : raw === 'latest_snapshot' ? data.latest?.snapshot : raw || 'latest_release';
+            const entry = data.versions?.find((v: any) => v.id === resolved);
+            if (entry?.url) return entry.url;
+          } catch {}
+          return origUrl.call(this, config);
+        };
+      }
+      const origManifest = ManifestProto.getMinecraftManifest;
+      if (typeof origManifest === 'function') {
+        ManifestProto.getMinecraftManifest = async function (config: any) {
+          try {
+            const url = await this.getMinecraftManifestUrl(config);
+            return await fetchJsonCached(url, 12 * 60 * 60 * 1000);
+          } catch {}
+          return origManifest.call(this, config);
+        };
+      }
+    }
+    const FileManager = filesMod?.default || filesMod?.FileManager;
+    if (FileManager && FileManager.prototype && typeof FileManager.prototype.getAssets === 'function') {
+      const origGetAssets = FileManager.prototype.getAssets;
+      FileManager.prototype.getAssets = async function () {
+        try {
+          const assetsId = this.minecraftManifest?.assets ?? this.manifest?.assets ?? '';
+          const localFile = path.join(String(this.config?.root || ''), 'assets', 'indexes', `${assetsId}.json`);
+          if (assetsId && fs.existsSync(localFile)) {
+            const data = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+            const assets: any[] = [];
+            Object.values(data.objects || {}).forEach((asset: any) => {
+              assets.push({
+                name: asset.hash,
+                path: path.join('assets', 'objects', asset.hash.substring(0, 2), '/'),
+                url: asset.url ?? `https://resources.download.minecraft.net/${asset.hash.substring(0, 2)}/${asset.hash}`,
+                sha1: asset.hash,
+                size: asset.size,
+                type: 'ASSET',
+              });
+            });
+            return {
+              assets,
+              files: [
+                { name: `${assetsId}.json`, path: path.join('assets', 'indexes', '/'), url: '', type: 'OTHER' },
+                ...assets,
+              ],
+            };
+          }
+        } catch {}
+        return origGetAssets.call(this);
+      };
+      // Ручная Java: eml 2.7 уже не качает runtime, патч оставляем как страховку
+      const origGetJava = FileManager.prototype.getJava;
+      if (typeof origGetJava === 'function') {
+        FileManager.prototype.getJava = async function () {
+          if (String(this.config?.java?.install) === 'manual') {
+            return { java: [], files: [] };
+          }
+          return origGetJava.call(this);
+        };
+      }
+      // CDN EML / GitHub часто недоступны без VPN — зеркала для authlib-injector 1.2.8
+      const origGetInjector = FileManager.prototype.getInjector;
+      if (typeof origGetInjector === 'function') {
+        FileManager.prototype.getInjector = async function () {
+          if (this.config?.account?.meta?.type !== 'yggdrasil') {
+            return { injector: [], files: [] };
+          }
+          const injectorName = 'authlib-injector-1.2.8.jar';
+          const injectorPath = 'libraries/moe/yushi/authlibinjector/';
+          const knownSize = 349681;
+          const knownSha1 = '0e0e66d8a4f91a26f33b9c09f5cdffce4a11f0b8';
+          const localPath = path.join(String(this.config?.root || ''), injectorPath, injectorName);
+          if (fs.existsSync(localPath)) {
+            try {
+              const st = fs.statSync(localPath);
+              if (st.size > 10000) {
+                const local = [{
+                  name: injectorName,
+                  path: injectorPath,
+                  url: '',
+                  sha1: knownSha1,
+                  size: st.size,
+                  type: 'LIBRARY',
+                }];
+                return { injector: local, files: local };
+              }
+            } catch {
+              /* скачать снова */
+            }
+          }
+
+          const metaUrls = [
+            'https://bmclapi2.bangbang93.com/mirrors/authlib-injector/artifact/56.json',
+            'https://authlib-injector.yushi.moe/artifact/56.json',
+          ];
+          const jarFallbacks = [
+            'https://bmclapi2.bangbang93.com/mirrors/authlib-injector/artifact/56/authlib-injector-1.2.8.jar',
+            'https://authlib-injector.yushi.moe/artifact/56/authlib-injector-1.2.8.jar',
+            'https://cdn.emlproject.com/authlib-injector/authlib-injector-1.2.8.jar',
+            'https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.8/authlib-injector-1.2.8.jar',
+          ];
+
+          let downloadUrl = jarFallbacks[0];
+          for (const metaUrl of metaUrls) {
+            try {
+              const res = await fetch(metaUrl, {
+                headers: { 'User-Agent': 'Undefined-Client', Accept: 'application/json' },
+              });
+              if (!res.ok) continue;
+              const data = (await res.json()) as { download_url?: string };
+              if (data?.download_url) {
+                downloadUrl = String(data.download_url);
+                break;
+              }
+            } catch {
+              /* следующее зеркало */
+            }
+          }
+
+          let size = knownSize;
+          for (const tryUrl of [downloadUrl, ...jarFallbacks]) {
+            try {
+              const head = await fetch(tryUrl, {
+                method: 'HEAD',
+                headers: { 'User-Agent': 'Undefined-Client', Connection: 'close' },
+              });
+              if (!head.ok) continue;
+              const len = Number(head.headers.get('Content-Length') || 0);
+              if (len > 0) {
+                size = len;
+                downloadUrl = tryUrl;
+                break;
+              }
+            } catch {
+              /* next */
+            }
+          }
+
+          const injector = [
+            {
+              name: injectorName,
+              path: injectorPath,
+              url: downloadUrl,
+              sha1: knownSha1,
+              size,
+              type: 'LIBRARY',
+            },
+          ];
+          return { injector, files: injector };
+        };
+      }
+      const origExtractNatives = FileManager.prototype.extractNatives;
+      if (typeof origExtractNatives === 'function') {
+        FileManager.prototype.extractNatives = async function (libraries: any[]) {
+          const versionId = this.minecraftManifest?.id ?? this.manifest?.id ?? '';
+          try {
+            const natives = (libraries || []).filter((lib: any) => lib.type === 'NATIVE');
+            const nativesFolder = path.join(String(this.config?.root || ''), 'bin', String(versionId));
+            const marker = path.join(nativesFolder, '.native-cache.json');
+            if (natives.length > 0 && fs.existsSync(marker) && fs.existsSync(nativesFolder)) {
+              const entry: Record<string, any> = {};
+              try { Object.assign(entry, JSON.parse(fs.readFileSync(marker, 'utf8'))); } catch {}
+              const hit = natives.every((lib: any) => {
+                const zipPath = path.join(String(this.config?.root || ''), lib.path || '', lib.name || '');
+                let st;
+                try { st = fs.statSync(zipPath); } catch { return false; }
+                return entry[path.relative(String(this.config?.root || ''), zipPath)] === st.mtimeMs;
+              });
+              if (hit) return { files: [] };
+            }
+          } catch {}
+          const result = await origExtractNatives.call(this, libraries);
+          try {
+            const natives = (libraries || []).filter((lib: any) => lib.type === 'NATIVE');
+            if (natives.length > 0) {
+              const nativesFolder = path.join(String(this.config?.root || ''), 'bin', String(versionId));
+              if (fs.existsSync(nativesFolder)) {
+                const marker: Record<string, any> = {};
+                natives.forEach((lib: any) => {
+                  const zipPath = path.join(String(this.config?.root || ''), lib.path || '', lib.name || '');
+                  try { marker[path.relative(String(this.config?.root || ''), zipPath)] = fs.statSync(zipPath).mtimeMs; } catch {}
+                });
+                fs.writeFileSync(path.join(nativesFolder, '.native-cache.json'), JSON.stringify(marker));
+              }
+            }
+          } catch {}
+          return result;
+        };
+      }
+    }
+  } catch { /* патч не применился — остаёмся на поведении eml-lib */ }
+}
+
+/** Базовое имя для eml.Launcher — используется как идентификатор 'root'. */
+const INSTANCE_BASE = 'UClient';
+
+// Экспортируем из paths.ts для обратной совместимости
+export { getInstanceRoot, getInstancesDir } from './paths';
+
+export function initLauncher(mainWindow: BrowserWindow): void {
+  const appDataDir = getLauncherDataDir();
+
+  // Подключение к Discord и патч загрузчика уводим с пути запуска: первый тянет
+  // discord-rpc (~200 мс на require), второй — модуль eml-lib. На старте окна
+  // ни то, ни другое не нужно, а запуск игры дожидается патча явно.
+  setTimeout(() => {
+    void ensureDownloaderPatched();
+    void patchEMLCache();
+    void initDiscordRPC();
+  }, 2000);
+
+  function readJSON(filePath: string): any[] {
+    try {
+      if (fs.existsSync(filePath)) {
+        return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      }
+    } catch {}
+    return [];
+  }
+
+  function writeJSON(filePath: string, data: any): void {
+    try {
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch {}
+  }
+
+  function mergeDirs(src: string, dest: string): void {
+    try {
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(src)) {
+        const s = path.join(src, entry);
+        const d = path.join(dest, entry);
+        if (fs.statSync(s).isDirectory()) {
+          mergeDirs(s, d);
+        } else {
+          if (!fs.existsSync(path.dirname(d))) fs.mkdirSync(path.dirname(d), { recursive: true });
+          fs.copyFileSync(s, d);
+        }
+      }
+    } catch {}
+  }
+
+  function countFiles(dir: string): number {
+    let c = 0;
+    try {
+      for (const e of fs.readdirSync(dir)) {
+        const p = path.join(dir, e);
+        c += fs.statSync(p).isDirectory() ? countFiles(p) : 1;
+      }
+    } catch {}
+    return c;
+  }
+
+  /* ===== КАТАЛОГ (через сайт: Modrinth + CurseForge) ===== */
+
+  ipcMain.handle('modrinth:search', async (_event, query: string, type: string, offset: number = 0, limit: number = 20, opts?: { categories?: string[]; loaders?: string[]; version?: string; index?: string; source?: string }) => {
+    const params = new URLSearchParams();
+    if (query) params.set('query', query);
+    if (type) params.set('type', type);
+    if (opts?.categories?.length) params.set('categories', opts.categories.join(','));
+    if (opts?.loaders?.length) params.set('loaders', opts.loaders.join(','));
+    if (opts?.version) params.set('versions', opts.version);
+    if (opts?.index) params.set('index', opts.index);
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    params.set('source', opts?.source || 'both');
+    const url = `${getApiBase()}/api/catalog/search?${params.toString()}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { error: body?.error || `Catalog API ${res.status}` };
+      }
+      const data = await res.json();
+      return {
+        hits: data.hits || [],
+        total_hits: data.total_hits || 0,
+        source: data.source,
+        sources: data.sources,
+      };
+    } catch (e: any) {
+      return { error: e?.message || 'Network error' };
+    }
+  });
+
+  ipcMain.handle('modrinth:project', async (_event, projectId: string) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/catalog/project/${encodeURIComponent(projectId)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.project || data || null;
+    } catch { return null; }
+  });
+
+  ipcMain.handle('modrinth:versions', async (_event, projectId: string) => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/catalog/project/${encodeURIComponent(projectId)}/version`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data?.versions || []);
+    } catch { return []; }
+  });
+
+  ipcMain.handle('modrinth:download', async (_event, projectId: string, versionId?: string) => {
+    try {
+      const [projectRes, verRes] = await Promise.all([
+        fetch(`https://api.modrinth.com/v2/project/${projectId}`),
+        versionId
+          ? fetch(`https://api.modrinth.com/v2/version/${versionId}`)
+          : fetch(`https://api.modrinth.com/v2/project/${projectId}/version`),
+      ]);
+      if (!verRes.ok) return { success: false, error: 'Version fetch failed' };
+
+      const project = projectRes.ok ? await projectRes.json() : null;
+      const version = versionId
+        ? await verRes.json()
+        : ((await verRes.json()) as any[])[0];
+      if (!version) return { success: false, error: 'Version not found' };
+      const file = version.files?.[0];
+      if (!file?.url) return { success: false, error: 'No file URL' };
+
+      mainWindow.webContents.send('launcher:download-progress', {
+        type: 'start', filename: file.filename, size: file.size || 0
+      });
+
+      const isModpack = project?.project_type === 'modpack';
+      const reportProgress = (received: number, total: number) => {
+        const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+        mainWindow.webContents.send('launcher:download-progress', {
+          type: 'progress', percent, received, total, filename: file.filename
+        });
+      };
+
+      if (isModpack) {
+        const buildId = crypto.randomUUID();
+        const instanceDir = getInstanceRoot(buildId);
+        if (!fs.existsSync(instanceDir)) fs.mkdirSync(instanceDir, { recursive: true });
+        // Архив сразу пишем под именем .zip: Expand-Archive не понимает .mrpack.
+        const zipPath = path.join(instanceDir, file.filename).replace(/\.mrpack$/i, '.zip');
+        try {
+          await downloadModrinthFile(file.url, zipPath, {
+            reason: 'modpack',
+            expectedSize: file.size,
+            sha1: file.hashes?.sha1,
+            onProgress: reportProgress,
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return { success: false, error: `Download failed: ${message}` };
+        }
+
+        // Extract .mrpack (renamed to .zip) — используем AdmZip (кроссплатформенно)
+        try {
+          const zip = new AdmZip(zipPath);
+          zip.extractAllTo(instanceDir, true);
+        } catch {
+          // Фоллбэк на системные инструменты
+          try {
+            if (process.platform === 'win32') {
+              execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${instanceDir}' -Force"`, { timeout: 30000 });
+            } else {
+              execSync(`unzip -o -q "${zipPath}" -d "${instanceDir}"`, { timeout: 30000 });
+            }
+          } catch {
+            return { success: false, error: 'Failed to extract modpack archive' };
+          }
+        }
+        // Remove the archive after extraction
+        try { fs.unlinkSync(zipPath); } catch {}
+
+        // Parse modrinth.index.json
+        let indexData: any = {};
+        const indexPath = path.join(instanceDir, 'modrinth.index.json');
+        if (fs.existsSync(indexPath)) {
+          try {
+            indexData = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+          } catch {}
+        }
+
+        // Merge overrides/ and client-overrides/ into instance root
+        let mergedCount = 0;
+        for (const overrideDir of ['overrides', 'client-overrides']) {
+          const src = path.join(instanceDir, overrideDir);
+          if (fs.existsSync(src) && fs.statSync(src).isDirectory()) {
+            const files = countFiles(src);
+            mergeDirs(src, instanceDir);
+            mergedCount += files;
+            try { fs.rmSync(src, { recursive: true, force: true }); } catch {}
+          }
+        }
+        if (mergedCount > 0) {
+          mainWindow.webContents.send('launcher:download-progress', { kind: 'status', key: 'smp.overridesCopied', params: { n: mergedCount } });
+        }
+
+        // ===== Загрузка файлов из modrinth.index.json =====
+        // Каждый файл идёт через наш прокси с резервным прямым доступом к CDN.
+        // Параллелизм ограничен лимитом прокси (4 загрузки на IP): выше — и
+        // сервер начнёт отвечать 503 на собственные же запросы лаунчера.
+        const indexFiles = indexData.files;
+        if (Array.isArray(indexFiles) && indexFiles.length > 0) {
+          mainWindow.webContents.send('launcher:download-progress', { kind: 'status', key: 'smp.downloadingPackFiles', params: { n: indexFiles.length } });
+          const totalFiles = indexFiles.length;
+          // Порядковый номер в логе считаем по факту завершения: при
+          // параллельной загрузке индекс в массиве уже ничего не значит.
+          let doneCount = 0;
+
+          await runWithConcurrency(indexFiles, PROXY_MAX_CONCURRENT_DOWNLOADS, async (entry: any) => {
+            const dlUrl = entry?.downloads?.[0];
+            if (!dlUrl || !entry.path) {
+              const i = ++doneCount;
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: entry?.path ? path.basename(String(entry.path)) : '—', size: '0' },
+              });
+              return;
+            }
+            // Пути внутри .mrpack — недоверенный ввод: архив мог собрать кто
+            // угодно, а `../` вывел бы запись за пределы инстанса.
+            const targetPath = path.resolve(instanceDir, String(entry.path).replace(/\\/g, '/'));
+            const root = path.resolve(instanceDir);
+            if (targetPath !== root && !targetPath.startsWith(root + path.sep)) {
+              console.log(`Пропущен файл модпака с недопустимым путём: ${entry.path}`);
+              const i = ++doneCount;
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: path.basename(String(entry.path)), size: '0' },
+              });
+              return;
+            }
+
+            const name = path.basename(entry.path);
+            if (fs.existsSync(targetPath)) {
+              const i = ++doneCount;
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: name, size: '0' },
+              });
+              return;
+            }
+
+            try {
+              const { bytes } = await downloadModrinthFile(dlUrl, targetPath, {
+                reason: 'modpack',
+                sha1: entry.hashes?.sha1,
+                expectedSize: Number(entry.fileSize) || 0,
+                onProgress: (received, total) => {
+                  const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+                  // Живой прогресс текущего файла (раньше UI молчал до конца файла)
+                  mainWindow.webContents.send('launcher:download-progress', {
+                    type: 'progress',
+                    percent,
+                    received,
+                    total,
+                    filename: `${name} (${doneCount + 1}/${totalFiles})`,
+                  });
+                },
+              });
+              const i = ++doneCount;
+              const size = (bytes / 1024 / 1024).toFixed(1);
+              console.log(`[${i}/${totalFiles}] ${name} (${size} МБ)`);
+              mainWindow.webContents.send('launcher:download-progress', { kind: 'status', key: 'smp.packFile', params: { i, n: totalFiles, file: name, size } });
+            } catch (err) {
+              const i = ++doneCount;
+              const errMsg = err instanceof Error ? (err.name === 'AbortError' ? 'timeout' : err.message) : String(err);
+              console.log(`[${i}/${totalFiles}] ${name} — ${errMsg}`);
+              mainWindow.webContents.send('launcher:download-progress', { kind: 'status', key: 'smp.packFileErr', params: { i, n: totalFiles, file: name, msg: errMsg } });
+            }
+          });
+        }
+
+        const gameVersion = indexData.dependencies?.minecraft || version.game_versions?.[0] || 'latest_release';
+        const depLoaderMap: Record<string, string> = { 'fabric-loader': 'fabric', 'quilt-loader': 'quilt', 'forge': 'forge', 'neoforge': 'neoforge' };
+        let loader = version.loaders?.[0];
+        if (!loader || loader === 'vanilla') {
+          const depKey = Object.keys(indexData.dependencies || {}).find(k => k !== 'minecraft');
+          loader = depLoaderMap[depKey || ''] || depKey || 'vanilla';
+        }
+        const loaderDeps: Record<string, string> = { fabric: 'fabric-loader', quilt: 'quilt-loader', forge: 'forge', neoforge: 'neoforge' };
+        const depKey = loaderDeps[loader];
+        const loaderVersion = (depKey && indexData.dependencies?.[depKey]) || LOADER_VERSIONS[loader] || '';
+        const buildColors = ['#7BD4B7', '#FF6B6B', '#4ECDC4', '#FFD93D', '#70ADDF', '#C084FC', '#FB923C', '#F472B6'];
+        let autoJavaPath: string | undefined;
+        try {
+          const javaVer = await resolveJavaVersion(gameVersion);
+          autoJavaPath = bestRuntimeFor(javaVer, detectJavaRuntimes());
+        } catch {}
+        const build = {
+          id: buildId,
+          name: project?.title || file.filename.replace(/\.mrpack$/i, ''),
+          gameVersion,
+          loader,
+          loaderVersion,
+          iconBg: buildColors[Math.floor(Math.random() * buildColors.length)],
+          icon: project?.icon_url ? 'modrinth:' + project.icon_url : undefined,
+          createdAt: Date.now(),
+          javaPath: autoJavaPath || '',
+        };
+
+        const buildsPath = path.join(appDataDir, 'builds.json');
+        const builds = readJSON(buildsPath);
+        builds.push(build);
+        writeJSON(buildsPath, builds);
+
+        mainWindow.webContents.send('launcher:download-progress', {
+          type: 'done', filename: file.filename, filePath: instanceDir, buildCreated: true, build
+        });
+
+        return { success: true, filename: file.filename, buildCreated: true, build };
+      }
+
+      const downloadsDir = path.join(appDataDir, 'mods');
+      if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
+      const filePath = path.join(downloadsDir, file.filename);
+      try {
+        await downloadModrinthFile(file.url, filePath, {
+          reason: 'standalone',
+          expectedSize: file.size,
+          sha1: file.hashes?.sha1,
+          onProgress: reportProgress,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { success: false, error: `Download failed: ${message}` };
+      }
+
+      mainWindow.webContents.send('launcher:download-progress', {
+        type: 'done', filename: file.filename, filePath
+      });
+
+      return { success: true, filename: file.filename };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      mainWindow.webContents.send('launcher:download-progress', { type: 'error', message });
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('modrinth:resolve-project-by-name', async (_event, name: string) => {
+    try {
+      const res = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(name)}&limit=1&facets=[["project_type:mod"]]`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.hits?.[0]) {
+        return {
+          projectId: data.hits[0].project_id,
+          iconUrl: data.hits[0].icon_url || '',
+          title: data.hits[0].title,
+          description: data.hits[0].description || '',
+        };
+      }
+    } catch {}
+    return null;
+  });
+
+  // ===== Локальный импорт .mrpack / .zip =====
+  const sendImportProgress = (data: any) => {
+    mainWindow.webContents.send('launcher:download-progress', data);
+  };
+
+  ipcMain.handle('launcher:pick-modpack', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Импорт сборки',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Modpack', extensions: ['mrpack', 'zip'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('launcher:inspect-modpack', async (_event, archivePath: string) => {
+    try {
+      return { success: true, inspect: inspectLocalModpack(String(archivePath || '')) };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'inspect_failed' };
+    }
+  });
+
+  ipcMain.handle('launcher:import-modpack', async (_event, archivePath: string) => {
+    try {
+      const result = await importLocalModpack({
+        archivePath: String(archivePath || ''),
+        appDataDir,
+        getInstanceRoot,
+        sendProgress: sendImportProgress,
+        defaultLoaderVersions: LOADER_VERSIONS,
+        resolveJavaPath: async (gameVersion: string) => {
+          try {
+            const javaVer = await resolveJavaVersion(gameVersion);
+            return bestRuntimeFor(javaVer, detectJavaRuntimes());
+          } catch {
+            return undefined;
+          }
+        },
+      });
+      if (!result.success) {
+        sendImportProgress({ type: 'error', message: result.error || 'import_failed' });
+      }
+      return result;
+    } catch (e: any) {
+      const message = e?.message || 'import_failed';
+      sendImportProgress({ type: 'error', message });
+      return { success: false, error: message };
+    }
+  });
+
+  /* ===== SERVERS (direct ping via minecraft-server-util) ===== */
+
+  const serverStatusCache = new Map<string, { at: number; data: any }>();
+  const serverStatusInFlight = new Map<string, Promise<any>>();
+  const STATUS_TTL_ONLINE = 5 * 60 * 1000;
+  const STATUS_TTL_OFFLINE = 15 * 1000;
+
+  ipcMain.handle('servers:status', async (_event, address: string) => {
+    const raw = String(address || '').trim().replace(/\s+/g, '');
+    if (!raw) return { online: false, error: 'empty' };
+    const parsed = msuLib().parseAddress(raw, 25565) || { host: raw, port: 25565 };
+    const host = parsed.host;
+    const port = parsed.port;
+    const cacheKey = `${host}:${port}`;
+    const cached = serverStatusCache.get(cacheKey);
+    if (cached) {
+      const ttl = cached.data?.online ? STATUS_TTL_ONLINE : STATUS_TTL_OFFLINE;
+      if (Date.now() - cached.at < ttl) return cached.data;
+    }
+    const inflight = serverStatusInFlight.get(cacheKey);
+    if (inflight) return inflight;
+    const promise = (async () => {
+      const msu = msuLib();
+      // Сначала прямой ping без SRV: DNS SRV у многих провайдеров/VPN таймаутится
+      // и библиотека помечает сервер offline, хотя TCP :25565 жив.
+      const tryPing = async (enableSRV: boolean) =>
+        msu.status(host, port, { timeout: 5000, enableSRV });
+
+      try {
+        let res: Awaited<ReturnType<typeof msu.status>>;
+        try {
+          res = await tryPing(false);
+        } catch {
+          res = await tryPing(true);
+        }
+        const data = {
+          online: true,
+          players: { online: res.players.online, max: res.players.max },
+          version: res.version.name.split('\n')[0] || '',
+          motd: { clean: [res.motd.clean].filter(Boolean) },
+          icon: res.favicon || null,
+          latency: res.roundTripLatency,
+        };
+        serverStatusCache.set(cacheKey, { at: Date.now(), data });
+        return data;
+      } catch (e: any) {
+        const data = { online: false, error: e?.message || 'unreachable' };
+        serverStatusCache.set(cacheKey, { at: Date.now(), data });
+        return data;
+      }
+    })();
+    serverStatusInFlight.set(cacheKey, promise);
+    try { return await promise; }
+    finally { serverStatusInFlight.delete(cacheKey); }
+  });
+
+  /* ===== SERVERS catalog (scrape mineserv.top) ===== */
+
+  const catalogCache = { at: 0, data: [] as any[], refreshing: false };
+
+  const MINESERV_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+  const CATALOG_TTL_MS = 60 * 1000;
+  const SCRAPE_MAX_PAGES = 50;
+  const SCRAPE_CONCURRENCY = 5;
+
+  function stripHtmlTags(s: string): string {
+    return s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+  }
+
+  function normalizeAddr(raw: string): { host: string; port: number } | null {
+    const trimmed = raw.trim().replace(/^mc:\/\//i, '');
+    if (!trimmed) return null;
+    const parsed = msuLib().parseAddress(trimmed, 25565);
+    if (!parsed) return null;
+    return { host: parsed.host, port: parsed.port };
+  }
+
+  function parseMineServRows(html: string): any[] {
+    const out: any[] = [];
+    const rowRe = /<tr[^>]*class="project-item-row"[\s\S]*?<\/tr>/g;
+    let m: RegExpExecArray | null;
+    while ((m = rowRe.exec(html)) !== null) {
+      const row = m[0];
+      const nameMatch = /itemprop="name" class="medium black--text">([^<]+)<\/span>/.exec(row);
+      const linkMatch = /itemprop="url"><div class="project-item-row__title_desc"/.exec(row) || /<a href="\/([^"]+)" itemprop="url"/.exec(row);
+      const addrMatch = /clipboard-copy[^>]*>\s*<span class="flex middle-xs">([^<]+)<\/span>/.exec(row);
+      const onlineMatch = /project-item-row__online[\s\S]*?<span class="(?:green|red|grey)--text regular">\s*([\s\S]*?)\s*<\/span>/.exec(row);
+      const ptsMatch = /points-count\.svg[\s\S]*?<span class="black--text regular">\s*([\d\s]+)\s*<\/span>/.exec(row);
+
+      const rawAddr = addrMatch ? addrMatch[1].trim() : '';
+      if (!rawAddr) continue;
+      const addr = normalizeAddr(rawAddr);
+      if (!addr || !/^[a-z0-9.-]+$/i.test(addr.host)) continue;
+      const { host, port } = addr;
+
+      const versions: string[] = [];
+      const versionRe = /class="blue--text">([\d.]+)<\/a>/g;
+      let vm: RegExpExecArray | null;
+      while ((vm = versionRe.exec(row)) !== null) {
+        const v = vm[1].trim();
+        if (v && !versions.includes(v)) versions.push(v);
+      }
+      versionRe.lastIndex = 0;
+
+      const name = nameMatch ? stripHtmlTags(nameMatch[1]) : (host.split('.')[0] || host);
+      const points = ptsMatch
+        ? parseInt(ptsMatch[1].replace(/\s+/g, ''), 10) || 0
+        : 0;
+
+      out.push({
+        id: `${host}:${port}`,
+        name,
+        ip: host,
+        port,
+        desc: '',
+        icon: '',
+        link: linkMatch ? '/' + (linkMatch[1] || '') : '',
+        versions,
+        points,
+      });
+    }
+    return out;
+  }
+
+  function pageCountFromHtml(html: string): number {
+    let max = 1;
+    const re = /\?p=(\d+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+    return max;
+  }
+
+  async function refreshCatalog(): Promise<any[]> {
+    const all: any[] = [];
+    try {
+      const first = await fetch('https://mineserv.top/', {
+        headers: { 'User-Agent': MINESERV_UA, 'Accept-Language': 'ru,en;q=0.8' },
+        signal: AbortSignal.timeout(8000),
+      });
+      let totalPages = 1;
+      if (first.ok) {
+        const text = await first.text();
+        totalPages = Math.min(pageCountFromHtml(text), SCRAPE_MAX_PAGES);
+        if (text.length > 0) all.push(...parseMineServRows(text));
+      }
+      let next = 2;
+      let active = 0;
+      const pool: Promise<void>[] = [];
+      const pump = (): void => {
+        while (active < SCRAPE_CONCURRENCY && next <= totalPages) {
+          const p = next++;
+          active++;
+          const task = (async () => {
+            const url = `https://mineserv.top/?p=${p}`;
+            try {
+              const res = await fetch(url, {
+                headers: { 'User-Agent': MINESERV_UA, 'Accept-Language': 'ru,en;q=0.8' },
+                signal: AbortSignal.timeout(5000),
+              });
+              if (!res.ok) return;
+              const t = await res.text();
+              if (t.length > 0) all.push(...parseMineServRows(t));
+            } catch { /* skip page */ }
+          })().finally(() => { active--; pump(); });
+          pool.push(task);
+        }
+      };
+      pump();
+      await Promise.all(pool);
+    } catch { /* keep cache */ }
+    const seen = new Set<string>();
+    const deduped = all.filter(s => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+    if (deduped.length > 0) {
+      catalogCache.at = Date.now();
+      catalogCache.data = deduped;
+    }
+    return deduped.length > 0 ? deduped : catalogCache.data;
+  }
+
+  ipcMain.handle('servers:catalog', async () => {
+    if (catalogCache.data.length > 0 && Date.now() - catalogCache.at < CATALOG_TTL_MS) {
+      return catalogCache.data;
+    }
+    if (catalogCache.refreshing) {
+      return catalogCache.data;
+    }
+    catalogCache.refreshing = true;
+    try {
+      const fresh = await refreshCatalog();
+      return fresh.length > 0 ? fresh : catalogCache.data;
+    } finally {
+      catalogCache.refreshing = false;
+    }
+  });
+
+  const catalogTimer = setInterval(() => {
+    if (catalogCache.refreshing) return;
+    catalogCache.refreshing = true;
+    void refreshCatalog().finally(() => { catalogCache.refreshing = false; });
+  }, 5 * 60 * 1000);
+  catalogTimer.unref?.();
+
+  /** Типы контента, для которых известна папка внутри инстанса. */
+  const INSTALL_SUBDIRS: Record<string, string> = {
+    mod: 'mods',
+    resourcepack: 'resourcepacks',
+    shader: 'shaderpacks',
+    datapack: 'datapacks',
+  };
+
+  ipcMain.handle(
+    'launcher:install-mod',
+    async (
+      _event,
+      buildId: string,
+      projectId: string,
+      versionId?: string,
+      contentType?: string,
+      options?: ModInstallOptions,
+    ) => {
+      try {
+        const builds = readJSON(path.join(appDataDir, 'builds.json'));
+        const build = Array.isArray(builds)
+          ? builds.find((b: any) => b?.id === buildId)
+          : null;
+        const instanceDir = getInstanceRoot(buildId);
+
+        const installedIds = collectInstalledProjectIds(instanceDir, build);
+        // Корневой проект не считаем «уже установленным» — разрешаем переустановку/смену версии
+        installedIds.delete(String(projectId));
+
+        const result = await installModWithDependencies({
+          instanceRoot: instanceDir,
+          projectId,
+          versionId,
+          contentType,
+          gameVersion: String(build?.gameVersion || build?.version || ''),
+          loader: String(build?.loader || 'vanilla'),
+          installedProjectIds: installedIds,
+          options,
+          onProgress: (ev) => {
+            if (ev.type === 'batch') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                kind: 'status',
+                key: 'status.depsProgress',
+                params: { i: ev.i, n: ev.n, file: ev.file },
+              });
+              return;
+            }
+            if (ev.type === 'start') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'start',
+                filename: ev.filename,
+                size: ev.size,
+              });
+              return;
+            }
+            if (ev.type === 'progress') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'progress',
+                percent: ev.percent,
+                received: ev.received,
+                total: ev.total,
+                filename: ev.filename,
+              });
+              return;
+            }
+            if (ev.type === 'file-done' && ev.index === ev.total) {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'done',
+                filename: ev.filename,
+                filePath: ev.filePath,
+              });
+              return;
+            }
+            if (ev.type === 'error') {
+              mainWindow.webContents.send('launcher:download-progress', {
+                type: 'error',
+                message: ev.message,
+              });
+            }
+          },
+        });
+
+        // Уточняем имя корневого мода из fabric/quilt, если это jar
+        if (result.success && result.filename && result.contentType === 'mod') {
+          const sub = INSTALL_SUBDIRS[result.contentType] || 'mods';
+          const filePath = path.join(instanceDir, sub, result.filename);
+          if (fs.existsSync(filePath)) {
+            let modName = result.name;
+            let modVer = result.version;
+            const fabricData = readZipEntry(filePath, 'fabric.mod.json');
+            if (fabricData) {
+              const json = tryParseJson(fabricData);
+              if (json) {
+                modName = json.name || json.id || modName;
+                modVer = json.version || modVer;
+              }
+            }
+            if (!modVer) {
+              const quiltData = readZipEntry(filePath, 'quilt.mod.json');
+              if (quiltData) {
+                const json = tryParseJson(quiltData);
+                const ql = json?.quilt_loader;
+                if (ql) {
+                  modName = ql.metadata?.name || ql.id || modName;
+                  modVer = ql.version || modVer;
+                }
+              }
+            }
+            result.name = modName;
+            result.version = modVer;
+            const rootMeta = result.installed.find((m) => !m.isDependency);
+            if (rootMeta) {
+              rootMeta.name = modName;
+              rootMeta.version = modVer;
+            }
+          }
+        }
+
+        return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        mainWindow.webContents.send('launcher:download-progress', { type: 'error', message });
+        return { success: false, error: message };
+      }
+    },
+  );
+
+  /* ===== AUTH ===== */
+
+  async function elyOAuthAuthorize(mainWindow: BrowserWindow): Promise<string | null> {
+    const state = crypto.randomBytes(16).toString('hex');
+    const params = new URLSearchParams({
+      client_id: ELY_CLIENT_ID,
+      redirect_uri: ELY_REDIRECT_URI,
+      response_type: 'code',
+      scope: ELY_SCOPES,
+      state,
+    });
+
+    let server: http.Server | null = null;
+    let authWindow: BrowserWindow | null = null;
+    let codePromise: Promise<string | null>;
+    let resolveCode: (value: string | null) => void = () => {};
+    codePromise = new Promise<string | null>((resolve) => { resolveCode = resolve; });
+
+    server = http.createServer((req, res) => {
+      try {
+        const url = new URL(req.url || '/', ELY_REDIRECT_URI);
+        if (url.searchParams.get('state') !== state) {
+          res.writeHead(400);
+          res.end('Invalid state');
+          return;
+        }
+        const error = url.searchParams.get('error');
+        const code = error ? null : url.searchParams.get('code');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Undefined Client</title></head><body style="background:#0d1421;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center"><div><h2>Авторизация завершена</h2><p>Окно можно закрыть</p></div></body></html>');
+        setTimeout(() => { try { server?.close(); } catch {} }, 300);
+        resolveCode(code);
+      } catch {
+        res.writeHead(500);
+        res.end('error');
+      }
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server?.on('error', reject);
+        server?.listen(29123, '127.0.0.1', resolve);
+      });
+    } catch {
+      return null;
+    }
+
+    authWindow = new BrowserWindow({
+      parent: mainWindow,
+      modal: true,
+      width: 700,
+      height: 760,
+      resizable: false,
+      minimizable: false,
+      center: true,
+      webPreferences: { devTools: false },
+    });
+    authWindow.setMenu(null);
+    authWindow.on('close', () => resolveCode(null));
+    await authWindow.loadURL(`${ELY_AUTHORIZE_URL}?${params.toString()}`).catch(() => resolveCode(null));
+
+    const timeout = new Promise<null>((resolve) => setTimeout(() => {
+      resolveCode(null);
+      resolve(null);
+    }, 5 * 60 * 1000));
+
+    const result = await Promise.race([codePromise, timeout]);
+    try { authWindow.destroy(); } catch {}
+    try { server.close(); } catch {}
+    return result;
+  }
+
+  ipcMain.handle('launcher:auth:ely', async () => {
+    try {
+      const code = await elyOAuthAuthorize(mainWindow);
+      if (!code) return null;
+
+      const tokenRes = await fetch(ELY_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: ELY_CLIENT_ID,
+          client_secret: ELY_CLIENT_SECRET,
+          redirect_uri: ELY_REDIRECT_URI,
+          grant_type: 'authorization_code',
+          code,
+        }).toString(),
+      });
+      if (!tokenRes.ok) {
+        console.error('[ely] token exchange failed:', tokenRes.status, await tokenRes.text());
+        return null;
+      }
+      const token = await tokenRes.json();
+      const accessToken: string = token.access_token;
+      if (!accessToken) return null;
+
+      const infoRes = await fetch(ELY_INFO_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!infoRes.ok) {
+        console.error('[ely] account info failed:', infoRes.status, await infoRes.text());
+        return null;
+      }
+      const info = await infoRes.json();
+
+      let skinUrl: string | null = null;
+      skinUrl = await getElyWornSkinUrl(info.username);
+      if (!skinUrl) {
+        try {
+          const texRes = await fetch(`https://skinsystem.ely.by/textures/${encodeURIComponent(info.username)}`);
+          if (texRes.ok) {
+            const textures = await texRes.json();
+            skinUrl = textures?.SKIN?.url || null;
+          }
+        } catch {}
+      }
+
+      return {
+        name: info.username,
+        username: info.username,
+        uuid: info.uuid,
+        accessToken,
+        clientToken: '',
+        refreshToken: token.refresh_token || undefined,
+        userProperties: {},
+        skinUrl,
+        meta: { type: 'yggdrasil', url: ELY_AUTH_SERVER, online: true },
+      };
+    } catch (err) {
+      console.error('[ely] auth error:', err);
+      return null;
+    }
+  });
+
+  ipcMain.handle('launcher:auth:microsoft', async () => {
+    const eml = await loadEML();
+    const account = await new eml.MicrosoftAuth(mainWindow).auth();
+    return account;
+  });
+
+  ipcMain.handle('launcher:auth:offline', async (_event, username: string) => {
+    const eml = await loadEML();
+    const account = await new eml.CrackAuth().auth(username || 'Player');
+    return account;
+  });
+
+  ipcMain.handle('launcher:auth:refresh', async (_event, account: any) => {
+    if (account?.meta?.type === 'msa') {
+      const eml = await loadEML();
+      try {
+        const refreshed = await new eml.MicrosoftAuth(mainWindow).refresh(account);
+        return refreshed;
+      } catch {
+        return null;
+      }
+    }
+    if (account?.meta?.type === 'yggdrasil' && account?.refreshToken) {
+      try {
+        const res = await fetch(ELY_TOKEN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: ELY_CLIENT_ID,
+            client_secret: ELY_CLIENT_SECRET,
+            grant_type: 'refresh_token',
+            refresh_token: account.refreshToken,
+            scope: ELY_SCOPES,
+          }).toString(),
+        });
+        if (!res.ok) return null;
+        const token = await res.json();
+        return {
+          ...account,
+          accessToken: token.access_token || account.accessToken,
+          refreshToken: token.refresh_token || account.refreshToken,
+        };
+      } catch {
+        return null;
+      }
+    }
+    return account;
+  });
+
+  /* ===== ACCOUNTS ===== */
+
+  const accountsPath = path.join(appDataDir, 'accounts.json');
+  const activeAccountPath = path.join(appDataDir, 'active-account.json');
+
+  function readActiveAccountUuid(): string | null {
+    try {
+      if (!fs.existsSync(activeAccountPath)) return null;
+      const raw = fs.readFileSync(activeAccountPath, 'utf-8');
+      const data = JSON.parse(raw);
+      const uuid = String(data?.uuid || '').trim();
+      return uuid || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeActiveAccountUuid(uuid: string | null): void {
+    if (!uuid) {
+      try {
+        if (fs.existsSync(activeAccountPath)) fs.unlinkSync(activeAccountPath);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    writeJSON(activeAccountPath, { uuid: String(uuid) });
+  }
+
+  ipcMain.handle('launcher:account:save', async (_event, account: any) => {
+    const accounts = readJSON(accountsPath);
+    const idx = accounts.findIndex((a: any) => a.uuid === account.uuid);
+    if (idx !== -1) accounts[idx] = account;
+    else accounts.push(account);
+    writeJSON(accountsPath, accounts);
+    return true;
+  });
+
+  ipcMain.handle('launcher:account:load', async () => {
+    return readJSON(accountsPath);
+  });
+
+  ipcMain.handle('launcher:account:remove', async (_event, uuid: string) => {
+    const accounts = readJSON(accountsPath).filter((a: any) => a.uuid !== uuid);
+    writeJSON(accountsPath, accounts);
+    if (readActiveAccountUuid() === uuid) {
+      writeActiveAccountUuid(accounts.length ? accounts[accounts.length - 1].uuid : null);
+    }
+    return true;
+  });
+
+  // ===== Последний выбранный аккаунт (не путать с порядком добавления) =====
+  ipcMain.handle('launcher:account:setActive', async (_event, uuid: string) => {
+    const id = String(uuid || '').trim();
+    if (!id) return { ok: false };
+    writeActiveAccountUuid(id);
+    return { ok: true };
+  });
+
+  ipcMain.handle('launcher:account:getActive', async () => {
+    return readActiveAccountUuid();
+  });
+
+  /* ===== BUILDS ===== */
+
+  const buildsPath = path.join(appDataDir, 'builds.json');
+
+  ipcMain.handle('launcher:build:save', async (_event, build: any) => {
+    const builds = readJSON(buildsPath);
+    const idx = builds.findIndex((b: any) => b.id === build.id);
+    if (idx !== -1) builds[idx] = build;
+    else builds.push(build);
+    writeJSON(buildsPath, builds);
+    return true;
+  });
+
+  ipcMain.handle('launcher:build:load', async () => {
+    return readJSON(buildsPath);
+  });
+
+  // ===== Ярлык сборки на рабочий стол (Windows) =====
+  /** PNG → ICO (Shell не читает PNG из asar и часто игнорирует PNG как IconLocation). */
+  const pngBufferToIco = (png: Buffer): Buffer => {
+    const header = Buffer.alloc(6);
+    header.writeUInt16LE(0, 0);
+    header.writeUInt16LE(1, 2);
+    header.writeUInt16LE(1, 4);
+    const entry = Buffer.alloc(16);
+    entry[0] = 0; // width 0 = 256
+    entry[1] = 0; // height 0 = 256
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(png.length, 8);
+    entry.writeUInt32LE(22, 12);
+    return Buffer.concat([header, entry, png]);
+  };
+
+  const resolvePresetIconFile = (filename: string): string | null => {
+    const name = String(filename || '').replace(/[/\\]/g, '');
+    if (!name) return null;
+    const candidates = [
+      path.join(app.getAppPath(), 'assets', 'InstancesIcons', name),
+      path.join(process.cwd(), 'assets', 'InstancesIcons', name),
+      path.join(__dirname, '../../assets/InstancesIcons', name),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+      } catch { /* */ }
+    }
+    return null;
+  };
+
+  const fallbackShortcutIco = (): string => {
+    const candidates = [
+      path.join(app.getAppPath(), 'IconForBuild', 'icon.ico'),
+      path.join(process.cwd(), 'IconForBuild', 'icon.ico'),
+      path.join(__dirname, '../../IconForBuild/icon.ico'),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch { /* */ }
+    }
+    return process.execPath;
+  };
+
+  /** Готовит .ico вне asar — иначе ярлык на рабочем столе без иконки сборки. */
+  const prepareBuildShortcutIcon = async (buildId: string, iconRaw: string): Promise<string> => {
+    const cacheDir = path.join(app.getPath('userData'), 'shortcut-icons');
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const outIco = path.join(cacheDir, `${buildId}.ico`);
+    const fallback = fallbackShortcutIco();
+
+    try {
+      let buf: Buffer | null = null;
+      const icon = String(iconRaw || '').trim();
+
+      if (icon.startsWith('preset:')) {
+        const file = resolvePresetIconFile(icon.slice(7));
+        if (file) buf = fs.readFileSync(file);
+      } else if (icon.startsWith('data:')) {
+        const m = icon.match(/^data:[^;]+;base64,(.+)$/i);
+        if (m) buf = Buffer.from(m[1], 'base64');
+      } else if (icon.startsWith('modrinth:')) {
+        const rawUrl = icon.slice(9).trim();
+        const url = catalogImageUrl(rawUrl) || rawUrl;
+        if (url) {
+          const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+          if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+        }
+      } else if (/^https?:\/\//i.test(icon)) {
+        const url = catalogImageUrl(icon) || icon;
+        const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+        if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+      } else if (icon) {
+        const abs = path.isAbsolute(icon) ? icon : path.join(appDataDir, icon);
+        if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+          if (/\.ico$/i.test(abs)) return abs;
+          buf = fs.readFileSync(abs);
+        }
+      }
+
+      if (!buf) {
+        const def = resolvePresetIconFile('newBuild.png');
+        if (def) buf = fs.readFileSync(def);
+      }
+      if (!buf) return fallback;
+
+      let img = nativeImage.createFromBuffer(buf);
+      if (img.isEmpty()) return fallback;
+      const { width, height } = img.getSize();
+      const maxSide = Math.max(width, height);
+      if (maxSide !== 256) {
+        img = img.resize({ width: 256, height: 256, quality: 'best' });
+      }
+      fs.writeFileSync(outIco, pngBufferToIco(img.toPNG()));
+      return outIco;
+    } catch (e) {
+      console.warn('[shortcut] icon prepare failed', e);
+      return fallback;
+    }
+  };
+
+  ipcMain.handle('launcher:create-build-shortcut', async (_event, buildId: string) => {
+    try {
+      const id = String(buildId || '').trim();
+      if (!/^[A-Za-z0-9_-]{2,128}$/.test(id)) {
+        return { success: false, error: 'bad_build_id' };
+      }
+      const builds = readJSON(buildsPath);
+      const build = Array.isArray(builds) ? builds.find((b: any) => b?.id === id) : null;
+      if (!build) return { success: false, error: 'build_not_found' };
+
+      const rawName = String(build.name || id).trim() || id;
+      const safeName = rawName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || id;
+
+      if (process.platform === 'win32') {
+        const desktop = app.getPath('desktop');
+        const linkPath = path.join(desktop, `${safeName}.lnk`);
+
+        const iconPath = await prepareBuildShortcutIcon(id, String(build.icon || ''));
+
+        const deepLink = `uclient://launch?id=${encodeURIComponent(id)}`;
+        const target = process.execPath;
+        const args = process.defaultApp
+          ? `"${path.resolve(process.argv[1] || '.')}" "${deepLink}"`
+          : `"${deepLink}"`;
+
+        const ok = shell.writeShortcutLink(linkPath, {
+          target,
+          args,
+          cwd: path.dirname(target),
+          description: `Undefined Client — ${rawName}`,
+          icon: iconPath,
+          iconIndex: 0,
+          appUserModelId: 'undefined-client',
+        });
+        if (!ok) return { success: false, error: 'write_failed' };
+        return { success: true, path: linkPath, name: safeName };
+      } else if (process.platform === 'linux') {
+        const desktop = app.getPath('desktop');
+        const linkPath = path.join(desktop, `uclient-${id}.desktop`);
+        const deepLink = `uclient://launch?id=${encodeURIComponent(id)}`;
+        const target = process.execPath;
+        const execCmd = process.defaultApp
+          ? `"${target}" "${path.resolve(process.argv[1] || '.')}" "${deepLink}"`
+          : `"${target}" "${deepLink}"`;
+        // Ищем иконку: сначала кастомная, потом дефолтная
+        let iconPath = path.join(__dirname, '../../IconForBuild/512.png');
+        if (build.icon) {
+          const customIcon = path.isAbsolute(build.icon) ? build.icon : path.join(appDataDir, build.icon);
+          if (fs.existsSync(customIcon)) iconPath = customIcon;
+        }
+        const desktopContent = [
+          '[Desktop Entry]',
+          'Type=Application',
+          `Name=Undefined Client — ${safeName}`,
+          `Comment=Minecraft Launcher — ${rawName}`,
+          `Exec=${execCmd}`,
+          `Icon=${iconPath}`,
+          'Terminal=false',
+          'Categories=Game;',
+          'StartupWMClass=undefined-client',
+        ].join('\n') + '\n';
+
+        fs.writeFileSync(linkPath, desktopContent, { mode: 0o755 });
+        return { success: true, path: linkPath, name: safeName };
+      } else {
+        return { success: false, error: 'unsupported_platform' };
+      }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  ipcMain.handle('launcher:build:remove', async (_event, id: string) => {
+    const builds = readJSON(buildsPath).filter((b: any) => b.id !== id);
+    writeJSON(buildsPath, builds);
+    return true;
+  });
+
+  // ===== Группы сборок =====
+  const buildGroupsPath = path.join(appDataDir, 'build-groups.json');
+
+  ipcMain.handle('launcher:build-groups:load', async () => {
+    const list = readJSON(buildGroupsPath);
+    return Array.isArray(list) ? list : [];
+  });
+
+  ipcMain.handle('launcher:build-groups:save', async (_event, group: any) => {
+    if (!group?.id) return false;
+    const groups = readJSON(buildGroupsPath);
+    const list = Array.isArray(groups) ? groups : [];
+    const idx = list.findIndex((g: any) => g.id === group.id);
+    if (idx !== -1) list[idx] = group;
+    else list.push(group);
+    writeJSON(buildGroupsPath, list);
+    return true;
+  });
+
+  ipcMain.handle('launcher:build-groups:remove', async (_event, id: string) => {
+    const groups = readJSON(buildGroupsPath);
+    const list = (Array.isArray(groups) ? groups : []).filter((g: any) => g.id !== id);
+    writeJSON(buildGroupsPath, list);
+    // Сборки из группы возвращаем в корень
+    const builds = readJSON(buildsPath);
+    let changed = false;
+    for (const b of builds) {
+      if (b?.groupId === id) {
+        b.groupId = null;
+        changed = true;
+      }
+    }
+    if (changed) writeJSON(buildsPath, builds);
+    return true;
+  });
+
+  // ===== Иконки сборок из assets/InstancesIcons =====
+  ipcMain.handle('launcher:instance-icons:list', async () => {
+    const dir = path.join(__dirname, '../../assets/InstancesIcons');
+    try {
+      if (!fs.existsSync(dir)) return [];
+      return fs
+        .readdirSync(dir)
+        .filter((name) => /\.(png|jpe?g|webp|gif)$/i.test(name))
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    } catch (err) {
+      console.error('[instance-icons] list failed', err);
+      return [];
+    }
+  });
+
+  /* ===== SERVERS ===== */
+
+  const serversPath = path.join(appDataDir, 'servers.json');
+
+  ipcMain.handle('launcher:server:save', async (_event, server: any) => {
+    const servers = readJSON(serversPath);
+    const idx = servers.findIndex((s: any) => s.id === server.id);
+    if (idx !== -1) servers[idx] = server;
+    else servers.push(server);
+    writeJSON(serversPath, servers);
+    return true;
+  });
+
+  ipcMain.handle('launcher:server:load', async () => {
+    return readJSON(serversPath);
+  });
+
+  ipcMain.handle('launcher:server:remove', async (_event, id: string) => {
+    const servers = readJSON(serversPath).filter((s: any) => s.id !== id);
+    writeJSON(serversPath, servers);
+    return true;
+  });
+
+  /* ===== SKINS ===== */
+
+  const elyWornSkinCache = new Map<string, { url: string | null; ts: number }>();
+  const DEFAULT_ACCOUNT_SKIN_URL = 'https://s.namemc.com/i/cbe20ed58814c5e1.png';
+
+  async function getElyWornSkinUrl(nickname: string, force = false): Promise<string | null> {
+    const cached = elyWornSkinCache.get(nickname);
+    if (!force && cached && Date.now() - cached.ts < 60 * 1000) return cached.url;
+    let url: string | null = null;
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fetch(`https://skinsystem.ely.by/textures/${encodeURIComponent(nickname)}`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.status === 204) {
+          url = DEFAULT_ACCOUNT_SKIN_URL;
+          break;
+        }
+        if (!res.ok) break;
+        const data = await res.json();
+        url = data?.SKIN?.url || DEFAULT_ACCOUNT_SKIN_URL;
+        if (url && url.startsWith('http://')) url = `https://${url.slice(7)}`;
+        break;
+      } catch (err) {
+        const code = (err as any)?.cause?.code || (err as any)?.code;
+        const retryable = code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'UND_ERR_CONNECT_TIMEOUT';
+        if (attempt < maxAttempts && retryable) {
+          await new Promise((r) => setTimeout(r, 250 * attempt));
+          continue;
+        }
+        console.error('[ely] worn skin fetch error:', err);
+        break;
+      }
+    }
+    if (!url) url = DEFAULT_ACCOUNT_SKIN_URL;
+    elyWornSkinCache.set(nickname, { url, ts: Date.now() });
+    return url;
+  }
+
+  ipcMain.handle('launcher:ely:wornSkin', async (_event, nickname: string, force = false) => {
+    return getElyWornSkinUrl(nickname, force);
+  });
+
+  // ===== Прокси скинов =====
+  // Профиль Mojang и текстуры скинов фильтруются у российских провайдеров, но
+  // и наш сервер может быть недоступен, поэтому схема та же, что у загрузки
+  // файлов каталога: основной путь — прокси, резервный — прямой адрес.
+
+  /** Ожидание ответа: и профиль, и картинка скина мелкие, тянуться не должны. */
+  const SKIN_TIMEOUT_MS = 10000;
+
+  /** Первый успешный ответ из списка адресов; порядок задаёт приоритет. */
+  async function fetchFirstOk(urls: string[]): Promise<Response | null> {
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(SKIN_TIMEOUT_MS) });
+        if (res.ok) return res;
+        await res.body?.cancel().catch(() => {});
+      } catch {
+        // Сеть или тайм-аут — пробуем следующий адрес
+      }
+    }
+    return null;
+  }
+
+  ipcMain.handle('launcher:skin:get', async (_event, uuid: string, serverUrl?: string) => {
+    try {
+      const clean = uuid.replace(/-/g, '');
+      // Свой сервер аутентификации (Ely.by) проксировать не нужно и нечем:
+      // прокси знает только Mojang, а сам Ely.by у провайдеров не фильтруется.
+      const urls = serverUrl
+        ? [`${serverUrl}/session/profile/${uuid}`]
+        : [skinProfileUrl(clean), `https://sessionserver.mojang.com/session/minecraft/profile/${clean}`];
+      const res = await fetchFirstOk(urls);
+      if (!res) return null;
+      const data = await res.json();
+      const textures = JSON.parse(atob(data.properties?.[0]?.value || ''));
+      return {
+        skinUrl: textures.textures?.SKIN?.url || null,
+        capeUrl: textures.textures?.CAPE?.url || null,
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('launcher:skin:fetch', async (_event, url: string) => {
+    try {
+      // Сначала ПРЯМОЙ textures.minecraft.net — прокси однажды отдавал чужую
+      // текстуру плаща (Migrator сохранялся как классический Mojang).
+      const direct = String(url || '').replace(/^http:\/\//i, 'https://');
+      const proxied = skinImageUrl(direct);
+      const urls =
+        proxied && proxied !== direct ? [direct, proxied] : [direct];
+      const res = await fetchFirstOk(urls);
+      if (!res) return null;
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length < 32 || buffer[0] !== 0x89 || buffer[1] !== 0x50) {
+        console.warn('[cosmetics] skin fetch: не PNG', direct.slice(0, 80));
+        return null;
+      }
+      return buffer.toString('base64');
+    } catch {
+      return null;
+    }
+  });
+
+  const skinsDir = path.join(appDataDir, 'skins');
+
+  ipcMain.handle('launcher:skin:save', async (_event, skin: {
+    id: string;
+    name: string;
+    dataUrl: string;
+    /** Владелец косметики (uuid без дефисов) — у каждого аккаунта свой набор */
+    accountId?: string;
+    /** Официальный id плаща Microsoft Profile API */
+    mojangCapeId?: string;
+  }) => {
+    try {
+      if (!fs.existsSync(skinsDir)) fs.mkdirSync(skinsDir, { recursive: true });
+      const metaPath = path.join(skinsDir, 'skins.json');
+      const skins = readJSON(metaPath);
+      const entry: { id: string; name: string; accountId?: string; mojangCapeId?: string } = {
+        id: skin.id,
+        name: skin.name,
+      };
+      if (skin.accountId) entry.accountId = String(skin.accountId);
+      if (skin.mojangCapeId) entry.mojangCapeId = String(skin.mojangCapeId);
+      const idx = skins.findIndex((s: any) => s.id === skin.id);
+      if (idx !== -1) skins[idx] = { ...skins[idx], ...entry };
+      else skins.push(entry);
+      writeJSON(metaPath, skins);
+      const base64 = skin.dataUrl.replace(/^data:image\/png;base64,/, '');
+      fs.writeFileSync(path.join(skinsDir, `${skin.id}.png`), Buffer.from(base64, 'base64'));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  ipcMain.handle('launcher:skin:load', async () => {
+    try {
+      const metaPath = path.join(skinsDir, 'skins.json');
+      const skins = readJSON(metaPath);
+      return skins.map((s: any) => {
+        const pngPath = path.join(skinsDir, `${s.id}.png`);
+        if (fs.existsSync(pngPath)) {
+          const data = fs.readFileSync(pngPath);
+          return { ...s, dataUrl: `data:image/png;base64,${data.toString('base64')}` };
+        }
+        return s;
+      });
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle('launcher:skin:remove', async (_event, id: string) => {
+    try {
+      const metaPath = path.join(skinsDir, 'skins.json');
+      const skins = readJSON(metaPath).filter((s: any) => s.id !== id);
+      writeJSON(metaPath, skins);
+      const pngPath = path.join(skinsDir, `${id}.png`);
+      if (fs.existsSync(pngPath)) fs.unlinkSync(pngPath);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+  // ===== Применение скина/плаща в аккаунт и инстанс =====
+
+  /**
+   * Эталонные sha256 текстур (как в textures.minecraft.net/texture/<hash>).
+   * Если локальный PNG не совпадает — файл битый (прокси подменил текстуру).
+   */
+  const KNOWN_CAPE_SHA256: Record<string, string> = {
+    '5af20372-79e0-4e1f-80f8-6bd8e3135995':
+      '2340c0e03dd24a11b15a8b33c2a7e9e32abb2051b2481d0ba7defd635ca7a933', // Migrator
+  };
+
+  function sha256Hex(buf: Buffer): string {
+    return crypto.createHash('sha256').update(buf).digest('hex');
+  }
+
+  function purgeCorruptCapePngs(): void {
+    try {
+      for (const [mojangId, expect] of Object.entries(KNOWN_CAPE_SHA256)) {
+        const pngPath = path.join(skinsDir, `cape-msa-${mojangId}.png`);
+        if (!fs.existsSync(pngPath)) continue;
+        const got = sha256Hex(fs.readFileSync(pngPath));
+        if (got !== expect) {
+          console.warn('[cosmetics] удаляю битый PNG плаща', mojangId, { got, expect });
+          fs.unlinkSync(pngPath);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  purgeCorruptCapePngs();
+
+  /** PNG из data URL или файла skins/ */
+  function resolveSkinPng(dataUrlOrId: string | null | undefined): Buffer | null {
+    if (!dataUrlOrId) return null;
+    if (dataUrlOrId.startsWith('data:image')) {
+      const b64 = dataUrlOrId.replace(/^data:image\/png;base64,/, '');
+      return Buffer.from(b64, 'base64');
+    }
+    const pngPath = path.join(skinsDir, `${dataUrlOrId}.png`);
+    if (!fs.existsSync(pngPath)) return null;
+    const buf = fs.readFileSync(pngPath);
+    // cape-msa-{uuid} — проверить эталон, если есть
+    if (dataUrlOrId.startsWith('cape-msa-')) {
+      const mojangId = dataUrlOrId.slice('cape-msa-'.length);
+      const expect = KNOWN_CAPE_SHA256[mojangId];
+      if (expect && sha256Hex(buf) !== expect) {
+        console.warn('[cosmetics] битый PNG плаща, игнор', mojangId);
+        try { fs.unlinkSync(pngPath); } catch { /* ignore */ }
+        return null;
+      }
+    }
+    return buf;
+  }
+
+  /**
+   * Загрузка скина на Ely.by через сайт API (/skins/upload + /skins/wear).
+   * Mojang-эндпоинт authserver.ely.by/minecraft/profile/skins не реализован
+   * (отдаёт HTML личного кабинета) — eml-lib.updateSkin для Ely не работает.
+   */
+  async function uploadSkinToEly(
+    account: any,
+    skinPng: Buffer,
+    variant: 'classic' | 'slim',
+  ): Promise<{ ok: boolean; error?: string; openWeb?: boolean }> {
+    const token = String(account?.accessToken || '');
+    if (!token) {
+      return { ok: false, error: 'no_token', openWeb: true };
+    }
+
+    const fileBlob = new Blob([Uint8Array.from(skinPng)], { type: 'image/png' });
+
+    const tryUpload = async (url: string, headers: Record<string, string>, extraFields?: Record<string, string>) => {
+      const form = new FormData();
+      form.append('file', fileBlob, 'skin.png');
+      form.append('is_slim', variant === 'slim' ? '1' : '0');
+      if (extraFields) {
+        for (const [k, v] of Object.entries(extraFields)) form.append(k, v);
+      }
+      const uploadRes = await fetch(url, { method: 'POST', headers, body: form });
+      const raw = await uploadRes.text();
+      let data: any = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch { /* HTML / не JSON */ }
+      return { uploadRes, raw, data };
+    };
+
+    try {
+      // 1) Bearer (если сайт когда‑либо примет OAuth-токен аккаунта)
+      let { uploadRes, raw, data } = await tryUpload(
+        'https://ely.by/skins/upload',
+        { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      );
+
+      // 2) access_token в теле — запасной вариант для старых ручек
+      if (!uploadRes.ok) {
+        const second = await tryUpload(
+          'https://ely.by/skins/upload',
+          { Accept: 'application/json' },
+          { access_token: token },
+        );
+        uploadRes = second.uploadRes;
+        raw = second.raw;
+        data = second.data;
+      }
+
+      if (!uploadRes.ok) {
+        console.warn('[ely] skin upload failed', uploadRes.status, raw.slice(0, 300));
+        // OAuth лаунчера ≠ сессия сайта ely.by — смена скина только в браузере
+        return {
+          ok: false,
+          error: data?.error || data?.text || `HTTP ${uploadRes.status}`,
+          openWeb: true,
+        };
+      }
+
+      const skinId = data?.skin?.id || data?.id || data?.skinId;
+      if (skinId) {
+        try {
+          await fetch('https://ely.by/skins/wear', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({ skinId: String(skinId), access_token: token }).toString(),
+          });
+        } catch (wearErr) {
+          console.warn('[ely] skin wear failed', wearErr);
+        }
+      }
+
+      // Сбросить кэш надетого скина
+      const nick = account?.username || account?.name;
+      if (nick) elyWornSkinCache.delete(String(nick));
+
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message, openWeb: true };
+    }
+  }
+
+  /**
+   * Локальный id → Mojang capeId.
+   * Актуальный: `cape-msa-{mojangId}`. Legacy: `cape-msa-{uuid8}-{mojangId}`.
+   * Нельзя отрезать «первые 8 hex» вслепую — это ломает сам UUID плаща.
+   */
+  function mojangCapeIdFromLocalId(localId: string, accountUuid?: string): string {
+    const prefix = 'cape-msa-';
+    if (!localId.startsWith(prefix)) return localId;
+    const rest = localId.slice(prefix.length);
+    const short = String(accountUuid || '').replace(/-/g, '').toLowerCase().slice(0, 8);
+    if (short && rest.toLowerCase().startsWith(`${short}-`)) {
+      return rest.slice(short.length + 1);
+    }
+    return rest;
+  }
+
+  // Антиспам Microsoft Profile API (иначе HTTP 429).
+  // Важно: mojangCapeId в meta — только ПОДТВЕРЖДЁННЫЙ (успешный PUT или sync ACTIVE).
+  // desiredMojangCapeId — выбор пользователя (LocalSkin), его нельзя использовать для skip.
+  const msaCapeSwitchMemory = new Map<string, { capeId: string; ts: number }>();
+  const MSA_CAPE_COOLDOWN_MS = 90_000;
+
+  function activeCosmeticsMetaPath(): string {
+    return path.join(appDataDir, 'active-cosmetics', 'meta.json');
+  }
+
+  function readActiveCosmeticsMetaRaw(): any {
+    try {
+      return readJSON(activeCosmeticsMetaPath()) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Раньше после 429/PUT без проверки в mojangCapeId писали желаемый id → skip навсегда.
+   * confirmed только из GET /profile (ACTIVE).
+   */
+  function migrateCapeMetaIfNeeded(): void {
+    const meta = readActiveCosmeticsMetaRaw();
+    if (meta?.capeMetaV3 && meta?.skinMetaV2) return;
+    try {
+      const activeDir = path.join(appDataDir, 'active-cosmetics');
+      fs.mkdirSync(activeDir, { recursive: true });
+      const next: any = { ...meta };
+      if (!meta?.capeMetaV2) {
+        next.desiredMojangCapeId = meta.desiredMojangCapeId ?? meta.mojangCapeId ?? null;
+        next.capeMetaV2 = true;
+      }
+      if (!meta?.capeMetaV3) {
+        // PUT 200 ≠ ACTIVE на аккаунте — сбрасываем ложный confirmed
+        next.desiredMojangCapeId = meta.desiredMojangCapeId ?? meta.mojangCapeId ?? null;
+        next.mojangCapeId = null;
+        next.profileActiveCapeId = null;
+        next.capeMetaV3 = true;
+        msaCapeSwitchMemory.clear();
+        console.log('[cosmetics] migrated cape meta v3 (confirmed only via profile GET)');
+      }
+      if (!meta?.skinMetaV2) {
+        next.desiredSkinId = meta.desiredSkinId ?? meta.skinId ?? null;
+        next.uploadedSkinId = null;
+        next.uploadedVariant = null;
+        next.skinMetaV2 = true;
+        console.log('[cosmetics] migrated skin meta v2 (reset untrusted uploadedSkinId)');
+      }
+      writeJSON(activeCosmeticsMetaPath(), next);
+    } catch { /* ignore */ }
+  }
+
+  function readActiveCosmeticsMeta(): any {
+    migrateCapeMetaIfNeeded();
+    return readActiveCosmeticsMetaRaw();
+  }
+
+  function patchActiveCosmeticsMeta(patch: Record<string, unknown>): void {
+    try {
+      migrateCapeMetaIfNeeded();
+      const activeDir = path.join(appDataDir, 'active-cosmetics');
+      fs.mkdirSync(activeDir, { recursive: true });
+      writeJSON(activeCosmeticsMetaPath(), { ...readActiveCosmeticsMetaRaw(), ...patch });
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Запомнить плащ только после GET /profile (реальный ACTIVE).
+   * HTTP 200 на PUT сам по себе не доказательство — из‑за этого «Migrator» skip, а в игре другой плащ.
+   */
+  function confirmMsaCapeId(accountUuid: string, mojangCapeId: string | null): void {
+    const id = mojangCapeId ? String(mojangCapeId) : '';
+    if (id) msaCapeSwitchMemory.set(String(accountUuid || ''), { capeId: id, ts: Date.now() });
+    else msaCapeSwitchMemory.delete(String(accountUuid || ''));
+    patchActiveCosmeticsMeta({
+      mojangCapeId: id || null,
+      profileActiveCapeId: id || null,
+      capeSwitchedAt: id ? Date.now() : readActiveCosmeticsMeta().capeSwitchedAt || 0,
+      capeRateLimitedAt: 0,
+    });
+  }
+
+  /** ACTIVE cape id с профиля Microsoft (один GET). */
+  async function fetchProfileActiveCapeId(account: any): Promise<string | null> {
+    const profile = await fetchMicrosoftProfileCosmetics(account);
+    const active = (profile.capes || []).find((c) => c.state === 'active');
+    return active?.id ? String(active.id) : null;
+  }
+
+  /**
+   * PUT active cape.
+   * force (клик) — всегда PUT, без skip по «confirmed».
+   * Без force — skip только если GET/sync уже видел этот id как profileActiveCapeId.
+   * После PUT подтверждаем вторым GET; иначе не ставим confirmed (чтобы не залипать).
+   */
+  async function switchMsaCape(
+    account: any,
+    mojangCapeId: string,
+    opts?: { force?: boolean },
+  ): Promise<{
+    account?: any;
+    skipped?: boolean;
+    rateLimited?: boolean;
+    applied?: boolean;
+    actualCapeId?: string | null;
+    error?: string;
+  }> {
+    const uuid = String(account?.uuid || '');
+    const meta = readActiveCosmeticsMeta();
+    const profileActive = String(meta?.profileActiveCapeId || meta?.mojangCapeId || '');
+    const lastRateLimited = Number(meta?.capeRateLimitedAt || 0);
+
+    // Клик пользователя — не skip; запуск — skip только по подтверждённому ACTIVE с профиля
+    if (!opts?.force && profileActive && profileActive === mojangCapeId) {
+      console.log('[cosmetics] MSA cape switch skipped (profile ACTIVE)', mojangCapeId);
+      return { skipped: true, actualCapeId: profileActive };
+    }
+    if (lastRateLimited && Date.now() - lastRateLimited < MSA_CAPE_COOLDOWN_MS) {
+      console.log('[cosmetics] MSA cape switch skipped (post-429 cooldown)', mojangCapeId);
+      return { rateLimited: true };
+    }
+
+    let acc = account;
+    if (!acc?.accessToken) throw new Error('no_access_token');
+
+    const putOnce = (token: string) =>
+      fetch('https://api.minecraftservices.com/minecraft/profile/capes/active', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ capeId: mojangCapeId }),
+      });
+
+    console.log('[cosmetics] MSA cape PUT', {
+      mojangCapeId,
+      force: !!opts?.force,
+      profileActive,
+    });
+    let put = await putOnce(acc.accessToken);
+    if (put.status === 401) {
+      const eml = await loadEML();
+      try {
+        const refreshed = await new eml.MicrosoftAuth(mainWindow).refresh(acc);
+        if (refreshed?.accessToken) {
+          acc = refreshed;
+          put = await putOnce(acc.accessToken);
+        }
+      } catch (e) {
+        console.warn('[cosmetics] MSA token refresh before cape switch failed', e);
+      }
+    }
+
+    if (put.status === 429) {
+      console.warn('[cosmetics] MSA cape switch rate-limited (429)');
+      patchActiveCosmeticsMeta({
+        desiredMojangCapeId: mojangCapeId,
+        capeRateLimitedAt: Date.now(),
+      });
+      return { rateLimited: true, account: acc !== account ? acc : undefined };
+    }
+    if (!put.ok) {
+      const errorText = await put.text();
+      throw new Error(`cape switch HTTP ${put.status}: ${errorText.slice(0, 240)}`);
+    }
+
+    patchActiveCosmeticsMeta({
+      desiredMojangCapeId: mojangCapeId,
+      lastPutCapeId: mojangCapeId,
+      lastPutAt: Date.now(),
+    });
+
+    // Проверяем реальный ACTIVE — иначе снова получим «skip Migrator», а в игре другой плащ
+    let actual: string | null = null;
+    try {
+      actual = await fetchProfileActiveCapeId(acc);
+    } catch (e) {
+      console.warn('[cosmetics] cape verify GET failed (не ставим confirmed):', e);
+    }
+
+    if (actual && actual === mojangCapeId) {
+      confirmMsaCapeId(uuid, actual);
+      console.log('[cosmetics] MSA cape PUT verified ACTIVE', actual);
+      return { applied: true, actualCapeId: actual, account: acc !== account ? acc : undefined };
+    }
+
+    if (actual && actual !== mojangCapeId) {
+      confirmMsaCapeId(uuid, actual);
+      console.warn('[cosmetics] MSA cape PUT ok, but ACTIVE is different', {
+        requested: mojangCapeId,
+        actual,
+      });
+      return {
+        applied: false,
+        actualCapeId: actual,
+        error: 'cape_mismatch',
+        account: acc !== account ? acc : undefined,
+      };
+    }
+
+    // GET не удался — не подтверждаем, следующий force снова сделает PUT
+    console.warn('[cosmetics] MSA cape PUT ok, ACTIVE not verified');
+    return {
+      applied: true,
+      actualCapeId: null,
+      account: acc !== account ? acc : undefined,
+    };
+  }
+
+  /**
+   * Загрузка скина на MSA / Ely (yggdrasil).
+   * Кастомный плащ через официальный API недоступен — его кладём в CustomSkinLoader.
+   */
+  async function uploadSkinToAccount(
+    account: any,
+    skinPng: Buffer,
+    variant: 'classic' | 'slim',
+  ): Promise<{ ok: boolean; error?: string; openWeb?: boolean }> {
+    const type = account?.meta?.type || account?.type;
+    if (type !== 'msa' && type !== 'yggdrasil') {
+      return { ok: false, error: 'offline' };
+    }
+    // Ely: отдельный путь — не через eml-lib (ломаный Mojang endpoint)
+    if (type === 'yggdrasil') {
+      return uploadSkinToEly(account, skinPng, variant);
+    }
+    // MSA: прямой POST надёжнее eml-lib (иногда UI обновляется, а Mojang не принимает файл)
+    if (type === 'msa') {
+      try {
+        const token = String(account?.accessToken || '').trim();
+        if (!token) return { ok: false, error: 'no_token' };
+        const form = new FormData();
+        form.append('variant', variant === 'slim' ? 'slim' : 'classic');
+        const bytes = new Uint8Array(skinPng);
+        form.append('file', new Blob([bytes], { type: 'image/png' }), 'skin.png');
+        const res = await fetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (res.ok) return { ok: true };
+        const body = await res.text().catch(() => '');
+        // Fallback на eml-lib, если прямой API отклонил
+        console.warn('[cosmetics] MSA skin POST failed', res.status, body.slice(0, 160));
+      } catch (err) {
+        console.warn('[cosmetics] MSA skin POST error', err);
+      }
+      try {
+        const eml = await loadEML();
+        const file = new File([Uint8Array.from(skinPng)], 'skin.png', { type: 'image/png' });
+        await new eml.Skin(account).updateSkin(file, variant);
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: message };
+      }
+    }
+    try {
+      const eml = await loadEML();
+      const file = new File([Uint8Array.from(skinPng)], 'skin.png', { type: 'image/png' });
+      await new eml.Skin(account).updateSkin(file, variant);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  }
+
+  /** Имена файлов LocalSkin: точный ник CSL + sanitized на случай спецсимволов */
+  function localSkinFileNames(username: string): string[] {
+    const raw = String(username || 'Player').trim() || 'Player';
+    const safe = raw.replace(/[^\w.\-]/g, '_');
+    return raw === safe ? [raw] : [raw, safe];
+  }
+
+  /**
+   * Локальные текстуры + конфиг CustomSkinLoader.
+   * Официальный MSA-плащ тоже кладём в LocalSkin (актуальный PNG выбора) —
+   * MojangAPI/session часто отдаёт кэш или чужую текстуру; CSL 15 ещё и
+   * дописывает cape в loadlist сам.
+   */
+  function writeLocalCosmetics(
+    instanceDir: string,
+    username: string,
+    skinPng: Buffer | null,
+    capePng: Buffer | null,
+    accountType: string = 'offline',
+    opts?: { useLocalCape?: boolean },
+  ): void {
+    const useLocalCape = opts?.useLocalCape !== false && !!capePng;
+    const names = localSkinFileNames(username);
+    const cslRoot = path.join(instanceDir, 'CustomSkinLoader');
+    const skinDir = path.join(cslRoot, 'LocalSkin', 'skins');
+    const capeDir = path.join(cslRoot, 'LocalSkin', 'capes');
+    fs.mkdirSync(skinDir, { recursive: true });
+    fs.mkdirSync(capeDir, { recursive: true });
+
+    for (const fileName of names) {
+      const skinPath = path.join(skinDir, `${fileName}.png`);
+      const capePath = path.join(capeDir, `${fileName}.png`);
+      if (skinPng) {
+        fs.writeFileSync(skinPath, skinPng);
+      } else if (accountType === 'msa' && fs.existsSync(skinPath)) {
+        // Не затираем локальный скин пустым вызовом cleanup
+      }
+      if (useLocalCape && capePng) {
+        fs.writeFileSync(capePath, capePng);
+      } else if (fs.existsSync(capePath)) {
+        try { fs.unlinkSync(capePath); } catch { /* ignore */ }
+      }
+    }
+
+    const loadlist: any[] = [];
+    if (skinPng || useLocalCape || accountType !== 'msa') {
+      const localEntry: any = {
+        name: 'LocalSkin',
+        type: 'Legacy',
+        checkPNG: false,
+        skin: 'LocalSkin/skins/{USERNAME}.png',
+        model: 'auto',
+      };
+      if (useLocalCape) {
+        localEntry.cape = 'LocalSkin/capes/{USERNAME}.png';
+      }
+      loadlist.push(localEntry);
+    }
+    if (accountType === 'msa') {
+      loadlist.push({
+        name: 'Mojang',
+        type: 'MojangAPI',
+        apiRoot: 'https://api.mojang.com/',
+        sessionRoot: 'https://sessionserver.mojang.com/',
+      });
+    } else if (accountType === 'yggdrasil') {
+      loadlist.push({
+        name: 'ElyBy',
+        type: 'Legacy',
+        skin: 'http://skinsystem.ely.by/skins/{USERNAME}.png',
+        cape: 'http://skinsystem.ely.by/cloaks/{USERNAME}.png',
+      });
+    }
+    if (loadlist.length === 0) {
+      loadlist.push({
+        name: 'LocalSkin',
+        type: 'Legacy',
+        checkPNG: false,
+        skin: 'LocalSkin/skins/{USERNAME}.png',
+        model: 'auto',
+      });
+    }
+
+    const cfgPath = path.join(cslRoot, 'CustomSkinLoader.json');
+    // Полный конфиг CSL 15: иначе мод сам дописывает cape/elytra и кэш
+    fs.writeFileSync(
+      cfgPath,
+      JSON.stringify(
+        {
+          version: '14.25',
+          buildNumber: 0,
+          loadlist,
+          enableTransparentSkin: true,
+          forceLoadAllTextures: false,
+          enableCape: true,
+          threadPoolSize: 8,
+          enableLogStdOut: false,
+          cacheExpiry: 1,
+          forceUpdateSkull: false,
+          enableLocalProfileCache: false,
+          enableCacheAutoClean: true,
+          forceDisableCache: true,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    // Полный сброс кэша CSL — иначе красный Mojang остаётся вместо Founder's
+    try {
+      const cacheRoot = path.join(cslRoot, 'caches');
+      if (fs.existsSync(cacheRoot)) {
+        fs.rmSync(cacheRoot, { recursive: true, force: true });
+      }
+    } catch { /* ignore */ }
+
+    neutralizeConflictingCapeMods(instanceDir);
+  }
+
+  /**
+   * Fabulously Optimized и др. тянут cape-provider (Cosmetica / OptiFine / minecraftcapes).
+   * Он рисует плащ ПОВЕРХ CSL — поэтому в игре «Mojang Studios», хотя LocalSkin = Founder's.
+   * Отключаем оверлеи, чтобы работали LocalSkin и ACTIVE с Microsoft.
+   */
+  function neutralizeConflictingCapeMods(instanceDir: string): void {
+    try {
+      const cfgDir = path.join(instanceDir, 'config', 'cape-provider');
+      fs.mkdirSync(cfgDir, { recursive: true });
+      writeJSON(path.join(cfgDir, 'config.json'), {
+        activeProviderIds: [],
+        useDefaultProvider: false,
+        onlyLoadForSelf: true,
+        enableElytraTexture: false,
+        animatedCapesHandling: 'OFF',
+        remoteCustomProviders: [],
+        loadProvidersFromMods: false,
+        loadSimpleLocalProvidersFromFilesystem: false,
+        activateExternalProvidersOnInitialLoad: false,
+        knownAutoActivatingProviderIdsFirstTimeMissing: {},
+      });
+      const rootCape = path.join(cfgDir, 'cape.png');
+      if (fs.existsSync(rootCape)) {
+        try {
+          fs.renameSync(rootCape, `${rootCape}.disabled-by-uclient`);
+        } catch { /* ignore */ }
+      }
+      console.log('[cosmetics] cape-provider config neutralized');
+    } catch (err) {
+      console.warn('[cosmetics] cape-provider config neutralize failed:', err);
+    }
+
+    // Конфиг модпак может откатить — jar надёжнее выключить
+    try {
+      const modsDir = path.join(instanceDir, 'mods');
+      if (!fs.existsSync(modsDir)) return;
+      for (const name of fs.readdirSync(modsDir)) {
+        if (!/^cape-provider/i.test(name) || !name.endsWith('.jar')) continue;
+        const from = path.join(modsDir, name);
+        const to = path.join(modsDir, `${name}.disabled-by-uclient`);
+        if (fs.existsSync(to)) {
+          try { fs.unlinkSync(from); } catch { /* already disabled */ }
+          continue;
+        }
+        fs.renameSync(from, to);
+        console.log('[cosmetics] disabled conflicting mod:', name);
+      }
+    } catch (err) {
+      console.warn('[cosmetics] cape-provider jar disable failed:', err);
+    }
+  }
+
+  function cslCacheDir(): string {
+    const dir = path.join(appDataDir, 'cache', 'customskinloader');
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  /** Скопировать кэшированный CSL jar в mods инстанса (синхронно, перед стартом MC). */
+  function copyCachedCslJarToInstance(instanceDir: string): boolean {
+    const modsDir = path.join(instanceDir, 'mods');
+    fs.mkdirSync(modsDir, { recursive: true });
+    if (fs.readdirSync(modsDir).some((f) => /customskinloader/i.test(f))) return true;
+    const cache = cslCacheDir();
+    const cached = fs.existsSync(cache)
+      ? fs.readdirSync(cache).find((f) => /customskinloader/i.test(f) && f.endsWith('.jar'))
+      : undefined;
+    if (!cached) return false;
+    try {
+      fs.copyFileSync(path.join(cache, cached), path.join(modsDir, cached));
+      console.log('[cosmetics] CSL jar restored from cache →', cached);
+      return true;
+    } catch (err) {
+      console.warn('[cosmetics] CSL cache copy failed:', err);
+      return false;
+    }
+  }
+
+  /** Поставить CustomSkinLoader из Modrinth (+ кэш), если ещё нет */
+  async function ensureCustomSkinLoader(
+    instanceDir: string,
+    loader: string,
+    mcVersion: string,
+  ): Promise<boolean> {
+    const modsDir = path.join(instanceDir, 'mods');
+    fs.mkdirSync(modsDir, { recursive: true });
+    if (fs.readdirSync(modsDir).some((f) => /customskinloader/i.test(f))) return true;
+    if (copyCachedCslJarToInstance(instanceDir)) return true;
+
+    const loaderKey = (loader || 'fabric').toLowerCase();
+    if (loaderKey === 'vanilla') {
+      console.log('[cosmetics] CSL skipped (vanilla — только upload на аккаунт)');
+      return false;
+    }
+
+    const fetchVersions = async (gameVer?: string): Promise<any[]> => {
+      const params = new URLSearchParams();
+      params.set('loaders', JSON.stringify([loaderKey]));
+      if (gameVer) params.set('game_versions', JSON.stringify([gameVer]));
+      const qs = params.toString();
+      const headers = { 'User-Agent': 'UndefinedClient/cosmetics' };
+      let verRes = await fetch(
+        `https://api.modrinth.com/v2/project/customskinloader/version?${qs}`,
+        { headers },
+      );
+      if (!verRes.ok) {
+        verRes = await fetch(
+          `https://api.modrinth.com/v2/project/idDyhF5z/version?${qs}`,
+          { headers },
+        );
+      }
+      if (!verRes.ok) return [];
+      const versions = (await verRes.json()) as any[];
+      return Array.isArray(versions) ? versions : [];
+    };
+
+    try {
+      let versions = await fetchVersions(mcVersion);
+      if (!versions.length) {
+        console.warn('[cosmetics] CSL: нет версии для', loaderKey, mcVersion, '— fallback без game_versions');
+        versions = await fetchVersions();
+      }
+      const version = versions[0];
+      const file = version?.files?.find((f: any) => f.primary) || version?.files?.[0];
+      if (!file?.url) {
+        console.warn('[cosmetics] CSL: пустой список файлов Modrinth');
+        return false;
+      }
+
+      const cacheDest = path.join(cslCacheDir(), file.filename);
+      if (!fs.existsSync(cacheDest)) {
+        await downloadModrinthFile(file.url, cacheDest, {
+          reason: 'standalone',
+          expectedSize: file.size,
+          sha1: file.hashes?.sha1,
+        });
+      }
+      const dest = path.join(modsDir, file.filename);
+      fs.copyFileSync(cacheDest, dest);
+      const ok = fs.existsSync(dest);
+      console.log('[cosmetics] CSL installed', { dest, ok, ver: version?.version_number });
+      return ok;
+    } catch (err) {
+      console.warn('[cosmetics] CustomSkinLoader install failed:', err);
+      return false;
+    }
+  }
+
+  /** Записать LocalSkin (+ CSL) во все известные сборки — клик в UI без buildId */
+  async function mirrorLocalCosmeticsToBuilds(
+    username: string,
+    skinPng: Buffer | null,
+    capePng: Buffer | null,
+    accountType: string,
+    prefer?: {
+      buildId?: string;
+      loader?: string;
+      gameVersion?: string;
+      useLocalCape?: boolean;
+    },
+  ): Promise<{ local: boolean; csl: boolean }> {
+    let local = false;
+    let csl = false;
+    const builds = readJSON(buildsPath) || [];
+    const seen = new Set<string>();
+    const useLocalCape = prefer?.useLocalCape !== false;
+
+    const targets: { id: string; loader: string; gameVersion: string }[] = [];
+    if (prefer?.buildId) {
+      targets.push({
+        id: String(prefer.buildId),
+        loader: prefer.loader || 'fabric',
+        gameVersion: prefer.gameVersion || '1.20.1',
+      });
+    }
+    for (const b of builds) {
+      if (!b?.id) continue;
+      targets.push({
+        id: String(b.id),
+        loader: String(b.loader || 'fabric'),
+        gameVersion: String(b.gameVersion || '1.20.1'),
+      });
+    }
+
+    for (const t of targets) {
+      const buildId = t.id.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+      if (!buildId || seen.has(buildId)) continue;
+      seen.add(buildId);
+      const instanceDir = getInstanceRoot(buildId);
+      if (!fs.existsSync(instanceDir) && prefer?.buildId !== t.id && prefer?.buildId !== buildId) {
+        continue;
+      }
+      try {
+        fs.mkdirSync(instanceDir, { recursive: true });
+        writeLocalCosmetics(instanceDir, username, skinPng, capePng, accountType, {
+          useLocalCape,
+        });
+        local = true;
+        if (String(t.loader).toLowerCase() !== 'vanilla') {
+          if (await ensureCustomSkinLoader(instanceDir, t.loader, t.gameVersion)) csl = true;
+        }
+      } catch (err) {
+        console.warn('[cosmetics] mirror to build failed', buildId, err);
+      }
+    }
+    return { local, csl };
+  }
+
+  /**
+   * Применить активный скин/плащ: upload на аккаунт + LocalSkin в инстансе.
+   * cosmetics: { skinId?, capeId?, skinDataUrl?, capeDataUrl?, variant?, buildId?, loader?, gameVersion? }
+   */
+  async function applyCosmetics(account: any, cosmetics: any): Promise<{
+    success: boolean;
+    uploaded?: boolean;
+    capeSwitched?: boolean;
+    local?: boolean;
+    csl?: boolean;
+    error?: string;
+    rateLimited?: boolean;
+    openWeb?: string;
+  }> {
+    const skinPng =
+      resolveSkinPng(cosmetics?.skinDataUrl) || resolveSkinPng(cosmetics?.skinId);
+    const capePngRaw =
+      resolveSkinPng(cosmetics?.capeDataUrl) || resolveSkinPng(cosmetics?.capeId);
+    const variant: 'classic' | 'slim' =
+      cosmetics?.variant === 'slim' ? 'slim' : 'classic';
+    const username = account?.name || account?.username || 'Player';
+    const accType = account?.meta?.type || account?.type;
+    const localCapeId = String(cosmetics?.capeId || '');
+    const isOfficialMsaCape = localCapeId.startsWith('cape-msa-');
+    const hideCape = cosmetics?.hideCape === true || cosmetics?.capeId === '';
+    // Официальный MSA тоже в LocalSkin — актуальный PNG выбора (не кэш MojangAPI)
+    const useLocalCape = !hideCape && !!capePngRaw && !!localCapeId;
+    const capePng = useLocalCape ? capePngRaw : null;
+
+    let uploaded = false;
+    let capeSwitched = false;
+    let uploadError: string | undefined;
+    let openWeb: string | undefined;
+
+    // LocalSkin/CSL во все сборки (или в указанный buildId) — до upload, чтобы 429 не ломал игру
+    let local = false;
+    let csl = false;
+    if (skinPng || capePng || (accType === 'msa' && (isOfficialMsaCape || hideCape))) {
+      const mirrored = await mirrorLocalCosmeticsToBuilds(
+        username,
+        skinPng,
+        capePng,
+        accType,
+        {
+          buildId: cosmetics?.buildId ? String(cosmetics.buildId) : undefined,
+          loader: cosmetics?.loader,
+          gameVersion: cosmetics?.gameVersion,
+          useLocalCape,
+        },
+      );
+      local = mirrored.local;
+      csl = mirrored.csl;
+    } else if (cosmetics?.buildId) {
+      // Только конфиг loadlist (MSA без ElyBy), PNG не трогаем
+      const instanceDir = getInstanceRoot(String(cosmetics.buildId));
+      fs.mkdirSync(instanceDir, { recursive: true });
+      writeLocalCosmetics(instanceDir, username, null, null, accType, { useLocalCape: false });
+      local = true;
+      if (String(cosmetics.loader || 'vanilla').toLowerCase() !== 'vanilla') {
+        csl = await ensureCustomSkinLoader(
+          instanceDir,
+          cosmetics.loader || 'fabric',
+          cosmetics.gameVersion || '1.20.1',
+        );
+      }
+    }
+
+    const prevMeta = readActiveCosmeticsMeta();
+    // Skip upload только если этот скин УЖЕ успешно залит (не путать с desired skinId)
+    const sameSkin =
+      !cosmetics?.forceSkinUpload
+      && !!cosmetics?.skinId
+      && prevMeta?.uploadedSkinId === cosmetics.skinId
+      && prevMeta?.uploadedVariant === variant;
+
+    if (skinPng && !sameSkin) {
+      const up = await uploadSkinToAccount(account, skinPng, variant);
+      uploaded = up.ok;
+      if (!up.ok && up.error !== 'offline') {
+        if (/429|too many/i.test(String(up.error))) {
+          uploadError = 'rate_limited';
+        } else {
+          uploadError = up.error;
+        }
+      }
+      if (!up.ok && up.openWeb) openWeb = 'https://ely.by/skins';
+      if (up.ok && cosmetics?.skinId) {
+        patchActiveCosmeticsMeta({
+          uploadedSkinId: cosmetics.skinId,
+          uploadedVariant: variant,
+        });
+      }
+    } else if (sameSkin) {
+      console.log('[cosmetics] skin upload skipped (confirmed uploaded)', cosmetics?.skinId);
+    }
+
+    if (accType === 'msa') {
+      try {
+        if (isOfficialMsaCape) {
+          const mojangId = String(
+            cosmetics?.mojangCapeId
+            || mojangCapeIdFromLocalId(localCapeId, account?.uuid),
+          ).trim();
+          console.log('[cosmetics] MSA cape switch', {
+            localCapeId,
+            mojangId,
+            useLocalCape,
+            hasCapePng: !!capePng,
+          });
+          if (mojangId) {
+            const metaNow = readActiveCosmeticsMeta();
+            const profileActive = String(metaNow?.profileActiveCapeId || '');
+            // На запуске форсируем PUT, если выбор UI ≠ реальный ACTIVE с профиля
+            const needForce =
+              cosmetics?.forceCapeSwitch === true
+              || !profileActive
+              || profileActive !== mojangId;
+            const sw = await switchMsaCape(account, mojangId, { force: needForce });
+            if (sw.account) account = sw.account;
+            if (sw.rateLimited) {
+              uploadError = uploadError || 'rate_limited';
+            } else if (sw.error === 'cape_mismatch') {
+              uploadError = uploadError || 'cape_mismatch';
+              console.warn('[cosmetics] cape mismatch after PUT', sw.actualCapeId);
+            } else if (sw.applied || sw.skipped) {
+              capeSwitched = true;
+            }
+          }
+        } else if (cosmetics?.hideCape === true || cosmetics?.capeId === '') {
+          const eml = await loadEML();
+          await new eml.Skin(account).hideCape();
+          confirmMsaCapeId(String(account?.uuid || ''), null);
+          capeSwitched = true;
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn('[cosmetics] MSA cape switch failed:', message, 'localId=', localCapeId);
+        uploadError = uploadError || message;
+      }
+    }
+
+    // Кэш активного комплекта (на случай запуска без dataUrl).
+    // mojangCapeId здесь НЕ пишем из выбора UI — только desired*; confirmed обновляет switchMsaCape/sync.
+    try {
+      const activeDir = path.join(appDataDir, 'active-cosmetics');
+      fs.mkdirSync(activeDir, { recursive: true });
+      if (skinPng) fs.writeFileSync(path.join(activeDir, 'skin.png'), skinPng);
+      // Кэш превью: для официального MSA тоже сохраняем PNG (UI), но не в LocalSkin
+      if (capePngRaw) fs.writeFileSync(path.join(activeDir, 'cape.png'), capePngRaw);
+      else if (fs.existsSync(path.join(activeDir, 'cape.png'))) {
+        fs.unlinkSync(path.join(activeDir, 'cape.png'));
+      }
+      const prev = readActiveCosmeticsMeta();
+      const desiredMojang =
+        cosmetics?.mojangCapeId
+        || (isOfficialMsaCape
+          ? mojangCapeIdFromLocalId(localCapeId, account?.uuid)
+          : null)
+        || prev?.desiredMojangCapeId
+        || null;
+      writeJSON(path.join(activeDir, 'meta.json'), {
+        ...prev,
+        variant,
+        skinId: cosmetics?.skinId || null,
+        desiredSkinId: cosmetics?.skinId || prev?.desiredSkinId || null,
+        // confirmed upload — только после ok (patch выше); здесь не затираем
+        uploadedSkinId: prev?.uploadedSkinId ?? null,
+        uploadedVariant: prev?.uploadedVariant ?? null,
+        capeId: cosmetics?.capeId || null,
+        desiredMojangCapeId: desiredMojang,
+        // confirmed ACTIVE — не затирать желаемым id (баг «плащ не применяется»)
+        mojangCapeId: prev?.mojangCapeId ?? null,
+        username,
+        skinMetaV2: true,
+        capeMetaV2: true,
+      });
+    } catch {
+      /* ignore */
+    }
+
+    return {
+      success: uploaded || capeSwitched || local || !!skinPng,
+      uploaded,
+      capeSwitched,
+      local,
+      csl,
+      // 429 не фатален, если LocalSkin+CSL реально готовы; иначе оставляем ошибку
+      error: uploadError === 'rate_limited' && local && csl ? undefined : uploadError,
+      rateLimited: uploadError === 'rate_limited' || undefined,
+      openWeb,
+    };
+  }
+
+  ipcMain.handle('launcher:cosmetics:apply', async (_event, payload: any) => {
+    try {
+      return await applyCosmetics(payload?.account, payload);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  });
+
+  /**
+   * Прямой запрос Microsoft Profile — полный список owned capes.
+   * Session-profile Mojang отдаёт только НАДЕТЫЙ плащ — из‑за него в UI был один.
+   */
+  async function fetchMicrosoftProfileCosmetics(account: any): Promise<{
+    skins: { id: string; url: string; state: string; variant: string }[];
+    capes: { id: string; url: string; state: string; alias: string }[];
+  }> {
+    const req = await fetch('https://api.minecraftservices.com/minecraft/profile', {
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    });
+    if (!req.ok) {
+      const errorText = await req.text();
+      throw new Error(`Microsoft profile HTTP ${req.status}: ${errorText.slice(0, 200)}`);
+    }
+    const data = await req.json();
+    const skins = (data?.skins || []).map((skin: any) => ({
+      id: String(skin.id),
+      url: String(skin.url),
+      state: String(skin.state || '').toLowerCase() === 'active' ? 'active' : 'inactive',
+      variant: String(skin.variant || '').toUpperCase() === 'SLIM' ? 'slim' : 'classic',
+    }));
+    const capes = (data?.capes || []).map((cape: any) => ({
+      id: String(cape.id),
+      url: String(cape.url),
+      state: String(cape.state || '').toLowerCase() === 'active' ? 'active' : 'inactive',
+      alias: String(cape.alias || cape.id || 'cape'),
+    }));
+    return { skins, capes };
+  }
+
+  /** Все скины/плащи профиля MSA (полный список) и Ely */
+  ipcMain.handle('launcher:cosmetics:listProfile', async (_event, account: any) => {
+    try {
+      let acc = account;
+      const type = acc?.meta?.type || acc?.type;
+      if (type !== 'msa' && type !== 'yggdrasil') {
+        return { success: false, error: 'unsupported', skins: [], capes: [] };
+      }
+
+      // Протухший MSA-токен — обновить и повторить
+      if (type === 'msa') {
+        const withConfirmed = async (profileAcc: any) => {
+          const profile = await fetchMicrosoftProfileCosmetics(profileAcc);
+          const activeCape = (profile.capes || []).find((c) => c.state === 'active');
+          // Снять «яд» meta: confirmed = реальный ACTIVE с аккаунта
+          confirmMsaCapeId(String(profileAcc?.uuid || ''), activeCape?.id || null);
+          return profile;
+        };
+        try {
+          return {
+            success: true,
+            ...(await withConfirmed(acc)),
+          };
+        } catch (firstErr) {
+          const eml = await loadEML();
+          try {
+            const refreshed = await new eml.MicrosoftAuth(mainWindow).refresh(acc);
+            if (refreshed?.accessToken) {
+              acc = refreshed;
+              return {
+                success: true,
+                account: refreshed,
+                ...(await withConfirmed(acc)),
+              };
+            }
+          } catch {
+            /* fall through */
+          }
+          const message = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          return { success: false, error: message, skins: [], capes: [] };
+        }
+      }
+
+      // Ely: полный каталог плащей API не отдаёт — только текущие текстуры
+      const eml = await loadEML();
+      const skinApi = new eml.Skin(acc);
+      await skinApi.reload();
+      const skins = await skinApi.getSkins(false);
+      const capes = await skinApi.getCapes(false);
+      return { success: true, skins, capes };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message, skins: [], capes: [] };
+    }
+  });
+
+  /**
+   * Переключить официальный плащ MSA (capeId) или скрыть (null).
+   * Кастомный PNG через это API надеть нельзя.
+   */
+  ipcMain.handle(
+    'launcher:cosmetics:switchCape',
+    async (_event, account: any, capeId: string | null) => {
+      try {
+        const type = account?.meta?.type || account?.type;
+        if (type !== 'msa') {
+          return { success: false, error: 'msa_only' };
+        }
+        let acc = account;
+        if (capeId) {
+          const mojangId = capeId.startsWith('cape-msa-')
+            ? mojangCapeIdFromLocalId(capeId, acc?.uuid)
+            : capeId;
+          if (!mojangId) {
+            return { success: false, error: 'invalid_cape_id' };
+          }
+          const sw = await switchMsaCape(acc, mojangId, { force: true });
+          if (sw.account) acc = sw.account;
+          if (sw.rateLimited) {
+            return { success: false, error: 'rate_limited', account: sw.account };
+          }
+          if (sw.error === 'cape_mismatch') {
+            return {
+              success: false,
+              error: 'cape_mismatch',
+              actualCapeId: sw.actualCapeId,
+              account: sw.account,
+            };
+          }
+          if (!sw.applied && !sw.skipped) {
+            return {
+              success: false,
+              error: sw.error || 'cape_not_applied',
+              account: sw.account,
+            };
+          }
+          return {
+            success: true,
+            applied: !!sw.applied,
+            skipped: !!sw.skipped,
+            actualCapeId: sw.actualCapeId,
+            account: acc !== account ? acc : undefined,
+          };
+        }
+        const eml = await loadEML();
+        await new eml.Skin(acc).hideCape();
+        confirmMsaCapeId(String(acc?.uuid || ''), null);
+        // Без GET /profile — экономим лимит Microsoft API
+        return { success: true, applied: true, account: acc !== account ? acc : undefined };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn('[cosmetics] switchCape IPC failed:', message);
+        return { success: false, error: message };
+      }
+    },
+  );
+
+  /* ===== VERSIONS ===== */
+
+  const VERSION_MANIFEST_URLS = [
+    'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json',
+    'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json',
+  ];
+
+  /** Манифест версий MC: сначала piston-meta (стабильнее в РФ), затем launchermeta */
+  async function fetchVersionManifest(): Promise<any | null> {
+    for (const url of VERSION_MANIFEST_URLS) {
+      try {
+        return await fetchJsonCached(url);
+      } catch {
+        /* следующий зеркало */
+      }
+    }
+    return null;
+  }
+
+  ipcMain.handle('launcher:versions:list', async () => {
+    try {
+      const data = await fetchVersionManifest();
+      return Array.isArray(data?.versions) ? data.versions : [];
+    } catch {
+      return [];
+    }
+  });
+
+  /* ===== LOADER VERSIONS ===== */
+
+  function compareSemver(a: string, b: string): number {
+    const pa = a.split(/[^0-9]/).filter(Boolean).map(Number);
+    const pb = b.split(/[^0-9]/).filter(Boolean).map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] || 0;
+      const nb = pb[i] || 0;
+      if (na !== nb) return na - nb;
+    }
+    return a.localeCompare(b);
+  }
+
+  const mojangManifestCache: { ts: number; release: string; snapshot: string } = { ts: 0, release: '', snapshot: '' };
+
+  async function resolveMcVersion(mcVersion: string): Promise<string> {
+    if (mcVersion !== 'latest_release' && mcVersion !== 'latest_snapshot') return mcVersion;
+    const now = Date.now();
+    if (!mojangManifestCache.release || now - mojangManifestCache.ts > 10 * 60 * 1000) {
+      const data = await fetchVersionManifest();
+      if (!data) return '';
+      mojangManifestCache.release = data.latest?.release || '';
+      mojangManifestCache.snapshot = data.latest?.snapshot || '';
+      mojangManifestCache.ts = now;
+    }
+    return mcVersion === 'latest_snapshot' ? mojangManifestCache.snapshot : mojangManifestCache.release;
+  }
+
+  ipcMain.handle('launcher:loader:versions', async (_event, loader: string, mcVersion: string) => {
+    try {
+      const mc = await resolveMcVersion(mcVersion);
+      if (!mc) return [];
+      if (loader === 'fabric' || loader === 'quilt') {
+        const url = loader === 'fabric'
+          ? `https://meta.fabricmc.net/v2/versions/loader/${mc}`
+          : `https://meta.quiltmc.org/v3/versions/loader/${mc}`;
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        const versions = (data as any[]).map(v => v.loader?.version).filter(Boolean);
+        return versions.sort((a: string, b: string) => compareSemver(b, a));
+      }
+      if (loader === 'forge') {
+        const res = await fetch('https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml');
+        if (!res.ok) return [];
+        const text = await res.text();
+        const match = text.match(/<version>([^<]+)<\/version>/g);
+        if (!match) return [];
+        const versions = match.map(v => v.replace(/<\/?version>/g, '')).filter(v => v.startsWith(mc + '-'));
+        return versions.sort((a: string, b: string) => compareSemver(b, a));
+      }
+      if (loader === 'neoforge') {
+        const parts = mc.split('.');
+        const prefix = parts.length >= 3 ? parts[1] + '.' + parts[2] : parts[1] + '.0';
+        const res = await fetch('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml');
+        if (!res.ok) return [];
+        const text = await res.text();
+        const match = text.match(/<version>([^<]+)<\/version>/g);
+        if (!match) return [];
+        const versions = match.map(v => v.replace(/<\/?version>/g, '')).filter(v => v.startsWith(prefix));
+        return versions.sort((a: string, b: string) => compareSemver(b, a));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+
+  /* ===== LAUNCH ===== */
+
+  function formatBytes(bytes: number): string {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return bytes + ' B';
+  }
+
+  let lastProgressSent: Record<string, number> = {};
+  const PROGRESS_THROTTLE: Record<string, number> = { download: 100, log: 50, debug: 50 };
+
+  function sendProgress(data: any): void {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const throttle = PROGRESS_THROTTLE[data.kind];
+      if (throttle) {
+        const now = Date.now();
+        if (now - (lastProgressSent[data.kind] || 0) < throttle) return;
+        lastProgressSent[data.kind] = now;
+      }
+      mainWindow.webContents.send('launcher:progress', data);
+    }
+    for (const sink of progressSinks) {
+      try { sink(data); } catch { /* ignore */ }
+    }
+  }
+
+  function loadBuildsList(): any[] {
+    return readJSON(path.join(appDataDir, 'builds.json'));
+  }
+
+  function adoptDetectedGame(game: DetectedGame, emitLaunching: boolean): void {
+    activeGameBuildId = game.buildId;
+    saveRunningGameMarker(appDataDir, {
+      buildId: game.buildId,
+      name: game.name,
+      gameVersion: game.gameVersion,
+      loader: game.loader,
+      startedAt: game.startedAt,
+      pid: game.pid,
+    });
+    startAdoptedGameWatch(game, ({ buildId }) => {
+      clearRunningGameMarker(appDataDir);
+      activeGameBuildId = null;
+      sendProgress({ kind: 'close', key: 'smp.closed', params: { code: 0 }, code: 0, adopted: true, buildId });
+      setDiscordPresence(null);
+    });
+    if (emitLaunching) {
+      sendProgress({
+        kind: 'launching',
+        key: 'smp.launchingMc',
+        adopted: true,
+        buildId: game.buildId,
+        name: game.name,
+        gameVersion: game.gameVersion,
+        loader: game.loader,
+        pid: game.pid,
+        startedAt: game.startedAt,
+      });
+    }
+    if (game.name) {
+      setDiscordPresence({
+        name: game.name,
+        gameVersion: game.gameVersion || '?',
+        loader: game.loader || 'vanilla',
+      });
+    }
+  }
+
+  async function detectAndAdoptRunningGame(opts?: { emit?: boolean }): Promise<{
+    ok: boolean;
+    running: boolean;
+    buildId?: string;
+    name?: string;
+    gameVersion?: string;
+    loader?: string;
+    pid?: number;
+    startedAt?: number;
+  }> {
+    if (launcherInstance || launchInProgress) {
+      const marker = loadRunningGameMarker(appDataDir);
+      return {
+        ok: true,
+        running: Boolean(marker?.buildId || activeGameBuildId),
+        buildId: activeGameBuildId || marker?.buildId,
+        name: marker?.name,
+        gameVersion: marker?.gameVersion,
+        loader: marker?.loader,
+        pid: marker?.pid || undefined,
+        startedAt: marker?.startedAt,
+      };
+    }
+    const existing = getAdoptedWatch();
+    if (existing && isPidAlive(existing.pid)) {
+      const marker = loadRunningGameMarker(appDataDir);
+      return {
+        ok: true,
+        running: true,
+        buildId: existing.buildId,
+        name: marker?.name,
+        gameVersion: marker?.gameVersion,
+        loader: marker?.loader,
+        pid: existing.pid,
+        startedAt: marker?.startedAt,
+      };
+    }
+
+    const builds = loadBuildsList();
+    const detected = await detectRunningMinecraft({
+      appDataDir,
+      builds: builds.map((b: any) => ({
+        id: String(b.id || ''),
+        name: b.name,
+        gameVersion: b.gameVersion,
+        loader: b.loader,
+      })),
+    });
+    if (!detected) {
+      clearRunningGameMarker(appDataDir);
+      stopAdoptedGameWatch();
+      activeGameBuildId = null;
+      return { ok: true, running: false };
+    }
+    adoptDetectedGame(detected, opts?.emit !== false);
+    return {
+      ok: true,
+      running: true,
+      buildId: detected.buildId,
+      name: detected.name,
+      gameVersion: detected.gameVersion,
+      loader: detected.loader,
+      pid: detected.pid,
+      startedAt: detected.startedAt,
+    };
+  }
+
+  async function resolveJavaVersion(gameVersion: string): Promise<number> {
+    const staticMapping: Record<string, number> = {
+      'latest_release': 25,
+      'latest_snapshot': 25,
+    };
+    try {
+      const manifest = await fetchVersionManifest();
+      if (!manifest) throw new Error('no_manifest');
+      const resolveId = staticMapping[gameVersion]
+        ? (gameVersion === 'latest_release' ? manifest.latest?.release : gameVersion === 'latest_snapshot' ? manifest.latest?.snapshot : '')
+        : gameVersion;
+      const entry = manifest.versions?.find((v: any) => v.id === resolveId);
+      if (entry?.url) {
+        const verData = await fetchJsonCached(entry.url);
+        const majorVersion = verData.javaVersion?.majorVersion;
+        if (typeof majorVersion === 'number' && majorVersion >= 8) return majorVersion;
+      }
+    } catch {}
+    if (staticMapping[gameVersion]) return staticMapping[gameVersion];
+    // Fallback heuristic
+    const parts = gameVersion.split('.').map(Number);
+    if (parts.some(isNaN)) return 21;
+    if (parts[0] > 1) return 25;
+    if (parts[0] === 1 && parts[1] >= 22) return 21;
+    if (parts[0] === 1 && parts[1] >= 21) return 21;
+    if (parts[0] === 1 && parts[1] >= 18) return 17;
+    if (parts[0] === 1 && parts[1] >= 17) return 16;
+    return 8;
+  }
+
+  const JAVA_MANAGED_VERSIONS = [8, 11, 16, 17, 21, 24, 25];
+
+  function javaToolsDir(): string {
+    return path.join(appDataDir, 'tools');
+  }
+
+  async function ensureJava(javaVer: number, onProgress?: (data: { status: 'download' | 'extract' | 'done'; ver: number }) => void): Promise<string> {
+    const toolsDir = javaToolsDir();
+    const javaDir = path.join(toolsDir, `java${javaVer}`);
+    const binName = javaBinaryName();
+    const javaExe = path.join(javaDir, 'bin', binName);
+    if (fs.existsSync(javaExe)) {
+      if (onProgress) onProgress({ status: 'done', ver: javaVer });
+      return javaExe;
+    }
+
+    if (onProgress) onProgress({ status: 'download', ver: javaVer });
+
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const osName = isWin ? 'windows' : isMac ? 'mac' : 'linux';
+    // Adoptium использует x64/aarch64, Zulu использует x86_64/aarch64
+    const arch = process.arch === 'arm64' ? 'aarch64' : (process.arch === 'x64' ? 'x64' : 'x86');
+    const zuluArch = process.arch === 'arm64' ? 'aarch64' : (process.arch === 'x64' ? 'x86_64' : 'x86');
+    const ext = isWin ? 'zip' : 'tar.gz';
+
+    const downloadUrls = [
+      `https://api.adoptium.net/v3/binary/latest/${javaVer}/ga/${osName}/${arch}/jdk/hotspot/normal/eclipse`,
+      `https://api.adoptium.net/v3/binary/latest/${javaVer}/ga/${osName}/${arch}/jdk/hotspot/normal/eclipse?project=jdk`,
+      `https://api.azul.com/zulu/download/community/v1.0/bundles/latest/binary/?java_version=${javaVer}&os=${osName}&arch=${zuluArch}&ext=${ext}&javafx=false&community=true`,
+    ];
+
+    const reportJavaProgress = (receivedNow: number, totalBytes: number, speed?: number) => {
+      sendProgress({
+        kind: 'download',
+        key: 'smp.downloadJava',
+        params: { ver: javaVer },
+        total: { size: totalBytes, amount: 1 },
+        downloaded: { size: receivedNow, amount: 0 },
+        speed,
+      });
+    };
+
+    let buffer: Buffer | null = null;
+    for (const url of downloadUrls) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(600000) });
+        if (!res.ok) continue;
+        const totalBytes = Number(res.headers.get('content-length') || 0);
+        const reader = res.body?.getReader();
+        if (!reader) {
+          buffer = Buffer.from(await res.arrayBuffer());
+          break;
+        }
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        let lastSpeed = 0;
+        let lastSample = Date.now();
+        if (totalBytes > 0) reportJavaProgress(0, totalBytes);
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+          received += value.length;
+          const now = Date.now();
+          if (now - lastSample >= 150) {
+            const dt = (now - lastSample) / 1000;
+            const speed = dt > 0 ? (received - lastSpeed) / dt : 0;
+            lastSpeed = received;
+            lastSample = now;
+            reportJavaProgress(received, totalBytes, speed);
+          }
+        }
+        buffer = Buffer.concat(chunks);
+        reportJavaProgress(received, totalBytes);
+        break;
+      } catch {}
+    }
+
+    if (!buffer) throw new Error(`Failed to download Java ${javaVer}`);
+
+    if (!fs.existsSync(toolsDir)) fs.mkdirSync(toolsDir, { recursive: true });
+    const archivePath = path.join(toolsDir, `java${javaVer}.${ext}`);
+    fs.writeFileSync(archivePath, buffer);
+
+    if (onProgress) onProgress({ status: 'extract', ver: javaVer });
+    else sendProgress({ kind: 'status', key: 'smp.extractJava', params: { ver: javaVer } });
+
+    if (isWin) {
+      execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${toolsDir}' -Force"`, { timeout: 60000 });
+    } else {
+      execSync(`tar -xzf "${archivePath}" -C "${toolsDir}"`, { timeout: 60000 });
+    }
+    try { fs.unlinkSync(archivePath); } catch {}
+
+    const entries = fs.readdirSync(toolsDir);
+    const jdkDir = entries.find(e =>
+      (e.startsWith('jdk-') || e.startsWith(`jdk${javaVer}`) || e.startsWith('zulu'))
+      && !e.includes('.tar') && !e.includes('.zip'),
+    );
+    if (jdkDir) {
+      const extractedExe = path.join(toolsDir, jdkDir, 'bin', binName);
+      if (fs.existsSync(extractedExe)) {
+        try { fs.renameSync(path.join(toolsDir, jdkDir), javaDir); } catch {}
+      }
+    }
+
+    if (!fs.existsSync(javaExe)) throw new Error(`Java ${javaVer} not found after extraction`);
+
+    // На Linux/macOS выставляем права на исполнение
+    if (!isWin) {
+      try {
+        fs.chmodSync(javaExe, 0o755);
+        const binDir = path.dirname(javaExe);
+        for (const file of fs.readdirSync(binDir)) {
+          try { fs.chmodSync(path.join(binDir, file), 0o755); } catch {}
+        }
+      } catch {}
+    }
+
+    return javaExe;
+  }
+
+  let javaRuntimesCache: { at: number; result: { name: string; path: string; version: number; managed: boolean }[] } | null = null;
+  const JAVA_RUNTIMES_CACHE_TTL = 10000;
+
+  function invalidateJavaRuntimesCache(): void {
+    javaRuntimesCache = null;
+  }
+
+  function javaBinaryName(): string {
+    return process.platform === 'win32' ? 'java.exe' : 'java';
+  }
+
+  function parseJavaMajorVersion(text: string, fallbackDir?: string): number {
+    const m = String(text || '').match(/version\s+"(\d+)(?:\.(\d+))?/);
+    if (m) return m[1] === '1' ? parseInt(m[2] || '8', 10) : parseInt(m[1], 10);
+    if (fallbackDir) {
+      const dm = path.basename(fallbackDir).match(/(?:jdk|jre|java|zulu|temurin|semeru|corretto)[-_]?(\d{1,2})\b/i)
+        || path.basename(fallbackDir).match(/\b(\d{1,2})(?:\.\d+)*/);
+      if (dm) return parseInt(dm[1], 10);
+    }
+    return 0;
+  }
+
+  function probeJavaExe(javaExe: string): { name: string; path: string; version: number; managed: boolean } | null {
+    try {
+      if (!javaExe || !fs.existsSync(javaExe)) return null;
+      const resolved = fs.realpathSync(javaExe);
+      let version = 0;
+      try {
+        const out = execSync(`"${resolved}" -version 2>&1`, {
+          encoding: 'utf8',
+          timeout: 6000,
+          windowsHide: true,
+        });
+        version = parseJavaMajorVersion(out, path.dirname(path.dirname(resolved)));
+      } catch (err: any) {
+        const mixed = `${err?.stdout || ''}${err?.stderr || ''}${err?.message || ''}`;
+        version = parseJavaMajorVersion(mixed, path.dirname(path.dirname(resolved)));
+      }
+      if (version <= 0) return null;
+      const homeDir = path.dirname(path.dirname(resolved));
+      const managedPrefix = path.join(javaToolsDir(), `java${version}`);
+      const managed = homeDir.toLowerCase() === managedPrefix.toLowerCase()
+        || resolved.toLowerCase().includes(path.join('tools', `java${version}`).toLowerCase());
+      return {
+        name: path.basename(homeDir) || `Java ${version}`,
+        path: resolved,
+        version,
+        managed,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Собирает каталоги JDK/JRE под корнем (глубина 1–2). */
+  function collectJavaHomeDirs(root: string, maxDepth = 2): string[] {
+    const out: string[] = [];
+    if (!root || !fs.existsSync(root)) return out;
+    const walk = (dir: string, depth: number): void => {
+      if (depth > maxDepth) return;
+      let entries: fs.Dirent[] = [];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const full = path.join(dir, ent.name);
+        const javaExe = path.join(full, 'bin', javaBinaryName());
+        if (fs.existsSync(javaExe)) {
+          out.push(full);
+          continue;
+        }
+        if (depth < maxDepth) walk(full, depth + 1);
+      }
+    };
+    // Сам root может быть JAVA_HOME
+    if (fs.existsSync(path.join(root, 'bin', javaBinaryName()))) out.push(root);
+    walk(root, 1);
+    return out;
+  }
+
+  function detectJavaFromPathEnv(): string[] {
+    const found: string[] = [];
+    const pathEnv = process.env.PATH || process.env.Path || '';
+    for (const part of pathEnv.split(path.delimiter)) {
+      const trimmed = String(part || '').trim().replace(/^"|"$/g, '');
+      if (!trimmed) continue;
+      const candidate = path.join(trimmed, javaBinaryName());
+      if (fs.existsSync(candidate)) found.push(candidate);
+    }
+    // where / which
+    try {
+      const cmd = process.platform === 'win32' ? 'where java' : 'which -a java';
+      const out = execSync(cmd, { encoding: 'utf8', timeout: 4000, windowsHide: true });
+      for (const line of out.split(/\r?\n/)) {
+        const p = line.trim().replace(/^"|"$/g, '');
+        if (p && fs.existsSync(p)) found.push(p);
+      }
+    } catch { /* ignore */ }
+    return found;
+  }
+
+  function detectJavaFromWindowsRegistry(): string[] {
+    if (process.platform !== 'win32') return [];
+    const homes: string[] = [];
+    const keys = [
+      'HKLM\\SOFTWARE\\JavaSoft\\JDK',
+      'HKLM\\SOFTWARE\\JavaSoft\\Java Development Kit',
+      'HKLM\\SOFTWARE\\JavaSoft\\JRE',
+      'HKLM\\SOFTWARE\\JavaSoft\\Java Runtime Environment',
+      'HKLM\\SOFTWARE\\Eclipse Adoptium\\JDK',
+      'HKLM\\SOFTWARE\\Semeru\\JDK',
+      'HKLM\\SOFTWARE\\WOW6432Node\\JavaSoft\\JDK',
+      'HKLM\\SOFTWARE\\WOW6432Node\\JavaSoft\\Java Development Kit',
+    ];
+    for (const key of keys) {
+      try {
+        const out = execSync(`reg query "${key}" /s /v JavaHome`, {
+          encoding: 'utf8',
+          timeout: 5000,
+          windowsHide: true,
+        });
+        for (const line of out.split(/\r?\n/)) {
+          const m = line.match(/JavaHome\s+REG_\w+\s+(.+)$/i);
+          if (m?.[1]) homes.push(m[1].trim());
+        }
+      } catch { /* ключ отсутствует */ }
+    }
+    return homes;
+  }
+
+  function detectJavaRuntimes(): { name: string; path: string; version: number; managed: boolean }[] {
+    if (javaRuntimesCache && Date.now() - javaRuntimesCache.at < JAVA_RUNTIMES_CACHE_TTL) {
+      return javaRuntimesCache.result;
+    }
+    const found: { name: string; path: string; version: number; managed: boolean }[] = [];
+    const seen = new Set<string>();
+
+    const addExe = (exe: string): void => {
+      const probed = probeJavaExe(exe);
+      if (!probed) return;
+      const key = probed.path.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      found.push(probed);
+    };
+
+    const addHome = (home: string): void => {
+      if (!home) return;
+      addExe(path.join(home, 'bin', javaBinaryName()));
+    };
+
+    // JAVA_HOME / JDK_HOME
+    addHome(process.env.JAVA_HOME || '');
+    addHome(process.env.JDK_HOME || '');
+
+    // PATH + where/which
+    for (const exe of detectJavaFromPathEnv()) addExe(exe);
+
+    // Реестр Windows
+    for (const home of detectJavaFromWindowsRegistry()) addHome(home);
+
+    const pf = process.env.ProgramFiles || '';
+    const pf86 = process.env['ProgramFiles(x86)'] || '';
+    const local = process.env.LOCALAPPDATA || '';
+    const userProfile = process.env.USERPROFILE || '';
+    const programData = process.env.ProgramData || '';
+
+    const roots: string[] = [
+      javaToolsDir(),
+      pf ? path.join(pf, 'Java') : '',
+      pf ? path.join(pf, 'Eclipse Adoptium') : '',
+      pf ? path.join(pf, 'AdoptOpenJDK') : '',
+      pf ? path.join(pf, 'Microsoft') : '',
+      pf ? path.join(pf, 'Amazon Corretto') : '',
+      pf ? path.join(pf, 'BellSoft') : '',
+      pf ? path.join(pf, 'Zulu') : '',
+      pf ? path.join(pf, 'Semeru') : '',
+      pf ? path.join(pf, 'ojdkbuild') : '',
+      pf ? path.join(pf, 'Common Files', 'Oracle', 'Java') : '',
+      pf86 ? path.join(pf86, 'Java') : '',
+      local ? path.join(local, 'Programs') : '',
+      local ? path.join(local, 'Programs', 'Eclipse Adoptium') : '',
+      userProfile ? path.join(userProfile, 'scoop', 'apps') : '',
+      programData ? path.join(programData, 'chocolatey', 'lib') : '',
+      // macOS / Linux типичные пути
+      '/Library/Java/JavaVirtualMachines',
+      '/usr/lib/jvm',
+      '/usr/lib64/jvm',
+      '/usr/java',
+      '/opt/java',
+      '/opt/jdk',
+      '/usr/local/java',
+      path.join(process.env.HOME || userProfile, '.jdks'),
+      path.join(process.env.HOME || userProfile, '.sdkman', 'candidates', 'java'),
+      path.join(process.env.HOME || userProfile, '.asdf', 'installs', 'java'),
+    ];
+
+    for (const root of roots) {
+      // Под tools/javaN — depth 1 достаточно; у scoop/chocolatey нужна глубина 2–3
+      const depth = /scoop|chocolatey/i.test(root) ? 3 : 2;
+      for (const home of collectJavaHomeDirs(root, depth)) addHome(home);
+    }
+
+    found.sort((a, b) => a.version - b.version || a.name.localeCompare(b.name));
+    javaRuntimesCache = { at: Date.now(), result: found };
+    return found;
+  }
+
+  function listJavaVersions(): {
+    version: number;
+    installed: boolean;
+    managed: boolean;
+    path: string | null;
+    systemPaths: string[];
+    canInstall: boolean;
+    names: string[];
+  }[] {
+    const runtimes = detectJavaRuntimes();
+    const versionSet = new Set<number>(JAVA_MANAGED_VERSIONS);
+    for (const r of runtimes) {
+      if (r.version > 0) versionSet.add(r.version);
+    }
+    const bin = javaBinaryName();
+    return Array.from(versionSet).sort((a, b) => a - b).map((version) => {
+      const managedExe = path.join(javaToolsDir(), `java${version}`, 'bin', bin);
+      const managed = fs.existsSync(managedExe);
+      const ofVersion = runtimes.filter((j) => j.version === version);
+      const systemPaths = ofVersion
+        .filter((j) => !j.managed && j.path.toLowerCase() !== managedExe.toLowerCase())
+        .map((j) => j.path);
+      const names = ofVersion.map((j) => j.name);
+      const installed = managed || systemPaths.length > 0;
+      return {
+        version,
+        installed,
+        managed,
+        path: managed ? managedExe : (systemPaths[0] || null),
+        systemPaths,
+        canInstall: JAVA_MANAGED_VERSIONS.includes(version),
+        names,
+      };
+    });
+  }
+
+  function removeManagedJava(version: number): { success: boolean; error?: string } {
+    const javaDir = path.join(javaToolsDir(), `java${version}`);
+    if (!fs.existsSync(javaDir)) return { success: true };
+    try {
+      fs.rmSync(javaDir, { recursive: true, force: true });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  function bestRuntimeFor(javaVer: number, runtimes: { name: string; path: string; version: number }[]): string | undefined {
+    if (runtimes.length === 0) return undefined;
+    const exact = runtimes.find(j => j.version === javaVer);
+    if (exact) return exact.path;
+    const atLeast = runtimes.filter(j => j.version >= javaVer);
+    if (atLeast.length > 0) {
+      return atLeast.reduce((a, b) => (a.version < b.version ? a : b)).path;
+    }
+    return undefined;
+  }
+
+  function readZipEntry(zipPath: string, entryName: string): Buffer | null {
+    try {
+      const buf = fs.readFileSync(zipPath);
+      // Find EOCD (End of Central Directory Record)
+      let eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4B, 0x05, 0x06]));
+      if (eocd < 0) return null;
+      const cdOffset = buf.readUInt32LE(eocd + 16);
+      const cdEntries = buf.readUInt16LE(eocd + 10);
+      // Search central directory for the entry
+      let pos = cdOffset;
+      const entryNameLower = entryName.replace(/\//g, '\\').toLowerCase();
+      for (let i = 0; i < cdEntries; i++) {
+        if (buf.readUInt32LE(pos) !== 0x02014B50) break;
+        const nameLen = buf.readUInt16LE(pos + 28);
+        const extraLen = buf.readUInt16LE(pos + 30);
+        const commentLen = buf.readUInt16LE(pos + 32);
+        const localOffset = buf.readUInt32LE(pos + 42);
+        const name = buf.toString('utf8', pos + 46, pos + 46 + nameLen).replace(/\//g, '\\').toLowerCase();
+        if (name === entryNameLower) {
+          // Read from local file header
+          let lPos = localOffset;
+          if (buf.readUInt32LE(lPos) !== 0x04034B50) return null;
+          const compMethod = buf.readUInt16LE(lPos + 8);
+          const compSize = buf.readUInt32LE(lPos + 18);
+          const uncompSize = buf.readUInt32LE(lPos + 22);
+          const lNameLen = buf.readUInt16LE(lPos + 26);
+          const lExtraLen = buf.readUInt16LE(lPos + 28);
+          const dataStart = lPos + 30 + lNameLen + lExtraLen;
+          const data = buf.subarray(dataStart, dataStart + compSize);
+          if (compMethod === 0) return data;
+          if (compMethod === 8) return zlib.inflateRawSync(data);
+          return null;
+        }
+        pos += 46 + nameLen + extraLen + commentLen;
+      }
+    } catch {}
+    return null;
+  }
+
+  function tryParseJson(buf: Buffer | null): any {
+    if (!buf) return null;
+    try { return JSON.parse(buf.toString('utf-8')); } catch { return null; }
+  }
+
+  function readFabricModInfo(jarPath: string): { name: string; version: string; id?: string; description?: string } | null {
+    const data = readZipEntry(jarPath, 'fabric.mod.json');
+    if (!data) return null;
+    const json = tryParseJson(data);
+    if (!json) return null;
+    return { name: json.name || json.id || '', version: json.version || '', id: json.id || undefined, description: json.description || undefined };
+  }
+
+  function readQuiltModInfo(jarPath: string): { name: string; version: string; id?: string; description?: string } | null {
+    const data = readZipEntry(jarPath, 'quilt.mod.json');
+    if (!data) return null;
+    const json = tryParseJson(data);
+    if (!json) return null;
+    const ql = json['quilt_loader'];
+    if (ql) return { name: ql.metadata?.name || ql.id || '', version: ql.version || '', id: ql.id || undefined, description: ql.metadata?.description || undefined };
+    return { name: json.name || json.id || '', version: json.version || '', id: json.id || undefined, description: json.description || undefined };
+  }
+
+  function readForgeModInfo(jarPath: string): { name: string; version: string; id?: string; description?: string } | null {
+    // Try META-INF/neoforge.mods.toml first, then META-INF/mods.toml
+    for (const p of ['META-INF/neoforge.mods.toml', 'META-INF/mods.toml']) {
+      const data = readZipEntry(jarPath, p);
+      if (!data) continue;
+      const toml = data.toString('utf-8');
+      // Simple TOML parser for mod metadata
+      const modIdMatch = toml.match(/modId\s*=\s*["']([^"']+)["']/i);
+      const nameMatch = toml.match(/\[\[mods\]\][\s\S]*?(?:modId|name)\s*=\s*["']([^"']+)["']/);
+      const verMatch = toml.match(/version\s*=\s*["']([^"']+)["']/i);
+      const descMatch = toml.match(/description\s*=\s*["']([^"']+)["']/i);
+      let name = nameMatch?.[1] || modIdMatch?.[1] || '';
+      // Try to get display name
+      const displayNameMatch = toml.match(/displayName\s*=\s*["']([^"']+)["']/i);
+      if (displayNameMatch) name = displayNameMatch[1];
+      return { name, version: verMatch?.[1] || '', id: modIdMatch?.[1] || undefined, description: descMatch?.[1] || undefined };
+    }
+    return null;
+  }
+
+  function readPackMcmeta(fileOrDir: string): { name: string; description: string } | null {
+    try {
+      const stat = fs.statSync(fileOrDir);
+      let data: Buffer | null = null;
+      if (stat.isFile()) {
+        data = readZipEntry(fileOrDir, 'pack.mcmeta');
+      } else if (stat.isDirectory()) {
+        const metaPath = path.join(fileOrDir, 'pack.mcmeta');
+        if (fs.existsSync(metaPath)) data = fs.readFileSync(metaPath);
+      }
+      if (!data) return null;
+      const json = tryParseJson(data);
+      if (!json?.pack) return null;
+      const desc = json.pack.description;
+      return {
+        name: json.pack.name || json.pack.title || path.basename(fileOrDir).replace(/\.(zip|jar)$/i, ''),
+        description: typeof desc === 'string' ? desc : desc?.text || '',
+      };
+    } catch { return null; }
+  }
+
+  function scanFolder(dir: string, ext: string[], contentType: string): any[] {
+    if (!fs.existsSync(dir)) return [];
+    const results: any[] = [];
+    const items = fs.readdirSync(dir, { withFileTypes: true });
+    for (const item of items) {
+      const fullPath = path.join(dir, item.name);
+      // foo.jar.disabled → логическое имя foo.jar (иначе extname = .disabled и файл пропускается)
+      const disabled = /\.disabled$/i.test(item.name);
+      const logicalName = disabled ? item.name.replace(/\.disabled$/i, '') : item.name;
+      const extLower = path.extname(logicalName).toLowerCase();
+      if (item.isFile() && ext.includes(extLower)) {
+        let name = logicalName.replace(/\.[^.]+$/i, '');
+        let version = '';
+        const verMatch = name.match(/-(\d+(?:\.\d+)*)/);
+        if (verMatch) { version = verMatch[1]; name = name.replace(/-?\d+(?:\.\d+)*$/, '').trim(); }
+        let id = '';
+        let description = '';
+        if (contentType === 'mod') {
+          const info = readFabricModInfo(fullPath) || readQuiltModInfo(fullPath) || readForgeModInfo(fullPath);
+          if (info) { name = info.name; version = info.version; description = info.description || ''; id = info.id || ''; }
+        }
+        if (!description) {
+          const mcmeta = readPackMcmeta(fullPath);
+          if (mcmeta) description = mcmeta.description || '';
+        }
+        results.push({ name, filename: item.name, enabled: !disabled, version, id, description, contentType, fullPath });
+      } else if (item.isDirectory() && contentType !== 'mod') {
+        const mcmeta = readPackMcmeta(fullPath);
+        results.push({
+          name: mcmeta?.name || item.name,
+          filename: item.name,
+          enabled: true,
+          version: '',
+          description: mcmeta?.description || '',
+          contentType,
+          fullPath,
+        });
+      }
+    }
+    return results;
+  }
+
+  const CACHE_FILE = '.uclient-cache.json';
+
+  function loadCache(instanceRoot: string): Record<string, any> {
+    const cachePath = path.join(instanceRoot, CACHE_FILE);
+    try {
+      if (fs.existsSync(cachePath)) {
+        return JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      }
+    } catch {}
+    return {};
+  }
+
+  function saveCache(instanceRoot: string, cache: Record<string, any>): void {
+    try {
+      const cachePath = path.join(instanceRoot, CACHE_FILE);
+      const tmpPath = cachePath + '.tmp';
+      fs.writeFileSync(tmpPath, JSON.stringify(cache));
+      fs.renameSync(tmpPath, cachePath);
+    } catch {}
+  }
+
+  async function enrichWithModrinth(item: any, projectType: string, cache: Record<string, any>): Promise<any> {
+    if (!item.name) return delete item.fullPath, item;
+    try {
+      let projectId = '';
+      let iconUrl = '';
+      let description = '';
+      let hash = '';
+
+      if (item.fullPath) {
+        try {
+          const stat = fs.statSync(item.fullPath);
+          if (stat.isFile()) {
+            const buf = await fs.promises.readFile(item.fullPath);
+            hash = crypto.createHash('sha1').update(buf).digest('hex');
+          }
+        } catch {}
+      }
+
+      // Check cache by filename + hash
+      const cachedEntry = cache[item.filename];
+      if (cachedEntry && cachedEntry.hash === hash && cachedEntry.projectId) {
+        item.projectId = cachedEntry.projectId;
+        item.iconUrl = cachedEntry.iconUrl || '';
+        if (!item.description) item.description = cachedEntry.description || '';
+        return delete item.fullPath, item;
+      }
+
+      // Cache miss — fetch from Modrinth
+
+      // Strategy 1: Hash-based lookup
+      if (hash) {
+        try {
+          const hashRes = await fetch(`https://api.modrinth.com/v2/version_file/${hash}?algorithm=sha1`);
+          if (hashRes.ok) {
+            const versionInfo = await hashRes.json();
+            if (versionInfo.project_id) {
+              projectId = versionInfo.project_id;
+              const projRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
+              if (projRes.ok) {
+                const proj = await projRes.json();
+                iconUrl = proj.icon_url || '';
+                description = proj.description || '';
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Strategy 2: Direct lookup by mod id (slug)
+      if (!projectId && item.id && projectType === 'mod') {
+        try {
+          const directRes = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(item.id)}`);
+          if (directRes.ok) {
+            const proj = await directRes.json();
+            projectId = proj.id || '';
+            iconUrl = proj.icon_url || '';
+            description = proj.description || '';
+          }
+        } catch {}
+      }
+
+      // Strategy 3: Search by name
+      if (!projectId) {
+        try {
+          const facets = JSON.stringify([[`project_type:${projectType}`]]);
+          const res = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(item.name)}&limit=1&facets=[${facets}]`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.hits?.[0]) {
+              projectId = data.hits[0].project_id;
+              iconUrl = data.hits[0].icon_url || '';
+              description = data.hits[0].description || '';
+            }
+          }
+        } catch {}
+      }
+
+      if (projectId) {
+        item.projectId = projectId;
+        item.iconUrl = iconUrl;
+        if (!item.description) item.description = description;
+        // Save to cache
+        cache[item.filename] = {
+          projectId,
+          iconUrl: iconUrl || '',
+          description: item.description || '',
+          hash: hash || '',
+          cachedAt: new Date().toISOString(),
+        };
+      } else if (hash) {
+        // Remember that this file has no match (avoid re-fetching)
+        cache[item.filename] = { projectId: '', iconUrl: '', description: '', hash, cachedAt: new Date().toISOString() };
+      }
+    } catch (e) {
+      console.warn(`Failed to enrich ${item.filename}:`, e);
+    }
+    delete item.fullPath;
+    return item;
+  }
+
+  ipcMain.handle('launcher:scan-instance', async (_event, buildId: string) => {
+    const root = getInstanceRoot(buildId);
+    const cache = loadCache(root);
+    const result: Record<string, any[]> = { mods: [], resourcepacks: [], shaders: [], datapacks: [] };
+    if (!fs.existsSync(root)) return result;
+    result.mods = scanFolder(path.join(root, 'mods'), ['.jar', '.litemod'], 'mod');
+    result.resourcepacks = scanFolder(path.join(root, 'resourcepacks'), ['.zip'], 'resourcepack');
+    result.shaders = scanFolder(path.join(root, 'shaderpacks'), ['.zip'], 'shader');
+    result.datapacks = scanFolder(path.join(root, 'datapacks'), ['.zip'], 'datapack');
+    const allItems = [...result.mods, ...result.resourcepacks, ...result.shaders, ...result.datapacks];
+    await Promise.all(allItems.map(item => enrichWithModrinth(item, item.contentType, cache)));
+    saveCache(root, cache);
+    return result;
+  });
+
+  ipcMain.handle('launcher:get-instance-path', async (_event, buildId: string) => {
+    const root = getInstanceRoot(String(buildId || ''));
+    // Папка появляется только после первого запуска — создаём при открытии
+    if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
+    for (const sub of ['mods', 'resourcepacks', 'shaderpacks', 'datapacks', 'saves', 'screenshots', 'config', 'logs']) {
+      const dir = path.join(root, sub);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    }
+    return root;
+  });
+
+  function safeSubPath(instanceRoot: string, sub: string, name: string): string | null {
+    const base = path.resolve(path.join(instanceRoot, sub));
+    const target = path.resolve(path.join(base, name));
+    if (target !== base && !target.startsWith(base + path.sep)) return null;
+    return target;
+  }
+
+  ipcMain.handle('launcher:list-screenshots', async (_event, buildId: string) => {
+    const dir = path.join(getInstanceRoot(buildId), 'screenshots');
+    if (!fs.existsSync(dir)) return [];
+    const shots: any[] = [];
+    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!item.isFile() || !/\.png$/i.test(item.name)) continue;
+      const full = path.join(dir, item.name);
+      let thumb = '';
+      try {
+        const img = nativeImage.createFromPath(full);
+        if (!img.isEmpty()) {
+          const size = img.getSize();
+          const w = size.width > 320 ? Math.max(1, Math.round((320 * size.height) / size.width)) : size.width;
+          thumb = img.resize({ width: w, quality: 'good' }).toDataURL();
+        }
+      } catch { /* skip thumbnail */ }
+      let stat: fs.Stats | null = null;
+      try { stat = fs.statSync(full); } catch { /* skip */ }
+      if (!stat) continue;
+      shots.push({ name: item.name, size: stat.size, modified: stat.mtimeMs, thumb });
+    }
+    shots.sort((a, b) => b.modified - a.modified);
+    return shots;
+  });
+
+  function folderSize(dir: string, maxBytes = 4 * 1024 * 1024 * 1024): number {
+    let total = 0;
+    try {
+      for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (total > maxBytes) return total;
+        const full = path.join(dir, item.name);
+        if (item.isDirectory()) {
+          total += folderSize(full, maxBytes - total);
+        } else if (item.isFile()) {
+          try { total += fs.statSync(full).size; } catch { /* skip */ }
+        }
+      }
+    } catch { /* skip */ }
+    return total;
+  }
+
+  function nbtValue(tag: any): any {
+    if (tag == null) return undefined;
+    if (typeof tag === 'object' && tag !== null && 'value' in tag) return tag.value;
+    return tag;
+  }
+
+  function worldIconDataUrl(buffer: Buffer): string {
+    const img = nativeImage.createFromBuffer(buffer);
+    if (img.isEmpty()) return '';
+    const size = img.getSize();
+    const w = size.width > 128 ? Math.max(1, Math.round((128 * size.height) / size.width)) : size.width;
+    return img.resize({ width: w, quality: 'good' }).toDataURL();
+  }
+
+  ipcMain.handle('launcher:list-worlds', async (_event, buildId: string) => {
+    const dir = path.join(getInstanceRoot(buildId), 'saves');
+    if (!fs.existsSync(dir)) return [];
+    const worlds: any[] = [];
+    for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!item.isDirectory()) continue;
+      const wdir = path.join(dir, item.name);
+      const datPath = path.join(wdir, 'level.dat');
+      if (!fs.existsSync(datPath)) continue;
+      const entry: any = { folder: item.name, name: item.name, icon: '', lastPlayed: 0, gameType: 0, hardcore: false, difficulty: 0, version: '', dataVersion: 0, size: 0 };
+      try {
+        const buf = fs.readFileSync(datPath);
+        const { parsed } = await nbtLib().parse(buf);
+        const data: any = parsed?.value?.Data?.value || {};
+        const levelName = nbtValue(data.LevelName);
+        if (typeof levelName === 'string' && levelName) entry.name = levelName;
+        const iconTag = nbtValue(data.icon);
+        if (Array.isArray(iconTag) && iconTag.length > 0 && iconTag.length < 512 * 1024) {
+          try { entry.icon = worldIconDataUrl(Buffer.from(iconTag)); } catch { /* no icon */ }
+        }
+        if (!entry.icon) {
+          const diskIcon = path.join(wdir, 'icon.png');
+          try {
+            if (fs.existsSync(diskIcon)) entry.icon = worldIconDataUrl(fs.readFileSync(diskIcon));
+          } catch { /* no icon */ }
+        }
+        const lastPlayed = nbtValue(data.LastPlayed);
+        if (typeof lastPlayed === 'bigint') entry.lastPlayed = Number(lastPlayed);
+        else if (typeof lastPlayed === 'number') entry.lastPlayed = lastPlayed;
+        else if (Array.isArray(lastPlayed) && lastPlayed.length === 2) {
+          entry.lastPlayed = Number(lastPlayed[0]) * 4294967296 + Number(lastPlayed[1]);
+        }
+        const gameType = nbtValue(data.GameType);
+        if (typeof gameType === 'number') entry.gameType = gameType;
+        const hardcore = nbtValue(data.hardcore);
+        entry.hardcore = hardcore === true || hardcore === 1;
+        const difficulty = nbtValue(data.Difficulty);
+        if (typeof difficulty === 'number') entry.difficulty = difficulty;
+        const verName = nbtValue((data.Version as any)?.Name);
+        if (typeof verName === 'string') entry.version = verName;
+        const dataVersion = nbtValue(data.DataVersion);
+        if (typeof dataVersion === 'number') entry.dataVersion = dataVersion;
+        entry.size = folderSize(wdir);
+      } catch (e) {
+        console.warn(`Failed to parse world ${item.name}:`, e);
+      }
+      worlds.push(entry);
+    }
+    worlds.sort((a, b) => b.lastPlayed - a.lastPlayed);
+    return worlds;
+  });
+
+  // ===== Импорт локальных модов/паков в папку инстанса =====
+  const IMPORT_SUBDIRS = new Set(['mods', 'resourcepacks', 'shaderpacks', 'datapacks']);
+  const IMPORT_FILTERS: Record<string, { name: string; extensions: string[] }[]> = {
+    mods: [
+      { name: 'Mods', extensions: ['jar', 'litemod', 'zip', 'disabled'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    resourcepacks: [
+      { name: 'Resource packs', extensions: ['zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    shaderpacks: [
+      { name: 'Shader packs', extensions: ['zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+    datapacks: [
+      { name: 'Datapacks', extensions: ['zip'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  };
+
+  ipcMain.handle(
+    'launcher:import-instance-files',
+    async (_event, buildId: string, sub: string, sourcePaths?: string[]) => {
+      try {
+        if (typeof buildId !== 'string' || !/^[a-z0-9-]+$/i.test(buildId)) {
+          return { success: false, error: 'invalid_build' };
+        }
+        if (!IMPORT_SUBDIRS.has(sub)) {
+          return { success: false, error: 'invalid_subdir' };
+        }
+
+        let paths = Array.isArray(sourcePaths)
+          ? sourcePaths.map((p) => String(p || '').trim()).filter(Boolean)
+          : [];
+
+        if (!paths.length) {
+          // Всегда главное окно: getFocusedWindow() может указать на консоль —
+          // тогда диалог открывается «невидимо» за управлением сборкой.
+          const win = (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : BrowserWindow.getFocusedWindow();
+          if (win && !win.isDestroyed()) {
+            try { win.focus(); } catch { /* */ }
+          }
+          const dialogOpts = {
+            title: 'Импорт в сборку',
+            properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+            filters: IMPORT_FILTERS[sub] || [{ name: 'All files', extensions: ['*'] }],
+          };
+          const result = (win && !win.isDestroyed())
+            ? await dialog.showOpenDialog(win, dialogOpts)
+            : await dialog.showOpenDialog(dialogOpts);
+          if (result.canceled || !result.filePaths.length) {
+            return { success: false, canceled: true };
+          }
+          paths = result.filePaths;
+        }
+
+        const instanceRoot = getInstanceRoot(buildId);
+        const targetDir = path.join(instanceRoot, sub);
+        fs.mkdirSync(targetDir, { recursive: true });
+
+        const imported: string[] = [];
+        for (const src of paths.slice(0, 64)) {
+          const resolved = path.resolve(src);
+          if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) continue;
+          const base = path.basename(resolved);
+          // Защита от path traversal в имени
+          if (!base || base !== path.basename(base) || base.includes('..')) continue;
+          const dest = path.join(targetDir, base);
+          fs.copyFileSync(resolved, dest);
+          imported.push(base);
+        }
+
+        return {
+          success: true,
+          imported,
+          targetDir,
+          count: imported.length,
+        };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  const DELETABLE_SUBDIRS = new Set([
+    'screenshots', 'saves', 'mods', 'resourcepacks', 'shaderpacks', 'datapacks',
+  ]);
+  const TOGGLEABLE_SUBDIRS = new Set(['mods', 'resourcepacks', 'shaderpacks', 'datapacks']);
+
+  /** Включить/выключить контент суффиксом .disabled (как AI toggle_mod). */
+  ipcMain.handle(
+    'launcher:toggle-instance-file',
+    async (_event, buildId: string, sub: string, filename: string, enabled?: boolean) => {
+      try {
+        if (typeof buildId !== 'string' || !/^[a-z0-9-]+$/i.test(buildId)) {
+          return { success: false, error: 'invalid_build' };
+        }
+        if (!TOGGLEABLE_SUBDIRS.has(sub) || typeof filename !== 'string' || !filename) {
+          return { success: false, error: 'invalid_request' };
+        }
+        const baseName = filename.replace(/\.disabled$/i, '');
+        if (!baseName || baseName !== path.basename(baseName) || baseName.includes('..')) {
+          return { success: false, error: 'invalid_name' };
+        }
+        const instanceRoot = getInstanceRoot(buildId);
+        const enabledPath = safeSubPath(instanceRoot, sub, baseName);
+        const disabledPath = safeSubPath(instanceRoot, sub, `${baseName}.disabled`);
+        if (!enabledPath || !disabledPath) {
+          return { success: false, error: 'invalid_path' };
+        }
+        const currentlyEnabled = fs.existsSync(enabledPath);
+        const currentlyDisabled = fs.existsSync(disabledPath);
+        if (!currentlyEnabled && !currentlyDisabled) {
+          return { success: false, error: 'file_not_found' };
+        }
+        const targetEnabled = enabled == null ? !currentlyEnabled : !!enabled;
+        if (targetEnabled && currentlyDisabled) {
+          fs.renameSync(disabledPath, enabledPath);
+        } else if (!targetEnabled && currentlyEnabled) {
+          fs.renameSync(enabledPath, disabledPath);
+        }
+        return {
+          success: true,
+          filename: targetEnabled ? baseName : `${baseName}.disabled`,
+          enabled: targetEnabled,
+        };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  ipcMain.handle('launcher:delete-instance-files', async (_event, buildId: string, sub: string, names: string[]) => {
+    if (!DELETABLE_SUBDIRS.has(sub) || !Array.isArray(names)) {
+      return { success: false, error: 'invalid request' };
+    }
+    const instanceRoot = getInstanceRoot(buildId);
+    let deleted = 0;
+    for (const name of names) {
+      const variants = [name];
+      // При удалении мода/пака снимаем и .disabled-вариант
+      if (TOGGLEABLE_SUBDIRS.has(sub)) {
+        if (/\.disabled$/i.test(name)) variants.push(name.replace(/\.disabled$/i, ''));
+        else variants.push(`${name}.disabled`);
+      }
+      for (const variant of variants) {
+        const target = safeSubPath(instanceRoot, sub, variant);
+        if (!target || !fs.existsSync(target)) continue;
+        try { fs.rmSync(target, { recursive: true, force: true }); deleted++; } catch { /* skip */ }
+      }
+    }
+    return { success: true, deleted };
+  });
+
+  /** Полный data URL скриншота для просмотрщика. */
+  ipcMain.handle('launcher:get-screenshot', async (_event, buildId: string, name: string) => {
+    try {
+      const target = safeSubPath(getInstanceRoot(buildId), 'screenshots', name);
+      if (!target || !fs.existsSync(target) || !/\.png$/i.test(name)) {
+        return { success: false, error: 'not_found' };
+      }
+      const img = nativeImage.createFromPath(target);
+      if (img.isEmpty()) return { success: false, error: 'invalid_image' };
+      return { success: true, dataUrl: img.toDataURL(), size: fs.statSync(target).size };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  /** Копирование скриншота в системный буфер обмена. */
+  ipcMain.handle('launcher:copy-screenshot', async (_event, buildId: string, name: string) => {
+    try {
+      const target = safeSubPath(getInstanceRoot(buildId), 'screenshots', name);
+      if (!target || !fs.existsSync(target) || !/\.png$/i.test(name)) {
+        return { success: false, error: 'not_found' };
+      }
+      const img = nativeImage.createFromPath(target);
+      if (img.isEmpty()) return { success: false, error: 'invalid_image' };
+      clipboard.writeImage(img);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  ipcMain.handle('launcher:save-instance-files', async (_event, buildId: string, sub: string, names: string[]) => {
+    if (!['screenshots', 'saves'].includes(sub) || !Array.isArray(names)) {
+      return { success: false, error: 'invalid request' };
+    }
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'], title: 'Выберите папку для сохранения' });
+    if (result.canceled || !result.filePaths[0]) return { success: false, canceled: true };
+    const outDir = result.filePaths[0];
+    const instanceRoot = getInstanceRoot(buildId);
+    let saved = 0;
+    for (const name of names) {
+      const src = safeSubPath(instanceRoot, sub, name);
+      if (!src) continue;
+      try { fs.cpSync(src, path.join(outDir, name), { recursive: true }); saved++; } catch { /* skip */ }
+    }
+    return { success: true, saved };
+  });
+
+  ipcMain.handle('launcher:save-log', async (_event, buildId: string, logContent: string) => {
+    try {
+      const instanceDir = getInstanceRoot(buildId);
+      if (!fs.existsSync(instanceDir)) fs.mkdirSync(instanceDir, { recursive: true });
+      const logPath = path.join(instanceDir, 'crash-log.txt');
+      fs.writeFileSync(logPath, logContent, 'utf-8');
+      return { success: true, path: logPath };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  });
+
+  ipcMain.handle('launcher:java:detect', (_event, refresh?: boolean) => {
+    if (refresh) invalidateJavaRuntimesCache();
+    return detectJavaRuntimes();
+  });
+
+  ipcMain.handle('launcher:java:list', (_event, refresh?: boolean) => {
+    if (refresh) invalidateJavaRuntimesCache();
+    return listJavaVersions();
+  });
+
+  ipcMain.handle('launcher:java:pick', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Выберите исполняемый файл Java',
+      properties: ['openFile'],
+      filters: process.platform === 'win32'
+        ? [
+            { name: 'Java', extensions: ['exe'] },
+            { name: 'All files', extensions: ['*'] },
+          ]
+        : [{ name: 'All files', extensions: ['*'] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const picked = result.filePaths[0];
+    invalidateJavaRuntimesCache();
+    const probed = probeJavaExe(picked);
+    return {
+      path: picked,
+      version: probed?.version || 0,
+      name: probed?.name || path.basename(path.dirname(path.dirname(picked))),
+    };
+  });
+
+  ipcMain.handle('launcher:java:install', async (_event, version: number) => {
+    if (!JAVA_MANAGED_VERSIONS.includes(Number(version))) {
+      return { success: false, error: 'Unsupported Java version' };
+    }
+    try {
+      const javaExe = await ensureJava(Number(version), (data) => {
+        mainWindow?.webContents.send('launcher:java-progress', { version: Number(version), ...data });
+      });
+      invalidateJavaRuntimesCache();
+      return { success: true, path: javaExe };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('launcher:java:remove', (_event, version: number) => {
+    if (!JAVA_MANAGED_VERSIONS.includes(Number(version))) {
+      return { success: false, error: 'Unsupported Java version' };
+    }
+    const result = removeManagedJava(Number(version));
+    if (result.success) {
+      invalidateJavaRuntimesCache();
+      mainWindow?.webContents.send('launcher:java-progress', { version: Number(version), status: 'removed' });
+    }
+    return result;
+  });
+
+  ipcMain.handle('launcher:java:resolve', async (_event, gameVersion: string) => {
+    try {
+      const ver = await resolveJavaVersion(gameVersion);
+      return { success: true, version: ver };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('launcher:crash-report', async (_event, buildId: string) => {
+    try {
+      if (typeof buildId !== 'string' || !/^[a-z0-9-]+$/i.test(buildId)) return null;
+      const root = getInstanceRoot(buildId);
+      const crashDir = path.join(root, 'crash-reports');
+      const latestLog = path.join(root, 'logs', 'latest.log');
+      if (fs.existsSync(crashDir)) {
+        const files = fs.readdirSync(crashDir).filter(f => f.endsWith('.txt')).sort((a, b) => {
+          try {
+            return fs.statSync(path.join(crashDir, b)).mtimeMs - fs.statSync(path.join(crashDir, a)).mtimeMs;
+          } catch { return 0; }
+        });
+        if (files.length > 0) {
+          return fs.readFileSync(path.join(crashDir, files[0]), 'utf-8').slice(0, 16000);
+        }
+      }
+      if (fs.existsSync(latestLog)) {
+        return fs.readFileSync(latestLog, 'utf-8').slice(-16000);
+      }
+      return null;
+    } catch { return null; }
+  });
+
+  ipcMain.on('launcher:set-language', (_event, lang: string) => {
+    rpcLang = RPC_TEXT[lang] ? lang : 'ru';
+    sendDiscordPresence();
+  });
+
+  ipcMain.on('launcher:presence', (_event, data: { screen?: string; account?: { name: string; avatar: string } | null }) => {
+    if (typeof data?.screen === 'string') currentUiScreen = data.screen;
+    if (data && data.account !== undefined) currentAccountInfo = data.account;
+    sendDiscordPresence();
+  });
+
+  ipcMain.handle('launcher:launch', async (_event, config: any) => {
+    if (launchInProgress) {
+      return { success: false, error: 'Launch already in progress', errorKey: 'smp.alreadyRunning' };
+    }
+    launchInProgress = true;
+    try {
+      return await runLaunch(config);
+    } catch (err) {
+      // Без этого сброса любой сбой до старта игры навсегда оставлял бы флаг
+      // взведённым, и все следующие запуски отвечали бы «уже запускается».
+      launchInProgress = false;
+      skipServerDownloads = false;
+      const message = err instanceof Error ? err.message : String(err);
+      sendProgress({ kind: 'error', key: 'smp.genericError', params: { msg: message } });
+      return { success: false, error: message };
+    }
+  });
+
+  async function runLaunch(config: any): Promise<{ success: boolean; error?: string; errorKey?: string }> {
+    logPhase('launch start');
+    skipServerDownloads = !!(config?.server && config.server.ip);
+    await ensureDownloaderPatched();
+    await patchEMLCache();
+
+    const eml = await loadEML();
+    let account: any;
+
+    if (config?.account?.meta?.type === 'msa' || config?.account?.meta?.type === 'yggdrasil') {
+      account = config.account;
+    } else {
+      const name = config?.account?.name || config?.account?.username || 'Player';
+      account = await new eml.CrackAuth().auth(name);
+    }
+
+    const instanceRoot = config.buildId ? getInstanceRoot(config.buildId) : appDataDir;
+    if (!fs.existsSync(instanceRoot)) fs.mkdirSync(instanceRoot, { recursive: true });
+
+    // ===== Активный скин/плащ → аккаунт + CustomSkinLoader =====
+    const cos = config.cosmetics;
+    const accTypeLaunch = account?.meta?.type || account?.type || '';
+    const launchLoader = config.minecraft?.loader?.loader || 'vanilla';
+    const launchGameVersion = config.minecraft?.version || 'latest_release';
+    const launchUsername = account?.name || account?.username || 'Player';
+    // PNG держим в памяти — перед spawn снова положим в инстанс (модпак мог затереть)
+    let launchSkinPng: Buffer | null =
+      resolveSkinPng(cos?.skinDataUrl) || resolveSkinPng(cos?.skinId);
+    let launchCapePng: Buffer | null =
+      resolveSkinPng(cos?.capeDataUrl) || resolveSkinPng(cos?.capeId);
+    if (!launchSkinPng) {
+      const cachedSkin = path.join(appDataDir, 'active-cosmetics', 'skin.png');
+      if (fs.existsSync(cachedSkin)) launchSkinPng = fs.readFileSync(cachedSkin);
+    }
+    if (!launchCapePng) {
+      const cachedCape = path.join(appDataDir, 'active-cosmetics', 'cape.png');
+      if (fs.existsSync(cachedCape)) launchCapePng = fs.readFileSync(cachedCape);
+    }
+    const launchCapeId = String(cos?.capeId || '');
+    const launchOfficialMsaCape = launchCapeId.startsWith('cape-msa-');
+    const launchHideCape = cos?.capeId === '' || cos?.hideCape === true;
+    const launchUseLocalCape = !launchHideCape && !!launchCapePng && !!launchCapeId;
+    const launchCapeForLocal = launchUseLocalCape ? launchCapePng : null;
+
+    if (cos && (cos.skinId || cos.skinDataUrl || cos.capeId || cos.capeDataUrl || launchSkinPng)) {
+      try {
+        sendProgress({ kind: 'status', key: 'smp.applyingCosmetics' });
+        await applyCosmetics(account, {
+          ...cos,
+          skinDataUrl: cos?.skinDataUrl,
+          capeDataUrl: cos?.capeDataUrl,
+          buildId: config.buildId,
+          loader: launchLoader,
+          gameVersion: launchGameVersion,
+          account,
+        });
+      } catch (err) {
+        console.warn('[cosmetics] apply on launch failed:', err);
+      }
+    } else if (config.buildId && accTypeLaunch === 'msa') {
+      // Без payload: переписать loadlist без ElyBy, сохранив уже лежащие LocalSkin PNG
+      try {
+        const instanceDir = getInstanceRoot(String(config.buildId));
+        const names = localSkinFileNames(launchUsername);
+        let skinBuf: Buffer | null = launchSkinPng;
+        for (const n of names) {
+          const skinPath = path.join(instanceDir, 'CustomSkinLoader', 'LocalSkin', 'skins', `${n}.png`);
+          if (!skinBuf && fs.existsSync(skinPath)) skinBuf = fs.readFileSync(skinPath);
+        }
+        writeLocalCosmetics(instanceDir, launchUsername, skinBuf, null, 'msa', {
+          useLocalCape: false,
+        });
+        if (String(launchLoader).toLowerCase() !== 'vanilla') {
+          await ensureCustomSkinLoader(instanceDir, launchLoader, launchGameVersion);
+        }
+      } catch (err) {
+        console.warn('[cosmetics] MSA CSL cleanup failed:', err);
+      }
+    }
+
+    /** Перед spawn — LocalSkin + jar CSL (после download модпака). */
+    const restoreCosmeticsBeforeSpawn = (): void => {
+      if (!config.buildId) return;
+      try {
+        const instanceDir = getInstanceRoot(String(config.buildId));
+        if (launchSkinPng || launchCapeForLocal || accTypeLaunch === 'msa' || accTypeLaunch === 'yggdrasil') {
+          writeLocalCosmetics(
+            instanceDir,
+            launchUsername,
+            launchSkinPng,
+            launchCapeForLocal,
+            accTypeLaunch || 'offline',
+            { useLocalCape: launchUseLocalCape },
+          );
+        }
+        if (String(launchLoader).toLowerCase() !== 'vanilla') {
+          copyCachedCslJarToInstance(instanceDir);
+        }
+        neutralizeConflictingCapeMods(instanceDir);
+        console.log('[cosmetics] restored LocalSkin/CSL before spawn', {
+          buildId: config.buildId,
+          hasSkin: !!launchSkinPng,
+          hasCape: !!launchCapeForLocal,
+          useLocalCape: launchUseLocalCape,
+          officialMsaCape: launchOfficialMsaCape,
+        });
+      } catch (err) {
+        console.warn('[cosmetics] restore before spawn failed:', err);
+      }
+    };
+
+    const mcConfig: any = config.minecraft || { version: 'latest_release' };
+    if (mcConfig.loader && mcConfig.loader.loader !== 'vanilla' && !mcConfig.loader.version) {
+      mcConfig.loader.version = LOADER_VERSIONS[mcConfig.loader.loader] || undefined;
+    }
+    if (config.modpackUrl) {
+      mcConfig.modpackUrl = config.modpackUrl;
+    }
+    if (config.mcArgs && Array.isArray(config.mcArgs)) {
+      mcConfig.args = config.mcArgs;
+    }
+    if (config.server && config.server.ip) {
+      const ip = String(config.server.ip).trim();
+      const port = Number(config.server.port) || 25565;
+      if (ip) {
+        const gameVer = mcConfig.version || 'latest_release';
+        if (usesQuickPlay(gameVer)) {
+          mcConfig.args = [...(mcConfig.args || []), '--quickPlayMultiplayer', `${ip}:${port}`];
+        } else {
+          mcConfig.args = [...(mcConfig.args || []), '--server', ip, '--port', String(port)];
+        }
+        addServerToGameList(instanceRoot, ip, port, config.server.name);
+      }
+    }
+
+    const gameVersion = mcConfig.version || 'latest_release';
+    let javaPath: string;
+    try {
+      const javaVer = await resolveJavaVersion(gameVersion);
+      const runtimes = detectJavaRuntimes();
+      const installed = bestRuntimeFor(javaVer, runtimes);
+      const explicitJava = config.javaPath && typeof config.javaPath === 'string'
+        ? (fs.existsSync(config.javaPath) ? config.javaPath : '')
+        : '';
+      let usableExplicit = '';
+      if (explicitJava) {
+        try {
+          const out = execSync(`"${explicitJava}" -version 2>&1`, { encoding: 'utf8', timeout: 8000 });
+          const m = out.match(/version\s+"(\d+)(?:\.(\d+))?/);
+          const ver = m ? (m[1] === '1' ? parseInt(m[2] || '8', 10) : parseInt(m[1], 10)) : 0;
+          if (ver >= javaVer) usableExplicit = explicitJava;
+        } catch {}
+      }
+      javaPath = usableExplicit || installed || await ensureJava(javaVer);
+    } catch {
+      sendProgress({ kind: 'error', key: 'smp.javaDownloadFailed' });
+      launchInProgress = false;
+      skipServerDownloads = false;
+      return { success: false, error: 'Java download failed', errorKey: 'smp.javaDownloadFailed' };
+    }
+
+    let actualJavaPath = javaPath;
+    if (process.platform === 'linux') {
+      const wrapperPath = path.join(getLauncherDataDir(), 'java-wrapper.sh');
+      const script = `#!/bin/bash\n# Форсируем XWayland (убираем WAYLAND_DISPLAY), чтобы у окна майнкрафта\n# всегда была рамка (titlebar) на таких DE как GNOME Wayland.\nunset WAYLAND_DISPLAY\nexec "${javaPath}" "$@"\n`;
+      fs.writeFileSync(wrapperPath, script, { mode: 0o755 });
+      actualJavaPath = wrapperPath;
+    }
+
+    const javaConfig: any = { install: 'manual', absolutePath: actualJavaPath };
+    if (config.jvmArgs && Array.isArray(config.jvmArgs)) {
+      javaConfig.args = config.jvmArgs;
+    }
+
+    launcherInstance = new eml.Launcher({
+      root: INSTANCE_BASE,
+      profile: config.buildId ? { slug: config.buildId } : undefined,
+      storage: 'isolated',
+      account,
+      minecraft: mcConfig,
+      memory: config.memory || { min: 1024, max: 2048 },
+      window: config.window || { width: 854, height: 480, fullscreen: false },
+      java: javaConfig,
+      // CSL/LocalSkin не из модпака — не удалять, если cleaning когда‑нибудь включат
+      cleaning: {
+        enabled: false,
+        ignored: [
+          'crash-reports/',
+          'logs/',
+          'resourcepacks/',
+          'resources/',
+          'saves/',
+          'shaderpacks/',
+          'options.txt',
+          'optionsof.txt',
+          'CustomSkinLoader/',
+          'mods/CustomSkinLoader',
+        ],
+      },
+    });
+
+    // После download/clean — вернуть скин до spawn (emit синхронный)
+    launcherInstance.on('launch_clean', () => {
+      restoreCosmeticsBeforeSpawn();
+    });
+    launcherInstance.on('launch_launch', () => {
+      restoreCosmeticsBeforeSpawn();
+    });
+
+    // ===== Discord RPC =====
+    discordRpcEnabled = config.discordRpc !== false;
+    if (!discordRpcEnabled) {
+      if (discordClient) {
+        try { discordClient.destroy(); } catch {}
+        discordClient = null;
+      }
+      discordConnectPromise = null;
+    } else {
+      void initDiscordRPC();
+    }
+    // Презенс нужен и для входа на сервер без сборки — тогда показываем имя сервера.
+    const presenceName = config.buildName || config.server?.name || config.server?.ip || '';
+    const buildInfo = (config.buildId || config.server?.ip)
+      ? {
+          name: presenceName || RPC_TEXT[rpcLang]?.build || RPC_TEXT.ru.build,
+          gameVersion: mcConfig.version || '?',
+          loader: config.minecraft?.loader?.loader || 'vanilla',
+          serverName: config.server?.name ? String(config.server.name) : undefined,
+          serverHost: config.server?.ip
+            ? `${String(config.server.ip).trim()}${config.server.port ? `:${Number(config.server.port) || 25565}` : ''}`
+            : undefined,
+        }
+      : null;
+
+    launcherInstance.on('launch_compute_download', () => {
+      logPhase('compute');
+      sendProgress({ kind: 'status', key: 'smp.computingFiles' });
+    });
+
+    launcherInstance.on('launch_download', (total: any) => {
+      logPhase('download start');
+      console.log(`[launch] files_to_download=${total.total?.amount} size=${total.total?.size}`);
+      sendProgress({ kind: 'status', key: 'smp.downloadingMc', params: { n: total.total.amount } });
+    });
+
+    launcherInstance.on('download_progress', (p: any) => {
+      const fileInfo = p.total?.amount ? `${p.downloaded.amount}/${p.total.amount}` : '';
+      const sizeInfo = p.total?.size ? `${formatBytes(p.downloaded.size)}/${formatBytes(p.total.size)}` : formatBytes(p.downloaded.size);
+      sendProgress({
+        kind: 'download',
+        message: [p.type, fileInfo, sizeInfo].filter(Boolean).join(' · '),
+        total: p.total,
+        downloaded: p.downloaded,
+        speed: p.speed,
+      });
+    });
+
+    launcherInstance.on('download_error', (err: any) => {
+      sendProgress({ kind: 'error', key: 'smp.downloadFailed', params: { file: err.filename, msg: err.message } });
+    });
+
+    launcherInstance.on('download_end', (p: any) => {
+      sendProgress({ kind: 'info', key: 'smp.downloadDone', params: { n: p.downloaded.amount, size: formatBytes(p.downloaded.size) } });
+    });
+
+    // eml-lib 2.7: { version, loader: { loader, version } } (раньше были type / minecraftVersion)
+    launcherInstance.on('launch_install_loader', (payload: any) => {
+      logPhase('install loader');
+      const loaderName = payload?.loader?.loader || payload?.type || '?';
+      const loaderVer = payload?.loader?.version || payload?.version || payload?.minecraftVersion || '?';
+      sendProgress({ kind: 'status', key: 'smp.installingLoader', params: { loader: loaderName, ver: loaderVer } });
+    });
+
+    launcherInstance.on('launch_copy_assets', () => {
+      logPhase('copy assets');
+      sendProgress({ kind: 'status', key: 'smp.copyingAssets' });
+    });
+
+    launcherInstance.on('copy_progress', (p: any) => {
+      sendProgress({ kind: 'copy', key: 'smp.copying', params: { file: p.filename } });
+    });
+
+    launcherInstance.on('copy_end', (p: any) => {
+      sendProgress({ kind: 'info', key: 'smp.copyDone' });
+    });
+
+    launcherInstance.on('launch_extract_natives', () => {
+      logPhase('extract natives');
+      sendProgress({ kind: 'status', key: 'smp.extractingNatives' });
+    });
+
+    launcherInstance.on('extract_progress', (p: any) => {
+      sendProgress({ kind: 'extract', key: 'smp.extracting', params: { file: p.filename } });
+    });
+
+    launcherInstance.on('extract_end', (p: any) => {
+      sendProgress({ kind: 'info', key: 'smp.extractDone' });
+    });
+
+    launcherInstance.on('launch_patch_loader', () => {
+      logPhase('patch loader');
+      sendProgress({ kind: 'status', key: 'smp.patchingLoader' });
+    });
+
+    launcherInstance.on('patch_progress', (p: any) => {
+      sendProgress({ kind: 'patch', key: 'smp.patching', params: { file: p.filename } });
+    });
+
+    launcherInstance.on('patch_end', (p: any) => {
+      sendProgress({ kind: 'info', key: 'smp.patchDone' });
+    });
+
+    launcherInstance.on('launch_check_java', () => {
+      logPhase('check java');
+      sendProgress({ kind: 'status', key: 'smp.checkingJava' });
+    });
+
+    launcherInstance.on('java_info', (info: any) => {
+      sendProgress({ kind: 'info', key: 'smp.javaInfo', params: { ver: info.version, arch: info.arch } });
+    });
+
+    launcherInstance.on('launch_clean', () => {
+      sendProgress({ kind: 'status', key: 'smp.cleaningDir' });
+    });
+
+    launcherInstance.on('clean_progress', (p: any) => {
+      sendProgress({ kind: 'clean', key: 'smp.cleaning', params: { file: p.filename } });
+    });
+
+    launcherInstance.on('clean_end', (p: any) => {
+      sendProgress({ kind: 'info', key: 'smp.cleanDone', params: { n: p.amount } });
+    });
+
+    launcherInstance.on('launch_launch', (resolved: any) => {
+      logPhase('launching MC');
+      const launchBuildId = String(config.buildId || '');
+      activeGameBuildId = launchBuildId || null;
+      stopAdoptedGameWatch();
+      if (launchBuildId) {
+        const marker = {
+          buildId: launchBuildId,
+          name: presenceName || undefined,
+          gameVersion: mcConfig.version || undefined,
+          loader: config.minecraft?.loader?.loader || undefined,
+          startedAt: Date.now(),
+          pid: null as number | null,
+        };
+        saveRunningGameMarker(appDataDir, marker);
+        // PID появляется чуть позже spawn — догоняем
+        void findJavaForBuild(launchBuildId).then((hit) => {
+          if (!hit || activeGameBuildId !== launchBuildId) return;
+          saveRunningGameMarker(appDataDir, { ...marker, pid: hit.pid });
+        });
+      }
+      sendProgress({ kind: 'launching', key: 'smp.launchingMc', data: resolved, buildId: launchBuildId });
+      if (buildInfo) setDiscordPresence(buildInfo);
+    });
+
+    launcherInstance.on('launch_data', (data: string) => {
+      sendProgress({ kind: 'log', message: data });
+    });
+
+    launcherInstance.on('launch_debug', (data: string) => {
+      sendProgress({ kind: 'debug', message: data });
+    });
+
+    launcherInstance.on('launch_close', (code: number | null) => {
+      const closedBuildId = activeGameBuildId || String(config.buildId || '');
+      launcherInstance = null;
+      launchInProgress = false;
+      skipServerDownloads = false;
+      // Child отвалился, но java инстанса может ещё жить (закрыли лаунчер / detach)
+      void (async () => {
+        if (closedBuildId) {
+          const still = await findJavaForBuild(closedBuildId);
+          if (still) {
+            adoptDetectedGame(
+              {
+                ...still,
+                name: presenceName || undefined,
+                gameVersion: mcConfig.version || undefined,
+                loader: config.minecraft?.loader?.loader || undefined,
+                startedAt: loadRunningGameMarker(appDataDir)?.startedAt || Date.now(),
+              },
+              false,
+            );
+            return;
+          }
+        }
+        clearRunningGameMarker(appDataDir);
+        activeGameBuildId = null;
+        stopAdoptedGameWatch();
+        sendProgress({ kind: 'close', key: 'smp.closed', params: { code }, code });
+        setDiscordPresence(null);
+      })();
+    });
+
+    launcherInstance.on('launch_crash', (crash: any) => {
+      launcherInstance = null;
+      launchInProgress = false;
+      skipServerDownloads = false;
+      clearRunningGameMarker(appDataDir);
+      activeGameBuildId = null;
+      stopAdoptedGameWatch();
+      sendProgress({ kind: 'crash', key: 'smp.crashed', params: { code: crash.code }, data: crash });
+      setDiscordPresence(null);
+    });
+
+    try {
+      logPhase('eml launch()');
+      const result = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        let settled = false;
+        const done = (value: { ok: boolean; error?: string }): void => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const onLaunch = (): void => done({ ok: true });
+        launcherInstance.on?.('launch_launch', onLaunch);
+        Promise.resolve(launcherInstance.launch())
+          .then(() => done({ ok: true }))
+          .catch((err: any) => {
+            const message = err instanceof Error ? err.message : String(err);
+            sendProgress({ kind: 'error', key: 'smp.genericError', params: { msg: message } });
+            done({ ok: false, error: message });
+          });
+      });
+      if (!result.ok) {
+        launcherInstance = null;
+        launchInProgress = false;
+        skipServerDownloads = false;
+        return { success: false, error: result.error };
+      }
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendProgress({ kind: 'error', key: 'smp.genericError', params: { msg: message } });
+      launcherInstance = null;
+      launchInProgress = false;
+      skipServerDownloads = false;
+      return { success: false, error: message };
+    }
+  }
+
+  // Watchers for instance directories
+  const instanceWatchers = new Map<string, { watchers: fs.FSWatcher[]; timer: any }>();
+
+  function addServerToGameList(instanceRoot: string, ip: string, port: number, name?: string): void {
+    try {
+      const addrStr = `${ip}${port && port !== 25565 ? ':' + port : ''}`;
+      const serversPath = path.join(instanceRoot, 'servers.dat');
+      let servers: any[] = [];
+      if (fs.existsSync(serversPath)) {
+        try {
+          const buf = fs.readFileSync(serversPath);
+          const parsed = nbtLib().parseUncompressed(buf) as any;
+          const list = parsed?.value?.servers;
+          if (list?.type === 'list' && Array.isArray(list.value?.value)) {
+            servers = list.value.value;
+          }
+        } catch { servers = []; }
+      }
+      const already = servers.some((s: any) => {
+        const sv = s.value || s;
+        const ipVal = sv.ip?.value ?? sv.ip;
+        return String(ipVal).replace(/:25565$/, '') === ip.replace(/:25565$/, '');
+      });
+      if (already) return;
+
+      const entry: any = {
+        preventsChatReports: { type: 'byte', value: 0 },
+        hidden: { type: 'byte', value: 0 },
+        ip: { type: 'string', value: addrStr },
+        name: { type: 'string', value: (name && name.trim().length > 0 ? name.trim() : ip) },
+      };
+      servers.push(entry);
+
+      const listTag: any = {
+        type: 'list',
+        value: { type: 'compound', value: servers },
+      };
+      const rootCompound: any = { type: 'compound', name: '', value: { servers: listTag } };
+      const out = nbtLib().writeUncompressed(rootCompound);
+      if (out && out.length > 0) {
+        fs.writeFileSync(serversPath, out);
+      }
+    } catch (err) {
+      console.warn('[add-server-to-list] failed', err);
+    }
+  }
+
+  function scanAndNotify(buildId: string): void {
+    const root = getInstanceRoot(buildId);
+    if (!fs.existsSync(root) || !mainWindow || mainWindow.isDestroyed()) return;
+    const result: Record<string, any[]> = { mods: [], resourcepacks: [], shaders: [], datapacks: [] };
+    result.mods = scanFolder(path.join(root, 'mods'), ['.jar', '.litemod'], 'mod');
+    result.resourcepacks = scanFolder(path.join(root, 'resourcepacks'), ['.zip'], 'resourcepack');
+    result.shaders = scanFolder(path.join(root, 'shaderpacks'), ['.zip'], 'shader');
+    result.datapacks = scanFolder(path.join(root, 'datapacks'), ['.zip'], 'datapack');
+
+    // Сразу в UI (без ожидания Modrinth) — «на лету» при ручном копировании
+    const payloadQuick = JSON.parse(JSON.stringify(result, (k, v) => (k === 'fullPath' ? undefined : v)));
+    try {
+      mainWindow.webContents.send('launcher:instance-changed', buildId, payloadQuick);
+    } catch { /* */ }
+
+    const cache = loadCache(root);
+    const allItems = [...result.mods, ...result.resourcepacks, ...result.shaders, ...result.datapacks];
+    Promise.all(allItems.map(item => enrichWithModrinth(item, item.contentType, cache))).then(() => {
+      saveCache(root, cache);
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const payload = JSON.parse(JSON.stringify(result, (k, v) => (k === 'fullPath' ? undefined : v)));
+      try {
+        mainWindow.webContents.send('launcher:instance-changed', buildId, payload);
+      } catch { /* */ }
+    }).catch(() => { /* ignore enrich errors */ });
+  }
+
+  ipcMain.handle('launcher:watch-instance', async (_event, buildId: string) => {
+    // Переподписка: закрыть старые вотчеры
+    const prev = instanceWatchers.get(buildId);
+    if (prev) {
+      for (const w of prev.watchers) {
+        try { w.close(); } catch { /* */ }
+      }
+      if (prev.timer) clearTimeout(prev.timer);
+      instanceWatchers.delete(buildId);
+    }
+
+    const root = getInstanceRoot(buildId);
+    if (!fs.existsSync(root)) return;
+
+    const subDirs = ['mods', 'resourcepacks', 'shaderpacks', 'datapacks'];
+    const watchers: fs.FSWatcher[] = [];
+    const entry: { watchers: fs.FSWatcher[]; timer: ReturnType<typeof setTimeout> | null } = {
+      watchers,
+      timer: null,
+    };
+
+    const scheduleScan = (): void => {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        entry.timer = null;
+        scanAndNotify(buildId);
+      }, 350);
+    };
+
+    for (const sub of subDirs) {
+      const dirPath = path.join(root, sub);
+      try {
+        fs.mkdirSync(dirPath, { recursive: true });
+      } catch { /* */ }
+      if (!fs.existsSync(dirPath)) continue;
+      try {
+        // recursive: лучше ловит rename/move на Windows
+        const w = fs.watch(dirPath, { persistent: true }, () => scheduleScan());
+        w.on('error', () => { /* папка могла исчезнуть */ });
+        watchers.push(w);
+      } catch { /* */ }
+    }
+
+    instanceWatchers.set(buildId, entry);
+    // Первичный снимок на случай ручных правок до открытия UI
+    scheduleScan();
+  });
+
+  ipcMain.handle('launcher:detect-running-game', async () => detectAndAdoptRunningGame({ emit: true }));
+
+  // После старта окна — подхватить MC, оставшийся с прошлого запуска лаунчера
+  setTimeout(() => {
+    void detectAndAdoptRunningGame({ emit: true }).catch(() => {
+      /* ignore */
+    });
+  }, 2500);
+
+  ipcMain.handle('launcher:unwatch-instance', async (_event, buildId: string) => {
+    const entry = instanceWatchers.get(buildId);
+    if (!entry) return;
+    for (const w of entry.watchers) {
+      try { w.close(); } catch { /* */ }
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    instanceWatchers.delete(buildId);
+  });
+}
