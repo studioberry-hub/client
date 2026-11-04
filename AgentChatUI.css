@@ -1,0 +1,1264 @@
+/* AgentChatUI */
+
+position: relative;
+width: 798px;
+height: 678px;
+
+background: #202020;
+
+
+/* image 94 */
+
+position: absolute;
+width: 798px;
+height: 678px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Frame 561 */
+
+position: absolute;
+width: 232px;
+height: 678px;
+left: 0px;
+top: 0px;
+
+background: #202020;
+border-right: 1px solid rgba(255, 255, 255, 0.05);
+
+
+/* NewChatButton */
+
+position: absolute;
+width: 216px;
+height: 30px;
+left: 8px;
+top: 74px;
+
+border-radius: 8px;
+
+
+/* Создать новый чат */
+
+position: absolute;
+width: 178px;
+height: 30px;
+left: 30px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Icon */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 7px;
+top: 7px;
+
+
+
+/* Rectangle 7341 */
+
+position: absolute;
+width: 2px;
+height: 16px;
+left: 14px;
+top: 7px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Rectangle 7342 */
+
+position: absolute;
+width: 2px;
+height: 16px;
+left: 7px;
+top: 14px;
+
+background: #FFFFFF;
+border-radius: 1px;
+transform: rotate(-90deg);
+
+
+/* Chat */
+
+position: absolute;
+width: 216px;
+height: 30px;
+left: 8px;
+top: 170px;
+
+border-radius: 8px;
+
+
+/* Какие у меня сбо... */
+
+position: absolute;
+width: 178px;
+height: 30px;
+left: 30px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 563 */
+
+position: absolute;
+width: 30px;
+height: 18px;
+left: 178px;
+top: 6px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* 12m */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* ActiveChat */
+
+position: absolute;
+width: 216px;
+height: 30px;
+left: 8px;
+top: 202px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* Поиск модов под 1... */
+
+position: absolute;
+width: 178px;
+height: 30px;
+left: 30px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 563 */
+
+position: absolute;
+width: 24px;
+height: 18px;
+left: 184px;
+top: 6px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* 1m */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Group 40402 */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 7px;
+top: 7px;
+
+
+
+/* Rectangle 7345 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 7px;
+top: 7px;
+
+border: 2px solid #70ADDF;
+
+
+/* Rectangle 7346 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 8px;
+height: 8px;
+left: 11px;
+top: 11px;
+
+border: 2px solid #70ADDF;
+
+
+/* SearchButton */
+
+position: absolute;
+width: 216px;
+height: 30px;
+left: 8px;
+top: 106px;
+
+border-radius: 8px;
+
+
+/* Поиск по чатам */
+
+position: absolute;
+width: 178px;
+height: 30px;
+left: 30px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Icon */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 7px;
+top: 7px;
+
+
+
+/* Ellipse 71 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 7px;
+
+border: 2px solid #FFFFFF;
+
+
+/* Rectangle 7343 */
+
+position: absolute;
+width: 5px;
+height: 5px;
+left: 18px;
+top: 18px;
+
+background: #FFFFFF;
+
+
+/* Undefined Agent */
+
+position: absolute;
+width: 216px;
+height: 32px;
+left: 8px;
+top: 8px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Основные функции */
+
+position: absolute;
+width: 209px;
+height: 24px;
+left: 15px;
+top: 48px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.75);
+
+
+
+/* Список чатов */
+
+position: absolute;
+width: 209px;
+height: 24px;
+left: 15px;
+top: 144px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.75);
+
+
+
+/* 1.0.3-beta */
+
+position: absolute;
+width: 216px;
+height: 32px;
+left: 8px;
+top: 8px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: right;
+
+color: rgba(255, 255, 255, 0.35);
+
+
+
+/* Frame 562 */
+
+position: absolute;
+width: 565px;
+height: 678px;
+left: 233px;
+top: 0px;
+
+background: #161616;
+
+
+/* ChatTitle */
+
+position: absolute;
+width: 565px;
+height: 32px;
+left: 0px;
+top: 0px;
+
+background: #0D0D0D;
+
+
+/* Group 40402 */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 8px;
+top: 8px;
+
+
+
+/* Rectangle 7345 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 8px;
+top: 8px;
+
+border: 2px solid #70ADDF;
+
+
+/* Rectangle 7346 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 8px;
+height: 8px;
+left: 12px;
+top: 12px;
+
+border: 2px solid #70ADDF;
+
+
+/* Поиск модов под 1.12.2 */
+
+position: absolute;
+width: 448px;
+height: 32px;
+left: 32px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* ChatOptions */
+
+position: absolute;
+width: 28px;
+height: 24px;
+left: 533px;
+top: 4px;
+
+border-radius: 8px;
+
+
+/* Rectangle 7347 */
+
+position: absolute;
+width: 2px;
+height: 2px;
+left: 7px;
+top: 11px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Rectangle 7348 */
+
+position: absolute;
+width: 2px;
+height: 2px;
+left: 13px;
+top: 11px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Rectangle 7349 */
+
+position: absolute;
+width: 2px;
+height: 2px;
+left: 19px;
+top: 11px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Chat */
+
+position: absolute;
+width: 565px;
+height: 646px;
+left: 0px;
+top: 32px;
+
+background: #161616;
+
+
+/* ChatUserTypeArea */
+
+position: absolute;
+width: 565px;
+height: 73px;
+left: 0px;
+top: 573px;
+
+background: #0D0D0D;
+
+
+/* Frame 565 */
+
+position: absolute;
+width: 547px;
+height: 44px;
+left: 9px;
+top: 0px;
+
+border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+
+/* Спросите агента... */
+
+position: absolute;
+width: 471px;
+height: 44px;
+left: 38px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.35);
+
+
+
+/* SendMessage */
+
+position: absolute;
+width: 30px;
+height: 30px;
+left: 517px;
+top: 7px;
+
+background: #70ADDF;
+border-radius: 6px;
+
+
+/* Arrow 25 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 12px;
+height: 0px;
+left: 15px;
+top: 9px;
+
+border: 2px solid #000000;
+transform: rotate(-90deg);
+
+
+/* Attach */
+
+position: absolute;
+width: 30px;
+height: 30px;
+left: 0px;
+top: 7px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* Group 40405 */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 8px;
+top: 8px;
+
+
+
+/* Rectangle 7350 */
+
+position: absolute;
+width: 2px;
+height: 14px;
+left: 14px;
+top: 8px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Rectangle 7351 */
+
+position: absolute;
+width: 2px;
+height: 14px;
+left: 8px;
+top: 14px;
+
+background: #FFFFFF;
+border-radius: 1px;
+transform: rotate(-90deg);
+
+
+/* CurrentBuild */
+
+position: absolute;
+width: 104px;
+height: 14px;
+left: 9px;
+top: 52px;
+
+
+
+/* CurrentBuildIcon */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 9px;
+top: 52px;
+
+background: #666666;
+border-radius: 4px;
+
+
+/* Compukters */
+
+position: absolute;
+width: 84px;
+height: 14px;
+left: 29px;
+top: 52px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.5);
+
+
+
+/* ContextUsage */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 540px;
+top: 51px;
+
+
+
+/* Ellipse 72 */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 540px;
+top: 51px;
+
+background: rgba(255, 255, 255, 0.35);
+
+
+/* Ellipse 73 */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 540px;
+top: 51px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Frame 567 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 533px;
+height: 52px;
+left: 16px;
+top: 16px;
+
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.05);
+border-radius: 12px;
+
+
+/* Привет! Найди пожалуйста моды под 1.12.2 с компьютерами и прочим. Можешь так же найти к ним дополнения. */
+
+position: absolute;
+width: 509px;
+height: 32px;
+left: 12px;
+top: 12px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+
+
+
+/* Frame 569 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 533px;
+height: 34px;
+left: 16px;
+top: 355px;
+
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.05);
+border-radius: 12px;
+
+
+/* Поставь пожалуйста этот мод в сборку Compukters */
+
+position: absolute;
+width: 509px;
+height: 16px;
+left: 12px;
+top: 12px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+
+
+
+/* Group 40402 */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 16px;
+top: 426px;
+
+
+
+/* Rectangle 7345 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 16px;
+top: 426px;
+
+border: 2px solid #70ADDF;
+
+
+/* Rectangle 7346 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 8px;
+height: 8px;
+left: 20px;
+top: 430px;
+
+border: 2px solid #70ADDF;
+
+
+/* Привет! Давай посмотрим, что можно найти по твоему запросу. */
+
+position: absolute;
+width: 533px;
+height: 16px;
+left: 16px;
+top: 84px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+
+
+
+/* Нашёл для тебя крутой мод с компьютерами под 1.12.2! Это OpenComputers: */
+
+position: absolute;
+width: 533px;
+height: 16px;
+left: 16px;
+top: 156px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+
+
+
+/* Так же я нашёл дополнение Computronics, но в каталоге модов Modrinth я его не нашёл: скорее всего автор мода его не публиковал. Но он есть в других источниках, которые ты сможешь найти сам: моей политикой запрещено скидывать ссылки не из каталога Modrinth. */
+
+position: absolute;
+width: 533px;
+height: 67px;
+left: 16px;
+top: 272px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+
+
+
+/* Ставлю мод OpenComputers в сборку Compukters. */
+
+position: absolute;
+width: 533px;
+height: 16px;
+left: 16px;
+top: 405px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: #FFFFFF;
+
+
+
+/* Поиск модов в Каталоге модов Undefined Client... 7sec */
+
+position: absolute;
+width: 533px;
+height: 16px;
+left: 16px;
+top: 108px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: rgba(255, 255, 255, 0.5);
+
+
+
+/* Скачивание и установка мода OpenComputers... */
+
+position: absolute;
+width: 533px;
+height: 16px;
+left: 16px;
+top: 426px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.5);
+
+
+
+/* Поиск информации по дополнениям в Интернете... 13sec */
+
+position: absolute;
+width: 533px;
+height: 16px;
+left: 16px;
+top: 132px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+
+color: rgba(255, 255, 255, 0.5);
+
+
+
+/* Frame 568 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 533px;
+height: 74px;
+left: 16px;
+top: 182px;
+
+background: rgba(0, 0, 0, 0.25);
+border: 1px solid rgba(255, 255, 255, 0.1);
+border-radius: 12px;
+
+
+/* image 95 */
+
+position: absolute;
+width: 52px;
+height: 52px;
+left: 11px;
+top: 11px;
+
+background: url(image.png);
+border-radius: 8px;
+
+
+/* OpenComputers */
+
+position: absolute;
+width: 433px;
+height: 18px;
+left: 74px;
+top: 15px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Group 40403 */
+
+position: absolute;
+width: 144px;
+height: 14px;
+left: 74px;
+top: 45px;
+
+
+
+/* Frame 435 */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 74px;
+top: 45px;
+
+opacity: 0.5;
+
+
+/* Vector */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 0px;
+top: 0px;
+
+background: #FFFFFF;
+
+
+/* 284К скачиваний */
+
+position: absolute;
+width: 124px;
+height: 14px;
+left: 94px;
+top: 45px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.5);
+
+
+
+/* Group 40404 */
+
+position: absolute;
+width: 166px;
+height: 14px;
+left: 230px;
+top: 45px;
+
+
+
+/* Frame 436 */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 230px;
+top: 45px;
+
+opacity: 0.5;
+
+
+/* Vector */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 0px;
+top: 0px;
+
+background: #FFFFFF;
+
+
+/* Обновлён 04.08.2026 */
+
+position: absolute;
+width: 146px;
+height: 14px;
+left: 250px;
+top: 45px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.5);
+

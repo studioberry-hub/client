@@ -15,7 +15,13 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
-import { catalogFileUrl, isModrinthCdnUrl, type DownloadReason } from '../shared/apiBase';
+import {
+  absoluteApiUrl,
+  catalogFileUrl,
+  isCatalogProxyFileUrl,
+  isModrinthCdnUrl,
+  type DownloadReason,
+} from '../shared/apiBase';
 
 // ===== Параметры =====
 
@@ -43,6 +49,18 @@ export const PROXY_MAX_CONCURRENT_DOWNLOADS = 4;
 
 const USER_AGENT = 'Undefined-Client';
 
+/** Достаёт исходный CDN url из уже проксированной ссылки сайта. */
+function extractProxiedCatalogUrl(proxyUrl: string): string | null {
+  try {
+    const abs = absoluteApiUrl(proxyUrl) || proxyUrl;
+    const parsed = new URL(abs);
+    const inner = parsed.searchParams.get('url');
+    return inner && /^https:\/\//i.test(inner) ? inner : null;
+  } catch {
+    return null;
+  }
+}
+
 // ===== Ошибки =====
 
 /**
@@ -50,6 +68,43 @@ const USER_AGENT = 'Undefined-Client';
  * после неё прямую ссылку бессмысленно — ответ будет тот же.
  */
 class TerminalDownloadError extends Error {}
+
+/** Пользователь нажал крестик: резервный CDN и следующие файлы пачки не качаем. */
+export class DownloadCancelledError extends TerminalDownloadError {
+  constructor() {
+    super('Загрузка отменена');
+    this.name = 'DownloadCancelledError';
+  }
+}
+
+export function isDownloadCancelled(err: unknown): boolean {
+  return err instanceof DownloadCancelledError;
+}
+
+const activeControllers = new Set<AbortController>();
+let cancelRequested = false;
+
+/** Новая операция пользователя: предыдущая отмена больше не действует. */
+export function armDownloads(): void {
+  cancelRequested = false;
+}
+
+/**
+ * Обрывает текущие тела ответов и помечает операцию отменённой,
+ * чтобы цикл по файлам модпака не начал следующий.
+ */
+export function cancelActiveDownloads(): boolean {
+  const had = activeControllers.size > 0;
+  cancelRequested = true;
+  for (const controller of activeControllers) {
+    try { controller.abort(); } catch { /* ignore */ }
+  }
+  return had;
+}
+
+function throwIfCancelled(): void {
+  if (cancelRequested) throw new DownloadCancelledError();
+}
 
 export interface DownloadFileOptions {
   /** Причина загрузки для атрибуции авторам проекта на стороне Modrinth. */
@@ -85,20 +140,33 @@ export async function downloadModrinthFile(
   destPath: string,
   options: DownloadFileOptions = {},
 ): Promise<DownloadFileResult> {
+  throwIfCancelled();
   const attempts: { url: string; viaProxy: boolean }[] = [];
   if (isModrinthCdnUrl(sourceUrl)) {
     attempts.push({ url: catalogFileUrl(sourceUrl, options.reason), viaProxy: true });
+    // Прямой CDN — резерв, если наш прокси недоступен.
+    attempts.push({ url: sourceUrl, viaProxy: false });
+  } else if (isCatalogProxyFileUrl(sourceUrl)) {
+    // Сайт уже отдал /client/api/catalog/file?... — только абсолютизируем.
+    attempts.push({ url: catalogFileUrl(sourceUrl, options.reason), viaProxy: true });
+    const inner = extractProxiedCatalogUrl(sourceUrl);
+    if (inner && isModrinthCdnUrl(inner)) {
+      attempts.push({ url: inner, viaProxy: false });
+    }
+  } else {
+    // Чужие хосты (github и пр.) прокси не принимает — только прямая ссылка.
+    const abs = absoluteApiUrl(sourceUrl) || sourceUrl;
+    attempts.push({ url: abs, viaProxy: false });
   }
-  // Чужие хосты (github и прочие разрешённые Modrinth зеркала) прокси не
-  // принимает, для них прямая ссылка — единственный путь.
-  attempts.push({ url: sourceUrl, viaProxy: false });
 
   let lastError: unknown = null;
   for (const attempt of attempts) {
+    throwIfCancelled();
     try {
       const bytes = await downloadOnce(attempt.url, destPath, options, attempt.viaProxy);
       return { bytes, viaProxy: attempt.viaProxy };
     } catch (err) {
+      if (isDownloadCancelled(err) || cancelRequested) throw new DownloadCancelledError();
       if (err instanceof TerminalDownloadError) throw err;
       lastError = err;
     }
@@ -122,14 +190,22 @@ async function requestFile(
   viaProxy: boolean,
 ): Promise<{ response: Response; controller: AbortController }> {
   for (let attempt = 0; ; attempt++) {
+    throwIfCancelled();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), HEADERS_TIMEOUT_MS);
+    activeControllers.add(controller);
+    const timer = setTimeout(() => {
+      if (!cancelRequested) controller.abort();
+    }, HEADERS_TIMEOUT_MS);
     let response: Response;
     try {
       response = await fetch(url, {
         headers: { 'User-Agent': USER_AGENT, Accept: '*/*' },
         signal: controller.signal,
       });
+    } catch (err) {
+      activeControllers.delete(controller);
+      if (cancelRequested) throw new DownloadCancelledError();
+      throw err;
     } finally {
       // Снимаем только ожидание заголовков: за телом следит таймер простоя.
       clearTimeout(timer);
@@ -137,6 +213,7 @@ async function requestFile(
 
     if (response.ok) return { response, controller };
 
+    activeControllers.delete(controller);
     // Тело ошибки не нужно, но соединение надо закрыть явно.
     await response.body?.cancel().catch(() => {});
 
@@ -164,8 +241,16 @@ function busyDelay(response: Response, attempt: number): number {
   return wait + Math.floor(Math.random() * 500);
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function delay(ms: number): Promise<void> {
+  const step = 200;
+  let left = ms;
+  while (left > 0) {
+    throwIfCancelled();
+    const slice = Math.min(step, left);
+    await new Promise((resolve) => setTimeout(resolve, slice));
+    left -= slice;
+  }
+  throwIfCancelled();
 }
 
 /**
@@ -179,7 +264,10 @@ async function streamToFile(
   destPath: string,
   options: DownloadFileOptions,
 ): Promise<number> {
-  if (!response.body) throw new Error('Пустой ответ');
+  if (!response.body) {
+    activeControllers.delete(controller);
+    throw new Error('Пустой ответ');
+  }
 
   await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
 
@@ -193,7 +281,9 @@ async function streamToFile(
   let received = 0;
   let lastTick = 0;
 
-  const stallTimer = setTimeout(() => controller.abort(), STALL_TIMEOUT_MS);
+  const stallTimer = setTimeout(() => {
+    if (!cancelRequested) controller.abort();
+  }, STALL_TIMEOUT_MS);
 
   const meter = new Transform({
     transform(chunk: Buffer, _enc, cb) {
@@ -227,9 +317,11 @@ async function streamToFile(
     await fs.promises.rename(tmpPath, destPath);
   } catch (err) {
     await fs.promises.unlink(tmpPath).catch(() => {});
+    if (cancelRequested) throw new DownloadCancelledError();
     throw err;
   } finally {
     clearTimeout(stallTimer);
+    activeControllers.delete(controller);
   }
 
   options.onProgress?.(received, total || received);

@@ -1,0 +1,1423 @@
+/* Frame 606 */
+
+position: absolute;
+width: 900px;
+height: 782px;
+left: 231px;
+top: 32px;
+
+background: #202020;
+border-radius: 8px 0px 7px;
+
+
+/* Frame 605 */
+
+position: absolute;
+width: 290px;
+height: 50px;
+left: 1px;
+top: 0px;
+
+background: #202020;
+border-width: 0px 1px 1px 0px;
+border-style: solid;
+border-color: rgba(255, 255, 255, 0.05);
+
+
+/* Group 40415 */
+
+position: absolute;
+width: 167px;
+height: 20px;
+left: 15px;
+top: 15px;
+
+
+
+/* MC Messenger */
+
+position: absolute;
+width: 139px;
+height: 20px;
+left: 43px;
+top: 15px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* identical to box height */
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Group 40414 */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: 15px;
+top: 15px;
+
+
+
+/* Rectangle 7424 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 16px;
+height: 11px;
+left: 15px;
+top: 15px;
+
+border: 2px solid rgba(123, 212, 183, 0.5);
+transform: matrix(-1, 0, 0, 1, 0, 0);
+
+
+/* Rectangle 7423 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 16px;
+height: 14px;
+left: 19px;
+top: 21px;
+
+border: 2px solid #7BD4B7;
+
+
+/* Frame 609 */
+
+position: absolute;
+width: 63px;
+height: 20px;
+left: 213px;
+top: 15px;
+
+background: rgba(123, 212, 183, 0.25);
+border-radius: 8px;
+
+
+/* Rectangle 7429 */
+
+position: absolute;
+width: 8px;
+height: 8px;
+left: 6px;
+top: 6px;
+
+background: #7BD4B7;
+border-radius: 3px;
+
+
+/* Online */
+
+position: absolute;
+width: 41px;
+height: 20px;
+left: 20px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #7BD4B7;
+
+
+
+/* Frame 607 */
+
+position: absolute;
+width: 290px;
+height: 731px;
+left: 1px;
+top: 51px;
+
+background: #202020;
+border-right: 1px solid rgba(255, 255, 255, 0.05);
+
+
+/* Frame 611 */
+
+position: absolute;
+width: 290px;
+height: 64px;
+left: 0px;
+top: 66px;
+
+
+
+/* Frame 612 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 12px;
+top: 12px;
+
+background: #FFFFFF;
+border-radius: 3px;
+
+
+/* image 104 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Rectangle 7433 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+background: #7BD4B7;
+border: 2px solid #202020;
+border-radius: 3px;
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 92px;
+height: 20px;
+left: 67px;
+top: 12px;
+
+background: rgba(0, 0, 0, 0.65);
+
+
+/* MinotaurMC */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 614 */
+
+position: absolute;
+width: 54px;
+height: 20px;
+left: 165px;
+top: 12px;
+
+background: #0C6648;
+
+
+/* Ely.by */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 615 */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: 225px;
+top: 12px;
+
+background: #1F72B7;
+
+
+/* Vector */
+
+position: absolute;
+width: 14px;
+height: 10px;
+left: 3px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* Мы идём играть или нет? */
+
+position: absolute;
+width: 223px;
+height: 16px;
+left: 67px;
+top: 36px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.75);
+
+
+
+/* Frame 614 */
+
+position: absolute;
+width: 290px;
+height: 64px;
+left: 0px;
+top: 0px;
+
+
+
+/* Frame 618 */
+
+position: absolute;
+width: 258px;
+height: 36px;
+left: 16px;
+top: 14px;
+
+background: rgba(255, 255, 255, 0.05);
+border-radius: 12px;
+
+
+/* Icon */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 10px;
+top: 10px;
+
+opacity: 0.35;
+
+
+/* Ellipse 71 (Stroke) */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 10px;
+top: 10px;
+
+background: #FFFFFF;
+
+
+/* Rectangle 7343 */
+
+position: absolute;
+width: 5px;
+height: 5px;
+left: 21px;
+top: 21px;
+
+background: #FFFFFF;
+
+
+/* Search */
+
+position: absolute;
+width: 219px;
+height: 36px;
+left: 36px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.35);
+
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 290px;
+height: 64px;
+left: 0px;
+top: 198px;
+
+background: rgba(255, 255, 255, 0.05);
+
+
+/* Frame 612 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 12px;
+top: 12px;
+
+background: #FFFFFF;
+border-radius: 3px;
+
+
+/* image 104 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Rectangle 7433 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+background: #7BD4B7;
+border: 2px solid #202020;
+border-radius: 3px;
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 74px;
+height: 20px;
+left: 67px;
+top: 12px;
+
+background: rgba(0, 0, 0, 0.65);
+
+
+/* payno13 */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 614 */
+
+position: absolute;
+width: 48px;
+height: 20px;
+left: 147px;
+top: 12px;
+
+background: #FFFFFF;
+
+
+/* MS */
+
+position: absolute;
+left: 0%;
+right: -12.5%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #000000;
+
+
+
+/* Rectangle 7435 */
+
+position: absolute;
+left: 12.5%;
+right: 77.08%;
+top: 20%;
+bottom: 55%;
+
+background: #F25022;
+
+
+/* Rectangle 7436 */
+
+position: absolute;
+left: 12.5%;
+right: 77.08%;
+top: 55%;
+bottom: 20%;
+
+background: #00A4EF;
+
+
+/* Rectangle 7437 */
+
+position: absolute;
+left: 27.08%;
+right: 62.5%;
+top: 20%;
+bottom: 55%;
+
+background: #7FBA00;
+
+
+/* Rectangle 7438 */
+
+position: absolute;
+left: 27.08%;
+right: 62.5%;
+top: 55%;
+bottom: 20%;
+
+background: #FFB900;
+
+
+/* Frame 615 */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: 201px;
+top: 12px;
+
+background: #1F72B7;
+
+
+/* Vector */
+
+position: absolute;
+width: 14px;
+height: 10px;
+left: 3px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* Go fuck yourself! */
+
+position: absolute;
+width: 223px;
+height: 16px;
+left: 67px;
+top: 36px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.75);
+
+
+
+/* Rectangle 7439 */
+
+position: absolute;
+width: 11.5px;
+height: 16px;
+left: 279.5px;
+top: 24px;
+
+background: #2B2B2B;
+
+
+/* Rectangle 7440 */
+
+position: absolute;
+width: 11px;
+height: 14px;
+left: 280px;
+top: 25px;
+
+background: #101010;
+
+
+/* Frame 612 */
+
+position: absolute;
+width: 290px;
+height: 64px;
+left: 0px;
+top: 132px;
+
+
+
+/* Frame 612 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 12px;
+top: 12px;
+
+background: #FFFFFF;
+border-radius: 3px;
+
+
+/* image 104 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Group 40417 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+
+
+/* Rectangle 7433 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+background: #FF7070;
+border: 2px solid #202020;
+border-radius: 3px;
+
+
+/* Rectangle 7434 */
+
+position: absolute;
+width: 6px;
+height: 2px;
+left: 46px;
+top: 48px;
+
+background: #FFFFFF;
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 83px;
+height: 20px;
+left: 67px;
+top: 12px;
+
+background: rgba(0, 0, 0, 0.65);
+
+
+/* KittyPrime */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 614 */
+
+position: absolute;
+width: 54px;
+height: 20px;
+left: 156px;
+top: 12px;
+
+background: #0C6648;
+
+
+/* Ely.by */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Купи лицензию пж... */
+
+position: absolute;
+width: 223px;
+height: 16px;
+left: 67px;
+top: 36px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.75);
+
+
+
+/* Frame 615 */
+
+position: absolute;
+width: 290px;
+height: 64px;
+left: 0px;
+top: 264px;
+
+
+
+/* Frame 612 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 12px;
+top: 12px;
+
+background: #FFFFFF;
+border-radius: 3px;
+
+
+/* image 104 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Group 40417 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+
+
+/* Rectangle 7433 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+background: #7E7E7E;
+border: 2px solid #202020;
+border-radius: 3px;
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 56px;
+height: 20px;
+left: 67px;
+top: 12px;
+
+background: rgba(0, 0, 0, 0.65);
+
+
+/* Grash */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 614 */
+
+position: absolute;
+width: 54px;
+height: 20px;
+left: 129px;
+top: 12px;
+
+background: #0C6648;
+
+
+/* Ely.by */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* You: У нас лаунчер топ воо... */
+
+position: absolute;
+width: 223px;
+height: 16px;
+left: 67px;
+top: 36px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #A78BFA;
+
+
+
+/* Frame 608 */
+
+position: absolute;
+width: 608px;
+height: 782px;
+left: 292px;
+top: 0px;
+
+background: rgba(0, 0, 0, 0.5);
+border-radius: 0px 0px 7px 0px;
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 608px;
+height: 64px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.05);
+
+
+/* Frame 612 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 12px;
+top: 12px;
+
+background: #FFFFFF;
+border-radius: 3px;
+
+
+/* image 104 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Rectangle 7433 */
+
+position: absolute;
+width: 10px;
+height: 10px;
+left: 44px;
+top: 44px;
+
+background: #7BD4B7;
+border: 2px solid #202020;
+border-radius: 3px;
+
+
+/* Frame 613 */
+
+position: absolute;
+width: 74px;
+height: 20px;
+left: 67px;
+top: 12px;
+
+background: rgba(0, 0, 0, 0.65);
+
+
+/* payno13 */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 614 */
+
+position: absolute;
+width: 48px;
+height: 20px;
+left: 147px;
+top: 12px;
+
+background: #FFFFFF;
+
+
+/* MS */
+
+position: absolute;
+left: 0%;
+right: -12.5%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Minecraft Rus';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 12px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #000000;
+
+
+
+/* Rectangle 7435 */
+
+position: absolute;
+left: 12.5%;
+right: 77.08%;
+top: 20%;
+bottom: 55%;
+
+background: #F25022;
+
+
+/* Rectangle 7436 */
+
+position: absolute;
+left: 12.5%;
+right: 77.08%;
+top: 55%;
+bottom: 20%;
+
+background: #00A4EF;
+
+
+/* Rectangle 7437 */
+
+position: absolute;
+left: 27.08%;
+right: 62.5%;
+top: 20%;
+bottom: 55%;
+
+background: #7FBA00;
+
+
+/* Rectangle 7438 */
+
+position: absolute;
+left: 27.08%;
+right: 62.5%;
+top: 55%;
+bottom: 20%;
+
+background: #FFB900;
+
+
+/* Frame 615 */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: 201px;
+top: 12px;
+
+background: #1F72B7;
+
+
+/* Vector */
+
+position: absolute;
+width: 14px;
+height: 10px;
+left: 3px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* Online */
+
+position: absolute;
+width: 223px;
+height: 16px;
+left: 67px;
+top: 36px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #7BD4B7;
+
+
+
+/* Frame 622 */
+
+position: absolute;
+width: 32px;
+height: 32px;
+left: 564px;
+top: 16px;
+
+border-radius: 10px;
+
+
+/* Group 40419 */
+
+position: absolute;
+width: 20px;
+height: 4px;
+left: 6px;
+top: 14px;
+
+
+
+/* Rectangle 7458 */
+
+position: absolute;
+width: 4px;
+height: 4px;
+left: 22px;
+top: 14px;
+
+background: #FFFFFF;
+border-radius: 1px;
+transform: rotate(90deg);
+
+
+/* Rectangle 7459 */
+
+position: absolute;
+width: 4px;
+height: 4px;
+left: 14px;
+top: 14px;
+
+background: #FFFFFF;
+border-radius: 1px;
+transform: rotate(90deg);
+
+
+/* Rectangle 7460 */
+
+position: absolute;
+width: 4px;
+height: 4px;
+left: 6px;
+top: 14px;
+
+background: #FFFFFF;
+border-radius: 1px;
+transform: rotate(90deg);
+
+
+/* Frame 623 */
+
+position: absolute;
+width: 608px;
+height: 718px;
+left: 0px;
+top: 64px;
+
+
+
+/* Group 40420 */
+
+position: absolute;
+width: 152px;
+height: 66px;
+left: 438px;
+top: 12px;
+
+
+
+/* Frame 624 */
+
+position: absolute;
+width: 76px;
+height: 42px;
+left: 514px;
+top: 12px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* Hello! */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* 19.08 03:41 Read */
+
+position: absolute;
+left: 72.04%;
+right: 2.96%;
+top: 7.52%;
+bottom: 89.14%;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: right;
+
+color: rgba(255, 255, 255, 0.25);
+
+
+
+/* Group 40421 */
+
+position: absolute;
+width: 158px;
+height: 66px;
+left: 18px;
+top: 86px;
+
+
+
+/* Frame 624 */
+
+position: absolute;
+width: 158px;
+height: 42px;
+left: 18px;
+top: 86px;
+
+background: rgba(255, 255, 255, 0.2);
+border-radius: 8px;
+
+
+/* Go fuck yourself! */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* 19.08 04:30 */
+
+position: absolute;
+left: 2.96%;
+right: 71.05%;
+top: 17.83%;
+bottom: 78.83%;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.25);
+

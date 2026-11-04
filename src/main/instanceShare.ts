@@ -23,9 +23,11 @@ import {
   type InstanceShareManifest,
   type ShareContentType,
 } from '../shared/instanceShare';
-import { downloadModrinthFile, runWithConcurrency, PROXY_MAX_CONCURRENT_DOWNLOADS } from './modrinthDownload';
+import { downloadModrinthFile, runWithConcurrency, PROXY_MAX_CONCURRENT_DOWNLOADS, armDownloads, isDownloadCancelled } from './modrinthDownload';
+import { prefetchInstanceRuntime } from './launcher';
 import { curseforgeFingerprintFile } from './curseforgeFingerprint';
 import { getInstanceRoot } from './launcher';
+import { getLauncherDataDir } from './paths';
 
 // ===== Лимиты =====
 
@@ -292,7 +294,7 @@ async function collectShareFiles(
 }
 
 function buildsPath(): string {
-  return path.join(process.env.APPDATA || process.cwd(), '.Undefined Client', 'builds.json');
+  return path.join(getLauncherDataDir(), 'builds.json');
 }
 
 function readBuilds(): any[] {
@@ -538,6 +540,7 @@ async function importShare(
   builds.push(build);
   writeBuilds(builds);
 
+  armDownloads();
   const files = manifest.files || [];
   const total = files.length;
   let current = 0;
@@ -606,6 +609,7 @@ async function importShare(
       }
       throw new Error('unresolvable_file');
     } catch (err) {
+      if (isDownloadCancelled(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`${file.filename}: ${msg}`);
     }
@@ -680,7 +684,19 @@ export function registerInstanceShareIpc(getWindow: () => BrowserWindow | null):
     try {
       sendProgress(win, { phase: 'fetch', current: 0, total: 0 });
       const result = await importShare(String(id || ''), win);
-      if (result.ok) sendProgress(win, { phase: 'done', buildId: result.build.id });
+      if (result.ok) {
+        try {
+          await prefetchInstanceRuntime({
+            buildId: String(result.build.id),
+            gameVersion: String(result.build.gameVersion || ''),
+            loader: String(result.build.loader || 'vanilla'),
+            loaderVersion: String(result.build.loaderVersion || ''),
+          });
+        } catch (err) {
+          console.warn('[prefetch] share runtime', err);
+        }
+        sendProgress(win, { phase: 'done', buildId: result.build.id });
+      }
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

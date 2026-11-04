@@ -1,0 +1,392 @@
+/* Единый видеоплеер.
+   Размеры панели — из шаблона NewVideoPlayerV2 (708×48, кнопки 36, отступ 6, радиус 16/40).
+   Рамка 1px входит в 48px, поэтому внутренний padding 5px даёт те же 6px от внешнего края.
+   Цвет #C4FF83 из шаблона заменён на акцентный --accent клиента. */
+
+.vp-overlay {
+  position: fixed;
+  top: var(--titlebar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Выше мессенджера (10050) и модалок, на одном слое с просмотром картинок. */
+  z-index: 1000700;
+  background: rgba(22, 22, 22, 0.88);
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+.vp-overlay.is-shown {
+  opacity: 1;
+}
+
+.vp-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 24px 88px;
+  box-sizing: border-box;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.vp-overlay.is-shown .vp-stage {
+  opacity: 1;
+  transform: none;
+}
+
+.vp-video {
+  max-width: 100%;
+  max-height: 100%;
+  background: #000;
+  outline: none;
+  cursor: pointer;
+}
+
+.vp-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  margin-inline: auto;
+  padding: 5px;
+  background: transparent;
+  border: none;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-weight: 400;
+  font-synthesis: none;
+  opacity: 0;
+  transform: scale(0.97);
+  transform-origin: center bottom;
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.vp-overlay.is-shown .vp-panel {
+  opacity: 1;
+  transform: none;
+}
+
+/* Стекло только на плашке. Если повесить blur на саму панель, ползунок громкости
+   уже не увидит кадр за ней и останется без размытия. */
+.vp-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  pointer-events: none;
+}
+
+.vp-panel__btn {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 40px;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-weight: 400;
+  font-synthesis: none;
+}
+
+.vp-panel__btn img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}
+
+/* Только крестик: при наведении поворот на 90°. */
+.vp-panel__btn[data-vp="close"] img {
+  transition: transform 200ms ease-out;
+  transform-origin: center;
+}
+
+.vp-panel__btn[data-vp="close"]:hover img {
+  transform: rotate(90deg);
+}
+
+.vp-panel__btn:hover,
+.vp-panel__btn.is-open {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.vp-panel__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.vp-panel__btn[hidden] {
+  display: none !important;
+}
+
+.vp-panel__sep {
+  flex: 0 0 2px;
+  width: 2px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+}
+
+/* Дорожка из шаблона. Рядом стоит таймер, поэтому она чуть короче 554 и сжимается. */
+.vp-seek {
+  position: relative;
+  flex: 1 1 430px;
+  width: 430px;
+  min-width: 96px;
+  height: 36px;
+  cursor: pointer;
+}
+
+.vp-seek__track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.vp-seek__fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent, #70ADDF);
+  border-radius: 4px;
+}
+
+.vp-seek__thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--accent, #70ADDF);
+  pointer-events: none;
+}
+
+.vp-seek__thumb::after,
+.vp-vol__thumb::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+/* Таймер в ряду панели, как счётчик «1 / 6» у просмотра картинок. */
+.vp-time,
+.vp-time__dur {
+  font-family: 'Nekst', Arial, sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+  font-size: 16px;
+  line-height: 19px;
+}
+
+.vp-time {
+  flex: 0 0 auto;
+  min-width: 96px;
+  height: 36px;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  color: #fff;
+  pointer-events: none;
+}
+
+.vp-time__dur {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.vp-vol {
+  position: relative;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+}
+
+.vp-vol > .vp-panel__btn {
+  position: relative;
+  z-index: 5;
+}
+
+/* Выше кнопки, чтобы не накрывать дорожку и таймер. Показ — по наведению. */
+.vp-vol__pop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 28px);
+  box-sizing: border-box;
+  width: 32px;
+  height: 100px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 4;
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+  pointer-events: none;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+}
+
+/* Мостик до кнопки: курсор не теряет панель по пути к ползунку. */
+.vp-vol__pop::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  right: -18px;
+  top: 100%;
+  height: 32px;
+}
+
+.vp-vol:hover .vp-vol__pop,
+.vp-vol.is-pinned .vp-vol__pop {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.vp-vol__hit {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+}
+
+.vp-vol__track {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  width: 4px;
+  height: 72px;
+  margin-left: -2px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.vp-vol__fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 0;
+  background: var(--accent, #70ADDF);
+  border-radius: 4px;
+}
+
+.vp-vol__thumb {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: var(--accent, #70ADDF);
+  pointer-events: none;
+}
+
+/* Превью ролика в посте: клик открывает плеер, а не карточку. */
+.sf-video-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: #111;
+  cursor: pointer;
+}
+
+.sf-video-thumb video,
+.sf-quote__media video {
+  width: 100%;
+  display: block;
+  max-height: 360px;
+  object-fit: cover;
+  pointer-events: none;
+  background: #111;
+}
+
+.sf-pm__media .sf-video-thumb video {
+  max-height: 420px;
+}
+
+.sf-quote__media video {
+  max-height: 140px;
+}
+
+.sf-video-thumb__badge,
+.mod-details-gallery__play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border-radius: 40px;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.mod-details-gallery__item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  background: #111;
+}
+
+video.vp-inline {
+  cursor: pointer;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Превью в чате не перехватывает клик и не начинает играть само. */
+.msgr-media--video video,
+.msgr-profile__media-item video {
+  pointer-events: none;
+}

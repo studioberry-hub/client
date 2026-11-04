@@ -1,4 +1,4 @@
-﻿import {
+import {
   BustPoseAnimation,
   createSkinAnimation,
   DEFAULT_SKIN_DEBUG_OPTIONS,
@@ -11,18 +11,35 @@
 } from 'skinviewengine';
 import { marked } from 'marked';
 import { setApiBase, getApiBase, catalogImageUrl, skinImageUrl } from '../shared/apiBase';
+import { classifyMcVersion, DEFAULT_VERSION_FILTERS, MC_VERSION_GROUPS, type McVersionGroup } from '../shared/mcVersionGroups';
 import { previewBadge, resolvePreviewStrategy } from '../shared/world-preview-matrix';
 import type { AiUiHost } from './ai/types';
-import { initMessenger, ensureMessengerTab, notifyMessengerAccountChanged, notifyMessengerGameRunning, notifyMessengerGameStopped, openGroupInviteModal, openAssistantBotDm } from './messenger/ui';
+import { initMessenger, ensureMessengerTab, warmMessengerSession, notifyMessengerAccountChanged, notifyMessengerGameRunning, notifyMessengerGameStopped, openGroupInviteModal, openAssistantBotDm, openProfileByUsername, openProfileByUserId } from './messenger/ui';
+import { initSocialFeed, loadSocialFeed, fetchUserSocialPosts, renderUserPostsHtml } from './social-feed';
+import { bindZoomableImages, closeImageViewer, openImageViewer } from './image-viewer';
+import { bindPlayableVideos, closeVideoViewer, isDirectVideoUrl, openVideoViewer } from './video-player';
+import { initUiSfx, playStatusCue, playToastCue, setUiSfxEnabled } from './ui-sfx';
+import { hiddenListingAddrs, undefinedListingEntries } from './hostedServers';
+import { initGamepad, refreshGamepadLabels, setGamepadLook, syncGamepadColor, takeGamepadLaunch } from './gamepad';
+import { closeAccountStage, openAccountStage } from './account-stage';
 import {
   askAiConfirmBatch,
   askAiConfirmInChat,
+  describeAiAction,
   parkAiConfirmsFromRoot,
   pushAiUndo,
   renderAiBuildDiff,
   renderAiUndoChip,
   restoreAiConfirmsForSession,
 } from './ai/confirm-ui';
+import {
+  formatBuildChoice,
+  isCreateRequest,
+  isLastPlayedRequest,
+  isLaunchRequest,
+  matchBuildsByName,
+  resolveLaunchBuilds,
+} from './ai/build-match';
 import {
   appendAiBuildPreview,
   appendAiCrashQuote,
@@ -39,6 +56,7 @@ import {
   getAiAttachments,
   initAiAttachUi,
   parseAiAttachmentsPrompt,
+  pushAiAttachment,
   renderAiAttachBadgesHtml,
   type AiAttachment,
 } from './ai/attach-ui';
@@ -66,10 +84,13 @@ interface NewsPostSummary {
   id: string;
   title: string;
   summary: string;
+  content?: string;
   cover: string | null;
+  media?: { url: string; type?: string; alt?: string }[];
   publishedAt: string;
   author: string;
   hasEn?: boolean;
+  views?: number;
 }
 
 interface NewsPostFull extends NewsPostSummary {
@@ -193,15 +214,21 @@ interface ElectronAPI {
   setActiveAccount: (uuid: string) => Promise<{ ok?: boolean } | any>;
   getActiveAccount: () => Promise<string | null>;
   saveBuild: (build: any) => Promise<any>;
+  prefetchRuntime?: (opts: { buildId: string; gameVersion: string; loader?: string; loaderVersion?: string }) => Promise<{ ok: boolean; error?: string }>;
   loadBuilds: () => Promise<any[]>;
   removeBuild: (id: string) => Promise<any>;
+  loadBuildGroups: () => Promise<any[]>;
+  saveBuildGroup: (group: any) => Promise<any>;
+  removeBuildGroup: (id: string) => Promise<any>;
   /** Имена файлов из assets/InstancesIcons (подхватываются на лету) */
   listInstanceIcons: () => Promise<string[]>;
   saveServer: (server: any) => Promise<any>;
   loadServers: () => Promise<any[]>;
   removeServer: (id: string) => Promise<any>;
   serverStatus: (ip: string) => Promise<any>;
-  fetchServerCatalog: () => Promise<any[]>;
+  fetchServerCatalog: (force?: boolean) => Promise<any[]>;
+  fetchServerDetail: (source: string, id: string) => Promise<any>;
+  fetchServerHistory: (projectId: string, serverId: string, period: string) => Promise<any>;
   getSkinData: (uuid: string, serverUrl?: string) => Promise<{ skinUrl: string | null; capeUrl: string | null } | null>;
   fetchSkinImage: (url: string) => Promise<string | null>;
   getElyWornSkin: (nickname: string, force?: boolean) => Promise<string | null>;
@@ -231,6 +258,7 @@ interface ElectronAPI {
   getModrinthProject: (projectId: string) => Promise<any>;
   getModrinthVersions: (projectId: string) => Promise<any[]>;
   downloadMod: (projectId: string, versionId?: string) => Promise<{ success: boolean; filename?: string; error?: string; buildCreated?: boolean; build?: any }>;
+  cancelDownloads: () => Promise<{ ok: boolean }>;
   installMod: (buildId: string, projectId: string, versionId?: string, contentType?: string, options?: { force?: boolean; skipDeps?: boolean; installOptional?: boolean }) => Promise<{
     success: boolean;
     name?: string;
@@ -260,6 +288,7 @@ interface ElectronAPI {
   }>;
   resolveProjectByName: (name: string) => Promise<{ projectId: string; iconUrl: string; title: string; description: string } | null>;
   pickModpack: () => Promise<string | null>;
+  pickWallpaper?: () => Promise<{ name: string; media: 'image' | 'video' } | { error: string } | null>;
   inspectModpack: (archivePath: string) => Promise<{
     success: boolean;
     inspect?: {
@@ -302,7 +331,25 @@ interface ElectronAPI {
     incomplete?: boolean;
   }>;
   getVersions: () => Promise<any[]>;
-  getLoaderVersions: (loader: string, mcVersion: string) => Promise<string[]>;
+  getLoaderVersions: (loader: string, mcVersion: string) => Promise<{ versions: string[]; error?: string; unavailable?: boolean } | string[]>;
+  listInstanceDrives?: () => Promise<Array<{ letter: string; path: string }>>;
+  getInstancesLocation?: () => Promise<{ platform: string; instancesDir: string; windowsOnly: boolean }>;
+  setDefaultInstancesDir?: (dir: string) => Promise<{ ok: boolean; error?: string; path?: string }>;
+  pickInstancesDir?: (title?: string) => Promise<string | null>;
+  prepareBuildLocation?: (buildId: string, parentDir: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  moveInstance?: (buildId: string, destParent: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  scanExternalLaunchers?: () => Promise<{
+    ok: boolean;
+    error?: string;
+    launchers: Array<{
+      id: string;
+      name: string;
+      root: string;
+      iconDataUrl?: string;
+      instances: Array<{ id: string; name: string; gameVersion: string; loader: string; loaderVersion: string; iconDataUrl?: string }>;
+    }>;
+  }>;
+  importExternalInstances?: (launcherId: string, instanceIds: string[]) => Promise<{ ok: boolean; error?: string; imported: any[] }>;
   detectJava: (refresh?: boolean) => Promise<{ name: string; path: string; version: number; managed?: boolean }[]>;
   listJavaVersions: (refresh?: boolean) => Promise<{
     version: number;
@@ -327,6 +374,7 @@ interface ElectronAPI {
   launchUpdater: () => Promise<{ success: boolean; error?: string }>;
   fetchNewsList: (lang?: string, limit?: number) => Promise<{ posts?: NewsPostSummary[]; error?: string }>;
   fetchNewsPost: (id: string, lang?: string) => Promise<{ post?: NewsPostFull | null; error?: string }>;
+  fetchNewsView: (id: string) => Promise<{ views?: number; error?: string }>;
   messengerSession: (account: any) => Promise<{ ok: boolean; user?: any; token?: string; cached?: boolean; code?: string; error?: string }>;
   messengerLogout: () => Promise<{ ok: boolean }>;
   messengerRequest: (payload: {
@@ -344,9 +392,43 @@ interface ElectronAPI {
     toolNames?: string[];
     error?: string;
   }>;
+  aiProviderGet?: () => Promise<{
+    kind?: 'pixi' | 'openai' | 'anthropic';
+    baseUrl?: string;
+    model?: string;
+    hasKey?: boolean;
+    keyTail?: string;
+  }>;
+  aiProviderSet?: (patch: { kind?: string; baseUrl?: string; apiKey?: string; model?: string }) => Promise<{
+    kind?: string;
+    baseUrl?: string;
+    model?: string;
+    hasKey?: boolean;
+    keyTail?: string;
+  }>;
+  aiProviderModels?: () => Promise<{ ok?: boolean; models?: string[]; error?: string }>;
+  hostedServersList?: () => Promise<
+    Array<{
+      id: string;
+      name: string;
+      software?: string;
+      gameVersion?: string;
+      status?: string;
+      publicHost?: string;
+      publicPort?: number;
+      port?: number;
+      coreReady?: boolean;
+    }>
+  >;
+  hostedServersPlugins?: (id: string) => Promise<Array<{ name: string; enabled: boolean; size?: number }>>;
+  hostedServersFiles?: (
+    id: string,
+    rel?: string,
+  ) => Promise<{ ok?: boolean; entries?: Array<{ name: string; dir: boolean; size: number }> }>;
   aiChat: (payload: {
     messages: Array<Record<string, unknown>>;
     tools?: boolean;
+    model?: string;
     context?: { buildId?: string; buildName?: string } | null;
   }) => Promise<{
     reply?: string;
@@ -629,8 +711,9 @@ function applyStaticI18n(): void {
       el.textContent = translated;
     }
   });
-  document.querySelectorAll<HTMLInputElement>('[data-i18n-ph]').forEach(el => {
-    el.placeholder = tr(el.getAttribute('data-i18n-ph') || '');
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-i18n-ph], [data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-ph') || el.getAttribute('data-i18n-placeholder') || '';
+    el.placeholder = tr(key);
   });
   document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach(el => {
     el.title = tr(el.getAttribute('data-i18n-title') || '');
@@ -638,6 +721,9 @@ function applyStaticI18n(): void {
   document.querySelectorAll<HTMLElement>('[data-i18n-html]').forEach(el => {
     el.innerHTML = tr(el.getAttribute('data-i18n-html') || '');
   });
+  syncSidebarCollapseText();
+  initGamepad((key) => t(key));
+  refreshGamepadLabels();
 }
 
 async function setLang(lang: string): Promise<void> {
@@ -740,15 +826,23 @@ function switchTab(target: string): void {
   if (target === 'skins') void ensureSkinTab();
   if (target === 'mods') void ensureModsCatalog();
   if (target === 'servers') void loadServerCatalog();
+  if (target === 'builds') void refreshExternalLaunchers();
   if (target === 'home') {
     renderHomeNews();
     refreshHomeDashboard();
   }
-  if (target === 'news') void loadNews(false);
+  if (target === 'news') {
+    // JWT Messenger нужен для соцленты — прогреваем, если ещё не заходили в чаты
+    void warmMessengerSession().finally(() => {
+      void loadNews(false);
+    });
+  }
   if (target === 'ai') {
     ensureAiTab();
-    void refreshAiAccessStatus().then(() => {
-      if (aiAccessOk === false) showAiAccessDeniedModal();
+    void warmMessengerSession().finally(() => {
+      void refreshAiAccessStatus().then(() => {
+        if (aiAccessOk === false) showAiAccessDeniedModal();
+      });
     });
   }
   if (target === 'messenger') {
@@ -768,6 +862,7 @@ let presenceScreen = 'home';
 
 let wallpaperStart: (() => void) | null = null;
 let wallpaperStop: (() => void) | null = null;
+let homeWallPlaying = false;
 
 function syncWallpaper(activeTab?: string): void {
   const tab = activeTab ?? presenceTab;
@@ -781,10 +876,8 @@ function syncWallpaper(activeTab?: string): void {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!wallpaperStart) return;
   setSkinViewerPaused(document.hidden || presenceTab !== 'skins');
-  const fn = document.hidden ? wallpaperStop : wallpaperStart;
-  if (fn) fn();
+  syncWallpaper();
 });
 
 async function getElyAvatarUrl(acc: any, force = false): Promise<string | null> {
@@ -861,10 +954,21 @@ function drawSkinHeadAvatar(skinDataUrl: string, size = 32): Promise<string | nu
       const ctx = canvas.getContext('2d');
       if (!ctx) { resolve(null); return; }
       ctx.imageSmoothingEnabled = false;
-      const scale = img.width / 64;
-      const h = 8 * scale;
-      ctx.drawImage(img, 8 * scale, 8 * scale, h, h, 0, 0, size, size);
-      ctx.drawImage(img, 40 * scale, 8 * scale, h, h, 0, 0, size, size);
+      const w = img.naturalWidth || img.width;
+      const hImg = img.naturalHeight || img.height;
+      if (w < 64 || w % 64 !== 0) {
+        resolve(null);
+        return;
+      }
+      const scale = w / 64;
+      const rows = hImg / scale;
+      if (Math.abs(rows - 64) > 0.5 && Math.abs(rows - 32) > 0.5) {
+        resolve(null);
+        return;
+      }
+      const face = 8 * scale;
+      ctx.drawImage(img, 8 * scale, 8 * scale, face, face, 0, 0, size, size);
+      ctx.drawImage(img, 40 * scale, 8 * scale, face, face, 0, 0, size, size);
       resolve(canvas.toDataURL('image/png'));
     };
     img.onerror = () => resolve(null);
@@ -892,6 +996,8 @@ async function refreshAccountUiAvatar(skinDataUrl: string): Promise<void> {
 
   setSkinImage('.account-skin-img', '.account-skin-placeholder', avatar);
   setSkinImage('.account-popup-skin-img', '.account-popup-skin-placeholder', avatar);
+  forgetDiscordFaceStamp();
+  pushPresence();
   // Строка в списке аккаунтов тоже должна обновиться сразу
   const uuid = String(currentAccount?.uuid || '');
   if (uuid) {
@@ -948,6 +1054,53 @@ async function resolveAccountHeadAvatar(acc: any): Promise<string | null> {
   return null;
 }
 
+const discordFaceStamp = new Map<string, { stamp: string; at: number }>();
+
+function discordFaceKey(acc: any): string {
+  const type = acc?.meta?.type || acc?.type || '';
+  const nick = String(acc?.username || acc?.name || '').trim().toLowerCase();
+  const uuid = String(acc?.uuid || '').replace(/-/g, '').toLowerCase();
+  return `${type}:${uuid || nick}`;
+}
+
+function skinFaceStamp(url: string | null | undefined): string {
+  const text = String(url || '');
+  if (!text || text.includes('cbe20ed58814c5e1')) return '';
+  const hash = text.replace(/[^a-zA-Z0-9]/g, '').slice(-16);
+  return hash ? `&s=${hash}` : '';
+}
+
+/** Публичная голова выбранного аккаунта. Discord забирает её сам, data:-адрес ему не виден. */
+async function accountDiscordFaceUrl(acc: any): Promise<string> {
+  const base = `${getApiBase()}/api/skin/face`;
+  const type = acc?.meta?.type || acc?.type || '';
+  const nick = String(acc?.username || acc?.name || '').trim();
+  const uuid = String(acc?.uuid || '').replace(/-/g, '').toLowerCase();
+  const key = discordFaceKey(acc);
+  const cached = discordFaceStamp.get(key);
+  const fresh = !cached || Date.now() - cached.at > 60_000;
+  let stamp = cached?.stamp || '';
+  try {
+    if (fresh && type === 'yggdrasil' && nick && api?.getElyWornSkin) {
+      stamp = skinFaceStamp(await api.getElyWornSkin(nick, true));
+      discordFaceStamp.set(key, { stamp, at: Date.now() });
+    } else if (fresh && type === 'msa' && uuid && api?.getSkinData) {
+      const data = await api.getSkinData(uuid);
+      stamp = skinFaceStamp(data?.skinUrl);
+      discordFaceStamp.set(key, { stamp, at: Date.now() });
+    }
+  } catch {
+    /* прошлый штамп, карточка всё равно откроется */
+  }
+  if (type === 'yggdrasil' && nick) return `${base}?nick=${encodeURIComponent(nick)}${stamp}`;
+  if (type === 'msa' && uuid) return `${base}?uuid=${uuid}${stamp}`;
+  return `${base}?steve=1`;
+}
+
+function forgetDiscordFaceStamp(): void {
+  discordFaceStamp.delete(discordFaceKey(currentAccount));
+}
+
 /** Запомнить ревизию скина (для Discord / mc-heads) и обновить presence */
 async function bumpAccountAvatarRev(skinHint?: string): Promise<void> {
   const rev = skinHint
@@ -960,19 +1113,19 @@ async function bumpAccountAvatarRev(skinHint?: string): Promise<void> {
   pushPresence();
 }
 
-function accountPresence(): { name: string; avatar: string } | null {
-  const acc = currentAccount;
-  const name = acc.username || '';
-  if (!name) return null;
-  // Discord тянет картинку своей инфраструктурой, а не с машины пользователя,
-  // поэтому здесь нужен прямой адрес: прокси только добавил бы нам нагрузку
-  // и лишнюю точку отказа.
-  return { name, avatar: accountAvatarDirectUrl(acc) };
-}
+let presenceSeq = 0;
 
 function pushPresence(screen?: string): void {
   if (screen) presenceScreen = screen;
-  api?.updatePresence?.({ screen: presenceScreen, account: accountPresence() });
+  const seq = ++presenceSeq;
+  const screenNow = presenceScreen;
+  const acc = currentAccount;
+  const name = acc?.username || '';
+  void (async () => {
+    const account = name ? { name, avatar: await accountDiscordFaceUrl(acc) } : null;
+    if (seq !== presenceSeq) return;
+    api?.updatePresence?.({ screen: screenNow, account });
+  })();
 }
 
 const tabs = document.querySelectorAll<HTMLElement>('.tab-btn');
@@ -982,6 +1135,162 @@ tabs.forEach(tab => {
   tab.addEventListener('click', () => {
     switchTab(tab.getAttribute('data-tab') || '');
   });
+});
+
+// ===== Сворачивание бокового меню =====
+
+const SIDEBAR_COLLAPSE_KEY = 'Undefined Client-sidebar-collapsed';
+
+function sidebarIsCollapsed(): boolean {
+  return document.getElementById('tab-panel')?.classList.contains('is-collapsed') ?? false;
+}
+
+function syncSidebarCollapseText(): void {
+  const collapsed = sidebarIsCollapsed();
+  const key = collapsed ? 'sidebar.expand' : 'sidebar.collapse';
+  const btn = document.getElementById('sidebar-collapse');
+  btn?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  btn?.removeAttribute('title');
+  btn?.removeAttribute('data-i18n-title');
+  if (btn) btn.setAttribute('aria-label', t(key));
+  const label = btn?.querySelector<HTMLElement>('.sidebar-collapse__label');
+  if (!label) return;
+  label.setAttribute('data-i18n', key);
+  label.textContent = t(key);
+}
+
+function setSidebarCollapsed(collapsed: boolean): void {
+  document.getElementById('tab-panel')?.classList.toggle('is-collapsed', collapsed);
+  localStorage.setItem(SIDEBAR_COLLAPSE_KEY, collapsed ? '1' : '0');
+  if (!collapsed) hideSidebarTip();
+  syncSidebarCollapseText();
+}
+
+document.getElementById('sidebar-collapse')?.addEventListener('click', () => {
+  setSidebarCollapsed(!sidebarIsCollapsed());
+});
+
+// ===== Стеклянные подсказки свёрнутого меню =====
+
+let sidebarTipEl: HTMLElement | null = null;
+let sidebarTipTarget: HTMLElement | null = null;
+
+function ensureSidebarTip(): HTMLElement {
+  if (sidebarTipEl) return sidebarTipEl;
+  const el = document.createElement('div');
+  el.id = 'sidebar-tip';
+  el.className = 'sidebar-tip';
+  el.setAttribute('role', 'tooltip');
+  el.innerHTML = '<div class="sidebar-tip__title"></div><div class="sidebar-tip__sub" hidden></div>';
+  document.body.appendChild(el);
+  sidebarTipEl = el;
+  return el;
+}
+
+function sidebarTipHost(node: EventTarget | null): HTMLElement | null {
+  if (!(node instanceof Element)) return null;
+  const host = node.closest<HTMLElement>('.sidebar-collapse, .tab-btn, .sidebar-card, #account-selector');
+  if (!host || !host.closest('#tab-panel')) return null;
+  if (host.classList.contains('hidden') || host.classList.contains('hidden-card')) return null;
+  return host;
+}
+
+function sidebarTipText(host: HTMLElement): { title: string; sub: string } | null {
+  if (host.classList.contains('sidebar-collapse')) {
+    const title = host.querySelector('.sidebar-collapse__label')?.textContent?.trim() || '';
+    return title ? { title, sub: '' } : null;
+  }
+  if (host.classList.contains('tab-btn')) {
+    const title = host.querySelector('.tab-btn-title')?.textContent?.trim() || '';
+    return title ? { title, sub: '' } : null;
+  }
+  if (host.classList.contains('sidebar-card')) {
+    const title = host.querySelector('.sidebar-card-label')?.textContent?.trim() || '';
+    const name = host.querySelector('.sidebar-card-title')?.textContent?.trim() || '';
+    const verNode = host.querySelector('.sidebar-srv-ver');
+    const onlineNode = host.querySelector('.sidebar-srv-online');
+    let sub = '';
+    if (verNode || onlineNode) {
+      sub = [name, verNode?.textContent?.trim() || '', onlineNode?.textContent?.trim() || ''].filter(Boolean).join(' • ');
+    } else {
+      const ver = host.querySelector('.sidebar-card-version')?.textContent?.replace(/\s*·\s*/g, ' ').replace(/\s+/g, ' ').trim() || '';
+      sub = [name, ver].filter(Boolean).join(' • ');
+    }
+    if (!title && !sub) return null;
+    return { title: title || name, sub: title ? sub : '' };
+  }
+  if (host.id === 'account-selector') {
+    const name = host.querySelector('.account-nickname')?.textContent?.trim() || '';
+    const type = host.querySelector('.account-type')?.textContent?.trim() || '';
+    return { title: t('sidebar.activeAccount'), sub: [name, type].filter(Boolean).join(' • ') };
+  }
+  return null;
+}
+
+function hideSidebarTip(): void {
+  sidebarTipTarget = null;
+  sidebarTipEl?.classList.remove('is-open');
+}
+
+function showSidebarTip(host: HTMLElement): void {
+  if (!sidebarIsCollapsed()) {
+    hideSidebarTip();
+    return;
+  }
+  const payload = sidebarTipText(host);
+  if (!payload) {
+    hideSidebarTip();
+    return;
+  }
+  const tip = ensureSidebarTip();
+  const titleEl = tip.querySelector<HTMLElement>('.sidebar-tip__title');
+  const subEl = tip.querySelector<HTMLElement>('.sidebar-tip__sub');
+  if (titleEl) titleEl.textContent = payload.title;
+  const rich = Boolean(payload.sub);
+  tip.classList.toggle('is-rich', rich);
+  if (subEl) {
+    subEl.hidden = !rich;
+    subEl.textContent = payload.sub;
+  }
+  const same = sidebarTipTarget === host && tip.classList.contains('is-open');
+  sidebarTipTarget = host;
+  const rect = host.getBoundingClientRect();
+  const height = tip.offsetHeight;
+  const top = Math.max(8, rect.top + (rect.height - height) / 2);
+  // Карточки и аккаунт уже панели, разделы — на всю ширину. Отступ один: от края меню.
+  const panelRight = host.closest('#tab-panel')?.getBoundingClientRect().right ?? rect.right;
+  tip.style.left = `${Math.round(panelRight + 4)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+  tip.classList.add('is-open');
+  // Смена раздела не снимает класс, поэтому CSS-переход не стартует повторно
+  if (!same && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    tip.getAnimations().forEach((anim) => anim.cancel());
+    tip.animate(
+      [
+        { opacity: 0, transform: 'scale(0.8)' },
+        { opacity: 1, transform: 'scale(1)' },
+      ],
+      { duration: 180, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+    );
+  }
+}
+
+document.getElementById('tab-panel')?.addEventListener('pointerover', (event) => {
+  if (!sidebarIsCollapsed()) return;
+  const host = sidebarTipHost(event.target);
+  if (!host) return;
+  showSidebarTip(host);
+});
+
+document.getElementById('tab-panel')?.addEventListener('pointerout', (event) => {
+  const next = event.relatedTarget;
+  const nextHost = next instanceof Element ? sidebarTipHost(next) : null;
+  if (nextHost) return;
+  hideSidebarTip();
+});
+
+document.getElementById('sidebar-cards')?.addEventListener('scroll', () => {
+  if (sidebarTipTarget) showSidebarTip(sidebarTipTarget);
 });
 
 document.querySelectorAll<HTMLElement>('.home-section-btn').forEach(btn => {
@@ -1074,6 +1383,222 @@ accAddBtn?.addEventListener('click', (e) => {
   openModalAccount();
 });
 
+async function resolveAccountStageSkin(acc: any): Promise<string | null> {
+  const type = acc?.meta?.type || acc?.type;
+  const accKey = String(acc?.uuid || '').replace(/-/g, '').toLowerCase();
+  if (type === 'msa' && accKey) {
+    const local = savedSkins.find((skin) => skin.id === `license-skin-${accKey}` && skin.dataUrl);
+    if (local?.dataUrl) return local.dataUrl;
+  }
+  if (accKey && accKey === accountCosmeticsKey()) {
+    const activeId = getActiveSkinId();
+    const active = activeId ? savedSkins.find((skin) => skin.id === activeId && skin.dataUrl) : null;
+    if (active?.dataUrl) return active.dataUrl;
+  }
+  if (!api?.fetchSkinImage) return null;
+  try {
+    if (type === 'yggdrasil') {
+      const url = await getElyAvatarUrl(acc, true);
+      if (!url) return null;
+      const b64 = await api.fetchSkinImage(url);
+      return b64 ? `data:image/png;base64,${b64}` : null;
+    }
+    if (type === 'msa' && accKey && api.getSkinData) {
+      const data = await api.getSkinData(accKey);
+      if (!data?.skinUrl) return null;
+      const b64 = await api.fetchSkinImage(data.skinUrl);
+      return b64 ? `data:image/png;base64,${b64}` : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function stageUuidKey(value: unknown): string {
+  return String(value || '').replace(/-/g, '').toLowerCase();
+}
+
+let stageMessengerUser: { id?: string; username?: string; uuid?: string } | null = null;
+let stageMessengerGate: Promise<{ id?: string; username?: string; uuid?: string } | null> | null = null;
+
+/** Сессия мессенджера нужна lookup и /friends: без токена оба счётчика остаются нулями. */
+async function ensureStageMessenger(): Promise<{ id?: string; username?: string; uuid?: string } | null> {
+  if (stageMessengerUser) return stageMessengerUser;
+  if (!stageMessengerGate) {
+    stageMessengerGate = (async () => {
+      if (!api?.messengerRequest && !api?.messengerSession) return null;
+      const probe = await api?.messengerRequest?.({ path: '/me' });
+      if (probe?.ok && probe.data?.user) return probe.data.user;
+      const accounts = api?.loadAccounts ? await api.loadAccounts() : [];
+      const preferred = [currentAccount, ...accounts].filter(Boolean);
+      for (const acc of preferred) {
+        const type = acc?.meta?.type || acc?.type;
+        if (type !== 'msa' && type !== 'yggdrasil') continue;
+        if (!String(acc?.accessToken || '').trim() || !api?.messengerSession) continue;
+        const session = await api.messengerSession(acc);
+        if (session?.ok && session.user) return session.user;
+      }
+      return null;
+    })().then((user) => {
+      stageMessengerUser = user;
+      return user;
+    }).finally(() => {
+      if (!stageMessengerUser) stageMessengerGate = null;
+    });
+  }
+  return stageMessengerGate;
+}
+
+/** Посты, друзья и свои скины для стеклянной карточки зала. */
+async function loadAccountStageStats(acc: any): Promise<{ posts: number; friends: number; skins: number }> {
+  const key = stageUuidKey(acc?.uuid);
+  const skins = savedSkins.filter((skin) => {
+    if (!skin?.dataUrl || isCapeId(String(skin.id || ''))) return false;
+    const owner = stageUuidKey(skin.accountId);
+    if (owner) return owner === key;
+    return Boolean(key) && String(skin.id || '').toLowerCase().includes(key);
+  }).length;
+  let posts = 0;
+  let friends = 0;
+  const name = String(acc?.name || acc?.username || '').trim();
+  if (!name || !api?.messengerRequest) return { posts, friends, skins };
+  try {
+    const sessionUser = await ensureStageMessenger();
+    const res = await api.messengerRequest({
+      path: '/social/users/lookup',
+      query: { username: name },
+    });
+    const user = res?.ok ? res.data?.user : null;
+    if (user) {
+      const rawPosts = user.postCount ?? user.postsCount;
+      if (rawPosts != null && rawPosts !== '') {
+        posts = Number(rawPosts) || 0;
+      } else if (user.id) {
+        const postsRes = await api.messengerRequest({
+          path: `/social/users/${encodeURIComponent(String(user.id))}/posts`,
+          query: { limit: 50 },
+        });
+        const list = postsRes?.data?.posts;
+        if (Array.isArray(list)) posts = list.length;
+      }
+      const rawFriends = user.friendCount ?? user.friendsCount;
+      if (rawFriends != null && rawFriends !== '') friends = Number(rawFriends) || 0;
+      const sameUser = Boolean(
+        sessionUser && (
+          (user.id && sessionUser.id && String(user.id) === String(sessionUser.id))
+          || (user.username && sessionUser.username
+            && String(user.username).toLowerCase() === String(sessionUser.username).toLowerCase())
+          || (key && stageUuidKey(sessionUser.uuid) === key)
+        ),
+      );
+      if (sameUser) {
+        const friendsRes = await api.messengerRequest({ path: '/friends' });
+        const list = friendsRes?.data?.friends;
+        if (Array.isArray(list)) friends = list.length;
+      }
+    }
+  } catch { /* нет сети или сессии */ }
+  return { posts, friends, skins };
+}
+
+async function openAccountHall(): Promise<void> {
+  const accounts = api?.loadAccounts ? await api.loadAccounts() : [];
+  const shown = accounts;
+  const steveHead = await drawSkinHeadAvatar(OFFLINE_STEVE_SKIN_URL, 80);
+  const accountSlots = await Promise.all(shown.map(async (acc) => {
+    const type = acc.meta?.type || acc.type;
+    const offline = type === 'offline' || type === 'crack' || !type;
+    const detail = type === 'yggdrasil'
+      ? t('acc.ely')
+      : type === 'msa'
+        ? t('acc.license')
+        : t('acc.offlineTypeName');
+    const head = offline
+      ? steveHead
+      : type === 'yggdrasil'
+        ? (await resolveAccountHeadAvatar(acc)) || steveHead
+        : accountAvatarSources(acc).primary;
+    return {
+      id: String(acc.uuid),
+      name: String(acc.name || acc.username || ''),
+      detail,
+      kind: 'account' as const,
+      active: String(acc.uuid) === String(currentAccount?.uuid),
+      offline,
+      avatarUrl: head,
+      statusTitle: t('acc.stageOfflineStatus'),
+      statusSub: t('acc.stageOfflineHint'),
+      statPosts: t('acc.stagePosts'),
+      statFriends: t('acc.stageFriends'),
+      statSkins: t('acc.stageSkins'),
+      skinUrl: offline ? OFFLINE_STEVE_SKIN_URL : undefined,
+    };
+  }));
+  openAccountStage({
+    title: t('acc.stageTitle'),
+    hint: t('acc.stageHint'),
+    padHints: {
+      move: t('acc.stagePadMove'),
+      pick: t('acc.stagePadPick'),
+      close: t('acc.stagePadClose'),
+    },
+    slots: [
+      ...accountSlots,
+      {
+        id: 'add',
+        name: t('acc.add'),
+        detail: t('acc.stageAddDetail'),
+        kind: 'add' as const,
+        skinUrl: ADD_ACCOUNT_SKIN_URL,
+      },
+    ],
+    resolveSkin: async (id) => {
+      const acc = shown.find((item) => String(item.uuid) === id);
+      return acc ? resolveAccountStageSkin(acc) : null;
+    },
+    onPick: (id) => {
+      closeAccountStage();
+      const acc = shown.find((item) => String(item.uuid) === id);
+      if (!acc) return;
+      void selectAccount(acc).then(() => renderSavedAccounts());
+    },
+    onAdd: () => {
+      closeAccountStage();
+      openModalAccount();
+    },
+    activeLabel: t('acc.stageCurrent'),
+    introTitle: t('acc.stageIntroTitle'),
+    introSub: t('acc.stageIntroSub'),
+    addNote: {
+      title: t('acc.stageAddTitle'),
+      text: t('acc.stageAddText'),
+      image: '../../assets/images/m3dv5_friendship.png',
+    },
+  });
+  for (const acc of shown) {
+    const type = acc.meta?.type || acc.type;
+    if (type === 'offline' || type === 'crack' || !type) continue;
+    const id = String(acc.uuid);
+    void loadAccountStageStats(acc).then((stats) => {
+      const card = document.querySelector<HTMLElement>(`.acc-stage .acc-card[data-id="${CSS.escape(id)}"]`);
+      if (!card) return;
+      const posts = card.querySelector('.acc-card__posts');
+      const friends = card.querySelector('.acc-card__friends');
+      const skins = card.querySelector('.acc-card__skins');
+      if (posts) posts.textContent = String(stats.posts);
+      if (friends) friends.textContent = String(stats.friends);
+      if (skins) skins.textContent = String(stats.skins);
+    });
+    void resolveAccountStageSkin(acc).then(async (url) => {
+      if (!url) return;
+      const head = await drawSkinHeadAvatar(url, 80);
+      const img = document.querySelector<HTMLImageElement>(`.acc-stage .acc-card[data-id="${CSS.escape(id)}"] .acc-card__avatar`);
+      if (head && img) img.src = head;
+    });
+  }
+}
+
 document.querySelectorAll<HTMLElement>('.acc-modal-card').forEach(card => {
   card.addEventListener('click', () => {
     document.querySelectorAll<HTMLElement>('.acc-modal-card.selected').forEach(el => el.classList.remove('selected'));
@@ -1097,7 +1622,7 @@ accNextBtn?.addEventListener('click', async () => {
       closeModal('modal-account');
       await api?.saveAccount?.(account);
       if (account?.uuid) await api?.setActiveAccount?.(account.uuid);
-      void notifyMessengerAccountChanged();
+      void notifyMessengerAccountChanged().then(() => refreshAiAccessStatus());
       renderSavedAccounts();
     } catch {
       updateStatus(t('status.microsoftError'));
@@ -1114,7 +1639,7 @@ accNextBtn?.addEventListener('click', async () => {
       closeModal('modal-account');
       await api?.saveAccount?.(account);
       if (account?.uuid) await api?.setActiveAccount?.(account.uuid);
-      void notifyMessengerAccountChanged();
+      void notifyMessengerAccountChanged().then(() => refreshAiAccessStatus());
       renderSavedAccounts();
     } catch {
       updateStatus(t('status.elyError'));
@@ -1136,7 +1661,7 @@ async function submitAccOffline(): Promise<void> {
     closeModal('modal-account');
     await api?.saveAccount?.(account);
     if (account?.uuid) await api?.setActiveAccount?.(account.uuid);
-    void notifyMessengerAccountChanged();
+    void notifyMessengerAccountChanged().then(() => refreshAiAccessStatus());
     renderSavedAccounts();
   }
 }
@@ -1201,8 +1726,11 @@ function applyAccount(account: any): void {
     const uuid = account.uuid.replace(/-/g, '');
     const isEly = account.meta?.type === 'yggdrasil';
     const avatar = accountAvatarSources(account);
-    setSkinImage('.account-skin-img', '.account-skin-placeholder', avatar.primary, avatar.fallback);
-    setSkinImage('.account-popup-skin-img', '.account-popup-skin-placeholder', avatar.primary, avatar.fallback);
+    // У Ely в skinUrl лежит лист текстуры. Голову подставит загрузка скина ниже.
+    if (!isEly) {
+      setSkinImage('.account-skin-img', '.account-skin-placeholder', avatar.primary, avatar.fallback);
+      setSkinImage('.account-popup-skin-img', '.account-popup-skin-placeholder', avatar.primary, avatar.fallback);
+    }
     updateNameType(account.name, isEly ? t('acc.ely') : t('acc.license'));
     if (api?.getSkinData) {
       api.getSkinData(uuid, isEly ? ELY_AUTH_SERVER : undefined).then(async data => {
@@ -1244,13 +1772,7 @@ function applyAccount(account: any): void {
           const elyUrl = await getElyAvatarUrl(currentAccount, true);
           if (elyUrl) {
             const elyB64 = await api.fetchSkinImage(elyUrl);
-            if (elyB64) {
-              const avatar = await drawElyAvatar(`data:image/png;base64,${elyB64}`);
-              if (avatar) {
-                setSkinImage('.account-skin-img', '.account-skin-placeholder', avatar);
-                setSkinImage('.account-popup-skin-img', '.account-popup-skin-placeholder', avatar);
-              }
-            }
+            if (elyB64) await refreshAccountUiAvatar(`data:image/png;base64,${elyB64}`);
           }
         }
       });
@@ -1308,7 +1830,7 @@ async function selectAccount(account: any, opts?: { refresh?: boolean }): Promis
     accountRefreshPromise = refreshAccountInBackground(account);
   }
   if (account.uuid && account.uuid !== prevUuid) {
-    void notifyMessengerAccountChanged();
+    void notifyMessengerAccountChanged().then(() => refreshAiAccessStatus());
   }
 }
 
@@ -1375,6 +1897,12 @@ interface Build {
   loaderVersion: string;
   iconBg: string;
   icon?: string;
+  /** Модпак Modrinth, из которого собрана эта сборка. */
+  modpackProjectId?: string;
+  modpackVersionId?: string;
+  modpackVersion?: string;
+  /** Id группы сборок (null/undefined — в корне списка) */
+  groupId?: string | null;
   jvmArgs?: string;
   mcArgs?: string;
   memory?: { min: number; max: number };
@@ -1385,6 +1913,13 @@ interface Build {
   resourcePacks?: BeFileItem[];
   shaders?: BeFileItem[];
   dataPacks?: BeFileItem[];
+}
+
+interface BuildGroup {
+  id: string;
+  name: string;
+  icon?: string;
+  order?: number;
 }
 
 interface BeFileItem {
@@ -1403,6 +1938,8 @@ interface Server {
   ip: string;
   version: string;
   port?: number;
+  /** true — добавлен формой, false — сохранён из каталога. */
+  manual?: boolean;
 }
 
 interface Account {
@@ -1419,10 +1956,42 @@ interface Account {
 
 let currentAccount: Account = { uuid: '', username: t('common.loading'), type: 'offline' };
 let savedBuilds: Build[] = [];
+let savedBuildGroups: BuildGroup[] = [];
+/** Развёрнутые группы в списке сборок */
+const expandedBuildGroupIds = new Set<string>();
+let editingBuildGroupId: string | null = null;
+let pendingGroupIcon: string | undefined;
 let savedServers: Server[] = [];
 let editingBuildId: string | null = null;
 let versionsPopulated = false;
 let versionsPopulatePromise: Promise<void> | null = null;
+let mcVersionCatalog: Array<{ id: string; type: string }> = [];
+
+const VERSION_FILTER_KEY = 'Undefined Client-mc-version-groups';
+
+function loadVersionFilters(): Record<McVersionGroup, boolean> {
+  const filters = { ...DEFAULT_VERSION_FILTERS };
+  try {
+    const raw = localStorage.getItem(VERSION_FILTER_KEY);
+    if (!raw) return filters;
+    const parsed = JSON.parse(raw) as Partial<Record<McVersionGroup, boolean>>;
+    for (const group of MC_VERSION_GROUPS) {
+      if (typeof parsed[group] === 'boolean') filters[group] = parsed[group] as boolean;
+    }
+  } catch { /* настройки по умолчанию */ }
+  if (!filters.release && !filters.snapshot && !filters.old_beta && !filters.old_alpha && !filters.ancient) {
+    filters.release = true;
+  }
+  return filters;
+}
+
+function saveVersionFilters(filters: Record<McVersionGroup, boolean>): void {
+  localStorage.setItem(VERSION_FILTER_KEY, JSON.stringify(filters));
+}
+
+function versionGroupLabel(group: McVersionGroup): string {
+  return t(`versions.group.${group}`);
+}
 
 function appendBuildVersionOption(id: string, label: string): void {
   const select = document.getElementById('modal-build-version') as HTMLSelectElement;
@@ -1450,12 +2019,66 @@ function syncBuildVersionUI(): void {
   if (wrap) syncSelectUI(wrap as HTMLElement);
 }
 
+function rebuildBuildVersionOptions(): void {
+  const select = document.getElementById('modal-build-version') as HTMLSelectElement | null;
+  const menu = document.getElementById('modal-build-version-menu');
+  if (!select) return;
+  const selected = select.value;
+  const filters = loadVersionFilters();
+  select.querySelectorAll('option[data-dynamic]').forEach((node) => node.remove());
+  menu?.querySelectorAll('[data-dynamic]').forEach((node) => node.remove());
+
+  const staticLatest = [
+    { id: 'latest_release', group: 'release' as McVersionGroup, label: t('be.latestRelease') },
+    { id: 'latest_snapshot', group: 'snapshot' as McVersionGroup, label: t('be.latestSnapshot') },
+  ];
+  for (const item of staticLatest) {
+    const opt = select.querySelector(`option[value="${item.id}"]`) as HTMLOptionElement | null;
+    const menuOpt = menu?.querySelector<HTMLElement>(`.stngs-select-opt[data-value="${item.id}"]`);
+    const show = filters[item.group];
+    if (opt) opt.hidden = !show;
+    if (menuOpt) menuOpt.style.display = show ? '' : 'none';
+  }
+
+  const grouped = new Map<McVersionGroup, string[]>();
+  for (const group of MC_VERSION_GROUPS) grouped.set(group, []);
+  for (const v of mcVersionCatalog) {
+    const group = classifyMcVersion(v.id, v.type);
+    if (!filters[group]) continue;
+    grouped.get(group)?.push(v.id);
+  }
+  if (selected && selected !== 'latest_release' && selected !== 'latest_snapshot') {
+    const known = mcVersionCatalog.find((v) => v.id === selected);
+    if (known) {
+      const group = classifyMcVersion(known.id, known.type);
+      const list = grouped.get(group);
+      if (list && !list.includes(selected)) list.unshift(selected);
+    }
+  }
+
+  for (const group of MC_VERSION_GROUPS) {
+    const ids = grouped.get(group) || [];
+    if (!ids.length || !menu) continue;
+    const label = document.createElement('div');
+    label.className = 'stngs-select-label';
+    label.setAttribute('data-dynamic', '1');
+    label.textContent = versionGroupLabel(group);
+    menu.appendChild(label);
+    for (const id of ids) appendBuildVersionOption(id, id);
+  }
+  const selectedOpt = Array.from(select.options).find((o) => o.value === selected);
+  if (selectedOpt && !selectedOpt.hidden) select.value = selected;
+  else if (filters.release) select.value = 'latest_release';
+  versionsPopulated = mcVersionCatalog.length > 0;
+  syncBuildVersionUI();
+}
+
 /** Подгружает список версий MC в селект сборки; при пустом ответе можно повторить */
-async function ensureBuildVersionsLoaded(): Promise<void> {
+async function ensureBuildVersionsLoaded(force = false): Promise<void> {
   const select = document.getElementById('modal-build-version') as HTMLSelectElement | null;
   if (!select || !api?.getVersions) return;
-  if (select.querySelectorAll('option[data-dynamic]').length > 0) {
-    versionsPopulated = true;
+  if (!force && mcVersionCatalog.length > 0) {
+    rebuildBuildVersionOptions();
     return;
   }
   if (versionsPopulatePromise) return versionsPopulatePromise;
@@ -1467,17 +2090,15 @@ async function ensureBuildVersionsLoaded(): Promise<void> {
         versionsPopulated = false;
         return;
       }
-      const seen = new Set<string>(['latest_release', 'latest_snapshot']);
+      const seen = new Set<string>();
+      mcVersionCatalog = [];
       for (const v of versions) {
         const id = String(v?.id || '').trim();
-        if (!id || seen.has(id)) continue;
+        if (!id || seen.has(id) || id === 'latest_release' || id === 'latest_snapshot') continue;
         seen.add(id);
-        const type = String(v?.type || '');
-        if (type === 'old_alpha' || type === 'old_beta') continue;
-        appendBuildVersionOption(id, id + (type === 'snapshot' ? t('be.snapshotSuffix') : ''));
+        mcVersionCatalog.push({ id, type: String(v?.type || '') });
       }
-      versionsPopulated = select.querySelectorAll('option[data-dynamic]').length > 0;
-      syncBuildVersionUI();
+      rebuildBuildVersionOptions();
     } catch {
       versionsPopulated = false;
     } finally {
@@ -1497,121 +2118,31 @@ let savedSkins: any[] = [];
 let savedMods: any[] = [];
 
 function setupDownloadProgress(): void {
-  const el = document.getElementById('download-progress');
-  const label = document.getElementById('download-progress-label');
-  const speedEl = document.getElementById('download-progress-speed');
-  const percent = document.getElementById('download-progress-percent');
-  const fill = document.getElementById('download-progress-fill');
-  if (!el || !label || !speedEl || !percent || !fill) return;
-
-  const applyCountProgress = (done: number, total: number, fileLabel?: string) => {
-    const safeTotal = Math.max(0, total);
-    const safeDone = Math.max(0, Math.min(done, safeTotal || done));
-    const pct = safeTotal > 0 ? Math.min(100, Math.round((safeDone / safeTotal) * 100)) : 0;
-    el.classList.remove('is-success', 'is-error');
-    fill.style.animation = 'none';
-    fill.style.width = `${pct}%`;
-    percent.textContent = safeTotal > 0 ? `${pct}%` : '';
-    speedEl.textContent = safeTotal > 0 ? `${safeDone}/${safeTotal}` : '';
-    if (fileLabel) label.textContent = fileLabel;
-    el.classList.remove('hidden');
-  };
-
-  const hideProgressLater = (ms: number) => {
-    setTimeout(() => {
-      el.classList.add('hidden');
-      el.classList.remove('is-success', 'is-error');
-    }, ms);
-  };
-
-  if (api?.onDownloadProgress) {
-    api.onDownloadProgress((data: any) => {
-      if (data.type === 'start') {
-        el.classList.remove('hidden', 'is-success', 'is-error');
-        label.textContent = `${data.filename || '...'}`;
-        speedEl.textContent = '';
-        percent.textContent = '0%';
-        fill.style.animation = 'none';
-        fill.style.width = '0%';
-        downloadStartTime = Date.now();
-        downloadPrevReceived = 0;
-        downloadPrevTime = downloadStartTime;
-        pushConsoleLog(t('log.downloadStart', { file: data.filename, size: formatSizeGlobal(data.size || 0) }));
-      } else if (data.type === 'progress') {
-        el.classList.remove('is-success', 'is-error');
-        percent.textContent = `${data.percent}%`;
-        fill.style.animation = 'none';
-        fill.style.width = `${data.percent}%`;
-        label.textContent = `${data.filename || ''}`;
-        const now = Date.now();
-        const elapsed = (now - downloadPrevTime) / 1000;
-        if (elapsed >= 0.5) {
-          const bytesPerSec = (data.received - downloadPrevReceived) / elapsed;
-          speedEl.textContent = formatSpeedGlobal(bytesPerSec);
-          downloadPrevReceived = data.received;
-          downloadPrevTime = now;
-        }
-      } else if (data.type === 'done') {
-        percent.textContent = '100%';
-        fill.style.animation = 'none';
-        fill.style.width = '100%';
-        speedEl.textContent = '';
-        el.classList.remove('is-error');
-        el.classList.add('is-success');
-        if (data.buildCreated) {
-          label.textContent = t('log.buildCreatedLabel', { name: data.build.name });
-          pushConsoleLog(t('log.buildCreated', { name: data.build.name }));
-          const idx = savedBuilds.findIndex((b) => b.id === data.build.id);
-          if (idx >= 0) savedBuilds[idx] = { ...savedBuilds[idx], ...data.build };
-          else savedBuilds.push(data.build);
-          renderBuilds();
-          updateBanner();
-          updateSidebarCards();
-        } else {
-          label.textContent = t('log.done', { file: data.filename });
-          pushConsoleLog(t('log.savedTo', { path: data.filePath }));
-        }
-        hideProgressLater(3000);
-      } else if (data.type === 'error') {
-        el.classList.remove('is-success');
-        el.classList.add('is-error');
-        label.textContent = t('log.error', { msg: data.message });
-        speedEl.textContent = '';
-        if (!percent.textContent) percent.textContent = '—';
-        fill.style.animation = 'none';
-        if (!fill.style.width || fill.style.width === '0%') fill.style.width = '100%';
-        pushConsoleLog(t('log.error', { msg: data.message }));
-        hideProgressLater(4000);
-      } else if (data.kind === 'status') {
-        const params = data.params || {};
-        const msg = data.key ? t(data.key, { ...params, unit: t('common.mb') }) : data.message;
-        pushConsoleLog(msg);
-
-        const total = Number(params.n);
-        const done = Number(params.i);
-        const hasTotal = Number.isFinite(total) && total > 0;
-        const hasDone = Number.isFinite(done) && done >= 0;
-        const isPackErr = data.key === 'smp.packFileErr';
-
-        if (hasTotal && hasDone) {
-          // Пакетная загрузка модов/файлов: 12/49 + процент
-          const fileName = params.file ? String(params.file) : '';
-          applyCountProgress(done, total, fileName || msg);
-          if (isPackErr) {
-            el.classList.remove('is-success');
-            el.classList.add('is-error');
-          }
-        } else if (hasTotal) {
-          // Старт пакета: «Скачивание N файлов…» → 0/N
-          applyCountProgress(0, total, msg);
-        } else {
-          el.classList.remove('is-success', 'is-error');
-          label.textContent = msg;
-          el.classList.remove('hidden');
-        }
+  if (!api?.onDownloadProgress) return;
+  api.onDownloadProgress((data: any) => {
+    syncTaskFromDownload(data);
+    if (data.type === 'start') {
+      pushConsoleLog(t('log.downloadStart', { file: data.filename, size: formatSizeGlobal(data.size || 0) }));
+    } else if (data.type === 'done') {
+      if (data.buildCreated) {
+        pushConsoleLog(t('log.buildCreated', { name: data.build.name }));
+        const idx = savedBuilds.findIndex((b) => b.id === data.build.id);
+        if (idx >= 0) savedBuilds[idx] = { ...savedBuilds[idx], ...data.build };
+        else savedBuilds.push(data.build);
+        renderBuilds();
+        updateBanner();
+        updateSidebarCards();
+      } else {
+        pushConsoleLog(t('log.savedTo', { path: data.filePath }));
       }
-    });
-  }
+    } else if (data.type === 'error') {
+      pushConsoleLog(t('log.error', { msg: data.message }));
+    } else if (data.kind === 'status') {
+      const params = data.params || {};
+      const msg = data.key ? t(data.key, { ...params, unit: t('common.mb') }) : data.message;
+      pushConsoleLog(msg);
+    }
+  });
 }
 
 function pushConsoleLog(message: string): void {
@@ -1624,7 +2155,10 @@ function openConsoleLog(): void {
   api?.openConsole?.();
 }
 
-document.getElementById('download-progress-log-btn')?.addEventListener('click', openConsoleLog);
+document.getElementById('tb-tasks-clear')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  clearAllLauncherTasks();
+});
 
 /* ── Crash Modal ── */
 
@@ -1795,7 +2329,501 @@ function formatPlaytime(seconds: number = 0): string {
   return t('time.hour', { h, m });
 }
 
-let downloadStartTime = 0;
+// ===== Активные задачи в titlebar =====
+// Процент пишется только когда в событии есть реальные total/received или счётчик файлов.
+
+type TaskTone = 'success' | 'error' | 'info' | 'chat' | 'download';
+
+interface LauncherTask {
+  id: string;
+  title: string;
+  stage: string;
+  percent: number | null;
+  detail: string;
+  /** Есть живой AbortController скачивания — крестик реально обрывает поток. */
+  cancellable?: boolean;
+  tone?: TaskTone;
+  /** Запись истории: не исчезает сама и не крутит полоску на кнопке. */
+  settled?: boolean;
+}
+
+const launcherTasks = new Map<string, LauncherTask>();
+const launcherTaskTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const taskSeen = new Set<string>();
+const taskUnseen = new Set<string>();
+let tasksLeaveLock = false;
+
+const TASK_ICON_INFO =
+  '<svg class="tb-task__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#3b82f6"/><path fill="#fff" d="M6.4 4.6a.7.7 0 0 1 1.08-.58l5 3.4a.7.7 0 0 1 0 1.16l-5 3.4A.7.7 0 0 1 6.4 11.4V4.6Z"/></svg>';
+const TASK_ICON_ERROR =
+  '<svg class="tb-task__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#ef4444"/><path fill="#fff" d="M5.2 5.2a.7.7 0 0 1 1 0L8 6.99l1.8-1.8a.7.7 0 1 1 1 1L9 8l1.8 1.8a.7.7 0 1 1-1 1L8 9.01l-1.8 1.8a.7.7 0 1 1-1-1L6.99 8 5.2 6.2a.7.7 0 0 1 0-1Z"/></svg>';
+const TASK_ICON_OK =
+  '<svg class="tb-task__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#22c55e"/><path fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M4.8 8.2 6.9 10.3 11.2 5.8"/></svg>';
+const TASK_ICON_CHAT =
+  '<svg class="tb-task__icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="rgba(255,255,255,0.72)" d="M3 3.2h10a1 1 0 0 1 1 1v6.1a1 1 0 0 1-1 1H7.1L4.2 13.6V11.3H3a1 1 0 0 1-1-1V4.2a1 1 0 0 1 1-1Z"/></svg>';
+const TASK_ICON_CLOSE =
+  '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 0 11.5251 0 10.9393C0 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 0 10.9393 0C11.5251 0 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>';
+
+function taskToneClass(task: LauncherTask): string {
+  if (task.tone === 'error') return ' is-error';
+  if (task.tone === 'success') return ' is-success';
+  if (task.tone === 'chat') return ' is-chat';
+  if (task.tone === 'download' && !task.settled) return ' is-download';
+  return ' is-info';
+}
+
+function taskIcon(task: LauncherTask): string {
+  if (task.tone === 'error') return TASK_ICON_ERROR;
+  if (task.tone === 'success') return TASK_ICON_OK;
+  if (task.tone === 'chat') return TASK_ICON_CHAT;
+  if (task.tone === 'download' && !task.settled) return '';
+  return TASK_ICON_INFO;
+}
+
+function renderLauncherTasks(): void {
+  if (tasksLeaveLock) return;
+  const list = document.getElementById('tb-tasks-list');
+  const badge = document.getElementById('tb-tasks-badge');
+  const menuOpen = document.getElementById('tb-tasks-menu')?.classList.contains('is-open');
+  if (menuOpen) taskUnseen.clear();
+  const unseen = taskUnseen.size;
+  if (badge) {
+    badge.hidden = unseen === 0;
+    badge.textContent = unseen > 0 ? String(unseen) : '';
+  }
+  paintTasksButton();
+  if (!list) return;
+  if (launcherTasks.size === 0) {
+    list.innerHTML = `<div class="tb-tasks-empty">${escapeHtml(t('tasks.empty'))}</div>`;
+    taskSeen.clear();
+    return;
+  }
+  const groups = new Map<string, LauncherTask[]>();
+  for (const task of launcherTasks.values()) {
+    const key = task.title || t('tasks.download');
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(task);
+    else groups.set(key, [task]);
+  }
+  const fresh = new Set<string>();
+  list.innerHTML = [...groups.entries()].map(([title, tasks]) => {
+    const rows = tasks.map((task) => {
+      const known = !task.settled && task.percent != null && Number.isFinite(task.percent);
+      const width = known ? Math.max(0, Math.min(100, Number(task.percent))) : 0;
+      const showTrack = !task.settled && (known || task.tone === 'download' || task.percent === null && !task.tone);
+      const enter = taskSeen.has(task.id) ? '' : ' is-enter';
+      fresh.add(task.id);
+      const closeBtn = task.cancellable
+        ? `<button type="button" class="tb-task__cancel" data-task-cancel="${escapeHtml(task.id)}" aria-label="${escapeHtml(t('tasks.cancel'))}">${TASK_ICON_CLOSE}</button>`
+        : task.settled
+          ? `<button type="button" class="tb-task__dismiss" data-task-dismiss="${escapeHtml(task.id)}" aria-label="${escapeHtml(t('tasks.clear'))}">${TASK_ICON_CLOSE}</button>`
+          : '';
+      return `<article class="tb-task${taskToneClass(task)}${enter}" data-task-id="${escapeHtml(task.id)}">
+        ${taskIcon(task)}
+        <div class="tb-task__main">
+          <div class="tb-task__top">
+            <span class="tb-task__stage">${escapeHtml(task.stage)}</span>
+            <span class="tb-task__actions">${known ? `<span class="tb-task__pct">${Math.round(width)}%</span>` : ''}${closeBtn}</span>
+          </div>
+          ${showTrack ? `<div class="tb-task__track"><div class="tb-task__fill${known ? '' : ' is-indet'}"${known ? ` style="width:${width}%"` : ''}></div></div>` : ''}
+          ${task.detail ? `<div class="tb-task__detail">${escapeHtml(task.detail)}</div>` : ''}
+        </div>
+      </article>`;
+    }).join('');
+    return `<section class="tb-task-group"><div class="tb-task-group__title">${escapeHtml(title)}</div>${rows}</section>`;
+  }).join('');
+  taskSeen.clear();
+  fresh.forEach((id) => taskSeen.add(id));
+}
+
+/** Сводка всех задач на полоске кнопки: средний процент, либо бегунок, если размера нет. */
+function paintTasksButton(): void {
+  const bar = document.getElementById('tb-tasks-bar');
+  const fill = document.getElementById('tb-tasks-bar-fill');
+  const btn = document.getElementById('tb-tasks-btn');
+  if (!bar || !fill) return;
+  const tasks = [...launcherTasks.values()].filter((task) => !task.settled);
+  btn?.classList.toggle('is-busy', tasks.length > 0);
+  if (tasks.length === 0) {
+    bar.hidden = true;
+    bar.classList.remove('is-success', 'is-error');
+    fill.classList.remove('is-indet');
+    fill.style.width = '0';
+    return;
+  }
+  bar.hidden = false;
+  const hasError = tasks.some((task) => task.tone === 'error');
+  const allSuccess = tasks.every((task) => task.tone === 'success');
+  bar.classList.toggle('is-error', hasError);
+  bar.classList.toggle('is-success', !hasError && allSuccess);
+  const known = tasks.filter((task) => task.percent != null && Number.isFinite(task.percent));
+  if (known.length === 0) {
+    fill.classList.add('is-indet');
+    fill.style.width = '';
+    return;
+  }
+  const avg = known.reduce((sum, task) => sum + Number(task.percent), 0) / known.length;
+  fill.classList.remove('is-indet');
+  fill.style.width = `${Math.max(0, Math.min(100, avg))}%`;
+}
+
+function upsertLauncherTask(task: LauncherTask): void {
+  const pending = launcherTaskTimers.get(task.id);
+  if (pending) {
+    clearTimeout(pending);
+    launcherTaskTimers.delete(task.id);
+  }
+  const menuOpen = document.getElementById('tb-tasks-menu')?.classList.contains('is-open');
+  if (!launcherTasks.has(task.id) && !menuOpen) taskUnseen.add(task.id);
+  launcherTasks.set(task.id, task);
+  renderLauncherTasks();
+}
+
+function clearLauncherTask(id: string): void {
+  const pending = launcherTaskTimers.get(id);
+  if (pending) {
+    clearTimeout(pending);
+    launcherTaskTimers.delete(id);
+  }
+  taskUnseen.delete(id);
+  taskSeen.delete(id);
+  launcherTasks.delete(id);
+  renderLauncherTasks();
+}
+
+/** Готовая задача остаётся в истории, пока её не закроют крестиком или «Очистить». */
+function finishLauncherTask(id: string, _delay = 900): void {
+  const task = launcherTasks.get(id);
+  if (!task || task.settled) return;
+  const pending = launcherTaskTimers.get(id);
+  if (pending) {
+    clearTimeout(pending);
+    launcherTaskTimers.delete(id);
+  }
+  launcherTasks.delete(id);
+  taskSeen.delete(id);
+  taskUnseen.delete(id);
+  const histId = `hist-${Date.now().toString(36)}-${id.replace(/[^\w.-]+/g, '')}`;
+  const tone = task.tone === 'error' ? 'error' : task.tone === 'chat' ? 'chat' : task.tone === 'info' ? 'info' : 'success';
+  launcherTasks.set(histId, {
+    ...task,
+    id: histId,
+    settled: true,
+    cancellable: false,
+    tone,
+    percent: tone === 'error' ? task.percent : task.percent ?? 100,
+  });
+  if (!document.getElementById('tb-tasks-menu')?.classList.contains('is-open')) taskUnseen.add(histId);
+  renderLauncherTasks();
+}
+
+function dismissLauncherTask(id: string): void {
+  const node = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"]`);
+  const drop = () => {
+    if (!launcherTasks.has(id) && !tasksLeaveLock) return;
+    tasksLeaveLock = false;
+    clearLauncherTask(id);
+  };
+  if (!node || node.classList.contains('is-leaving')) {
+    clearLauncherTask(id);
+    return;
+  }
+  tasksLeaveLock = true;
+  node.classList.add('is-leaving');
+  node.addEventListener('animationend', drop, { once: true });
+  window.setTimeout(drop, 240);
+}
+
+function clearAllLauncherTasks(): void {
+  const nodes = Array.from(document.querySelectorAll<HTMLElement>('#tb-tasks-list .tb-task'));
+  const wipe = () => {
+    if (!tasksLeaveLock && launcherTasks.size === 0) return;
+    tasksLeaveLock = false;
+    launcherTasks.clear();
+    taskSeen.clear();
+    taskUnseen.clear();
+    launcherTaskTimers.forEach((timer) => clearTimeout(timer));
+    launcherTaskTimers.clear();
+    renderLauncherTasks();
+  };
+  if (!nodes.length) {
+    wipe();
+    return;
+  }
+  tasksLeaveLock = true;
+  let left = nodes.length;
+  const step = () => {
+    left -= 1;
+    if (left > 0) return;
+    wipe();
+  };
+  nodes.forEach((node, index) => {
+    node.style.animationDelay = `${index * 28}ms`;
+    node.classList.add('is-leaving');
+    node.addEventListener('animationend', step, { once: true });
+  });
+  window.setTimeout(wipe, 220 + nodes.length * 28);
+}
+
+window.addEventListener('uclient-task', (event) => {
+  const detail = (event as CustomEvent<Partial<LauncherTask> & { action?: string }>).detail;
+  if (!detail) return;
+  if (detail.action === 'settle' && detail.id) {
+    finishLauncherTask(detail.id);
+    return;
+  }
+  if (detail.action === 'clear' && detail.id) {
+    clearLauncherTask(detail.id);
+    return;
+  }
+  if (!detail.id || !detail.stage) return;
+  upsertLauncherTask({
+    id: detail.id,
+    title: detail.title || t('tasks.download'),
+    stage: detail.stage,
+    percent: detail.percent ?? null,
+    detail: detail.detail || '',
+    cancellable: detail.cancellable,
+    tone: detail.tone,
+    settled: detail.settled,
+  });
+});
+
+function downloadStatusCancellable(key: string): boolean {
+  if (
+    key === 'smp.packFile'
+    || key === 'smp.downloadingPackFiles'
+    || key === 'smp.packFileErr'
+    || key === 'import.cfDownloading'
+  ) return true;
+  return key.startsWith('status.deps');
+}
+
+let taskCancelInFlight = false;
+
+async function cancelLauncherTask(id: string): Promise<void> {
+  const task = launcherTasks.get(id);
+  if (!task?.cancellable || taskCancelInFlight || !api?.cancelDownloads) return;
+  taskCancelInFlight = true;
+  try {
+    const result = await api.cancelDownloads();
+    if (result?.ok) {
+      clearLauncherTask('download');
+      clearLauncherTask('download-batch');
+    }
+  } finally {
+    taskCancelInFlight = false;
+  }
+}
+
+function taskTitleFromKey(key: string): string {
+  if (key.startsWith('import.') || key.startsWith('launchers.')) return t('tasks.import');
+  if (key.startsWith('smp.') || key.startsWith('status.deps')) return t('tasks.install');
+  return t('tasks.download');
+}
+
+function syncTaskFromDownload(data: any): void {
+  if (!data) return;
+  if (data.type === 'cancelled') {
+    clearLauncherTask('download');
+    clearLauncherTask('download-batch');
+    return;
+  }
+  if (data.type === 'start') {
+    const size = Number(data.size) || 0;
+    downloadPrevReceived = 0;
+    downloadPrevTime = Date.now();
+    upsertLauncherTask({
+      id: 'download',
+      title: t('tasks.download'),
+      stage: String(data.filename || ''),
+      percent: size > 0 ? 0 : null,
+      detail: size > 0 ? formatSizeGlobal(size) : '',
+      cancellable: true,
+    });
+    return;
+  }
+  if (data.type === 'progress') {
+    const total = Number(data.total) || 0;
+    const received = Number(data.received) || 0;
+    const real = total > 0;
+    let speed = '';
+    const now = Date.now();
+    const elapsed = downloadPrevTime ? (now - downloadPrevTime) / 1000 : 0;
+    if (elapsed >= 0.5) {
+      speed = formatSpeedGlobal((received - downloadPrevReceived) / elapsed);
+      downloadPrevReceived = received;
+      downloadPrevTime = now;
+    }
+    const left = real ? t('tasks.left', { text: formatSizeGlobal(Math.max(0, total - received)) }) : '';
+    upsertLauncherTask({
+      id: 'download',
+      title: launcherTasks.get('download')?.title || t('tasks.download'),
+      stage: String(data.filename || ''),
+      percent: real ? Math.min(100, Math.round((received / total) * 100)) : null,
+      detail: [left, speed].filter(Boolean).join(' · '),
+      cancellable: true,
+    });
+    return;
+  }
+  if (data.type === 'done') {
+    const stage = data.buildCreated
+      ? t('log.buildCreatedLabel', { name: data.build?.name || '' })
+      : t('log.done', { file: data.filename || '' });
+    upsertLauncherTask({
+      id: 'download',
+      title: launcherTasks.get('download')?.title || t('tasks.download'),
+      stage,
+      percent: 100,
+      detail: '',
+      tone: 'success',
+    });
+    if (launcherTasks.has('download-batch')) {
+      const batch = launcherTasks.get('download-batch')!;
+      upsertLauncherTask({ ...batch, percent: 100, detail: '', tone: 'success' });
+    }
+    finishLauncherTask('download', 3000);
+    finishLauncherTask('download-batch', 3000);
+    return;
+  }
+  if (data.type === 'error') {
+    const prev = launcherTasks.get('download');
+    upsertLauncherTask({
+      id: 'download',
+      title: t('tasks.download'),
+      stage: String(data.message || ''),
+      percent: prev?.percent ?? 100,
+      detail: '',
+      tone: 'error',
+    });
+    finishLauncherTask('download', 4000);
+    finishLauncherTask('download-batch', 4000);
+    return;
+  }
+  if (data.kind !== 'status') return;
+  const params = data.params || {};
+  const msg = data.key ? t(data.key, { ...params, unit: t('common.mb') }) : String(data.message || '');
+  const total = Number(params.n);
+  const done = Number(params.i);
+  const hasTotal = Number.isFinite(total) && total > 0;
+  const hasDone = Number.isFinite(done) && done >= 0;
+  const title = taskTitleFromKey(String(data.key || ''));
+  const cancellable = downloadStatusCancellable(String(data.key || ''));
+  if (hasTotal && hasDone) {
+    const safeDone = Math.min(done, total);
+    upsertLauncherTask({
+      id: 'download-batch',
+      title,
+      stage: params.file ? String(params.file) : msg,
+      percent: Math.min(100, Math.round((safeDone / total) * 100)),
+      detail: t('tasks.files', { done: safeDone, total }),
+      cancellable,
+      tone: data.key === 'smp.packFileErr' ? 'error' : undefined,
+    });
+    return;
+  }
+  if (hasTotal) {
+    upsertLauncherTask({
+      id: 'download-batch',
+      title,
+      stage: msg,
+      percent: 0,
+      detail: t('tasks.files', { done: 0, total }),
+      cancellable,
+    });
+    return;
+  }
+  upsertLauncherTask({
+    id: 'download',
+    title,
+    stage: msg,
+    percent: null,
+    detail: '',
+    cancellable,
+  });
+}
+
+function syncTaskFromLaunch(data: any): void {
+  if (!data) return;
+  const msg = (d: any): string => (d.key ? t(d.key, d.params) : (d.message || ''));
+  if (data.kind === 'info' || data.kind === 'debug' || data.kind === 'log') return;
+  if (data.kind === 'launching') {
+    clearLauncherTask('launch');
+    return;
+  }
+  if (data.kind === 'close') {
+    const failed = Boolean(data.code && data.code !== 0);
+    upsertLauncherTask({
+      id: 'launch',
+      title: t('tasks.launch'),
+      stage: failed ? t('status.minecraftCrashed') : t('status.minecraftClosed'),
+      percent: failed ? null : 100,
+      detail: '',
+      tone: failed ? 'error' : 'success',
+    });
+    finishLauncherTask('launch', 4000);
+    return;
+  }
+  if (data.kind === 'download') {
+    const sTotal = Number(data.total?.size) || 0;
+    const sDone = Number(data.downloaded?.size) || 0;
+    const aTotal = Number(data.total?.amount) || 0;
+    const aDone = Number(data.downloaded?.amount) || 0;
+    let percent: number | null = null;
+    let detail = '';
+    if (sTotal > 0) {
+      percent = Math.min(100, Math.round((sDone / sTotal) * 100));
+      detail = t('tasks.left', { text: formatSizeGlobal(Math.max(0, sTotal - sDone)) });
+    } else if (aTotal > 0) {
+      percent = Math.min(100, Math.round((aDone / aTotal) * 100));
+      detail = t('tasks.files', { done: aDone, total: aTotal });
+    }
+    if (data.speed) {
+      const speed = formatSpeedGlobal(Number(data.speed) || 0);
+      detail = detail ? `${detail} · ${speed}` : speed;
+    }
+    upsertLauncherTask({
+      id: 'launch',
+      title: t('tasks.launch'),
+      stage: msg(data),
+      percent,
+      detail,
+    });
+    return;
+  }
+  if (data.kind === 'error' || data.kind === 'crash') {
+    const prev = launcherTasks.get('launch');
+    upsertLauncherTask({
+      id: 'launch',
+      title: t('tasks.launch'),
+      stage: msg(data) || t('status.minecraftCrashed'),
+      percent: prev?.percent ?? 100,
+      detail: '',
+      tone: 'error',
+    });
+    finishLauncherTask('launch', 4000);
+    return;
+  }
+  upsertLauncherTask({
+    id: 'launch',
+    title: t('tasks.launch'),
+    stage: msg(data),
+    percent: null,
+    detail: '',
+  });
+}
+
+function syncTaskFromCounted(id: string, title: string, stage: string, current: number, total: number): void {
+  const real = total > 0;
+  upsertLauncherTask({
+    id,
+    title,
+    stage,
+    percent: real ? Math.min(100, Math.round((current / total) * 100)) : null,
+    detail: real ? t('tasks.files', { done: current, total }) : '',
+  });
+}
+
 let downloadPrevReceived = 0;
 let downloadPrevTime = 0;
 
@@ -1828,7 +2856,6 @@ async function init(): Promise<void> {
   await setLang(localStorage.getItem('Undefined Client-language') || 'ru');
   initCustomCarets();
   applyAiTabVisibility();
-  initAiAssistant();
   initMessenger({
     t,
     escapeHtml,
@@ -1845,7 +2872,8 @@ async function init(): Promise<void> {
     renderMarkdown: (md: string) => sanitizeHtml(markedParse(md || '')),
     updateStatus,
     showToast: showAppToast,
-    getLauncherStats: () => {
+    openOfficialNews: (id) => void openModalNews(id),
+      getLauncherStats: () => {
       const played = savedBuilds
         .map((b) => ({ build: b, time: b.playtime || 0 }))
         .filter((x) => x.time > 0)
@@ -1882,7 +2910,7 @@ async function init(): Promise<void> {
       );
       if (saved) {
         const addr = savedServerAddr(saved);
-        const fav = srvServerFavicon(srvStatusCache[addr] || {});
+        const fav = srvTileIcon(addr, srvStatusCache[addr] || {});
         if (fav) return fav;
       }
       const cat = serverCatalog.find(
@@ -1891,7 +2919,7 @@ async function init(): Promise<void> {
           String(srvAddr(c) || '').toLowerCase() === q,
       );
       if (cat) {
-        const fav = srvServerFavicon(cat.status || srvStatusCache[srvAddr(cat)] || {});
+        const fav = srvTileIcon(srvAddr(cat), cat.status || srvStatusCache[srvAddr(cat)] || {});
         if (fav) return fav;
       }
       return '../../assets/icons/serverIcon.png';
@@ -1927,6 +2955,37 @@ async function init(): Promise<void> {
       card?.classList.add('is-highlight');
       window.setTimeout(() => card?.classList.remove('is-highlight'), 1600);
     },
+    openModProject: (projectId) => {
+      void openModalDetails(String(projectId || ''));
+    },
+    openCatalogServer: (address) => {
+      void (async () => {
+        if (!srvLoaded) await loadServerCatalog();
+        openServerInfo(String(address || ''));
+      })();
+    },
+    ensureServerCatalog: async () => {
+      if (!srvLoaded) await loadServerCatalog();
+    },
+    listCatalogServers: () =>
+      serverCatalog.slice(0, 80).map((entry) => ({
+        name: entry.name,
+        address: srvAddr(entry),
+        icon: entry.icon ? catalogImageUrl(entry.icon) : '',
+        meta: [srvAddrText(entry), entry.versions?.[0] || ''].filter(Boolean).join(' · '),
+      })),
+    lookupCatalogServer: (address) => {
+      const key = String(address || '').toLowerCase();
+      const entry = serverCatalog.find((row) => srvAddr(row) === key || srvAddrText(row).toLowerCase() === key);
+      if (!entry) return null;
+      return {
+        name: entry.name,
+        icon: entry.icon ? catalogImageUrl(entry.icon) : '',
+        meta: [srvAddrText(entry), entry.versions?.[0] || '', entry.players != null ? String(entry.players) : '']
+          .filter(Boolean)
+          .join(' · '),
+      };
+    },
     getRunningBuild: () => {
       if (!runningBuild) return null;
       return {
@@ -1949,7 +3008,7 @@ async function init(): Promise<void> {
           return;
         }
       }
-      openServerLaunchPicker(server.ip, server.port, server.name || server.ip);
+      beginServerLaunch(server.ip, server.port, server.name || server.ip);
     },
     api: api || {},
     refreshAccount: async () => {
@@ -1957,20 +3016,102 @@ async function init(): Promise<void> {
     },
   });
 
+  // UAgent / соц. API: JWT Messenger поднимаем сразу, не дожидаясь вкладки чатов
+  initAiAssistant();
+  initSocialFeed({
+    t,
+    escapeHtml,
+    renderMarkdown: (md: string) => renderSocialMarkdown(md || ''),
+    showToast: showAppToast,
+    openModal,
+    closeModal,
+    getAccount: () => currentAccount,
+    getSkinData: (uuid) => api?.getSkinData?.(uuid) ?? Promise.resolve(null),
+    getElyWornSkin: (nickname, force) => api?.getElyWornSkin?.(nickname, force) ?? Promise.resolve(null),
+    resolveAvatarUrl: ({ skinUrl, uuid, username, provider }) => {
+      const skin = String(skinUrl || '').trim();
+      const prov = String(provider || '').toLowerCase();
+      // Лицензия и Ely кропаются с живой текстуры. mc-heads отдаёт старого Steve.
+      if (
+        prov === 'msa' ||
+        prov === 'ely' ||
+        prov === 'yggdrasil' ||
+        /skinsystem\.ely\.by|ely\.by\/storage|textures\.minecraft\.net/i.test(skin)
+      ) {
+        return '';
+      }
+      const id = String(uuid || '').replace(/-/g, '').toLowerCase();
+      if (id.length >= 32) {
+        const direct = `https://mc-heads.net/avatar/${id}/64`;
+        return skinImageUrl(direct) || direct;
+      }
+      const name = String(username || '').trim();
+      if (name) {
+        const direct = `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`;
+        return skinImageUrl(direct) || direct;
+      }
+      if (skin && !/textures\.minecraft\.net/i.test(skin)) {
+        return skinImageUrl(skin) || skin;
+      }
+      return '';
+    },
+    resolveNewsCoverUrl: (url) => resolveNewsAssetUrl(url),
+    messengerRequest: (payload) =>
+      api?.messengerRequest?.(payload) || Promise.resolve({ ok: false, error: 'unavailable' }),
+    listNewsOfficial: async () => {
+      await loadNewsOfficialOnly();
+      return newsPosts.map((p) => ({
+        id: String(p.id),
+        title: String(p.title || ''),
+        summary: String((p as any).summary || (p as any).excerpt || ''),
+        content: String((p as any).content || ''),
+        cover: resolveNewsAssetUrl(String((p as any).cover || (p as any).image || '')),
+        media: Array.isArray((p as any).media) ? (p as any).media : [],
+        date: String((p as any).publishedAt || (p as any).date || ''),
+        views: Number((p as any).views || 0),
+      }));
+    },
+    noteNewsView: async (id: string) => {
+      const views = await noteOfficialNewsView(id);
+      return views;
+    },
+    openOfficialNews: (id) => {
+      void openModalNews(id);
+    },
+    listConversationsForRepost: async () => {
+      const res = await api?.messengerRequest?.({ path: '/conversations' });
+      const list = res?.ok ? res.data?.conversations || res.data || [] : [];
+      return (Array.isArray(list) ? list : []).map((c: any) => ({
+        id: String(c.id),
+        title: String(c.title || c.peer?.username || c.name || 'Чат'),
+      }));
+    },
+    confirm: (message) => confirmAction(message),
+    openUserProfile: async (username: string, userId?: string) => {
+      if (userId) {
+        await openProfileByUserId(userId);
+        return;
+      }
+      await openProfileByUsername(username);
+    },
+    loadOfficialNews: async (force) => {
+      await loadNewsOfficialOnly(Boolean(force));
+    },
+    renderOfficialNews: (root) => {
+      renderOfficialNewsInto(root);
+    },
+  });
+
   initStartedAt = performance.now();
   setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
 
-  // Random video wallpaper
-  const videoEl = document.getElementById('quick-banner-bg') as HTMLVideoElement;
+  // Фон главной: выбранный ролик или свой файл, без случайной смены
+  const videoEl = document.getElementById('home-video-bg') as HTMLVideoElement;
   if (videoEl) {
-    const videos = ['1.mp4','2.mp4','3.mp4','5.mp4','6.mp4','7.mp4','8.mp4'];
-    const pick = videos[Math.floor(Math.random() * videos.length)];
-    videoEl.src = `../../assets/VideoWallpapers/${pick}`;
-    videoEl.play().catch(() => {});
     videoEl.muted = true;
     videoEl.loop = true;
     videoEl.playsInline = true;
-    videoEl.pause(); // start paused; resume only when home tab is visible
+    if (videoEl.dataset.wallKind !== 'image') videoEl.pause();
 
     // Ambient glow from video colors (low frequency, skipped when not visible)
     const glowCanvas = document.createElement('canvas');
@@ -1982,8 +3123,13 @@ async function init(): Promise<void> {
     let wallpaperRunning = false;
 
     function updateGlow() {
-      if (!glowCtx || videoEl.readyState < 2 || !wallpaperRunning) return;
-      glowCtx.drawImage(videoEl, 0, 0, 8, 4);
+      const source: CanvasImageSource | null = videoEl.dataset.wallKind === 'image'
+        ? (document.getElementById('home-image-bg') as HTMLImageElement | null)
+        : videoEl;
+      if (!glowCtx || !source || !wallpaperRunning) return;
+      if (source instanceof HTMLVideoElement && source.readyState < 2) return;
+      if (source instanceof HTMLImageElement && !source.complete) return;
+      try { glowCtx.drawImage(source, 0, 0, 8, 4); } catch { return; }
       const d = glowCtx.getImageData(0, 0, 8, 4).data;
       let r = 0, g = 0, b = 0, c = 0;
       for (let i = 0; i < d.length; i += 4) {
@@ -1998,7 +3144,8 @@ async function init(): Promise<void> {
     function startWallpaper() {
       if (wallpaperRunning) return;
       wallpaperRunning = true;
-      void videoEl.play().catch(() => {});
+      homeWallPlaying = true;
+      if (videoEl.dataset.wallKind !== 'image') void videoEl.play().catch(() => {});
       updateGlow();
       glowTimer = setInterval(updateGlow, 4000);
     }
@@ -2006,6 +3153,7 @@ async function init(): Promise<void> {
     function stopWallpaper() {
       if (!wallpaperRunning) return;
       wallpaperRunning = false;
+      homeWallPlaying = false;
       videoEl.pause();
       if (glowTimer) { clearInterval(glowTimer); glowTimer = null; }
       if (banner) banner.style.filter = '';
@@ -2018,11 +3166,6 @@ async function init(): Promise<void> {
   }
 
   if (api?.onLaunchProgress) {
-    const el = document.getElementById('download-progress');
-    const label = document.getElementById('download-progress-label');
-    const speedEl = document.getElementById('download-progress-speed');
-    const percent = document.getElementById('download-progress-percent');
-    const fill = document.getElementById('download-progress-fill');
     let crashLogs: string[] = [];
 
     function pushCrashLog(line: string): void {
@@ -2030,66 +3173,16 @@ async function init(): Promise<void> {
       if (crashLogs.length > 500) crashLogs.shift();
     }
 
-    function formatSpeed(bytesPerSec: number): string {
-      if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
-      if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
-      return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
-    }
-
     api.onLaunchProgress((data) => {
-      if (!el) return;
+      syncTaskFromLaunch(data);
       const msg = (d: any): string => (d.key ? t(d.key, d.params) : (d.message || ''));
       switch (data.kind) {
-        case 'status':
-          el.classList.remove('is-success', 'is-error');
-          if (label) label.textContent = msg(data);
-          if (speedEl) speedEl.textContent = '';
-          if (percent) percent.textContent = '';
-          if (fill) { fill.style.width = '30%'; fill.style.animation = 'progressIndeterminate 1.5s ease-in-out infinite'; }
-          el.classList.remove('hidden');
-          break;
-        case 'download':
-          el.classList.remove('hidden', 'is-success', 'is-error');
-          if (label) label.textContent = msg(data);
-          if (fill) {
-            const sTotal = data.total?.size || 0;
-            const sDone = data.downloaded?.size || 0;
-            const aTotal = data.total?.amount || 0;
-            const aDone = data.downloaded?.amount || 0;
-            if (sTotal > 0) {
-              const pct = Math.min(100, Math.round((sDone / sTotal) * 100));
-              fill.style.animation = 'none';
-              fill.style.width = `${pct}%`;
-              if (percent) percent.textContent = `${pct}%`;
-            } else if (aTotal > 0) {
-              const pct = Math.min(100, Math.round((aDone / aTotal) * 100));
-              fill.style.animation = 'none';
-              fill.style.width = `${pct}%`;
-              if (percent) percent.textContent = `${pct}%`;
-            } else {
-              fill.style.animation = 'progressIndeterminate 1.5s ease-in-out infinite';
-              fill.style.width = '30%';
-              if (percent) percent.textContent = data.speed ? formatSpeed(data.speed) : '';
-            }
-          }
-          if (speedEl && data.speed) {
-            speedEl.textContent = formatSpeed(data.speed);
-          }
-          break;
-        case 'copy':
-        case 'extract':
-        case 'patch':
-        case 'clean':
-          if (label) label.textContent = msg(data);
-          break;
         case 'info':
         case 'debug':
           pushCrashLog(msg(data));
-          // Текст уже уходит в Консоль разработчика через progress sink в main
           break;
         case 'launching':
           crashLogs = [];
-          el.classList.remove('is-success', 'is-error');
           if (data?.adopted && data.buildId) {
             applyAdoptedRunningGame({
               buildId: String(data.buildId),
@@ -2106,39 +3199,22 @@ async function init(): Promise<void> {
             updateSidebarCards();
             void notifyMessengerGameRunning();
           }
-          if (el) el.classList.add('hidden');
-          if (fill) fill.style.animation = 'none';
           break;
         case 'log':
           pushCrashLog(msg(data));
           break;
         case 'close':
-          // Не пишем лог закрытия в quick-banner-sub — только в консоль (sink)
-          if (label) label.textContent = t('status.minecraftClosed');
-          if (speedEl) speedEl.textContent = '';
-          if (percent) percent.textContent = '';
-          if (fill) { fill.style.width = '0%'; fill.style.animation = 'none'; }
           {
             const crashedBuild = runningBuild;
             stopRunningTimer();
             notifyMessengerGameStopped();
             updateBanner();
-            // If process exited with non-zero code, show crash modal
             if (data.code && data.code !== 0) {
               void showCrashModal(crashLogs, crashedBuild);
             }
           }
-          setTimeout(() => el.classList.add('hidden'), 4000);
           break;
         case 'crash':
-          el.classList.remove('is-success');
-          el.classList.add('is-error');
-          if (label) label.textContent = t('status.minecraftCrashed');
-          if (fill) {
-            fill.style.animation = 'none';
-            fill.style.width = '100%';
-          }
-          if (percent) percent.textContent = '—';
           {
             const crashedBuild = runningBuild;
             stopRunningTimer();
@@ -2148,14 +3224,6 @@ async function init(): Promise<void> {
           }
           break;
         case 'error':
-          el.classList.remove('hidden', 'is-success');
-          el.classList.add('is-error');
-          if (label) label.textContent = msg(data);
-          if (fill) {
-            fill.style.animation = 'none';
-            if (!fill.style.width || fill.style.width === '0%') fill.style.width = '100%';
-          }
-          if (percent && !percent.textContent) percent.textContent = '—';
           updateStatus(msg(data));
           break;
       }
@@ -2184,12 +3252,22 @@ async function init(): Promise<void> {
       }
       if (preferred.meta?.type === 'msa' || preferred.meta?.type === 'yggdrasil') {
         accountRefreshPromise = refreshAccountInBackground(preferred);
+        // Прогрев JWT после аккаунта: UAgent и лента постов не зависят от открытия чатов
+        void warmMessengerSession(true).finally(() => {
+          void refreshAiAccessStatus();
+          startAgentTelegramBridge();
+          if (presenceTab === 'news') void loadSocialFeed(true);
+        });
+      } else {
+        void refreshAiAccessStatus();
       }
     } else {
       showNoAccountState();
+      void refreshAiAccessStatus();
     }
   } else {
     showNoAccountState();
+    void refreshAiAccessStatus();
   }
   pushPresence('home');
 
@@ -2209,6 +3287,8 @@ async function init(): Promise<void> {
   setupDownloadProgress();
   if (api?.getPlatformInfo) {
     const info = api.getPlatformInfo();
+    if (info.platform === 'linux') document.body.classList.add('platform-linux');
+    if (info.platform === 'win32') document.body.classList.add('platform-win32');
     const aboutPlat = document.getElementById('about-platform');
     if (aboutPlat) aboutPlat.textContent = info.platform || '—';
     const nodeVer = document.getElementById('about-node');
@@ -2223,7 +3303,9 @@ async function init(): Promise<void> {
   }
 
   // Список версий Minecraft для модалки сборки
+  renderVersionFilterSettings();
   void ensureBuildVersionsLoaded();
+  void refreshInstanceLocationSettings();
 
   const remaining = SPLASH_MIN_MS - (performance.now() - initStartedAt);
   setTimeout(requestCloseSplash, Math.max(0, remaining));
@@ -2249,9 +3331,22 @@ async function init(): Promise<void> {
 
 /* ===== BUILDS ===== */
 
+const GROUP_FOLDER_SVG = `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M6 12C6 9.79086 7.79086 8 10 8H16.1716C16.9672 8 17.7303 8.31607 18.2929 8.87868L19.7071 10.2929C20.2697 10.8555 21.0328 11.1716 21.8284 11.1716H30C32.2091 11.1716 34 12.9625 34 15.1716V28C34 30.2091 32.2091 32 30 32H10C7.79086 32 6 30.2091 6 28V12Z" fill="currentColor" fill-opacity="0.35"/><path d="M6 16H34V28C34 30.2091 32.2091 32 30 32H10C7.79086 32 6 30.2091 6 28V16Z" fill="currentColor" fill-opacity="0.55"/></svg>`;
+
 async function loadBuilds(): Promise<void> {
   if (api?.loadBuilds) {
     savedBuilds = await api.loadBuilds();
+  }
+  if (api?.loadBuildGroups) {
+    try {
+      const groups = await api.loadBuildGroups();
+      savedBuildGroups = Array.isArray(groups) ? groups : [];
+    } catch {
+      savedBuildGroups = [];
+    }
+  }
+  for (const id of [...expandedBuildGroupIds]) {
+    if (!savedBuildGroups.some((g) => g.id === id)) expandedBuildGroupIds.delete(id);
   }
   renderBuilds();
   renderHomeBuilds();
@@ -2260,93 +3355,411 @@ async function loadBuilds(): Promise<void> {
   updateBanner();
 }
 
+function buildsInGroup(groupId: string | null): Build[] {
+  if (!groupId) {
+    return savedBuilds.filter((b) => !b.groupId);
+  }
+  return savedBuilds.filter((b) => b.groupId === groupId);
+}
+
+function groupBuildCount(groupId: string): number {
+  return savedBuilds.filter((b) => b.groupId === groupId).length;
+}
+
+function groupIconHtml(group: BuildGroup): string {
+  if (group.icon) {
+    return `<img src="${buildIconSrc(group.icon)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+  }
+  return GROUP_FOLDER_SVG;
+}
+
+function renderBuildCardHtml(b: Build, idx: number): string {
+  const iconHtml = buildCardIconHtml(b);
+  const isRunning = runningBuild?.id === b.id;
+  const agentTouched = isBuildTouchedByAgent(b.id);
+  const loaderKey = String(b.loader || 'vanilla').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const tags = [
+    b.gameVersion
+      ? `<span class="build-tag">${escapeHtml(String(b.gameVersion))}</span>`
+      : '',
+    b.loader
+      ? `<span class="build-tag build-tag--loader is-${escapeHtml(loaderKey)}">${escapeHtml(String(b.loader))}</span>`
+      : '',
+    b.loader && b.loader !== 'vanilla' && b.loaderVersion
+      ? `<span class="build-tag">${escapeHtml(String(b.loaderVersion))}</span>`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('');
+  return `
+    <div class="build-card${isRunning ? ' running' : ''}${agentTouched ? ' build-card--agent-touched' : ''}" data-build-id="${escapeHtml(b.id)}" data-loader="${escapeHtml(loaderKey)}" style="--build-i:${idx}">
+      <div class="build-card-icon">${iconHtml}</div>
+      <div class="build-card-info">
+        <div class="build-card-title"${agentTouched ? ` data-agent-badge="${t('ai.build.touchedByAgent').replace(/"/g, '&quot;')}"` : ''}>
+          ${isRunning ? `<span class="build-running-badge">${t('btn.playing')}</span>` : ''}
+          <span class="build-card-name">${escapeHtml(String(b.name || ''))}</span>
+        </div>
+        ${tags ? `<div class="build-card-tags">${tags}</div>` : ''}
+        <div class="build-card-time${b.playtime ? '' : ' is-empty'}">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          ${b.playtime ? formatPlaytime(b.playtime) : escapeHtml(t('builds.neverLaunched') || 'Ещё не запускалась')}
+        </div>
+      </div>
+      <div class="build-card-actions">
+        <button class="build-card-btn launch-btn${isRunning ? ' is-running' : ''}" data-build-id="${escapeHtml(b.id)}" title="${escapeHtml(isRunning ? t('btn.playing') : t('btn.launch'))}" aria-label="${escapeHtml(isRunning ? t('btn.playing') : t('btn.launch'))}"${runningBuild ? ' disabled' : ''}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 1.61803C0 0.724419 0.724419 0 1.61803 0C1.86923 0 2.11697 0.058484 2.34164 0.17082L13.1056 5.55279C13.6537 5.82687 14 6.38713 14 7C14 7.61287 13.6537 8.17313 13.1056 8.44721L2.34164 13.8292C2.11697 13.9415 1.86923 14 1.61803 14C0.724419 14 0 13.2756 0 12.382V1.61803Z" fill="currentColor"/></svg>
+        </button>
+        <div class="build-card-toolrow">
+          <button class="build-card-btn build-share-btn" data-build-id="${escapeHtml(b.id)}" title="${t('btn.share')}" aria-label="${t('btn.share')}">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 11C0 10.4477 0.447715 10 1 10C1.55228 10 2 10.4477 2 11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11C12 10.4477 12.4477 10 13 10C13.5523 10 14 10.4477 14 11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11Z" fill="currentColor"/><path d="M1.47749 6.84591C1.10637 6.45548 1.10656 5.82238 1.47749 5.43183L6.35592 0.292896C6.72714 -0.0976319 7.32887 -0.0976319 7.70008 0.292896L12.571 5.42819C12.9419 5.81874 12.9421 6.45184 12.571 6.84226C12.1998 7.23269 11.598 7.23249 11.2268 6.84226L7.97857 3.41401V8.99999C7.97857 9.55228 7.55299 10 7.028 10C6.50302 10 6.07744 9.55228 6.07744 8.99999V3.41401L2.82165 6.84591C2.45041 7.23614 1.84862 7.23633 1.47749 6.84591Z" fill="currentColor"/></svg>
+          </button>
+          <button class="build-card-btn build-manage-btn" data-build-id="${escapeHtml(b.id)}" title="${t('btn.manage')}" aria-label="${t('btn.manage')}">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12.0012 0.31162C11.5857 -0.103873 10.9121 -0.103873 10.4966 0.31162L10.185 0.62324L13.3768 3.81505L13.6884 3.50343C14.1039 3.08794 14.1039 2.41429 13.6884 1.9988L12.0012 0.31162ZM12.3128 4.87899L9.12101 1.68718L4.86527 5.94292L4.01637 9.33853C3.91897 9.72813 4.27187 10.081 4.66147 9.98363L8.05708 9.13473L12.3128 4.87899Z" fill="currentColor"/><path d="M0 3C0 1.34315 1.34315 0 3 0H5C5.55228 0 6 0.447715 6 1C6 1.55228 5.55228 2 5 2H3C2.44772 2 2 2.44772 2 3V11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11V9C12 8.44772 12.4477 8 13 8C13.5523 8 14 8.44772 14 9V11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11V3Z" fill="currentColor"/></svg>
+          </button>
+          <button class="build-card-btn danger build-delete-btn" data-build-id="${escapeHtml(b.id)}" title="${t('btn.delete')}" aria-label="${t('btn.delete')}">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 1C4 0.447715 4.44772 0 5 0H9C9.55228 0 10 0.447715 10 1H4Z" fill="currentColor"/><path d="M1 2C1 1.44772 1.44772 1 2 1H12C12.5523 1 13 1.44772 13 2C13 2.55228 12.5523 3 12 3H2C1.44772 3 1 2.55228 1 2Z" fill="currentColor"/><path d="M2.10995 5.09951C2.05108 4.51082 2.51337 4 3.10499 4H10.895C11.4866 4 11.9489 4.51082 11.89 5.0995L11.09 13.0995C11.0389 13.6107 10.6088 14 10.095 14H3.90499C3.39124 14 2.96107 13.6107 2.90995 13.0995L2.10995 5.09951Z" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderGroupSectionHtml(g: BuildGroup, idx: number): string {
+  const count = groupBuildCount(g.id);
+  const countLabel = t('builds.groupCount', { count }) || `${count}`;
+  const expanded = expandedBuildGroupIds.has(g.id);
+  const members = buildsInGroup(g.id);
+  let memberIdx = 0;
+  const bodyInner = members.length
+    ? `<div class="build-group-section__grid builds-grid">${members.map((b) => renderBuildCardHtml(b, memberIdx++)).join('')}</div>`
+    : `<div class="build-group-section__empty">${escapeHtml(t('builds.groupEmpty') || 'В этой группе пока нет сборок')}</div>`;
+  return `
+    <section class="build-group-section${expanded ? ' is-expanded' : ''}" data-group-id="${escapeHtml(g.id)}" style="--build-i:${idx}">
+      <div class="build-group-section__header">
+        <button type="button" class="build-group-section__toggle" data-group-toggle="${escapeHtml(g.id)}" aria-expanded="${expanded ? 'true' : 'false'}">
+          <span class="build-group-section__icon">${groupIconHtml(g)}</span>
+          <span class="build-group-section__info">
+            <span class="build-group-section__name">${escapeHtml(g.name)}</span>
+            <span class="build-group-section__meta">${escapeHtml(countLabel)}</span>
+          </span>
+          <span class="build-group-section__chevron" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+        </button>
+        <button type="button" class="build-group-section__edit" data-group-edit="${escapeHtml(g.id)}" title="${escapeHtml(t('builds.editGroup') || 'Управление')}" aria-label="${escapeHtml(t('builds.editGroup') || 'Управление')}">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" d="M12.0012 0.31162C11.5857 -0.103873 10.9121 -0.103873 10.4966 0.31162L10.185 0.62324L13.3768 3.81505L13.6884 3.50343C14.1039 3.08794 14.1039 2.41429 13.6884 1.9988L12.0012 0.31162ZM12.3128 4.87899L9.12101 1.68718L4.86527 5.94292L4.01637 9.33853C3.91897 9.72813 4.27187 10.081 4.66147 9.98363L8.05708 9.13473L12.3128 4.87899Z" fill="currentColor"/><path d="M0 3C0 1.34315 1.34315 0 3 0H5C5.55228 0 6 0.447715 6 1C6 1.55228 5.55228 2 5 2H3C2.44772 2 2 2.44772 2 3V11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11V9C12 8.44772 12.4477 8 13 8C13.5523 8 14 8.44772 14 9V11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11V3Z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="build-group-section__collapse">
+        <div class="build-group-section__body">${bodyInner}</div>
+      </div>
+    </section>`;
+}
+
+function toggleBuildGroupExpand(groupId: string, section?: HTMLElement | null): void {
+  const el =
+    section ||
+    document.querySelector<HTMLElement>(`.build-group-section[data-group-id="${CSS.escape(groupId)}"]`);
+  const willExpand = !expandedBuildGroupIds.has(groupId);
+  if (willExpand) expandedBuildGroupIds.add(groupId);
+  else expandedBuildGroupIds.delete(groupId);
+
+  if (!el) {
+    renderBuilds();
+    return;
+  }
+
+  el.classList.toggle('is-expanded', willExpand);
+  const toggleBtn = el.querySelector<HTMLElement>('[data-group-toggle]');
+  if (toggleBtn) toggleBtn.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
+}
+
+function bindBuildCardActions(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('.launch-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const build = savedBuilds.find((b) => b.id === btn.getAttribute('data-build-id'));
+      if (build) await launchBuild(build);
+    });
+  });
+  root.querySelectorAll<HTMLElement>('.build-share-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const build = savedBuilds.find((b) => b.id === btn.getAttribute('data-build-id'));
+      if (build) openBuildShareMenu(btn, build);
+    });
+  });
+  root.querySelectorAll<HTMLElement>('.build-manage-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const build = savedBuilds.find((b) => b.id === btn.getAttribute('data-build-id'));
+      if (build) openModalBuild(build);
+    });
+  });
+  root.querySelectorAll<HTMLElement>('.build-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-build-id');
+      if (!id) return;
+      const build = savedBuilds.find((b) => b.id === id);
+      if (build && (await confirmAction(t('confirm.deleteBuild', { name: build.name })))) {
+        const res = api?.removeBuild ? await api.removeBuild(id) : true;
+        if (res && typeof res === 'object' && res.ok === false) {
+          showAppToast(t('build.deleteFilesFailed'));
+        }
+        await loadBuilds();
+      }
+    });
+  });
+  root.querySelectorAll<HTMLElement>('[data-group-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-group-toggle');
+      if (!id) return;
+      const section = btn.closest<HTMLElement>('.build-group-section');
+      toggleBuildGroupExpand(id, section);
+    });
+  });
+  root.querySelectorAll<HTMLElement>('[data-group-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-group-edit');
+      if (id) void openModalBuildGroup(id);
+    });
+  });
+}
+
 function renderBuilds(): void {
   const list = document.getElementById('builds-list');
   if (!list) return;
-  if (savedBuilds.length === 0) {
+  // Вынимаем строку переноса до innerHTML, иначе вместе со списком пропадёт и обработчик клика.
+  const transferHost = document.getElementById('external-launchers');
+  transferHost?.remove();
+
+  const groups = [...savedBuildGroups].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name),
+  );
+  const ungrouped = buildsInGroup(null);
+
+  if (savedBuilds.length === 0 && groups.length === 0) {
+    list.className = 'builds-list';
     list.innerHTML = `
       <div class="builds-empty">
         <img src="../../assets/icons/newBuild.svg" width="56" height="56" alt="" aria-hidden="true">
         <div>${t('builds.empty')}</div>
         <button class="action-btn" id="builds-empty-create"><span>${t('builds.add')}</span></button>
       </div>`;
+    mountExternalLaunchersRow(list);
     document.getElementById('builds-empty-create')?.addEventListener('click', () => openModalBuild());
     return;
   }
-  list.innerHTML = savedBuilds.map(b => {
-    const iconHtml = buildCardIconHtml(b);
-    const isRunning = runningBuild?.id === b.id;
-    // Бейдж: сборка менялась агентом в этой сессии (sessionStorage)
-    const agentTouched = isBuildTouchedByAgent(b.id);
-    const meta = [b.gameVersion, b.loader, b.loaderVersion].filter(Boolean).join(' • ');
-    return `
-    <div class="build-card${isRunning ? ' running' : ''}${agentTouched ? ' build-card--agent-touched' : ''}" data-build-id="${b.id}">
-      <div class="build-card-icon">${iconHtml}</div>
-      <div class="build-card-info">
-        <div class="build-card-title"${agentTouched ? ` data-agent-badge="${t('ai.build.touchedByAgent').replace(/"/g, '&quot;')}"` : ''}>
-          ${isRunning ? `<span class="build-running-badge">${t('btn.playing')}</span>` : ''}
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.name}</span>
-        </div>
-        <div class="build-card-meta">${meta}</div>
-        ${b.playtime ? `<div class="build-card-time">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          ${formatPlaytime(b.playtime)}
-        </div>` : ''}
-      </div>
-      <div class="build-card-actions">
-        <button class="list-row-btn launch-btn${isRunning ? ' is-running' : ''}" data-build-id="${b.id}"${runningBuild ? ' disabled' : ''}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 1.61803C0 0.724419 0.724419 0 1.61803 0C1.86923 0 2.11697 0.058484 2.34164 0.17082L13.1056 5.55279C13.6537 5.82687 14 6.38713 14 7C14 7.61287 13.6537 8.17313 13.1056 8.44721L2.34164 13.8292C2.11697 13.9415 1.86923 14 1.61803 14C0.724419 14 0 13.2756 0 12.382V1.61803Z" fill="currentColor"/></svg>
-          ${isRunning ? t('btn.playing') : t('btn.launch')}
-        </button>
-        <div class="build-card-toolrow">
-          <button class="build-card-btn build-share-btn" data-build-id="${b.id}" title="${t('btn.share')}">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 11C0 10.4477 0.447715 10 1 10C1.55228 10 2 10.4477 2 11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11C12 10.4477 12.4477 10 13 10C13.5523 10 14 10.4477 14 11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11Z" fill="currentColor"/><path d="M1.47749 6.84591C1.10637 6.45548 1.10656 5.82238 1.47749 5.43183L6.35592 0.292896C6.72714 -0.0976319 7.32887 -0.0976319 7.70008 0.292896L12.571 5.42819C12.9419 5.81874 12.9421 6.45184 12.571 6.84226C12.1998 7.23269 11.598 7.23249 11.2268 6.84226L7.97857 3.41401V8.99999C7.97857 9.55228 7.55299 10 7.028 10C6.50302 10 6.07744 9.55228 6.07744 8.99999V3.41401L2.82165 6.84591C2.45041 7.23614 1.84862 7.23633 1.47749 6.84591Z" fill="currentColor"/></svg>
-            ${t('btn.share')}
-          </button>
-          <button class="build-card-btn build-manage-btn" data-build-id="${b.id}" title="${t('btn.manage')}">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12.0012 0.31162C11.5857 -0.103873 10.9121 -0.103873 10.4966 0.31162L10.185 0.62324L13.3768 3.81505L13.6884 3.50343C14.1039 3.08794 14.1039 2.41429 13.6884 1.9988L12.0012 0.31162ZM12.3128 4.87899L9.12101 1.68718L4.86527 5.94292L4.01637 9.33853C3.91897 9.72813 4.27187 10.081 4.66147 9.98363L8.05708 9.13473L12.3128 4.87899Z" fill="currentColor"/><path d="M0 3C0 1.34315 1.34315 0 3 0H5C5.55228 0 6 0.447715 6 1C6 1.55228 5.55228 2 5 2H3C2.44772 2 2 2.44772 2 3V11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11V9C12 8.44772 12.4477 8 13 8C13.5523 8 14 8.44772 14 9V11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11V3Z" fill="currentColor"/></svg>
-            ${t('btn.manage')}
-          </button>
-          <button class="build-card-btn danger build-delete-btn" data-build-id="${b.id}" title="${t('btn.delete')}">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 1C4 0.447715 4.44772 0 5 0H9C9.55228 0 10 0.447715 10 1H4Z" fill="currentColor"/><path d="M1 2C1 1.44772 1.44772 1 2 1H12C12.5523 1 13 1.44772 13 2C13 2.55228 12.5523 3 12 3H2C1.44772 3 1 2.55228 1 2Z" fill="currentColor"/><path d="M2.10995 5.09951C2.05108 4.51082 2.51337 4 3.10499 4H10.895C11.4866 4 11.9489 4.51082 11.89 5.0995L11.09 13.0995C11.0389 13.6107 10.6088 14 10.095 14H3.90499C3.39124 14 2.96107 13.6107 2.90995 13.0995L2.10995 5.09951Z" fill="currentColor"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
-  }).join('');
 
-  list.querySelectorAll<HTMLElement>('.launch-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const build = savedBuilds.find(b => b.id === btn.getAttribute('data-build-id'));
-      if (build) await launchBuild(build);
-    });
+  list.className = 'builds-list';
+  let idx = 0;
+  const parts: string[] = [];
+  for (const g of groups) {
+    parts.push(renderGroupSectionHtml(g, idx++));
+  }
+  if (ungrouped.length) {
+    parts.push(
+      `<div class="builds-grid builds-grid--root">${ungrouped.map((b) => renderBuildCardHtml(b, idx++)).join('')}</div>`,
+    );
+  }
+  list.innerHTML = parts.join('');
+  // Строка переноса — первая в том же списке, что и группы, а не отдельный скрытый блок над ним.
+  mountExternalLaunchersRow(list);
+  bindBuildCardActions(list);
+}
+
+function mountExternalLaunchersRow(list: HTMLElement): void {
+  let host = document.getElementById('external-launchers');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'external-launchers';
+    host.className = 'ext-launchers hidden';
+    bindExternalLaunchersClicks(host);
+  }
+  list.prepend(host);
+  void refreshExternalLaunchers();
+}
+
+function bindExternalLaunchersClicks(host: HTMLElement): void {
+  host.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const toggle = target.closest<HTMLElement>('[data-ext-toggle]');
+    if (toggle) {
+      const open = host.classList.toggle('is-expanded');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      return;
+    }
+    const allBtn = target.closest<HTMLElement>('[data-import-all]');
+    if (allBtn) {
+      const id = allBtn.getAttribute('data-import-all') || '';
+      const ids = Array.from(host.querySelectorAll<HTMLElement>(`.ext-launcher[data-launcher="${id}"] [data-instance]`))
+        .map((el) => el.getAttribute('data-instance') || '')
+        .filter(Boolean);
+      void importExternalSelection(id, ids);
+      return;
+    }
+    const one = target.closest<HTMLElement>('[data-import-one]');
+    if (!one) return;
+    const launcherId = one.getAttribute('data-import-one') || '';
+    const instanceId = one.getAttribute('data-instance') || '';
+    void importExternalSelection(launcherId, instanceId ? [instanceId] : []);
   });
-  list.querySelectorAll<HTMLElement>('.build-share-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const build = savedBuilds.find(b => b.id === btn.getAttribute('data-build-id'));
-      if (build) openBuildShareMenu(btn, build);
+}
+
+function setGroupIconPreview(icon: string | undefined): void {
+  const preview = document.getElementById('modal-build-group-icon-preview');
+  if (!preview) return;
+  if (!icon) {
+    preview.innerHTML = GROUP_FOLDER_SVG;
+    return;
+  }
+  preview.innerHTML = `<img src="${buildIconSrc(icon)}" style="width:100%;height:100%;object-fit:cover;" alt="">`;
+}
+
+async function ensureGroupIconGrid(): Promise<void> {
+  const grid = document.getElementById('modal-build-group-icon-grid');
+  if (!grid) return;
+  let files: string[] = [];
+  try {
+    files = (await api?.listInstanceIcons?.()) || [];
+  } catch {
+    files = [];
+  }
+  const selectedName = pendingGroupIcon?.startsWith('preset:')
+    ? pendingGroupIcon.slice(7)
+    : null;
+  grid.innerHTML = '';
+  for (const filename of files) {
+    const img = document.createElement('img');
+    img.src = `../../assets/InstancesIcons/${filename}`;
+    img.className = 'be-icon-opt';
+    img.setAttribute('data-icon', filename);
+    img.loading = 'lazy';
+    img.alt = filename.replace(/\.[^.]+$/, '');
+    if (selectedName && filename === selectedName) img.classList.add('selected');
+    img.addEventListener('click', () => {
+      grid.querySelectorAll('.be-icon-opt.selected').forEach((e) => e.classList.remove('selected'));
+      img.classList.add('selected');
+      pendingGroupIcon = `preset:${filename}`;
+      setGroupIconPreview(pendingGroupIcon);
+      const fileInput = document.getElementById('modal-build-group-icon-input') as HTMLInputElement | null;
+      if (fileInput) fileInput.value = '';
     });
+    grid.appendChild(img);
+  }
+}
+
+function renderGroupMemberChecks(selectedIds: Set<string>): void {
+  const box = document.getElementById('modal-build-group-builds');
+  if (!box) return;
+  if (!savedBuilds.length) {
+    box.innerHTML = `<div class="build-group-builds__empty">${escapeHtml(t('builds.none') || 'Нет сборок')}</div>`;
+    return;
+  }
+  box.innerHTML = savedBuilds
+    .map((b) => {
+      const checked = selectedIds.has(b.id) ? ' checked' : '';
+      const otherGroup =
+        b.groupId && b.groupId !== editingBuildGroupId
+          ? savedBuildGroups.find((g) => g.id === b.groupId)
+          : null;
+      const hint = otherGroup
+        ? `<span class="build-group-builds__hint">${escapeHtml(otherGroup.name)}</span>`
+        : '';
+      return `<label class="build-group-builds__row">
+        <input type="checkbox" data-group-build="${escapeHtml(b.id)}"${checked}>
+        <span class="build-group-builds__icon">${buildCardIconHtml(b)}</span>
+        <span class="build-group-builds__name">${escapeHtml(b.name)}</span>
+        ${hint}
+      </label>`;
+    })
+    .join('');
+}
+
+async function openModalBuildGroup(groupId?: string | null): Promise<void> {
+  editingBuildGroupId = groupId || null;
+  const group = groupId ? savedBuildGroups.find((g) => g.id === groupId) : null;
+  pendingGroupIcon = group?.icon || undefined;
+  const title = document.getElementById('modal-build-group-title');
+  if (title) {
+    title.textContent = group
+      ? t('builds.groupEditTitle') || 'Управление группой'
+      : t('builds.groupCreateTitle') || 'Новая группа';
+  }
+  const nameInput = document.getElementById('modal-build-group-name') as HTMLInputElement | null;
+  if (nameInput) nameInput.value = group?.name || '';
+  const delBtn = document.getElementById('modal-build-group-delete');
+  delBtn?.classList.toggle('hidden', !group);
+  setGroupIconPreview(pendingGroupIcon);
+  await ensureGroupIconGrid();
+  const selected = new Set<string>();
+  if (group) {
+    for (const b of savedBuilds) {
+      if (b.groupId === group.id) selected.add(b.id);
+    }
+  }
+  renderGroupMemberChecks(selected);
+  openModal('modal-build-group');
+  nameInput?.focus();
+}
+
+function closeModalBuildGroup(): void {
+  closeModal('modal-build-group');
+  editingBuildGroupId = null;
+  pendingGroupIcon = undefined;
+}
+
+async function submitBuildGroup(): Promise<void> {
+  const nameInput = document.getElementById('modal-build-group-name') as HTMLInputElement | null;
+  const name = String(nameInput?.value || '').trim();
+  if (!name) {
+    showAppToast(t('builds.groupNameRequired') || 'Введите название группы');
+    nameInput?.focus();
+    return;
+  }
+  const id = editingBuildGroupId || `grp-${Date.now()}`;
+  const selected = new Set<string>();
+  document.querySelectorAll<HTMLInputElement>('#modal-build-group-builds input[data-group-build]').forEach((el) => {
+    if (el.checked) selected.add(el.getAttribute('data-group-build') || '');
   });
-  list.querySelectorAll<HTMLElement>('.build-manage-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const build = savedBuilds.find(b => b.id === btn.getAttribute('data-build-id'));
-      if (build) openModalBuild(build);
-    });
-  });
-  list.querySelectorAll<HTMLElement>('.build-delete-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-build-id');
-      if (id) {
-        const build = savedBuilds.find(b => b.id === id);
-        if (build && await confirmAction(t('confirm.deleteBuild', { name: build.name }))) {
-          if (api?.removeBuild) await api.removeBuild(id);
-          await loadBuilds();
-        }
-      }
-    });
-  });
+  const group: BuildGroup = {
+    id,
+    name,
+    icon: pendingGroupIcon,
+    order: savedBuildGroups.find((g) => g.id === id)?.order ?? savedBuildGroups.length,
+  };
+  if (api?.saveBuildGroup) await api.saveBuildGroup(group);
+
+  // Обновляем membership сборок
+  for (const b of savedBuilds) {
+    const shouldBeIn = selected.has(b.id);
+    const wasIn = b.groupId === id;
+    if (shouldBeIn && !wasIn) {
+      b.groupId = id;
+      if (api?.saveBuild) await api.saveBuild(b);
+    } else if (!shouldBeIn && wasIn) {
+      b.groupId = null;
+      if (api?.saveBuild) await api.saveBuild(b);
+    }
+  }
+
+  expandedBuildGroupIds.add(id);
+  closeModalBuildGroup();
+  await loadBuilds();
+  showAppToast(t('builds.groupSaved') || 'Группа сохранена');
+}
+
+async function deleteBuildGroupCurrent(): Promise<void> {
+  if (!editingBuildGroupId) return;
+  const group = savedBuildGroups.find((g) => g.id === editingBuildGroupId);
+  if (!group) return;
+  if (!(await confirmAction(t('confirm.deleteGroup', { name: group.name }) || `Удалить группу «${group.name}»? Сборки останутся.`))) {
+    return;
+  }
+  if (api?.removeBuildGroup) await api.removeBuildGroup(editingBuildGroupId);
+  if (editingBuildGroupId) expandedBuildGroupIds.delete(editingBuildGroupId);
+  closeModalBuildGroup();
+  await loadBuilds();
+  showAppToast(t('builds.groupDeleted') || 'Группа удалена');
 }
 
 function renderHomeBuilds(): void {
@@ -2392,7 +3805,39 @@ function renderHomeBuilds(): void {
 }
 
 document.getElementById('add-build-btn')?.addEventListener('click', () => openModalBuild());
+document.getElementById('add-build-group-btn')?.addEventListener('click', () => void openModalBuildGroup());
 document.getElementById('import-build-btn')?.addEventListener('click', () => openModalImport());
+document.getElementById('modal-build-group-close')?.addEventListener('click', () => closeModalBuildGroup());
+document.getElementById('modal-build-group-cancel')?.addEventListener('click', () => closeModalBuildGroup());
+document.getElementById('modal-build-group-ok')?.addEventListener('click', () => void submitBuildGroup());
+document.getElementById('modal-build-group-delete')?.addEventListener('click', () => void deleteBuildGroupCurrent());
+document.getElementById('modal-build-group')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModalBuildGroup();
+});
+document.getElementById('modal-build-group-icon-upload')?.addEventListener('click', () => {
+  document.getElementById('modal-build-group-icon-input')?.click();
+});
+document.getElementById('modal-build-group-icon-input')?.addEventListener('change', async (e) => {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    pendingGroupIcon = dataUrl;
+    setGroupIconPreview(dataUrl);
+    document.querySelectorAll('#modal-build-group-icon-grid .be-icon-opt.selected').forEach((el) => {
+      el.classList.remove('selected');
+    });
+  } catch {
+    /* ignore */
+  }
+  input.value = '';
+});
 document.getElementById('build-form-cancel')?.addEventListener('click', () => closeModalBuildModal());
 document.getElementById('build-form-submit')?.addEventListener('click', () => submitModalBuild());
 
@@ -2415,18 +3860,48 @@ function populateLoaderVersions(loader: string, mcVersion: string): void {
     return;
   }
   if (!api?.getLoaderVersions || !verSelect || !verMenu) return;
-  api.getLoaderVersions(loader, mcVersion).then(versions => {
+  const hint = document.getElementById('modal-build-loader-ver-hint');
+  if (hint) {
+    hint.textContent = t('loader.loading');
+    hint.classList.remove('hidden');
+  }
+  api.getLoaderVersions(loader, mcVersion).then((raw) => {
     const currentLoader = (document.getElementById('modal-build-loader') as HTMLSelectElement)?.value;
     if (currentLoader !== loader) return;
-    const list = versions || [];
+    const payload = Array.isArray(raw)
+      ? { versions: raw, error: '', unavailable: false }
+      : {
+        versions: Array.isArray(raw?.versions) ? raw.versions : [],
+        error: String(raw?.error || ''),
+        unavailable: !!raw?.unavailable,
+      };
+    const list = payload.versions.map((v) => String(v));
     const prev = verSelect.value;
-    verSelect.innerHTML = list.map(v => `<option value="${v}">${v}</option>`).join('');
-    verMenu.innerHTML = list.map(v => `<div class="stngs-select-opt" data-value="${v}">${v}</div>`).join('');
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    verSelect.innerHTML = list.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    verMenu.innerHTML = list.map((v) => `<div class="stngs-select-opt" data-value="${esc(v)}">${esc(v)}</div>`).join('');
     if (prev && list.includes(prev)) verSelect.value = prev;
     else if (list.length > 0) verSelect.value = list[0];
     const wrap = verSelect.closest('.stngs-select-wrap') as HTMLElement | null;
     if (wrap) syncSelectUI(wrap);
-  }).catch(() => {});
+    if (hint) {
+      if (list.length) {
+        hint.textContent = '';
+        hint.classList.add('hidden');
+      } else if (payload.error && !payload.unavailable) {
+        hint.textContent = payload.error;
+        hint.classList.remove('hidden');
+      } else {
+        hint.textContent = t('loader.none', { loader, version: mcVersion });
+        hint.classList.remove('hidden');
+      }
+    }
+  }).catch((err) => {
+    if (hint) {
+      hint.textContent = err instanceof Error ? err.message : String(err || t('loader.failed'));
+      hint.classList.remove('hidden');
+    }
+  });
 }
 
 let detectedJava: { name: string; path: string; version: number; managed?: boolean }[] = [];
@@ -2547,12 +4022,18 @@ function initJavaManager(): void {
       if (!version) return;
       if (data.status === 'done' || data.status === 'removed') {
         javaBusy[version] = false;
-        const dp = document.getElementById('download-progress');
-        if (dp) dp.classList.add('hidden');
+        clearLauncherTask(`java-${version}`);
         void refreshJavaManager(true);
         return;
       }
       javaBusy[version] = true;
+      upsertLauncherTask({
+        id: `java-${version}`,
+        title: t('tasks.java', { v: version }),
+        stage: data.status === 'extract' ? t('jm.extracting') : t('jm.downloading'),
+        percent: null,
+        detail: '',
+      });
       const statusEl = container.querySelector<HTMLElement>(`.list-row[data-java-ver="${version}"] .java-row-status`);
       if (statusEl) {
         statusEl.className = 'java-row-status busy';
@@ -2705,6 +4186,14 @@ function renderServers(): void {
 
 /* ===== SERVERS CATALOG ===== */
 
+/** После установки модпака из каталога обновить кнопку сервера, если модалка ещё открыта. */
+let afterContentInstall: (() => void) | null = null;
+// Установка из каталога плагинов своего сервера: та же модалка версий, другой приёмник.
+let hostCatalogInstall: ((version: any) => Promise<void> | void) | null = null;
+let versionsPreferGame = '';
+let versionsPreferLoader = '';
+let versionsHostLock = false;
+
 interface CatalogServerEntry {
   id: string;
   name: string;
@@ -2717,7 +4206,43 @@ interface CatalogServerEntry {
   versions?: string[];
   points?: number;
   icon?: string;
-  fromMineServ?: boolean;
+  source?: 'librium' | 'modrinth' | 'undefined' | '';
+  banner?: string;
+  screenshots?: string[];
+  language?: string;
+  players?: number | null;
+  maxPlayers?: number | null;
+  online?: boolean | null;
+  rating?: number | null;
+  reviews?: number | null;
+  followers?: number | null;
+  joins?: number | null;
+  modpackName?: string;
+  modpackIcon?: string;
+  modpackProjectId?: string;
+  modpackVersionId?: string;
+  modpackVersion?: string;
+  modpackGame?: string;
+  modpackLoader?: string;
+  modpackSummary?: string;
+  modpackResolved?: boolean;
+  projectUrl?: string;
+  projectId?: string;
+  serverId?: string;
+  remoteHistory?: {
+    period: string;
+    points: { t: string; online: number }[];
+    peak: number;
+    min: number;
+    avg: number;
+    uptime: number | null;
+    peakAt: string;
+    minAt: string;
+  } | null;
+  detailTried?: boolean;
+  chartPeriod?: string;
+  localPort?: number;
+  localProbeAt?: number;
   status?: any;
 }
 
@@ -2801,9 +4326,11 @@ let srvCatalogReady = false;
 let srvVersionFilter = '';
 let srvQuery = '';
 let srvCategory = 'all';
-let srvSort = 'players';
+let srvSort = 'relevance';
 let srvRegion = 'all';
 let srvOnlineOnly = false;
+let srvSource = 'all';
+let srvLang = '';
 let srvRenderedCount = 0;
 let srvOfflineAddrs: Record<string, boolean> = {};
 let srvStatusCache: Record<string, any> = {};
@@ -2813,6 +4340,202 @@ let srvLoaded = false;
 
 function srvEsc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function srvCompact(n: number): string {
+  const v = Math.max(0, Math.round(Number(n) || 0));
+  if (v >= 1000) {
+    const k = v / 1000;
+    const text = (k >= 10 ? k.toFixed(0) : k.toFixed(1)).replace('.', ',');
+    return `${text} тыс.`;
+  }
+  return String(v);
+}
+
+const SRV_LANG_NAMES: Record<string, string> = {
+  ru: 'Русский', en: 'Английский', uk: 'Украинский', be: 'Белорусский',
+  de: 'Немецкий', fr: 'Французский', es: 'Испанский', pt: 'Португальский',
+  pl: 'Польский', tr: 'Турецкий', zh: 'Китайский', ja: 'Японский', ko: 'Корейский',
+};
+
+function srvLangName(code: string): string {
+  const key = String(code || '').toLowerCase().slice(0, 2);
+  return SRV_LANG_NAMES[key] || String(code || '');
+}
+
+function srvSkeletonHtml(): string {
+  return Array.from({ length: 8 }, () => '<div class="scat-skel"></div>').join('');
+}
+
+const SRV_HIST_KEY = 'uc-srv-online-hist';
+
+function srvReadHist(): Record<string, unknown[]> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SRV_HIST_KEY) || '{}');
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function srvReadPoints(id: string): { t: string; n: number }[] {
+  const row = srvReadHist()[id];
+  if (!Array.isArray(row)) return [];
+  const now = Date.now();
+  return row.map((item, index) => {
+    if (item && typeof item === 'object') {
+      const point = item as { t?: unknown; n?: unknown };
+      const n = Math.max(0, Math.round(Number(point.n)));
+      const t = String(point.t || '');
+      if (t && Number.isFinite(n)) return { t, n };
+    }
+    const n = Math.max(0, Math.round(Number(item)));
+    return {
+      t: new Date(now - (row.length - 1 - index) * 60_000).toISOString(),
+      n: Number.isFinite(n) ? n : 0,
+    };
+  }).filter((point) => point.t).slice(-240);
+}
+
+function srvPushHistory(id: string, value: number): void {
+  if (!id || !Number.isFinite(value)) return;
+  const all = srvReadHist();
+  const row = srvReadPoints(id);
+  const next = Math.max(0, Math.round(value));
+  const now = Date.now();
+  const last = row[row.length - 1];
+  if (last && last.n === next && now - new Date(last.t).getTime() < 60_000) return;
+  row.push({ t: new Date(now).toISOString(), n: next });
+  all[id] = row.slice(-240);
+  try { localStorage.setItem(SRV_HIST_KEY, JSON.stringify(all)); } catch { /* квота хранилища */ }
+}
+
+function srvLocalSeries(id: string, periodRaw: string): NonNullable<CatalogServerEntry['remoteHistory']> {
+  const period = periodRaw === '7d' || periodRaw === '30d' ? periodRaw : '24h';
+  const span = period === '30d' ? 30 : period === '7d' ? 7 : 1;
+  const from = Date.now() - span * 86_400_000;
+  const points = srvReadPoints(id)
+    .filter((point) => new Date(point.t).getTime() >= from)
+    .map((point) => ({ t: point.t, online: point.n }));
+  const values = points.map((point) => point.online);
+  const peak = values.length ? Math.max(...values) : 0;
+  const min = values.length ? Math.min(...values) : 0;
+  const avg = values.length ? values.reduce((sum, n) => sum + n, 0) / values.length : 0;
+  return {
+    period,
+    points,
+    peak,
+    min,
+    avg,
+    uptime: null,
+    peakAt: points.find((point) => point.online === peak)?.t || '',
+    minAt: points.find((point) => point.online === min)?.t || '',
+  };
+}
+
+function srvSmoothPath(coords: { x: number; y: number }[]): string {
+  if (!coords.length) return '';
+  if (coords.length === 1) return `M${coords[0].x.toFixed(1)},${coords[0].y.toFixed(1)}`;
+  let d = `M${coords[0].x.toFixed(1)},${coords[0].y.toFixed(1)}`;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p0 = coords[Math.max(0, i - 1)];
+    const p1 = coords[i];
+    const p2 = coords[i + 1];
+    const p3 = coords[Math.min(coords.length - 1, i + 2)];
+    const lo = Math.min(p1.y, p2.y);
+    const hi = Math.max(p1.y, p2.y);
+    const c1x = p1.x + (p2.x - p1.x) / 3;
+    const c2x = p2.x - (p2.x - p1.x) / 3;
+    const c1y = Math.min(hi, Math.max(lo, p1.y + (p2.y - p0.y) / 6));
+    const c2y = Math.min(hi, Math.max(lo, p2.y - (p3.y - p1.y) / 6));
+    d += `C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+function srvSmoothChart(samples: { t: string; online: number }[]): string {
+  const pts = samples.length ? samples : [{ t: '', online: 0 }];
+  const w = 480;
+  const h = 128;
+  const padL = 2;
+  const padR = 6;
+  const padT = 10;
+  const padB = 6;
+  const max = Math.max(1, ...pts.map((p) => p.online));
+  const step = pts.length === 1 ? 0 : (w - padL - padR) / (pts.length - 1);
+  const coords = pts.map((p, i) => ({
+    x: padL + i * step,
+    y: h - padB - (p.online / max) * (h - padT - padB),
+  }));
+  const line = srvSmoothPath(coords);
+  const last = coords[coords.length - 1];
+  const area = `${line}L${last.x.toFixed(1)},${h - padB}L${padL},${h - padB}Z`;
+  const payload = encodeURIComponent(JSON.stringify(pts));
+  return `<div class="scat-plot" data-samples="${payload}"><svg class="scat-chart scat-chart-live" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path class="scat-chart-area" d="${area}"></path><path class="scat-chart-line" d="${line}"></path><circle class="scat-chart-dot" cx="${last.x.toFixed(1)}" cy="${last.y.toFixed(1)}" r="3.5"></circle></svg><div class="scat-tip" hidden></div></div>`;
+}
+
+function srvFormatDesc(raw: string): string {
+  const text = String(raw || '').replace(/\r\n/g, '\n').replace(/\\n/g, '\n');
+  return sanitizeHtml(markedParse(text));
+}
+
+function srvWhen(raw: string): string {
+  if (!raw) return '';
+  const d = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 16);
+  return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function srvNum(n: number): string {
+  if (!Number.isFinite(n)) return '0';
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function srvChartRange(samples: { t: string; online: number }[], idx: number): string {
+  const cur = samples[idx];
+  if (!cur?.t) return '';
+  const start = srvWhen(cur.t);
+  const next = samples[idx + 1];
+  if (next?.t) return `${start} – ${srvWhen(next.t)}`;
+  const prev = samples[idx - 1];
+  if (!prev?.t) return start;
+  const a = new Date(prev.t.includes('T') ? prev.t : prev.t.replace(' ', 'T')).getTime();
+  const b = new Date(cur.t.includes('T') ? cur.t : cur.t.replace(' ', 'T')).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return start;
+  return `${start} – ${srvWhen(new Date(b + (b - a)).toISOString())}`;
+}
+
+function srvLiveChartHtml(e: CatalogServerEntry, players: number | null): string {
+  const remote = e.source === 'librium' ? e.remoteHistory : null;
+  const hist = remote && remote.points.length ? remote : srvLocalSeries(e.id, e.chartPeriod || '24h');
+  const period = hist.period === '7d' || hist.period === '30d' ? hist.period : '24h';
+  const ranges = (['24h', '7d', '30d'] as const).map((key) =>
+    `<button type="button" data-range="${key}" class="${key === period ? 'is-on' : ''}">${srvEsc(t(`servers.range.${key}`))}</button>`
+  ).join('');
+  const now = players != null ? String(players) : '—';
+  const first = hist.points[0]?.t || '';
+  const last = hist.points[hist.points.length - 1]?.t || '';
+  const uptime = hist.uptime == null
+    ? ''
+    : `<div class="scat-sum"><span>${srvEsc(t('servers.uptime'))}</span><b>${hist.uptime.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}%</b><small>${srvEsc(t(`servers.rangeFor.${period}`))}</small></div>`;
+  return `<div class="scat-live">
+    <div class="scat-live-top">
+      <div>
+        <div class="scat-live-title">${srvEsc(t('servers.chartTitle'))}</div>
+        <div class="scat-ranges">${ranges}</div>
+      </div>
+      <div class="scat-now"><span>${srvEsc(t('servers.nowOnline'))}</span><b>${srvEsc(now)}</b><small>${srvEsc(t('servers.chartUpdated'))}</small></div>
+    </div>
+    ${srvSmoothChart(hist.points)}
+    <div class="scat-chart-times"><span>${srvEsc(srvWhen(first))}</span><span>${srvEsc(srvWhen(last))}</span></div>
+    <div class="scat-sums">
+      <div class="scat-sum"><span>${srvEsc(t('servers.peak'))}</span><b>${hist.peak}</b><small>${srvEsc(srvWhen(hist.peakAt))}</small></div>
+      <div class="scat-sum"><span>${srvEsc(t('servers.minOnline'))}</span><b>${hist.min}</b><small>${srvEsc(srvWhen(hist.minAt))}</small></div>
+      <div class="scat-sum"><span>${srvEsc(t('servers.avg'))}</span><b>${srvNum(hist.avg)}</b><small>${srvEsc(t(`servers.rangeFor.${period}`))}</small></div>
+      ${uptime}
+    </div>
+  </div>`;
 }
 
 function srvStatus(ip: string): any {
@@ -2840,7 +4563,9 @@ function srvOnlineE(e: CatalogServerEntry | undefined): boolean {
   return !!srvStatusE(e)?.online && !(e ? srvOfflineAddrs[srvAddr(e)] : false);
 }
 function srvPlayersE(e: CatalogServerEntry | undefined): number {
-  return Math.max(0, Number(srvStatusE(e)?.players?.online) || 0);
+  const live = Number(srvStatusE(e)?.players?.online);
+  if (Number.isFinite(live) && live > 0) return live;
+  return Math.max(0, Number(e?.players) || 0);
 }
 
 function refreshServersGridAfterRemoval(): void {
@@ -2898,21 +4623,106 @@ function srvRegionName(region: string): string {
   return t(`servers.region.${map[region] || 'north'}`);
 }
 
+function catalogFromUndefined(raw: ReturnType<typeof undefinedListingEntries>[number]): CatalogServerEntry {
+  return {
+    id: raw.id,
+    name: raw.name,
+    ip: raw.ip,
+    port: raw.port,
+    country: 'RU',
+    region: 'cis',
+    modes: ['vanilla'],
+    desc: raw.desc,
+    versions: raw.versions,
+    points: 0,
+    icon: raw.icon,
+    source: 'undefined',
+    banner: raw.screenshots.find((shot) => shot.startsWith('data:image/') || /^https?:\/\//i.test(shot)) || '',
+    screenshots: raw.screenshots,
+    localPort: raw.localPort,
+    language: 'ru',
+    players: null,
+    maxPlayers: raw.maxPlayers,
+    online: raw.online,
+    rating: null,
+    reviews: null,
+    followers: null,
+    joins: null,
+    projectUrl: '',
+    projectId: '',
+    serverId: '',
+    status: raw.online == null ? undefined : {
+      online: raw.online !== false,
+      players: { online: null, max: raw.maxPlayers },
+      version: raw.versions[0] || '',
+      latency: null,
+      fromCatalog: true,
+    },
+  };
+}
+
+// Свои серверы с включённым листингом попадают в каталог сразу, не дожидаясь ответа сайта.
+function applyUndefinedListings(): void {
+  const hide = new Set(hiddenListingAddrs().map((addr) => addr.toLowerCase()));
+  serverCatalog = serverCatalog.filter((entry) => {
+    if (entry.source !== 'undefined') return true;
+    return !hide.has(srvAddr(entry).toLowerCase());
+  });
+  for (const raw of undefinedListingEntries()) {
+    const addr = `${raw.ip}:${raw.port}`.toLowerCase();
+    const idx = serverCatalog.findIndex((entry) => srvAddr(entry).toLowerCase() === addr);
+    const row = catalogFromUndefined(raw);
+    if (idx >= 0) {
+      if (serverCatalog[idx].source === 'undefined') {
+        const prev = serverCatalog[idx];
+        // Обновление листинга не должно стирать уже измеренный онлайн и пинг.
+        if (row.players == null && prev.players != null) {
+          row.players = prev.players;
+          if (row.status?.players) row.status.players.online = prev.players;
+        }
+        if (row.status && prev.status?.latency != null && row.status.latency == null) {
+          row.status.latency = prev.status.latency;
+        }
+        row.chartPeriod = prev.chartPeriod;
+        serverCatalog[idx] = row;
+      }
+      continue;
+    }
+    serverCatalog.push(row);
+  }
+}
+
+window.addEventListener('undefined-listings-changed', () => {
+  if (!srvLoaded) return;
+  applyUndefinedListings();
+  renderServersGrid();
+  const modal = document.getElementById('modal-srv-info');
+  const ip = modal?.getAttribute('data-srv-ip') || '';
+  if (modal && !modal.classList.contains('hidden') && ip) openServerInfo(ip);
+});
+
 async function loadServerCatalog(force = false): Promise<void> {
   if (srvLoaded && !force) return;
   if (srvLoading) return;
   srvLoading = true;
   const grid = document.getElementById('servers-grid');
-  if (grid && srvCategory !== 'mine') {
-    grid.innerHTML = catalogStateHtml('servers.loadingTitle');
+  const refreshBtn = document.getElementById('servers-refresh-btn');
+  if (force) {
+    refreshBtn?.classList.add('is-refreshing');
+    refreshBtn?.setAttribute('disabled', '');
+    grid?.classList.add('is-refreshing');
+    grid?.classList.remove('is-fresh');
+  } else if (grid && srvCategory !== 'mine') {
+    grid.innerHTML = srvSkeletonHtml();
   }
-  const scraped: any[] = (await api?.fetchServerCatalog?.()) || [];
-  console.log('[SRV] scraped rows:', scraped.length);
-  scraped.forEach((r, idx) => {
-    console.log(`[SRV] ${idx}:`, JSON.stringify({
-      name: r.name, ip: r.ip, port: r.port, desc: (r.desc || '').slice(0, 60), icon: (r.icon || '').slice(0, 60),
-    }));
-  });
+  let scraped: any[] = [];
+  let failed = false;
+  try {
+    scraped = (await api?.fetchServerCatalog?.(force)) || [];
+  } catch {
+    failed = true;
+  }
+  if (!failed && (scraped.length > 0 || !force)) {
   serverCatalog = scraped.map(raw => {
     const ip = String(raw.ip || '').trim();
     const port = Number(raw.port) || 25565;
@@ -2920,6 +4730,9 @@ async function loadServerCatalog(force = false): Promise<void> {
     const name = String(raw.name || host || 'Server');
     const desc = String(raw.desc || raw.description || '');
     const modes = raw.modes && raw.modes.length > 0 ? raw.modes : srvModesFromName(name, desc);
+    const players = raw.players == null ? null : Number(raw.players);
+    const maxPlayers = raw.maxPlayers == null ? null : Number(raw.maxPlayers);
+    const online = raw.online === true ? true : raw.online === false ? false : null;
     return {
       id: String(raw.id || `${host}:${port}`),
       name,
@@ -2930,9 +4743,33 @@ async function loadServerCatalog(force = false): Promise<void> {
       modes,
       desc,
       versions: Array.isArray(raw.versions) ? raw.versions : undefined,
-      points: raw.points,
+      points: Number(raw.rating) || 0,
       icon: raw.icon || '',
-      fromMineServ: scraped.length > 0 && !raw._fallback,
+      source: raw.source === 'modrinth' ? 'modrinth' : raw.source === 'librium' ? 'librium' : raw.source === 'undefined' ? 'undefined' : '',
+      banner: String(raw.banner || (Array.isArray(raw.screenshots) ? raw.screenshots.find((shot: unknown) => typeof shot === 'string' && shot) : '') || ''),
+      screenshots: Array.isArray(raw.screenshots) ? raw.screenshots : [],
+      language: String(raw.language || ''),
+      players: Number.isFinite(players as number) ? players : null,
+      maxPlayers: Number.isFinite(maxPlayers as number) ? maxPlayers : null,
+      online,
+      rating: raw.rating == null ? null : Number(raw.rating),
+      reviews: raw.reviews == null ? null : Number(raw.reviews),
+      followers: raw.followers == null ? null : Number(raw.followers),
+      joins: raw.joins == null ? null : Number(raw.joins),
+      status: online == null && players == null ? undefined : {
+        online: online !== false,
+        players: { online: players, max: maxPlayers },
+        version: Array.isArray(raw.versions) ? raw.versions[0] : '',
+        latency: raw.latency == null ? null : Number(raw.latency),
+        fromCatalog: true,
+      },
+      modpackName: String(raw.modpackName || ''),
+      modpackIcon: String(raw.modpackIcon || ''),
+      modpackProjectId: String(raw.modpackProjectId || ''),
+      modpackVersionId: String(raw.modpackVersionId || ''),
+      projectUrl: String(raw.projectUrl || ''),
+      projectId: String(raw.projectId || ''),
+      serverId: String(raw.serverId || ''),
     };
   });
   const seenAddr = new Set<string>();
@@ -2942,37 +4779,92 @@ async function loadServerCatalog(force = false): Promise<void> {
     seenAddr.add(a);
     return true;
   });
+  applyUndefinedListings();
+  }
   srvLoading = false;
+  refreshBtn?.classList.remove('is-refreshing');
+  refreshBtn?.removeAttribute('disabled');
+  grid?.classList.remove('is-refreshing');
+  if (failed) return;
   srvLoaded = true;
   const attribution = document.getElementById('servers-attribution');
-  if (attribution) attribution.classList.toggle('hidden', scraped.length === 0);
+  if (attribution) attribution.classList.remove('hidden');
   syncServerVersionSelect();
+  syncServerLangSelect();
   refreshServersFiltersUI();
+  if (force) {
+    for (const server of savedServers) delete srvStatusCache[savedServerAddr(server)];
+  }
   renderServersGrid();
+  if (force && grid) {
+    grid.classList.add('is-fresh');
+    window.setTimeout(() => grid.classList.remove('is-fresh'), 800);
+  }
   pingServersUI(serverCatalog.slice(0, SRV_PAGE_SIZE));
 }
 
 function pingServersUI(entries: CatalogServerEntry[]): void {
-  const queue = entries.filter(e => e && !e.status).slice();
+  const queue = entries.filter(e => e && !e.status?.probed).slice();
   if (queue.length === 0) return;
   let i = 0;
   const worker = async (): Promise<void> => {
     while (i < queue.length) {
       const e = queue[i++];
-      if (!e || e.status) continue;
+      if (!e || e.status?.probed) continue;
       let st: any;
       try { st = (await api?.serverStatus?.(srvAddr(e))) || { online: false }; }
       catch { st = { online: false }; }
-      e.status = st;
+      // Публичный адрес реле не всегда отвечает на запрос списка. Свой процесс спрашиваем локально.
+      if (e.source === 'undefined' && e.localPort && st.players?.online == null) {
+        let local: any = null;
+        try { local = await api?.serverStatus?.(`127.0.0.1:${e.localPort}`); }
+        catch { local = null; }
+        if (local?.online && local.players?.online != null) {
+          st = {
+            ...local,
+            online: true,
+            latency: st.online && st.latency != null ? st.latency : null,
+            players: local.players,
+          };
+        }
+      }
+      const prev = e.status;
+      if (st.online) {
+        e.status = { ...st, probed: true };
+        e.online = true;
+        if (st.players?.online != null) {
+          e.players = Number(st.players.online);
+          srvPushHistory(e.id, Number(st.players.online));
+        } else if (e.players == null) {
+          e.players = 0;
+          if (e.status.players) e.status.players.online = 0;
+          srvPushHistory(e.id, 0);
+        }
+        if (st.players?.max != null) e.maxPlayers = Number(st.players.max);
+      } else if (prev?.fromCatalog && prev.online) {
+        e.status = { ...prev, probed: true };
+        if (e.players == null) {
+          e.players = 0;
+          if (e.status.players) e.status.players.online = 0;
+        }
+      } else {
+        e.status = { ...st, probed: true };
+        e.online = false;
+        srvPushHistory(e.id, 0);
+      }
       updateSrvCardStatus(e);
+      const infoModal = document.getElementById('modal-srv-info');
+      if (infoModal && !infoModal.classList.contains('hidden') && infoModal.getAttribute('data-srv-ip') === srvAddr(e)) {
+        openServerInfo(srvAddr(e));
+      }
     }
   };
-  void Promise.all(Array.from({ length: 10 }, () => worker()));
+  void Promise.all(Array.from({ length: 6 }, () => worker()));
 }
 
 function updateSrvCardStatus(e: CatalogServerEntry): void {
   const addr = srvAddr(e);
-  const card = document.querySelector<HTMLElement>(`.srv-card[data-srv-ip="${CSS.escape(addr)}"]`);
+  const card = document.querySelector<HTMLElement>(`.scat-card[data-srv-ip="${CSS.escape(addr)}"]`);
   if (!card) {
     // Статус каталога всё равно полезен для сайдбара
     if (e.status) srvStatusCache[addr] = e.status;
@@ -2982,38 +4874,32 @@ function updateSrvCardStatus(e: CatalogServerEntry): void {
   }
   const st = e.status || {};
   if (st) srvStatusCache[addr] = st;
-  const online = !!st.online;
-  if (!online) {
-    srvOfflineAddrs[addr] = true;
-    card.remove();
-    refreshServersGridAfterRemoval();
-    const lastOff = savedServers[savedServers.length - 1];
-    if (lastOff && savedServerAddr(lastOff) === addr) updateSidebarLastServer();
-    return;
-  }
-  const players = st.players?.online != null ? st.players.online : null;
-  const max = st.players?.max != null ? st.players.max : null;
+  const online = st.online === false ? false : (!!st.online || e.online !== false);
+  const players = st.players?.online != null ? st.players.online : e.players;
   const version = String(st.version || '').split('\n')[0] || '';
   const statusTxt = online
-    ? (players != null ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}` : t('servers.online'))
-    : t('servers.offline');
+    ? (players != null ? srvCompact(Number(players)) : t('servers.online'))
+    : '—';
+  card.dataset.tone = srvTone(online, st.latency);
   const dot = card.querySelector('.srv-dot');
   if (dot) {
     dot.className = 'srv-dot ' + (online ? 'srv-online' : 'srv-offline');
   }
   const txt = card.querySelector('.srv-status-txt');
   if (txt) txt.textContent = statusTxt;
+  const ping = card.querySelector('.scat-ping');
+  if (ping) ping.outerHTML = srvPingSvg(card.dataset.tone || 'off');
   const verEl = card.querySelector('.srv-version');
   if (verEl) {
     if (version) verEl.textContent = version;
     else verEl.remove();
   }
   const descEl = card.querySelector('.srv-desc');
-  if (descEl) {
-    const d = Array.isArray(st?.motd?.clean) ? st.motd.clean.join(' ').substring(0, 110) : (e.desc || '');
-    descEl.textContent = d;
+  if (descEl && !e.desc) {
+    const d = Array.isArray(st?.motd?.clean) ? st.motd.clean.join(' ').substring(0, 110) : '';
+    if (d) descEl.textContent = d;
   }
-  const icon = srvServerFavicon(st);
+  const icon = e.icon || card.querySelector('.scat-manage') ? '' : srvServerFavicon(st);
   if (icon) {
     const iconEl = card.querySelector<HTMLElement>('.srv-icon');
     if (iconEl) iconEl.innerHTML = `<img src="${srvEsc(icon)}" alt="">`;
@@ -3023,87 +4909,162 @@ function updateSrvCardStatus(e: CatalogServerEntry): void {
 }
 
 function srvServerFavicon(st: any): string {
-  const raw = String(st.icon || '');
+  const raw = String(st?.icon || '');
   if (!raw) return '';
   const lower = raw.toLowerCase();
   if (/^data:image\/png(;|,)/.test(lower)) return raw;
   return '';
 }
 
+/** Иконка для плитки: фавиконка пинга, иначе логотип из каталога. */
+function srvTileIcon(addr: string, st: any): string {
+  const fav = srvServerFavicon(st);
+  if (fav) return fav;
+  const cat = serverCatalog.find((entry) => srvAddr(entry) === addr);
+  const icon = String(cat?.icon || '').trim();
+  return /^https?:\/\//i.test(icon) ? icon : '';
+}
+
 function srvMatchesFilters(e: CatalogServerEntry): boolean {
   const q = srvQuery.trim().toLowerCase();
   const addr = srvAddr(e);
-  if (srvOfflineAddrs[addr]) return false;
-  if (q && !(e.name.toLowerCase().includes(q) || addr.toLowerCase().includes(q))) return false;
+  if (q && !(e.name.toLowerCase().includes(q) || addr.toLowerCase().includes(q) || (e.desc || '').toLowerCase().includes(q))) return false;
+  if (srvSource !== 'all' && e.source !== srvSource) return false;
+  if (srvLang) {
+    const code = String(e.language || '').toLowerCase().slice(0, 2);
+    if (code !== srvLang) return false;
+  }
   if (srvCategory !== 'all' && srvCategory !== 'mine' && !e.modes.includes(srvCategory)) return false;
   if (srvRegion !== 'all' && e.region !== srvRegion) return false;
-  if (srvOnlineOnly && !srvOnlineE(e)) return false;
+  if (srvOnlineOnly && !srvOnlineE(e) && e.online !== true) return false;
   if (srvVersionFilter) {
     const st = e.status || {};
     const pingVer = String(st.version || '').toLowerCase();
-    if (!e.versions?.includes(srvVersionFilter) && !pingVer.includes(srvVersionFilter)) return false;
+    const listed = (e.versions || []).some(v => v === srvVersionFilter || v.toLowerCase().includes(srvVersionFilter.toLowerCase()));
+    if (!listed && !pingVer.includes(srvVersionFilter.toLowerCase())) return false;
   }
   return true;
 }
 
 function srvSorted(a: CatalogServerEntry, b: CatalogServerEntry): number {
   if (srvSort === 'name') return a.name.localeCompare(b.name);
-  if (srvSort === 'online') {
-    const d = (srvOnlineE(b) ? 1 : 0) - (srvOnlineE(a) ? 1 : 0);
-    if (d !== 0) return d;
-    return srvPlayersE(b) - srvPlayersE(a);
-  }
-  return srvPlayersE(b) - srvPlayersE(a);
+  if (srvSort === 'rating') return (Number(b.rating) || 0) - (Number(a.rating) || 0) || srvPlayersE(b) - srvPlayersE(a);
+  if (srvSort === 'players') return srvPlayersE(b) - srvPlayersE(a);
+  const score = (e: CatalogServerEntry) => (e.source === 'librium' ? 1_000_000 : 0) + (Number(e.rating) || 0) * 10_000 + srvPlayersE(e);
+  return score(b) - score(a);
+}
+
+function srvTone(online: boolean, latency: unknown): string {
+  if (!online) return 'off';
+  const ms = Number(latency);
+  if (!Number.isFinite(ms) || ms <= 0) return 'good';
+  if (ms <= 80) return 'good';
+  if (ms <= 140) return 'mid';
+  if (ms <= 220) return 'slow';
+  return 'bad';
+}
+
+/** Полоски из pingStatus: низкий, нормальный, приемлемый, высокий, нет связи. */
+function srvPingSvg(tone: string): string {
+  const dim = 'rgba(255,255,255,0.15)';
+  const bars: Record<string, [string, string, string, string]> = {
+    good: ['#27C37F', '#27C37F', '#27C37F', '#27C37F'],
+    mid: ['#92E440', '#92E440', '#92E440', dim],
+    slow: ['#FFC04C', '#FFC04C', dim, dim],
+    bad: ['#FF4C4C', dim, dim, dim],
+    off: [dim, dim, dim, dim],
+  };
+  const [short, mid, tall, top] = bars[tone] || bars.off;
+  return `<svg class="scat-ping" width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><rect x="15" width="3" height="12" rx="1" fill="${top}"/><rect x="10" y="2" width="3" height="10" rx="1" fill="${tall}"/><rect x="5" y="4" width="3" height="8" rx="1" fill="${mid}"/><rect y="6" width="3" height="6" rx="1" fill="${short}"/></svg>`;
 }
 
 function srvCardHtml(e: CatalogServerEntry): string {
-  const st = e.status || {};
-  const online = !!st.online;
-  const players = st.players?.online != null ? st.players.online : null;
-  const max = st.players?.max != null ? st.players.max : null;
-  const version = String(st.version || '').split('\n')[0] || '';
-  const desc = Array.isArray(st?.motd?.clean) ? srvEsc(st.motd.clean.join(' ').substring(0, 110)) : srvEsc(e.desc);
-  const iconSrc = srvServerFavicon(st);
-  const icon = iconSrc ? `<img src="${srvEsc(iconSrc)}" alt="">` : '<img src="../../assets/icons/serverIcon.png" alt="">';
-  const saved = savedServers.some(s => s.ip === srvAddr(e));
+  const players = e.players != null ? e.players : (e.status?.players?.online ?? null);
+  const online = e.online !== false;
+  const desc = srvEsc((e.desc || '').replace(/\s+/g, ' ').slice(0, 180));
+  const icon = e.icon
+    ? `<img src="${srvEsc(e.icon)}" alt="">`
+    : `<span>${srvEsc(e.name).charAt(0).toUpperCase()}</span>`;
   const statusTxt = online
-    ? (players != null ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}` : t('servers.online'))
-    : t('servers.offline');
-  const dotCls = online ? 'srv-online' : 'srv-offline';
+    ? (players != null ? srvCompact(Number(players)) : '—')
+    : '—';
   const addrStr = srvAddr(e);
-  const badge = e.fromMineServ ? `<span class="srv-badge" title="${srvEsc(t('servers.byMineServ'))}">MineServ</span>` : '';
+  const tone = srvTone(online, e.status?.latency);
+  const pack = e.modpackName ? `<span class="scat-pack">${srvEsc(t('servers.hasPack'))}</span>` : '';
+  const saved = savedServers.some((s) => savedServerAddr(s) === addrStr || s.ip === addrStr);
+  const favTitle = saved ? t('servers.favRemove') : t('servers.favAdd');
   return `
-  <div class="mod-card srv-card" data-srv-ip="${srvEsc(addrStr)}">
-    <div class="mod-card-icon srv-icon">${icon}</div>
-    <div class="mod-card-info">
-      <div class="mod-card-name srv-name">${srvEsc(e.name)}${badge} <span class="srv-country" title="${srvEsc(srvRegionName(e.region) + ' · ' + e.country)}">${srvEsc(e.country)}</span></div>
-      <div class="mod-card-desc srv-desc">${desc}</div>
-      <div class="srv-meta">
-        <span class="srv-dot ${dotCls}"></span>
-        <span class="srv-status-txt">${statusTxt}</span>
-        ${version ? `<span class="srv-sep">·</span><span class="srv-version">${srvEsc(version)}</span>` : ''}
-      </div>
+  <article class="scat-card" data-srv-ip="${srvEsc(addrStr)}" data-tone="${tone}">
+    <div class="scat-ico uc-frame srv-icon">${icon}</div>
+    <div class="scat-main">
+      <div class="scat-name-row">${pack}<span class="scat-name">${srvEsc(e.name)}</span></div>
+      <div class="scat-desc srv-desc">${desc}</div>
     </div>
-    <div class="mod-card-actions">
-      <button class="details-btn srv-info" data-srv-ip="${srvEsc(addrStr)}">${t('servers.details')}</button>
-      <button class="details-btn srv-play" data-srv-ip="${srvEsc(addrStr)}">${t('btn.launch')}</button>
-      <button class="list-row-btn ${saved ? 'delete-btn srv-unsave' : 'download-btn srv-save'}" data-srv-ip="${srvEsc(addrStr)}">${saved ? t('servers.remove') : t('servers.add')}</button>
+    <button type="button" class="scat-fav ${saved ? 'srv-unsave is-on' : 'srv-save'}" data-srv-ip="${srvEsc(addrStr)}" title="${srvEsc(favTitle)}">
+      <img src="../../assets/newServersPage/icons/favorites.svg" alt="">
+    </button>
+    <div class="scat-side">
+      <span class="scat-players">
+        <i class="scat-picon"></i>
+        <span class="srv-status-txt">${srvEsc(statusTxt)}</span>
+      </span>
+      ${srvPingSvg(tone)}
     </div>
-  </div>`;
+  </article>`;
+}
+
+let srvSentinelObserver: IntersectionObserver | null = null;
+let srvLoadingMore = false;
+
+function disconnectSrvInfiniteScroll(): void {
+  srvSentinelObserver?.disconnect();
+  srvSentinelObserver = null;
+}
+
+function bindSrvInfiniteScroll(grid: HTMLElement): void {
+  disconnectSrvInfiniteScroll();
+  const sentinel = grid.querySelector<HTMLElement>('.scat-scroll-sentinel');
+  if (!sentinel) return;
+  const root = document.getElementById('tab-servers');
+  srvSentinelObserver = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      loadMoreServersOnScroll();
+    },
+    { root, rootMargin: '280px 0px', threshold: 0 },
+  );
+  srvSentinelObserver.observe(sentinel);
+}
+
+function loadMoreServersOnScroll(): void {
+  if (srvLoadingMore || srvCategory === 'mine' || !srvLoaded) return;
+  const list = serverCatalog.filter(srvMatchesFilters).sort(srvSorted);
+  if (srvRenderedCount >= list.length) return;
+  srvLoadingMore = true;
+  const before = srvRenderedCount;
+  renderServersGrid(true);
+  pingServersUI(list.slice(before, before + SRV_PAGE_SIZE));
+  srvLoadingMore = false;
 }
 
 function renderServersGrid(append = false): void {
   const grid = document.getElementById('servers-grid');
   if (!grid) return;
-  if (srvCategory === 'mine') { renderSavedServersGrid(); return; }
+  if (srvCategory === 'mine') {
+    disconnectSrvInfiniteScroll();
+    renderSavedServersGrid();
+    return;
+  }
   if (!srvLoaded) {
-    if (!append && !srvLoading) grid.innerHTML = catalogStateHtml('servers.loadingTitle');
+    disconnectSrvInfiniteScroll();
+    if (!append && !srvLoading) grid.innerHTML = srvSkeletonHtml();
     return;
   }
   const list = serverCatalog.filter(srvMatchesFilters).sort(srvSorted);
   if (list.length === 0) {
+    disconnectSrvInfiniteScroll();
     srvRenderedCount = 0;
-    const hasQuery = Boolean(srvQuery.trim()) || srvCategory !== 'all' || srvRegion !== 'all' || srvOnlineOnly || srvVersionFilter;
+    const hasQuery = Boolean(srvQuery.trim()) || srvSource !== 'all' || srvLang || srvCategory !== 'all' || srvRegion !== 'all' || srvOnlineOnly || srvVersionFilter;
     grid.innerHTML = hasQuery
       ? catalogStateHtml('servers.notFoundTitle', 'servers.notFoundDesc')
       : catalogStateHtml('servers.emptyTitle', 'servers.emptyDesc', { labelKey: 'servers.add', id: 'servers-empty-add' });
@@ -3117,21 +5078,49 @@ function renderServersGrid(append = false): void {
   srvRenderedCount += slice.length;
   const cards = slice.map(srvCardHtml).join('');
   const more = srvRenderedCount < list.length
-    ? `<div class="load-more-wrap"><button class="load-more-btn">${t('servers.showMore')}</button></div>`
+    ? '<div class="scat-scroll-sentinel" aria-hidden="true"></div>'
     : '';
   if (append) {
-    const old = grid.querySelector('.load-more-wrap');
-    if (old) old.remove();
+    grid.querySelector('.scat-scroll-sentinel')?.remove();
     grid.insertAdjacentHTML('beforeend', cards + more);
   } else {
     grid.innerHTML = cards + more;
   }
+  bindSrvInfiniteScroll(grid);
+}
+
+// Порт из «хост:27228» нельзя отбрасывать: иначе пинг уходит на 25565.
+function endpointFromAddress(raw: string, explicitPort?: number): { host: string; port: number } {
+  let text = String(raw || '').trim().replace(/^mc:\/\//i, '').replace(/\.+$/, '');
+  let host = text;
+  let fromText = 0;
+  const bracket = text.match(/^\[([^\]]+)\](?::(\d{1,5}))?$/);
+  if (bracket) {
+    host = bracket[1];
+    fromText = Number(bracket[2]) || 0;
+  } else {
+    const cut = text.lastIndexOf(':');
+    if (cut > 0 && text.indexOf(':') === cut) {
+      const maybe = Number(text.slice(cut + 1));
+      if (Number.isInteger(maybe) && maybe >= 1 && maybe <= 65535) {
+        host = text.slice(0, cut);
+        fromText = maybe;
+      }
+    }
+  }
+  const given = Number(explicitPort);
+  const port = fromText
+    || (Number.isInteger(given) && given >= 1 && given <= 65535 ? given : 25565);
+  return { host, port };
+}
+
+function serverAddressField(server: Server): string {
+  const { host, port } = endpointFromAddress(server.ip, server.port);
+  return port !== 25565 ? `${host}:${port}` : host;
 }
 
 function savedServerAddr(s: Server): string {
-  const raw = String(s.ip || '').trim();
-  const port = Number(s.port) || 25565;
-  const host = raw.replace(/^mc:\/\//i, '').replace(/:.*$/, '');
+  const { host, port } = endpointFromAddress(s.ip, s.port);
   return srvKeyOf(host, port);
 }
 
@@ -3152,9 +5141,37 @@ async function pingSavedServerStatuses(): Promise<void> {
   await Promise.all(Array.from({ length: 6 }, () => worker()));
 }
 
+function catalogForSaved(s: Server): CatalogServerEntry | undefined {
+  return serverCatalog.find((entry) => srvAddr(entry) === savedServerAddr(s));
+}
+
+function serverIsManual(s: Server): boolean {
+  if (s.manual === true) return true;
+  if (s.manual === false) return false;
+  return !catalogForSaved(s);
+}
+
+function srvPlainText(raw: string): string {
+  return String(raw || '')
+    .replace(/§./g, '')
+    .replace(/[&$][0-9a-fk-or]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function srvMotdText(st: any): string {
+  const clean = st?.motd?.clean;
+  const text = Array.isArray(clean) ? clean.join(' ') : String(clean || '');
+  return srvPlainText(text);
+}
+
+const SRV_EDIT_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12.0012 0.31162C11.5857 -0.103873 10.9121 -0.103873 10.4966 0.31162L10.185 0.62324L13.3768 3.81505L13.6884 3.50343C14.1039 3.08794 14.1039 2.41429 13.6884 1.9988L12.0012 0.31162ZM12.3128 4.87899L9.12101 1.68718L4.86527 5.94292L4.01637 9.33853C3.91897 9.72813 4.27187 10.081 4.66147 9.98363L8.05708 9.13473L12.3128 4.87899Z" fill="currentColor"/><path d="M0 3C0 1.34315 1.34315 0 3 0H5C5.55228 0 6 0.447715 6 1C6 1.55228 5.55228 2 5 2H3C2.44772 2 2 2.44772 2 3V11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11V9C12 8.44772 12.4477 8 13 8C13.5523 8 14 8.44772 14 9V11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11V3Z" fill="currentColor"/></svg>';
+const SRV_DEL_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M4 1C4 0.447715 4.44772 0 5 0H9C9.55228 0 10 0.447715 10 1H4Z" fill="currentColor"/><path d="M1 2C1 1.44772 1.44772 1 2 1H12C12.5523 1 13 1.44772 13 2C13 2.55228 12.5523 3 12 3H2C1.44772 3 1 2.55228 1 2Z" fill="currentColor"/><path d="M2.10995 5.09951C2.05108 4.51082 2.51337 4 3.10499 4H10.895C11.4866 4 11.9489 4.51082 11.89 5.0995L11.09 13.0995C11.0389 13.6107 10.6088 14 10.095 14H3.90499C3.39124 14 2.96107 13.6107 2.90995 13.0995L2.10995 5.09951Z" fill="currentColor"/></svg>';
+
 function renderSavedServersGrid(): void {
   const grid = document.getElementById('servers-grid');
   if (!grid) return;
+  disconnectSrvInfiniteScroll();
   void pingSavedServerStatuses();
   const q = srvQuery.trim().toLowerCase();
   const list = q
@@ -3178,38 +5195,40 @@ function renderSavedServersGrid(): void {
   }
   grid.innerHTML = list.map(s => {
     const addr = savedServerAddr(s);
-    const st = srvStatus(addr) || {};
-    const online = !!st.online;
-    const players = st.players?.online != null ? st.players.online : null;
-    const max = st.players?.max != null ? st.players.max : null;
-    const version = String(st.version || s.version || '').split('\n')[0] || '';
-    let icon = srvServerFavicon(st);
-    const iconHtml = icon
-      ? `<img src="${icon}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">`
+    const cat = catalogForSaved(s);
+    const st = cat?.status || srvStatus(addr) || {};
+    const players = cat?.players != null ? cat.players : (st.players?.online ?? null);
+    const online = cat ? cat.online !== false : !!st.online;
+    const descRaw = (cat?.desc || srvMotdText(st)).replace(/\s+/g, ' ').slice(0, 180);
+    const iconHtml = cat?.icon
+      ? `<img src="${srvEsc(cat.icon)}" alt="">`
       : `<span>${srvEsc(s.name).charAt(0).toUpperCase()}</span>`;
     const statusTxt = online
-      ? (players != null ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}` : t('servers.online'))
-      : t('servers.offline');
-    const dotCls = online ? 'srv-online' : 'srv-offline';
+      ? (players != null ? srvCompact(Number(players)) : '—')
+      : '—';
+    const tone = srvTone(online, st.latency);
+    const pack = cat?.modpackName ? `<span class="scat-pack">${srvEsc(t('servers.hasPack'))}</span>` : '';
+    const manual = serverIsManual(s);
+    const editTitle = manual ? t('btn.edit') : t('servers.editManualOnly');
     return `
-    <div class="mod-card srv-card" data-srv-ip="${srvEsc(addr)}">
-      <div class="mod-card-icon srv-icon srv-saved-icon" style="background:${stringToColor(s.name)}">${iconHtml}</div>
-      <div class="mod-card-info">
-        <div class="mod-card-name srv-name">${srvEsc(s.name)}</div>
-        <div class="mod-card-desc srv-desc">${srvEsc(addr)}</div>
-        <div class="srv-meta">
-          <span class="srv-dot ${dotCls}"></span>
-          <span class="srv-status-txt">${statusTxt}</span>
-          ${version ? `<span class="srv-sep">·</span><span class="srv-version">${srvEsc(version)}</span>` : ''}
-        </div>
+    <article class="scat-card" data-srv-ip="${srvEsc(addr)}" data-tone="${tone}">
+      <div class="scat-ico uc-frame srv-icon">${iconHtml}</div>
+      <div class="scat-main">
+        <div class="scat-name-row">${pack}<span class="scat-name">${srvEsc(cat?.name || s.name)}</span></div>
+        <div class="scat-desc srv-desc">${srvEsc(descRaw)}</div>
       </div>
-      <div class="mod-card-actions">
-        <button class="details-btn srv-info" data-srv-ip="${srvEsc(addr)}">${t('servers.details')}</button>
-        <button class="details-btn srv-play" data-srv-ip="${srvEsc(addr)}">${t('btn.launch')}</button>
-        <button class="list-row-btn edit-server-btn srv-edit" data-srv-id="${srvEsc(s.id)}">${t('btn.edit')}</button>
-        <button class="list-row-btn delete-btn srv-del" data-srv-id="${srvEsc(s.id)}">${t('btn.delete')}</button>
+      <div class="scat-manage">
+        <button type="button" class="build-card-btn srv-edit" data-srv-id="${srvEsc(s.id)}" title="${srvEsc(editTitle)}" aria-label="${srvEsc(editTitle)}"${manual ? '' : ' disabled'}>${SRV_EDIT_ICON}</button>
+        <button type="button" class="build-card-btn danger srv-del" data-srv-id="${srvEsc(s.id)}" title="${srvEsc(t('btn.delete'))}" aria-label="${srvEsc(t('btn.delete'))}">${SRV_DEL_ICON}</button>
       </div>
-    </div>
+      <div class="scat-side">
+        <span class="scat-players">
+          <i class="scat-picon"></i>
+          <span class="srv-status-txt">${srvEsc(statusTxt)}</span>
+        </span>
+        ${srvPingSvg(tone)}
+      </div>
+    </article>
 `;
   }).join('');
 }
@@ -3218,95 +5237,467 @@ function srvRegionNameMap(region: string): string {
   return srvRegionName(region);
 }
 
+function srvServerHasPack(cat: CatalogServerEntry | undefined): boolean {
+  return Boolean(cat && (cat.modpackProjectId || cat.modpackName));
+}
+
+function srvLoaderLabel(id: string): string {
+  const known: Record<string, string> = {
+    fabric: 'Fabric',
+    forge: 'Forge',
+    neoforge: 'NeoForge',
+    quilt: 'Quilt',
+    vanilla: 'Vanilla',
+  };
+  if (!id) return '';
+  return known[id] || id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+/** Сборки, которые подходят серверу: тот же модпак, не любая сборка из списка. */
+function srvPackBuilds(cat: CatalogServerEntry): Build[] {
+  const id = cat.modpackProjectId || '';
+  const name = (cat.modpackName || '').trim().toLowerCase();
+  if (!id && !name) return [];
+  return savedBuilds.filter((build) => {
+    if (id && build.modpackProjectId && build.modpackProjectId === id) return true;
+    if (name && build.name.trim().toLowerCase() === name) return true;
+    return false;
+  });
+}
+
+function catalogByEndpoint(host: string, port: number): CatalogServerEntry | undefined {
+  const key = srvKeyOf(host.toLowerCase().replace(/\.+$/, '').replace(/^mc:\/\//i, ''), port || 25565);
+  return serverCatalog.find((entry) => srvAddr(entry) === key);
+}
+
+const SRV_PACK_DL_ICON = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M0 11C0 10.4477 0.447715 10 1 10C1.55228 10 2 10.4477 2 11C2 11.5523 2.44772 12 3 12H11C11.5523 12 12 11.5523 12 11C12 10.4477 12.4477 10 13 10C13.5523 10 14 10.4477 14 11C14 12.6569 12.6569 14 11 14H3C1.34315 14 0 12.6569 0 11Z" fill="currentColor"/><path d="M12.9999 3.09369C13.3903 3.48411 13.3901 4.1172 12.9999 4.50775L7.70704 9.70703C7.31652 10.0976 6.6835 10.0976 6.29298 9.70703L1.04736 4.50775C0.657133 4.1172 0.656935 3.48411 1.04736 3.09369C1.43779 2.70326 2.07087 2.70346 2.46142 3.09369L6.00001 6.58594L6.00001 1C6.00001 0.447715 6.44773 0 7.00001 0C7.5523 0 8.00001 0.447715 8.00001 1V6.58594L11.5858 3.09369C11.9763 2.70346 12.6094 2.70326 12.9999 3.09369Z" fill="currentColor"/></svg>';
+const SRV_PACK_OK_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.2 8.2 6.4 11.4 12.8 4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+let srvPackBusy = false;
+
+function srvPackCardHtml(cat: CatalogServerEntry): string {
+  const ready = srvPackBuilds(cat).length > 0;
+  const icon = cat.modpackIcon
+    ? `<img src="${srvEsc(cat.modpackIcon)}" alt="">`
+    : `<span>${srvEsc(cat.modpackName || '?').charAt(0).toUpperCase()}</span>`;
+  const meta = [
+    cat.modpackVersion || '',
+    cat.modpackGame ? t('servers.packGame', { version: cat.modpackGame }) : '',
+    srvLoaderLabel(cat.modpackLoader || ''),
+  ].filter(Boolean).join(' · ');
+  const summary = (cat.modpackSummary || '').replace(/[#*_`>\[\]]/g, '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  const title = ready ? t('servers.packReady') : t('servers.downloadPack');
+  return `<section class="scat-pack-card">
+    <div class="scat-pack-badge">${srvEsc(t('servers.packBadge'))}</div>
+    <div class="scat-pack-main">
+      <div class="scat-pack-ico">${icon}</div>
+      <div class="scat-pack-copy">
+        <div class="scat-pack-name">${srvEsc(cat.modpackName || '')}</div>
+        ${meta ? `<div class="scat-pack-meta">${srvEsc(meta)}</div>` : ''}
+        ${summary ? `<div class="scat-pack-sum">${srvEsc(summary)}</div>` : ''}
+      </div>
+      <button type="button" class="scat-pack-dl${ready ? ' is-ready' : ''}" data-pack-dl ${ready || srvPackBusy ? 'disabled' : ''} title="${srvEsc(title)}">${ready ? SRV_PACK_OK_ICON : SRV_PACK_DL_ICON}<span>${srvEsc(ready ? t('servers.packReady') : t('btn.download'))}</span></button>
+    </div>
+  </section>`;
+}
+
+function syncSrvLaunchBtn(cat: CatalogServerEntry | undefined, ip: string): void {
+  const launchBtn = document.getElementById('srv-info-launch') as HTMLButtonElement | null;
+  if (!launchBtn) return;
+  const hasPack = srvServerHasPack(cat);
+  const ready = hasPack && cat ? srvPackBuilds(cat).length > 0 : false;
+  launchBtn.disabled = srvPackBusy || !ip || ip.startsWith(':');
+  if (hasPack && srvPackBusy) launchBtn.textContent = t('servers.packDownloading');
+  else if (hasPack && !ready) launchBtn.textContent = t('servers.downloadPack');
+  else launchBtn.textContent = t('servers.pick');
+}
+
+/** Карточка модпака берёт название, описание и версию из каталога модов. */
+async function resolveServerModpack(cat: CatalogServerEntry): Promise<void> {
+  const id = cat.modpackProjectId || '';
+  if (!id || cat.modpackResolved) return;
+  cat.modpackResolved = true;
+  try {
+    const [project, versions] = await Promise.all([
+      api?.getModrinthProject(id),
+      api?.getModrinthVersions(id),
+    ]);
+    if (project?.title) cat.modpackName = String(project.title);
+    if (project?.icon_url) cat.modpackIcon = String(project.icon_url);
+    if (project?.description) cat.modpackSummary = String(project.description);
+    const list = Array.isArray(versions) ? versions : [];
+    const ver = list.find((row) => row?.id === cat.modpackVersionId) || null;
+    if (ver) {
+      cat.modpackVersion = String(ver.version_number || ver.name || '');
+      const games = Array.isArray(ver.game_versions) ? ver.game_versions : [];
+      cat.modpackGame = String(games[0] || '');
+      const loaders = (Array.isArray(ver.loaders) ? ver.loaders : [])
+        .map((row: unknown) => String(row).toLowerCase())
+        .filter((row: string) => row && row !== 'minecraft');
+      cat.modpackLoader = loaders[0] || '';
+    }
+  } catch {
+    cat.modpackResolved = false;
+  }
+}
+
+async function downloadServerModpack(cat: CatalogServerEntry): Promise<void> {
+  const projectId = cat.modpackProjectId || '';
+  if (srvPackBusy || !projectId || srvPackBuilds(cat).length > 0) return;
+  const ip = srvAddr(cat);
+  if (!cat.modpackVersionId) {
+    afterContentInstall = () => {
+      const modal = document.getElementById('modal-srv-info');
+      if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip) openServerInfo(ip);
+    };
+    openModalVersionsForDownload(projectId);
+    return;
+  }
+  srvPackBusy = true;
+  syncSrvLaunchBtn(cat, ip);
+  updateStatus(t('status.downloadingPack'));
+  try {
+    const result = await api?.downloadMod(projectId, cat.modpackVersionId);
+    if (result?.success) {
+      updateStatus(t('status.packInstalled'));
+      await loadBuilds();
+    } else if (result?.error && result.error !== 'cancelled') {
+      updateStatus(t('status.error', { msg: result.error }));
+    }
+  } finally {
+    srvPackBusy = false;
+    const modal = document.getElementById('modal-srv-info');
+    if (modal && !modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip) openServerInfo(ip);
+  }
+}
+
 function openServerInfo(ip: string): void {
   const cat = serverCatalog.find(c => srvAddr(c) === ip);
   const saved = savedServers.find(s => savedServerAddr(s) === ip);
   const name = cat?.name || saved?.name || ip;
   const st = cat?.status || srvStatus(ip) || {};
-  const online = !!st.online;
-  const players = st.players?.online != null ? st.players.online : null;
-  const max = st.players?.max != null ? st.players.max : null;
-  const version = String(st.version || '').split('\n')[0] || '';
-  const desc = Array.isArray(st.motd?.clean) ? st.motd.clean.join(' ') : (cat?.desc || '');
+  const online = !!st.online || cat?.online === true;
+  let players = st.players?.online != null ? Number(st.players.online) : (cat?.players ?? null);
+  if (players == null && cat) {
+    const points = srvReadPoints(cat.id);
+    const last = points.length ? points[points.length - 1] : undefined;
+    if (last) players = last.n;
+    else if (online) players = 0;
+  }
+  const max = st.players?.max != null ? Number(st.players.max) : (cat?.maxPlayers ?? null);
+  const version = srvPlainText(String(st.version || cat?.versions?.[0] || '').split('\n')[0]);
+  const versions = cat?.versions?.length ? cat.versions.join(' – ') : version;
+  const desc = (cat?.desc || srvMotdText(st)).trim();
   const modal = document.getElementById('modal-srv-info');
   if (!modal) return;
+  const sameServer = !modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip;
+  modal.setAttribute('data-srv-ip', ip);
+  if (!sameServer) {
+    const scroller = document.getElementById('srv-info-scroll');
+    if (scroller) scroller.scrollTop = 0;
+  }
   const titleEl = document.getElementById('srv-info-title');
   const subEl = document.getElementById('srv-info-sub');
-  const icon = srvServerFavicon(st);
-  const iconEl = document.getElementById('srv-info-icon');
   if (titleEl) titleEl.textContent = name;
   if (subEl) subEl.textContent = ip;
-  if (iconEl) iconEl.innerHTML = icon ? `<img src="${srvEsc(icon)}" alt="">` : `<span>${srvEsc(name).charAt(0).toUpperCase()}</span>`;
-  modal.setAttribute('data-srv-ip', ip);
+  const dot = document.getElementById('srv-info-dot');
+  if (dot) dot.className = 'srv-dot ' + (online ? 'srv-online' : 'srv-offline');
+  const iconEl = document.getElementById('srv-info-icon');
+  const icon = cat?.icon || '';
+  if (iconEl) {
+    iconEl.innerHTML = icon
+      ? `<img src="${srvEsc(icon)}" alt="">`
+      : `<span>${srvEsc(name).charAt(0).toUpperCase()}</span>`;
+  }
+  const banner = document.getElementById('srv-info-banner');
+  const bannerUrl = cat?.banner || cat?.screenshots?.find((shot) => !!shot) || '';
+  const windowEl = modal.querySelector<HTMLElement>('.scat-window');
+  windowEl?.classList.toggle('is-cover', Boolean(bannerUrl));
+  if (banner) {
+    banner.hidden = !bannerUrl;
+    banner.style.backgroundImage = bannerUrl ? `url("${bannerUrl.replace(/"/g, '')}")` : '';
+  }
+  const openBtn = document.getElementById('srv-info-open') as HTMLButtonElement | null;
+  if (openBtn) openBtn.hidden = !cat?.projectUrl;
+  syncSrvLaunchBtn(cat, ip);
+  syncSrvInfoFav(ip);
 
-  const metaStatus = document.getElementById('srv-info-meta-status');
-  const metaPlayers = document.getElementById('srv-info-meta-players');
-  const metaVersion = document.getElementById('srv-info-meta-version');
-  const metaLatency = document.getElementById('srv-info-meta-latency');
-  const dot = online ? 'srv-online' : 'srv-offline';
-  const statusText = online ? t('servers.online') : t('servers.offline');
-  if (metaStatus) {
-    metaStatus.innerHTML = `<span class="srv-dot ${dot}"></span><span class="srv-info-status-txt">${srvEsc(statusText)}</span>`;
+  const parts: string[] = [];
+  if (desc) parts.push(`<div class="scat-desc-full">${srvFormatDesc(desc)}</div>`);
+  if (cat && srvServerHasPack(cat)) parts.push(srvPackCardHtml(cat));
+  const tags = (cat?.modes || []).slice(0, 8);
+  if (tags.length) {
+    parts.push(`<div class="scat-tags">${tags.map(tag => `<span class="scat-tag">${srvEsc(tag)}</span>`).join('')}</div>`);
   }
-  if (metaPlayers) {
-    if (players != null) {
-      const pl = max != null ? `${Number(players).toLocaleString()} / ${Number(max).toLocaleString()}` : Number(players).toLocaleString();
-      metaPlayers.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5C4.7 1.5 3.2 3.2 3.2 5.5C3.2 7.9 4.8 9.5 7 9.5C9.2 9.5 10.8 7.9 10.8 5.5C10.8 3.2 9.3 1.5 7 1.5ZM1.0 12.5C1.8 10.3 4.1 9 7 9C9.9 9 12.2 10.3 13 12.5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>${srvEsc(pl)} ${srvEsc(t('servers.dInfoPlayers'))}</span>`;
-    }
+  const shots = (cat?.screenshots || []).slice(0, 8);
+  if (shots.length) {
+    parts.push(`<div class="scat-shots">${shots.map((url) => `<button type="button" class="scat-shot" data-shot="${srvEsc(url)}"><img src="${srvEsc(url)}" alt=""></button>`).join('')}</div>`);
   }
-  if (metaVersion && version) {
-    metaVersion.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1L12.5 3.5V10.5L7 13L1.5 10.5V3.5L7 1Z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>${srvEsc(version)}</span>`;
-  }
-  if (metaLatency && st.latency != null) {
-    metaLatency.innerHTML = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1C4 1 1.5 3.5 1.5 7C1.5 10.5 4 13 7 13C10 13 12.5 10.5 12.5 7C12.5 3.5 10 1 7 1Z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>${Number(st.latency)} ms</span>`;
+  if (cat?.source === 'librium' && !cat.remoteHistory && !cat.detailTried) {
+    parts.push(`<div class="scat-live scat-live-wait"><div class="scat-skel"></div></div>`);
+  } else if (cat) {
+    parts.push(srvLiveChartHtml(cat, players));
+  } else if (saved) {
+    parts.push(srvLiveChartHtml({ id: saved.id, name: saved.name } as CatalogServerEntry, players));
   }
 
-  const rows: string[] = [];
-  rows.push('<div class="srv-info-group"><div class="srv-info-group-title">' + t('servers.dInfoDesc') + '</div><div class="srv-info-text">' + (desc ? srvEsc(desc) : '—') + '</div></div>');
-  if (cat?.region) {
-    const country = cat.country ? ' · ' + srvEsc(cat.country) : '';
-    rows.push('<div class="srv-info-group"><div class="srv-info-group-title">' + t('servers.dInfoRegion') + '</div><div class="srv-info-text">' + srvEsc(srvRegionNameMap(cat.region)) + country + '</div></div>');
+  const rows: Array<[string, string]> = [];
+  if (players != null) {
+    const label = max != null ? `${players.toLocaleString('ru-RU')}/${max.toLocaleString('ru-RU')}` : players.toLocaleString('ru-RU');
+    rows.push([t('servers.stat.online'), label]);
   }
-  if (cat?.versions?.length) {
-    rows.push('<div class="srv-info-group"><div class="srv-info-group-title">' + t('servers.dInfoVersions') + '</div><div class="srv-info-tags">' + cat.versions.map(v => `<span class="srv-info-tag">${srvEsc(v)}</span>`).join('') + '</div></div>');
+  const tone = srvTone(online, st.latency);
+  const pingText = st.latency != null
+    ? `${Math.round(Number(st.latency))} мс`
+    : '—';
+  const pingRow = `<tr><td>${srvEsc(t('servers.stat.ping'))}</td><td><span class="scat-stat-ping" data-tone="${tone}">${srvPingSvg(tone)}<span>${srvEsc(pingText)}</span></span></td></tr>`;
+  if (cat?.joins != null) rows.push([t('servers.stat.joins'), srvCompact(cat.joins)]);
+  if (cat?.followers != null) rows.push([t('servers.stat.followers'), srvCompact(cat.followers)]);
+  if (cat?.rating != null) rows.push([t('servers.stat.rating'), Number(cat.rating).toFixed(1)]);
+  if (cat?.region) rows.push([t('servers.stat.region'), srvRegionName(cat.region) + (cat.country ? ` · ${cat.country}` : '')]);
+  if (cat?.language) rows.push([t('servers.stat.lang'), srvLangName(cat.language)]);
+  if (versions) rows.push([t('servers.stat.version'), versions]);
+  const bodyRows = rows.map(([k, v]) => `<tr><td>${srvEsc(k)}</td><td>${srvEsc(v)}</td></tr>`);
+  const onlineAt = bodyRows.findIndex((row) => row.includes(srvEsc(t('servers.stat.online'))));
+  bodyRows.splice(onlineAt >= 0 ? onlineAt + 1 : 0, 0, pingRow);
+  parts.push(`<table class="scat-stats">${bodyRows.join('')}</table>`);
+  if (cat?.source === 'undefined') {
+    parts.push(`<div class="scat-relay">Сервер запущен на базе реле-сервера Undefined</div>`);
   }
-  if (cat?.modes?.length) {
-    rows.push('<div class="srv-info-group"><div class="srv-info-group-title">' + t('servers.dInfoModes') + '</div><div class="srv-info-tags">' + cat.modes.map(v => `<span class="srv-info-tag">${srvEsc(v)}</span>`).join('') + '</div></div>');
-  }
-  rows.push('<div class="srv-info-group"><div class="srv-info-group-title">' + t('srv.ip') + '</div><div class="srv-info-text">' + srvEsc(ip) + '</div></div>');
   const body = document.getElementById('srv-info-body');
-  if (body) body.innerHTML = rows.join('');
+  if (body) body.innerHTML = parts.join('');
   openModal('modal-srv-info');
-}
 
+  if (cat && players != null) srvPushHistory(cat.id, players);
+  else if (!cat && saved && players != null) srvPushHistory(saved.id, players);
+  if (cat?.source === 'undefined' && cat.localPort && (!cat.localProbeAt || Date.now() - cat.localProbeAt > 12000)) {
+    cat.localProbeAt = Date.now();
+    const port = cat.localPort;
+    void (async () => {
+      let local: any = null;
+      try { local = await api?.serverStatus?.(`127.0.0.1:${port}`); }
+      catch { local = null; }
+      if (!local?.online || local.players?.online == null) return;
+      const count = Number(local.players.online);
+      cat.players = count;
+      cat.online = true;
+      cat.status = {
+        ...(cat.status || {}),
+        online: true,
+        probed: true,
+        players: { online: count, max: local.players?.max ?? cat.maxPlayers },
+        version: cat.status?.version || local.version || '',
+        latency: cat.status?.latency ?? null,
+      };
+      srvPushHistory(cat.id, count);
+      if (!modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip) openServerInfo(ip);
+    })();
+  }
+  if (!cat && saved && !(ip in srvStatusCache)) {
+    void (async () => {
+      try { srvStatusCache[ip] = (await api?.serverStatus?.(ip)) || { online: false }; }
+      catch { srvStatusCache[ip] = { online: false }; }
+      if (!modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip) openServerInfo(ip);
+      if (srvCategory === 'mine') renderSavedServersGrid();
+    })();
+  }
+  if (cat?.source && cat.id && !cat.detailTried) {
+    cat.detailTried = true;
+    void (async () => {
+      try {
+        const detail = await api?.fetchServerDetail?.(cat.source || '', cat.id);
+        if (detail && modal.getAttribute('data-srv-ip') === ip) {
+          if (detail.desc && String(detail.desc).length > (cat.desc || '').length) cat.desc = String(detail.desc);
+          if (Array.isArray(detail.screenshots) && detail.screenshots.length) cat.screenshots = detail.screenshots.map((u: unknown) => String(u));
+          if (detail.banner) cat.banner = String(detail.banner);
+          if (detail.modpackName) cat.modpackName = String(detail.modpackName);
+          if (detail.modpackIcon) cat.modpackIcon = String(detail.modpackIcon);
+          if (detail.modpackProjectId) cat.modpackProjectId = String(detail.modpackProjectId);
+          if (detail.modpackVersionId) cat.modpackVersionId = String(detail.modpackVersionId);
+          if (detail.joins != null) cat.joins = Number(detail.joins);
+          if (detail.projectId) cat.projectId = String(detail.projectId);
+          if (detail.serverId) cat.serverId = String(detail.serverId);
+          if (detail.historySeries && Array.isArray(detail.historySeries.points)) cat.remoteHistory = detail.historySeries;
+        }
+      } catch { /* сеть или разбор страницы */ }
+      if (!modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip) openServerInfo(ip);
+    })();
+  }
+  if (cat?.modpackProjectId && !cat.modpackResolved) {
+    void resolveServerModpack(cat).then(() => {
+      if (!modal.classList.contains('hidden') && modal.getAttribute('data-srv-ip') === ip) openServerInfo(ip);
+    });
+  }
+}
 document.getElementById('modal-srv-info')?.addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeModal('modal-srv-info');
 });
 document.getElementById('srv-info-close')?.addEventListener('click', () => closeModal('modal-srv-info'));
-document.getElementById('srv-info-close2')?.addEventListener('click', () => closeModal('modal-srv-info'));
+document.getElementById('srv-info-copy')?.addEventListener('click', () => {
+  const ip = document.getElementById('srv-info-sub')?.textContent || '';
+  if (ip) void navigator.clipboard?.writeText(ip);
+});
+document.getElementById('srv-info-open')?.addEventListener('click', () => {
+  const ip = document.getElementById('modal-srv-info')?.getAttribute('data-srv-ip') || '';
+  const entry = serverCatalog.find(c => srvAddr(c) === ip);
+  if (entry?.projectUrl) void api?.openExternal?.(entry.projectUrl);
+});
+document.getElementById('srv-info-fav')?.addEventListener('click', () => {
+  const ip = document.getElementById('modal-srv-info')?.getAttribute('data-srv-ip') || '';
+  if (ip) void toggleServerFavorite(ip);
+});
+function srvHideChartTips(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>('.scat-tip').forEach((tip) => { tip.hidden = true; });
+}
+
+document.getElementById('srv-info-scroll')?.addEventListener('mousemove', (e) => {
+  const scroll = document.getElementById('srv-info-scroll');
+  const plot = (e.target as HTMLElement).closest<HTMLElement>('.scat-plot');
+  if (!scroll) return;
+  if (!plot) {
+    srvHideChartTips(scroll);
+    return;
+  }
+  let samples: { t: string; online: number }[] = [];
+  try {
+    samples = JSON.parse(decodeURIComponent(plot.getAttribute('data-samples') || '[]'));
+  } catch {
+    return;
+  }
+  if (!samples.length) return;
+  const rect = plot.getBoundingClientRect();
+  const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / Math.max(1, rect.width)));
+  const idx = Math.min(samples.length - 1, Math.max(0, Math.round(ratio * (samples.length - 1))));
+  const tip = plot.querySelector<HTMLElement>('.scat-tip');
+  if (!tip) return;
+  srvHideChartTips(scroll);
+  const range = srvChartRange(samples, idx);
+  tip.hidden = false;
+  tip.innerHTML = `<b>${Number(samples[idx].online || 0).toLocaleString('ru-RU')}</b>${range ? `<small>${srvEsc(range)}</small>` : ''}`;
+  const half = (tip.offsetWidth || 96) / 2;
+  const left = Math.max(half + 4, Math.min(rect.width - half - 4, e.clientX - rect.left));
+  tip.style.left = `${left}px`;
+  tip.style.top = `${e.clientY - rect.top}px`;
+});
+document.getElementById('srv-info-scroll')?.addEventListener('mouseleave', () => {
+  const scroll = document.getElementById('srv-info-scroll');
+  if (scroll) srvHideChartTips(scroll);
+});
+document.getElementById('srv-info-body')?.addEventListener('click', (e) => {
+  const packBtn = (e.target as HTMLElement).closest<HTMLElement>('[data-pack-dl]');
+  if (packBtn) {
+    const ip = document.getElementById('modal-srv-info')?.getAttribute('data-srv-ip') || '';
+    const entry = serverCatalog.find((row) => srvAddr(row) === ip);
+    if (entry && !srvPackBuilds(entry).length) void downloadServerModpack(entry);
+    return;
+  }
+  const rangeBtn = (e.target as HTMLElement).closest<HTMLElement>('[data-range]');
+  if (rangeBtn) {
+    const period = rangeBtn.getAttribute('data-range') || '24h';
+    const ip = document.getElementById('modal-srv-info')?.getAttribute('data-srv-ip') || '';
+    const entry = serverCatalog.find((c) => srvAddr(c) === ip);
+    if (!entry) return;
+    document.querySelectorAll('#srv-info-body [data-range]').forEach((node) => {
+      node.classList.toggle('is-on', node === rangeBtn);
+    });
+    const paint = (playersNow: number | null) => {
+      const live = document.querySelector('#srv-info-body .scat-live');
+      if (live) live.outerHTML = srvLiveChartHtml(entry, playersNow);
+    };
+    const playersNow = entry.status?.players?.online != null ? Number(entry.status.players.online) : (entry.players ?? null);
+    if (!entry.projectId || !entry.serverId || entry.source !== 'librium') {
+      entry.chartPeriod = period;
+      paint(playersNow);
+      return;
+    }
+    void (async () => {
+      const data = await api?.fetchServerHistory?.(entry.projectId || '', entry.serverId || '', period);
+      if (!data?.points || document.getElementById('modal-srv-info')?.getAttribute('data-srv-ip') !== ip) return;
+      entry.remoteHistory = data;
+      paint(playersNow);
+    })();
+    return;
+  }
+  const link = (e.target as HTMLElement).closest('a');
+  if (link?.closest('.scat-desc-full')) {
+    const href = link.getAttribute('href') || '';
+    if (/^https?:\/\//i.test(href)) {
+      e.preventDefault();
+      void api?.openExternal?.(href);
+    }
+    return;
+  }
+  const descImg = (e.target as HTMLElement).closest<HTMLImageElement>('.scat-desc-full img');
+  if (descImg?.src) {
+    openImageViewer([{ src: descImg.src, externalUrl: descImg.src }], 0, 'server');
+    return;
+  }
+  const shotBtn = (e.target as HTMLElement).closest<HTMLElement>('.scat-shot');
+  const shot = shotBtn?.getAttribute('data-shot') || '';
+  if (!shot) return;
+  const buttons = Array.from(document.querySelectorAll<HTMLElement>('#srv-info-body .scat-shot'));
+  openImageViewer(
+    buttons.map((btn) => {
+      const src = btn.getAttribute('data-shot') || '';
+      return { src, externalUrl: src };
+    }).filter((item) => item.src),
+    Math.max(0, buttons.indexOf(shotBtn as HTMLElement)),
+    'server',
+  );
+});
 document.getElementById('srv-info-launch')?.addEventListener('click', () => {
   const modal = document.getElementById('modal-srv-info');
   const ip = modal?.getAttribute('data-srv-ip') || '';
-  closeModal('modal-srv-info');
   if (!ip) return;
+  const entry = serverCatalog.find(c => srvAddr(c) === ip);
+  if (entry && srvServerHasPack(entry) && srvPackBuilds(entry).length === 0) {
+    void downloadServerModpack(entry);
+    return;
+  }
+  closeModal('modal-srv-info');
   void (async () => {
     if (!(await requireAccount())) return;
     const [host, portPart] = ip.split(':');
-    const entry = serverCatalog.find(c => srvAddr(c) === ip);
-    openServerLaunchPicker(host, parseInt(portPart, 10) || 25565, entry?.name);
+    beginServerLaunch(host, parseInt(portPart, 10) || entry?.port || 25565, entry?.name);
   })();
 });
 
+function syncSrvInfoFav(ip: string): void {
+  const favBtn = document.getElementById('srv-info-fav');
+  const label = document.getElementById('srv-info-fav-label');
+  if (!favBtn) return;
+  const on = savedServers.some((s) => savedServerAddr(s) === ip || s.ip === ip);
+  favBtn.classList.toggle('is-on', on);
+  favBtn.setAttribute('data-srv-ip', ip);
+  const text = on ? t('servers.favRemove') : t('servers.favAdd');
+  favBtn.title = text;
+  if (label) label.textContent = text;
+}
+
+async function toggleServerFavorite(ip: string): Promise<void> {
+  const existing = savedServers.find((s) => savedServerAddr(s) === ip || s.ip === ip);
+  if (existing) {
+    if (!(await confirmAction(t('confirm.deleteServer', { name: existing.name })))) return;
+    if (api?.removeServer) await api.removeServer(existing.id);
+  } else {
+    const entry = serverCatalog.find((c) => srvAddr(c) === ip);
+    if (!entry) return;
+    const st = entry.status || srvStatus(ip) || {};
+    const version = String(st.version || '').split('\n')[0] || '';
+    await api?.saveServer?.({ id: Date.now().toString(), name: entry.name, ip, port: entry.port, version, manual: false });
+  }
+  await loadServers();
+  renderServersGrid();
+  const modalIp = document.getElementById('modal-srv-info')?.getAttribute('data-srv-ip') || '';
+  if (modalIp === ip) syncSrvInfoFav(ip);
+}
+
 document.getElementById('servers-grid')?.addEventListener('click', (e) => {
-  const btn = (e.target as HTMLElement).closest<HTMLElement>('.srv-play, .srv-save, .srv-unsave, .srv-edit, .srv-del, .srv-info, .load-more-btn');
-  if (!btn) return;
-  if (btn.classList.contains('load-more-btn')) {
-    if (btn.hasAttribute('disabled')) return;
-    btn.setAttribute('disabled', '');
-    const before = Math.max(0, srvRenderedCount);
-    renderServersGrid(true);
-    const list = serverCatalog.filter(srvMatchesFilters).sort(srvSorted);
-    pingServersUI(list.slice(before, before + SRV_PAGE_SIZE));
+  const btn = (e.target as HTMLElement).closest<HTMLElement>('.srv-play, .srv-save, .srv-unsave, .srv-edit, .srv-del, .srv-info');
+  if (!btn) {
+    const card = (e.target as HTMLElement).closest<HTMLElement>('.scat-card');
+    const cardIp = card?.getAttribute('data-srv-ip');
+    if (cardIp) openServerInfo(cardIp);
     return;
   }
   const ip = btn.getAttribute('data-srv-ip');
@@ -3319,40 +5710,18 @@ document.getElementById('servers-grid')?.addEventListener('click', (e) => {
       if (!(await requireAccount())) return;
       const [host, portPart] = ip.split(':');
       const entry = serverCatalog.find(c => srvAddr(c) === ip) || savedServers.find(s => savedServerAddr(s) === ip);
-      openServerLaunchPicker(host, parseInt(portPart, 10) || 25565, entry?.name);
+      beginServerLaunch(host, parseInt(portPart, 10) || 25565, entry && 'name' in entry ? entry.name : undefined);
     })();
     return;
   }
-  if (btn.classList.contains('srv-save') && ip) {
-    void (async () => {
-      const e = serverCatalog.find(c => srvAddr(c) === ip);
-      if (!e || savedServers.some(s => s.ip === ip)) {
-        renderServersGrid();
-        return;
-      }
-      const st = e?.status || srvStatus(ip) || {};
-      const version = String(st.version || '').split('\n')[0] || '';
-      await api?.saveServer?.({ id: Date.now().toString(), name: e.name, ip, port: e.port, version });
-      await loadServers();
-      if (srvCategory !== 'mine') renderServersGrid();
-    })();
-    return;
-  }
-  if (btn.classList.contains('srv-unsave') && ip) {
-    void (async () => {
-      const existing = savedServers.find(s => s.ip === ip);
-      if (existing && await confirmAction(t('confirm.deleteServer', { name: existing.name }))) {
-        if (api?.removeServer) await api.removeServer(existing.id);
-        await loadServers();
-      }
-      renderServersGrid();
-    })();
+  if ((btn.classList.contains('srv-save') || btn.classList.contains('srv-unsave')) && ip) {
+    void toggleServerFavorite(ip);
     return;
   }
   const id = btn.getAttribute('data-srv-id');
   if (btn.classList.contains('srv-edit') && id) {
     const server = savedServers.find(s => s.id === id);
-    if (server) openModalServer(server);
+    if (server && serverIsManual(server)) openModalServer(server);
     return;
   }
   if (btn.classList.contains('srv-del') && id) {
@@ -3389,9 +5758,53 @@ document.querySelectorAll<HTMLElement>('#servers-categories .category-btn').forE
 });
 
 document.getElementById('servers-sort-select')?.addEventListener('change', (e) => {
-  srvSort = (e.target as HTMLSelectElement).value || 'players';
+  srvSort = (e.target as HTMLSelectElement).value || 'relevance';
   refreshServersFiltersUI();
   renderServersGrid();
+});
+
+document.getElementById('servers-source-select')?.addEventListener('change', (e) => {
+  srvSource = (e.target as HTMLSelectElement).value || 'all';
+  srvRenderedCount = 0;
+  renderServersGrid();
+});
+
+document.getElementById('servers-lang-select')?.addEventListener('change', (e) => {
+  srvLang = (e.target as HTMLSelectElement).value || '';
+  srvRenderedCount = 0;
+  renderServersGrid();
+});
+
+document.getElementById('servers-fav-btn')?.addEventListener('click', () => {
+  const on = srvCategory !== 'mine';
+  srvCategory = on ? 'mine' : 'all';
+  document.getElementById('servers-fav-btn')?.classList.toggle('is-on', on);
+  renderServersGrid();
+});
+
+function setSrvLayout(mode: 'list' | 'grid'): void {
+  const grid = document.getElementById('servers-grid');
+  grid?.classList.toggle('is-list', mode === 'list');
+  grid?.classList.toggle('is-grid', mode === 'grid');
+  const icon = document.getElementById('servers-view-icon') as HTMLImageElement | null;
+  if (icon) {
+    icon.src = mode === 'grid'
+      ? '../../assets/newServersPage/icons/list.svg'
+      : '../../assets/newServersPage/icons/grid.svg';
+  }
+}
+
+document.getElementById('servers-view-toggle')?.addEventListener('click', () => {
+  const grid = document.getElementById('servers-grid');
+  setSrvLayout(grid?.classList.contains('is-grid') ? 'list' : 'grid');
+});
+
+document.getElementById('servers-refresh-btn')?.addEventListener('click', () => {
+  void loadServerCatalog(true);
+});
+
+document.getElementById('servers-attrib-close')?.addEventListener('click', () => {
+  document.getElementById('servers-attribution')?.classList.add('is-hidden');
 });
 
 document.querySelectorAll<HTMLElement>('#servers-region-chips .mods-chip').forEach(btn => {
@@ -3477,6 +5890,26 @@ function syncServerVersionSelect(): void {
   if (wrap) syncSelectUI(wrap as HTMLElement);
 }
 
+function syncServerLangSelect(): void {
+  const select = document.getElementById('servers-lang-select') as HTMLSelectElement | null;
+  if (!select) return;
+  const codes = Array.from(new Set(
+    serverCatalog.map(e => String(e.language || '').toLowerCase().slice(0, 2)).filter(Boolean),
+  ));
+  const current = srvLang;
+  select.innerHTML = `<option value="">${t('servers.lang.any')}</option>`
+    + codes.map(code => `<option value="${srvEsc(code)}">${srvEsc(srvLangName(code))}</option>`).join('');
+  const menu = select.closest('.stngs-select-wrap')?.querySelector<HTMLElement>('.stngs-select-menu');
+  if (menu) {
+    menu.innerHTML = `<div class="stngs-select-opt" data-value="">${t('servers.lang.any')}</div>`
+      + codes.map(code => `<div class="stngs-select-opt" data-value="${srvEsc(code)}">${srvEsc(srvLangName(code))}</div>`).join('');
+  }
+  select.value = current && codes.includes(current) ? current : '';
+  srvLang = select.value;
+  const wrap = select.closest('.stngs-select-wrap');
+  if (wrap) syncSelectUI(wrap as HTMLElement);
+}
+
 document.getElementById('servers-version-select')?.addEventListener('change', (e) => {
   srvVersionFilter = (e.target as HTMLSelectElement).value || '';
   srvRenderedCount = 0;
@@ -3546,7 +5979,7 @@ function homeServerRowHtml(s: Server): string {
       ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}`
       : t('servers.online'))
     : (Object.keys(st).length ? t('servers.offline') : '…');
-  const fav = srvServerFavicon(st);
+  const fav = srvTileIcon(addr, st);
   const icon = fav
     ? `<img src="${srvEsc(fav)}" alt="">`
     : `<img src="../../assets/icons/serverIcon.png" alt="">`;
@@ -3632,11 +6065,7 @@ async function openLastServerLaunch(srv: Server): Promise<void> {
   if (!(await requireAccount())) return;
   const addr = savedServerAddr(srv);
   const [host, portPart] = addr.split(':');
-  openServerLaunchPicker(
-    host,
-    parseInt(portPart, 10) || Number(srv.port) || 25565,
-    srv.name,
-  );
+  beginServerLaunch(host, parseInt(portPart, 10) || Number(srv.port) || 25565, srv.name);
 }
 
 function stringToColor(str: string): string {
@@ -3658,6 +6087,12 @@ document.getElementById('server-form-submit')?.addEventListener('click', () => s
 let skinViewer: SkinViewEngine | null = null;
 let skinCanvas = document.getElementById('skin-canvas') as HTMLCanvasElement;
 
+// Правый стик на вкладке скинов крутит камеру. Полный наклон ≈ 1.7 рад/с.
+setGamepadLook((x, y, dt) => {
+  if (!skinViewer || skinViewer.disposed) return;
+  skinViewer.orbitBy(x * 1.7 * dt, y * 1.15 * dt);
+});
+
 /**
  * Кадрирование основного вьювера.
  * offsetY < 0 — модель ниже центра: запас сверху под .skin-preview-top
@@ -3672,7 +6107,7 @@ const SKIN_CARD_FRAME = { fillY: 0.96, maxFillX: 0.94, offsetY: 0 };
 const PREVIEW_SIZE = { w: 76, h: 84 };
 
 const SKIN_ANIM_IDS: SkinAnimId[] = [
-  'idle', 'run', 'wave', 'hello', 'sneak', 'look', 'cool', 'think', 'dab', 'glide', 'victory', 'sleep', 'dance',
+  'idle', 'walk', 'run', 'sneak', 'wave', 'hit', 'hello', 'look', 'cool', 'think', 'dab', 'glide', 'victory', 'sleep', 'dance',
 ];
 
 /** Кадрирование пресетов под скриншот */
@@ -3700,6 +6135,14 @@ function fitSkinViewer(): void {
   skinViewer.fitPlayerToFrame(frame);
 }
 
+let skinFitTimer = 0;
+
+/** Пока ширина сайдбара анимируется, канвас меняется каждый кадр. Кадрируем один раз, когда размер устоялся. */
+function scheduleSkinViewerFit(): void {
+  window.clearTimeout(skinFitTimer);
+  skinFitTimer = window.setTimeout(() => fitSkinViewer(), 120);
+}
+
 function initSkinViewer(): void {
   if (!skinCanvas) return;
   try {
@@ -3711,6 +6154,7 @@ function initSkinViewer(): void {
       antialias: false,
       transparent: false,
       presentation: 'full',
+      autoResize: false,
     });
     viewerSkinUrl = null;
     viewerCapeUrl = undefined;
@@ -3724,7 +6168,7 @@ function initSkinViewer(): void {
     bindSkinCursorLook();
     (window as unknown as { __skinViewer?: SkinViewEngine }).__skinViewer = skinViewer;
     if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(() => fitSkinViewer()).observe(skinCanvas);
+      new ResizeObserver(() => scheduleSkinViewerFit()).observe(skinCanvas);
     }
     applySkinViewerDebugSetting();
   } catch (e) {
@@ -4125,7 +6569,9 @@ function bindSkinCursorLook(): void {
 
 const SKIN_ANIM_I18N: Record<SkinAnimId, string> = {
   idle: 'skins.animIdle',
+  walk: 'skins.animWalk',
   run: 'skins.animRun',
+  hit: 'skins.animHit',
   wave: 'skins.animWave',
   hello: 'skins.animHello',
   sneak: 'skins.animSneak',
@@ -4137,6 +6583,7 @@ const SKIN_ANIM_I18N: Record<SkinAnimId, string> = {
   victory: 'skins.animVictory',
   sleep: 'skins.animSleep',
   dance: 'skins.animDance',
+  sad: 'skins.animSad',
 };
 
 const SKIN_POSE_I18N: Record<ShotPresetId, string> = {
@@ -4219,12 +6666,8 @@ function syncSkinAnimButtons(): void {
   });
 }
 
-/** Стабильный вариант позы для превью по id скина */
-function previewVariantForId(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h % 4;
-}
+/** Одна поза для всех карточек скинов: три четверти, без разброса по id. */
+const SKIN_CARD_YAW = -0.35;
 
 function setSkinViewerPaused(paused: boolean): void {
   if (!skinViewer || skinViewer.disposed) return;
@@ -4519,8 +6962,9 @@ async function ensureElySkinFallback(): Promise<boolean> {
   return true;
 }
 
-/** Локальный Steve из ассетов лаунчера — для оффлайн-аккаунтов */
+/** Локальные скины зала: Steve для оффлайна, dummy для слота добавления */
 const OFFLINE_STEVE_SKIN_URL = '../../assets/skins/steve.png';
+const ADD_ACCOUNT_SKIN_URL = '../../assets/skins/dummy.png';
 
 async function applyOfflineSteveSkin(): Promise<void> {
   setActiveSkinId(null);
@@ -4673,12 +7117,13 @@ function getPreviewEngine(): SkinViewEngine | null {
       autoDetectModel: true,
       idleAnimation: false,
       enableControls: false,
-      antialias: true,
+      antialias: false,
       autoResize: false,
       transparent: true,
       presentation: 'bust',
       enableEffects: false,
     });
+    previewEngine.setCameraFov(14);
     previewEngine.setSize(PREVIEW_SIZE.w, PREVIEW_SIZE.h);
     (window as unknown as { __previewEngine?: SkinViewEngine }).__previewEngine = previewEngine;
     previewSkinLoaded = null;
@@ -4700,7 +7145,6 @@ function queueCardPreview(
   skinDataUrl: string | null,
   capeDataUrl: string | null,
   yaw: number,
-  variant = 0,
 ): void {
   previewQueue = previewQueue.then(async () => {
     if (!target.isConnected) return;
@@ -4716,12 +7160,12 @@ function queueCardPreview(
         previewCapeLoaded = capeDataUrl;
       }
       if (engine.disposed || !target.isConnected) return;
-      // Разные «постеровые» позы по карточкам; для плащей — вид со спины
+      // Плащ — со спины, скин — одна и та же поза во всех карточках
       const isCape = Math.abs(yaw - Math.PI) < 0.01;
-      engine.setAnimation(new BustPoseAnimation(isCape ? 0 : variant));
-      engine.setPlayerYaw(isCape ? Math.PI : (-0.7 + (variant % 4) * 0.18));
-      engine.setSize(PREVIEW_SIZE.w, PREVIEW_SIZE.h);
-      engine.fitPlayerToFrame(SKIN_CARD_FRAME);
+      engine.setAnimation(new BustPoseAnimation(0, true));
+      engine.setPlayerYaw(isCape ? Math.PI : SKIN_CARD_YAW);
+      engine.setSize(PREVIEW_SIZE.w * 2, PREVIEW_SIZE.h * 2);
+      engine.fitPlayerToFrame(isCape ? SKIN_CARD_FRAME : { fillY: 0.9, maxFillX: 0.9, offsetY: 0 });
       engine.renderFrame();
       target.width = engine.canvas.width;
       target.height = engine.canvas.height;
@@ -4782,7 +7226,7 @@ function renderSkinsList(): void {
   skins.forEach(s => {
     const canvas = grid.querySelector<HTMLCanvasElement>(`canvas[data-skin-preview="${s.id}"]`);
     if (canvas && s.dataUrl) {
-      queueCardPreview(canvas, s.dataUrl, null, 0, previewVariantForId(s.id));
+      queueCardPreview(canvas, s.dataUrl, null, 0);
     }
   });
 
@@ -5213,7 +7657,7 @@ async function mirrorSkinToProfileCard(dataUrl: string): Promise<void> {
     `#skins-list canvas[data-skin-preview="${canonical}"]`,
   );
   if (canvas) {
-    queueCardPreview(canvas, dataUrl, null, 0, previewVariantForId(canonical));
+    queueCardPreview(canvas, dataUrl, null, 0);
   } else {
     // Карточки ещё нет в DOM — перерисуем список, сохранив выбор
     const keep = getActiveSkinId();
@@ -5412,11 +7856,88 @@ function renderCapesList(): void {
 
 /* ===== QUICK ACTIONS ===== */
 
-document.getElementById('quick-banner-play')?.addEventListener('click', async () => {
+document.getElementById('build-run-play')?.addEventListener('click', async () => {
+  setHomeRunListOpen(false);
   if (runningBuild) return;
-  const build = getHomeFeaturedBuild();
+  const build = getHomeSelectedBuild();
   if (build) await launchBuild(build);
   else updateStatus(t('status.noBuilds'));
+});
+
+document.getElementById('build-run-selector')?.addEventListener('click', () => {
+  setHomeRunListOpen(!homeRunListOpen);
+});
+
+document.getElementById('build-run-list')?.addEventListener('click', (e) => {
+  const edit = (e.target as HTMLElement).closest<HTMLElement>('[data-edit-id]');
+  if (edit) {
+    e.stopPropagation();
+    const build = savedBuilds.find((b) => b.id === edit.getAttribute('data-edit-id'));
+    setHomeRunListOpen(false);
+    if (build) void openModalBuild(build);
+    return;
+  }
+  const item = (e.target as HTMLElement).closest<HTMLElement>('[data-build-id]');
+  if (!item) return;
+  setHomeRunListOpen(false);
+  selectHomeBuild(item.getAttribute('data-build-id'));
+});
+
+document.getElementById('home-last-build')?.addEventListener('click', () => {
+  const last = getLastPlayedBuild();
+  if (!last) return;
+  setHomeRunListOpen(false);
+  selectHomeBuild(last.id);
+});
+
+document.getElementById('tb-tasks-list')?.addEventListener('click', (e) => {
+  const cancel = (e.target as HTMLElement).closest<HTMLElement>('[data-task-cancel]');
+  const dismiss = (e.target as HTMLElement).closest<HTMLElement>('[data-task-dismiss]');
+  if (!cancel && !dismiss) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (cancel) {
+    const id = cancel.getAttribute('data-task-cancel') || '';
+    void cancelLauncherTask(id);
+    return;
+  }
+  dismissLauncherTask(dismiss?.getAttribute('data-task-dismiss') || '');
+});
+
+function setTasksMenuOpen(open: boolean): void {
+  const menu = document.getElementById('tb-tasks-menu');
+  const btn = document.getElementById('tb-tasks-btn');
+  if (!menu) return;
+  menu.classList.remove('hidden');
+  menu.classList.toggle('is-open', open);
+  btn?.classList.toggle('is-open', open);
+  btn?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    setClientMenuOpen(false);
+    taskUnseen.clear();
+    renderLauncherTasks();
+  }
+}
+
+document.getElementById('tb-tasks-btn')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = document.getElementById('tb-tasks-menu');
+  if (!menu) return;
+  setTasksMenuOpen(!menu.classList.contains('is-open'));
+});
+
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement | null;
+  if (!target) return;
+  if (!target.closest('#build-run-panel') && homeRunListOpen) setHomeRunListOpen(false);
+  if (!target.closest('#tb-tasks')) setTasksMenuOpen(false);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (homeRunListOpen) setHomeRunListOpen(false);
+  setTasksMenuOpen(false);
+  setClientMenuOpen(false);
 });
 
 document.getElementById('modal-about')?.addEventListener('click', (e) => {
@@ -5589,18 +8110,28 @@ document.getElementById('about-tg-btn')?.addEventListener('click', () => {
 
 const ctxMenu = document.getElementById('ctx-menu')!;
 
+function setClientMenuOpen(open: boolean): void {
+  ctxMenu.classList.toggle('open', open);
+  document.getElementById('btn-menu')?.classList.toggle('is-open', open);
+}
+
 document.getElementById('btn-menu')?.addEventListener('click', (e) => {
   e.stopPropagation();
   const btn = e.currentTarget as HTMLElement | null;
   if (!btn) return;
+  if (ctxMenu.classList.contains('open')) {
+    setClientMenuOpen(false);
+    return;
+  }
+  setTasksMenuOpen(false);
   const rect = btn.getBoundingClientRect();
   ctxMenu.style.left = 'auto';
   ctxMenu.style.right = (window.innerWidth - rect.right) + 'px';
   ctxMenu.style.top = (rect.bottom + 4) + 'px';
-  ctxMenu.classList.add('open');
+  setClientMenuOpen(true);
 });
 
-document.addEventListener('click', () => ctxMenu.classList.remove('open'));
+document.addEventListener('click', () => setClientMenuOpen(false));
 ctxMenu.addEventListener('click', (e) => e.stopPropagation());
 
 document.getElementById('build-share-menu')?.addEventListener('click', (e) => {
@@ -5622,14 +8153,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.getElementById('ctx-settings')?.addEventListener('click', () => {
-  ctxMenu.classList.remove('open');
+  setClientMenuOpen(false);
   openModal('modal-settings');
   void checkForUpdatesUI();
   void refreshJavaManager();
 });
 
 document.getElementById('ctx-about')?.addEventListener('click', () => {
-  ctxMenu.classList.remove('open');
+  setClientMenuOpen(false);
   openModal('modal-about');
 });
 
@@ -5656,6 +8187,7 @@ function relativeLuminance(r: number, g: number, b: number): number {
 
 function applyAccent(accent: string): void {
   document.documentElement.style.setProperty('--accent', accent);
+  syncGamepadColor();
   document.documentElement.style.setProperty('--accent-hover', darkenColor(accent, 20));
   const r = parseInt(accent.slice(1, 3), 16);
   const g = parseInt(accent.slice(3, 5), 16);
@@ -6056,6 +8588,200 @@ function initCustomSelects(): void {
   syncCustomSelects();
 }
 
+// ===== Размытие видеофона главной =====
+const HOME_BLUR_KEY = 'Undefined Client-home-blur';
+const HOME_BLUR_STRENGTH_KEY = 'Undefined Client-home-blur-strength';
+
+function applyHomeBlur(): void {
+  const layers = ['home-video-bg', 'home-image-bg']
+    .map((id) => document.getElementById(id))
+    .filter((el): el is HTMLElement => !!el);
+  const toggle = document.getElementById('setting-home-blur') as HTMLInputElement | null;
+  const slider = document.getElementById('setting-home-blur-strength') as HTMLInputElement | null;
+  const label = document.getElementById('setting-home-blur-label');
+  const on = toggle ? toggle.checked : localStorage.getItem(HOME_BLUR_KEY) === 'true';
+  const raw = Number(slider?.value || localStorage.getItem(HOME_BLUR_STRENGTH_KEY) || '8');
+  const strength = Math.max(2, Math.min(24, Number.isFinite(raw) ? raw : 8));
+  if (label) label.textContent = String(strength);
+  if (slider) syncRangeProgress(slider);
+  for (const layer of layers) {
+    if (on) {
+      layer.style.filter = `blur(${strength}px)`;
+      layer.classList.add('is-blurred');
+    } else {
+      layer.style.filter = '';
+      layer.classList.remove('is-blurred');
+    }
+  }
+}
+
+// ===== Фон главной: набор роликов или свой файл, без случайной смены =====
+const HOME_WALL_KEY = 'Undefined Client-home-wallpaper';
+const HOME_WALL_CUSTOM_KEY = 'Undefined Client-home-wallpaper-custom';
+const HOME_WALL_BUILTIN = ['1', '2', '3', '5', '6', '7', '8'] as const;
+
+type HomeWallChoice =
+  | { kind: 'builtin'; id: string }
+  | { kind: 'custom'; name: string; media: 'image' | 'video' };
+
+function readHomeWallCustom(): { name: string; media: 'image' | 'video' } | null {
+  try {
+    const raw = localStorage.getItem(HOME_WALL_CUSTOM_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (v && typeof v.name === 'string' && (v.media === 'image' || v.media === 'video')) return v;
+  } catch { /* битая запись */ }
+  return null;
+}
+
+function readHomeWall(): HomeWallChoice {
+  try {
+    const raw = localStorage.getItem(HOME_WALL_KEY);
+    if (raw) {
+      const v = JSON.parse(raw);
+      if (v?.kind === 'builtin' && (HOME_WALL_BUILTIN as readonly string[]).includes(v.id)) return { kind: 'builtin', id: v.id };
+      if (v?.kind === 'custom' && typeof v.name === 'string' && (v.media === 'image' || v.media === 'video')) {
+        return { kind: 'custom', name: v.name, media: v.media };
+      }
+    }
+  } catch { /* битая запись */ }
+  return { kind: 'builtin', id: '1' };
+}
+
+function writeHomeWall(choice: HomeWallChoice): void {
+  localStorage.setItem(HOME_WALL_KEY, JSON.stringify(choice));
+}
+
+function paintWallpaperPicker(): void {
+  const grid = document.getElementById('wallpaper-grid');
+  if (!grid) return;
+  const choice = readHomeWall();
+  const custom = readHomeWallCustom();
+  const cards = HOME_WALL_BUILTIN.map((id, index) => {
+    const on = choice.kind === 'builtin' && choice.id === id;
+    return `<button type="button" class="wallpaper-card${on ? ' is-on' : ''}" data-wall="${id}" title="${index + 1}">
+      <video muted preload="metadata" src="../../assets/VideoWallpapers/${id}.mp4"></video>
+      <span class="wallpaper-card__label">${index + 1}</span>
+    </button>`;
+  });
+  if (custom) {
+    const on = choice.kind === 'custom';
+    const face = custom.media === 'image'
+      ? `<img alt="" src="wall://local/${encodeURIComponent(custom.name)}">`
+      : `<video muted preload="metadata" src="wall://local/${encodeURIComponent(custom.name)}"></video>`;
+    cards.push(`<button type="button" class="wallpaper-card${on ? ' is-on' : ''}" data-wall="custom">
+      ${face}
+      <span class="wallpaper-card__label">${t('stngs.wallpaperCustom')}</span>
+    </button>`);
+  }
+  grid.innerHTML = cards.join('');
+  grid.querySelectorAll<HTMLVideoElement>('video').forEach((video) => {
+    video.addEventListener('loadeddata', () => {
+      try { video.currentTime = 0.4; } catch { /* кадр ещё не готов */ }
+    }, { once: true });
+  });
+}
+
+function applyHomeWallpaper(): void {
+  const video = document.getElementById('home-video-bg') as HTMLVideoElement | null;
+  const image = document.getElementById('home-image-bg') as HTMLImageElement | null;
+  if (!video) return;
+  const choice = readHomeWall();
+  if (choice.kind === 'custom' && choice.media === 'image') {
+    video.pause();
+    video.removeAttribute('src');
+    video.dataset.wallKind = 'image';
+    video.hidden = true;
+    if (image) {
+      image.hidden = false;
+      const next = `wall://local/${encodeURIComponent(choice.name)}`;
+      if (image.getAttribute('src') !== next) {
+        image.removeAttribute('src');
+        image.src = next;
+      }
+    }
+  } else {
+    if (image) {
+      image.hidden = true;
+      image.removeAttribute('src');
+    }
+    video.hidden = false;
+    video.dataset.wallKind = 'video';
+    const src = choice.kind === 'builtin'
+      ? `../../assets/VideoWallpapers/${choice.id}.mp4`
+      : `wall://local/${encodeURIComponent(choice.name)}`;
+    if (video.getAttribute('src') !== src) {
+      video.removeAttribute('src');
+      video.src = src;
+      video.load();
+    }
+    video.loop = true;
+    video.muted = true;
+    if (homeWallPlaying) void video.play().catch(() => {});
+  }
+  applyHomeBlur();
+  paintWallpaperPicker();
+}
+
+const homeBlurToggle = document.getElementById('setting-home-blur') as HTMLInputElement | null;
+const homeBlurSlider = document.getElementById('setting-home-blur-strength') as HTMLInputElement | null;
+if (homeBlurToggle) {
+  homeBlurToggle.checked = localStorage.getItem(HOME_BLUR_KEY) === 'true';
+  homeBlurToggle.addEventListener('change', () => {
+    localStorage.setItem(HOME_BLUR_KEY, String(homeBlurToggle.checked));
+    applyHomeBlur();
+  });
+}
+if (homeBlurSlider) {
+  const storedStrength = localStorage.getItem(HOME_BLUR_STRENGTH_KEY);
+  homeBlurSlider.value = storedStrength && Number(storedStrength) > 0 ? storedStrength : '8';
+  homeBlurSlider.addEventListener('input', () => {
+    localStorage.setItem(HOME_BLUR_STRENGTH_KEY, homeBlurSlider.value);
+    applyHomeBlur();
+  });
+}
+applyHomeBlur();
+applyHomeWallpaper();
+
+const wallpaperGrid = document.getElementById('wallpaper-grid');
+wallpaperGrid?.addEventListener('click', (e) => {
+  const card = (e.target as HTMLElement).closest<HTMLElement>('[data-wall]');
+  if (!card) return;
+  const id = card.dataset.wall || '';
+  if (id === 'custom') {
+    const custom = readHomeWallCustom();
+    if (!custom) return;
+    writeHomeWall({ kind: 'custom', name: custom.name, media: custom.media });
+  } else if ((HOME_WALL_BUILTIN as readonly string[]).includes(id)) {
+    writeHomeWall({ kind: 'builtin', id });
+  } else {
+    return;
+  }
+  applyHomeWallpaper();
+});
+
+const wallpaperPick = document.getElementById('wallpaper-pick');
+wallpaperPick?.addEventListener('click', async () => {
+  const picked = await api?.pickWallpaper?.();
+  if (!picked) return;
+  if ('error' in picked) {
+    updateStatus(picked.error || t('stngs.wallpaperPick'));
+    return;
+  }
+  localStorage.setItem(HOME_WALL_CUSTOM_KEY, JSON.stringify({ name: picked.name, media: picked.media }));
+  writeHomeWall({ kind: 'custom', name: picked.name, media: picked.media });
+  applyHomeWallpaper();
+});
+
+// ===== Звуки интерфейса (пак Zen) =====
+initUiSfx();
+const uiSfxToggle = document.getElementById('setting-ui-sfx') as HTMLInputElement | null;
+if (uiSfxToggle) {
+  const storedSfx = localStorage.getItem('Undefined Client-ui-sfx');
+  uiSfxToggle.checked = storedSfx === null ? true : storedSfx === 'true';
+  setUiSfxEnabled(uiSfxToggle.checked);
+}
+
 // Animations toggle
 const animationsToggle = document.getElementById('setting-animations') as HTMLInputElement | null;
 if (animationsToggle) {
@@ -6078,6 +8804,12 @@ function syncRangeProgress(el: HTMLInputElement): void {
   const pct = max === min ? 0 : ((val - min) / (max - min)) * 100;
   el.style.setProperty('--range-progress', `${pct}%`);
 }
+
+document.querySelectorAll<HTMLInputElement>('.stngs-ram-control input[type="range"]').forEach((el) => {
+  const paint = () => syncRangeProgress(el);
+  paint();
+  el.addEventListener('input', paint);
+});
 
 const ramSlider = document.getElementById('setting-ram') as HTMLInputElement | null;
 const ramLabel = document.getElementById('setting-ram-label');
@@ -6247,19 +8979,49 @@ function applyLaunchBehavior(): void {
 }
 
 function showLaunchProgress(status: string): void {
-  const el = document.getElementById('download-progress');
-  const label = document.getElementById('download-progress-label');
-  const speedEl = document.getElementById('download-progress-speed');
-  const percent = document.getElementById('download-progress-percent');
-  const fill = document.getElementById('download-progress-fill');
-  if (el) el.classList.remove('hidden');
-  if (label) label.textContent = status;
-  if (speedEl) speedEl.textContent = '';
-  if (percent) percent.textContent = '';
-  if (fill) { fill.style.width = '20%'; fill.style.animation = 'progressIndeterminate 1.5s ease-in-out infinite'; }
+  upsertLauncherTask({
+    id: 'launch',
+    title: t('tasks.launch'),
+    stage: status,
+    percent: null,
+    detail: '',
+  });
+}
+
+function buildHasGamepadMod(build: Build): boolean {
+  return (build.mods || []).some((mod) => /controlify|controllable|midnightcontrols|lambdacontrols/i.test(`${mod.name} ${mod.filename || ''} ${mod.projectId || ''}`));
+}
+
+async function ensureGamepadMod(build: Build): Promise<void> {
+  if (buildHasGamepadMod(build)) return;
+  const loader = String(build.loader || '').toLowerCase();
+  const projectId = loader === 'forge'
+    ? 'controllable'
+    : (loader === 'fabric' || loader === 'quilt' || loader === 'neoforge' ? 'controlify' : '');
+  if (!projectId) {
+    showAppToast(t('gamepad.modNeedLoader'));
+    return;
+  }
+  const skipKey = 'Undefined Client-gamepad-mod-skip';
+  const skipped = new Set((localStorage.getItem(skipKey) || '').split(',').filter(Boolean));
+  if (skipped.has(build.id)) return;
+  const modName = projectId === 'controlify' ? 'Controlify' : 'Controllable';
+  const yesBtn = document.getElementById('confirm-yes');
+  const prevYes = yesBtn?.textContent || '';
+  if (yesBtn) yesBtn.textContent = t('gamepad.modInstall');
+  const yes = await confirmAction(t('gamepad.modOffer', { mod: modName, name: build.name }));
+  if (yesBtn) yesBtn.textContent = prevYes;
+  if (!yes) {
+    skipped.add(build.id);
+    localStorage.setItem(skipKey, [...skipped].join(','));
+    return;
+  }
+  showAppToast(t('gamepad.modInstalling', { mod: modName }));
+  await downloadModToBuild(projectId, build.id);
 }
 
 async function launchBuild(build: Build, server?: { ip: string; port: number; name?: string }): Promise<void> {
+  const fromGamepad = takeGamepadLaunch();
   if (!(await requireAccount())) return;
   // Токен мог ещё обновляться в фоне после старта — в игру нужен свежий.
   if (accountRefreshPromise) await accountRefreshPromise;
@@ -6267,10 +9029,12 @@ async function launchBuild(build: Build, server?: { ip: string; port: number; na
     updateStatus(t('status.closeFirst', { name: runningBuild.name }));
     return;
   }
+  if (fromGamepad) await ensureGamepadMod(build);
 
   updateStatus(t('status.launching', { name: build.name }));
   showLaunchProgress(t('status.launching', { name: build.name }));
   if (!api?.launch) {
+    clearLauncherTask('launch');
     updateStatus(t('status.launcherUnavailable'));
     return;
   }
@@ -6326,6 +9090,7 @@ async function launchBuild(build: Build, server?: { ip: string; port: number; na
   } else {
     runningBuild = null;
     syncRunningLaunchUi();
+    clearLauncherTask('launch');
     updateStatus(t('status.error', { msg: result.errorKey ? t(result.errorKey) : (result.error || t('common.error')) }));
   }
 }
@@ -6389,15 +9154,16 @@ async function adoptRunningGameFromMain(): Promise<void> {
 }
 
 function syncHomePlayButton(): void {
-  const btn = document.getElementById('quick-banner-play') as HTMLButtonElement | null;
+  const btn = document.getElementById('build-run-play') as HTMLButtonElement | null;
   if (!btn) return;
   const label = btn.querySelector('span');
+  const selected = getHomeSelectedBuild();
   if (runningBuild) {
     btn.disabled = true;
     btn.classList.add('is-running');
     if (label) label.textContent = t('btn.playing');
   } else {
-    btn.disabled = false;
+    btn.disabled = !selected;
     btn.classList.remove('is-running');
     if (label) label.textContent = t('btn.play');
   }
@@ -6423,12 +9189,6 @@ function startRunningTimer(): void {
     const mins = Math.floor(elapsed / 60);
     const secs = elapsed % 60;
     const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    const meta = document.getElementById('quick-banner-meta');
-    if (meta) meta.textContent = `${runningBuild.name} · ${timeStr}`;
-    const title = document.getElementById('quick-banner-title');
-    if (title) title.textContent = t('sidebar.inGame');
-    const sub = document.getElementById('quick-banner-sub');
-    if (sub) sub.textContent = t('status.timeInBuild');
     syncHomePlayButton();
     // Sidebar indicator
     const ind = document.getElementById('running-indicator');
@@ -6437,6 +9197,7 @@ function startRunningTimer(): void {
     if (indName) indName.textContent = runningBuild.name;
     const indTime = document.getElementById('running-indicator-time');
     if (indTime) indTime.textContent = timeStr;
+    updateHomeInsights();
   };
   tick();
   runningTimerId = setInterval(tick, 1000);
@@ -6452,6 +9213,8 @@ function stopRunningTimer(): void {
       const existing = savedBuilds.find(b => b.id === runningBuild!.id);
       if (existing) existing.playtime = runningBuild.playtime;
       if (api?.saveBuild) api.saveBuild(runningBuild);
+      // Длительность только что завершённой сессии — для карточки на главной
+      localStorage.setItem('last-session-seconds', String(elapsed));
     }
   }
   runningBuild = null;
@@ -6470,7 +9233,10 @@ async function joinServer(ip: string): Promise<void> {
   const port = parseInt(portStr, 10) > 0 ? parseInt(portStr, 10) : 25565;
   updateStatus(t('status.connecting', { ip: host }));
   showLaunchProgress(t('status.connecting', { ip: host }));
-  if (!api?.launch) return;
+  if (!api?.launch) {
+    clearLauncherTask('launch');
+    return;
+  }
   // Результат обязательно дожидаемся: раньше запуск уходил «в никуда», и ни
   // настройки «Поведения при запуске», ни ошибки до пользователя не доходили.
   const result = await api.launch({
@@ -6482,6 +9248,7 @@ async function joinServer(ip: string): Promise<void> {
   if (result.success) {
     applyLaunchBehavior();
   } else {
+    clearLauncherTask('launch');
     updateStatus(t('status.error', { msg: result.errorKey ? t(result.errorKey) : (result.error || t('common.error')) }));
   }
 }
@@ -6489,6 +9256,7 @@ async function joinServer(ip: string): Promise<void> {
 function updateStatus(message: string): void {
   const bannerSub = document.getElementById('quick-banner-sub');
   if (bannerSub) bannerSub.textContent = message;
+  playStatusCue(message);
 }
 
 let appToastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -6503,6 +9271,7 @@ function showAppToast(message: string, ms = 4200): void {
   el.hidden = false;
   el.textContent = message;
   el.classList.add('is-visible');
+  playToastCue(message);
   if (appToastTimer) clearTimeout(appToastTimer);
   appToastTimer = setTimeout(() => {
     el.classList.remove('is-visible');
@@ -6581,7 +9350,7 @@ async function renderSavedAccounts(): Promise<void> {
     return `
     <div class="acc-popup-row${a.uuid === currentAccount.uuid ? ' selected' : ''}" data-uuid="${a.uuid}">
       <div class="acc-popup-row-avatar">
-        <img src="${avatar.primary}" data-fallback="${avatar.fallback}" alt="" style="display:none;" onload="this.style.display=''">
+        <img ${isEly ? '' : `src="${avatar.primary}" data-fallback="${avatar.fallback}"`} alt="" style="display:none;" onload="this.style.display=''">
         <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
           <rect x="2" y="2" width="28" height="28" rx="2" fill="#7BD4B7"/>
           <circle cx="16" cy="12" r="5" fill="#2A2A2A"/>
@@ -6659,18 +9428,32 @@ function confirmAction(message: string): Promise<boolean> {
     const msgEl = document.getElementById('confirm-message');
     const yesBtn = document.getElementById('confirm-yes');
     const noBtn = document.getElementById('confirm-no');
-    if (!overlay || !msgEl || !yesBtn || !noBtn) { resolve(true); return; }
+    if (!overlay || !msgEl || !yesBtn || !noBtn) { resolve(false); return; }
     msgEl.textContent = message;
     overlay.classList.remove('hidden');
-    const cleanup = () => {
+    let settled = false;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
       overlay.classList.add('hidden');
       yesBtn.removeEventListener('click', onYes);
       noBtn.removeEventListener('click', onNo);
+      overlay.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+      resolve(value);
     };
-    const onYes = () => { cleanup(); resolve(true); };
-    const onNo = () => { cleanup(); resolve(false); };
+    const onYes = () => finish(true);
+    const onNo = () => finish(false);
+    const onBackdrop = (e: MouseEvent) => {
+      if (e.target === overlay) finish(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') finish(false);
+    };
     yesBtn.addEventListener('click', onYes);
     noBtn.addEventListener('click', onNo);
+    overlay.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
   });
 }
 
@@ -7116,7 +9899,7 @@ async function searchMods(query: string, category: string, append: boolean = fal
       } else {
         modsData = hits;
       }
-      modsOffset += hits.length;
+      if (hits.length) modsOffset += modsPageSize();
       // Пустая страница при append — дальше грузить нечего
       if (append && hits.length === 0) modsTotal = modsOffset;
       renderMods(append);
@@ -7163,7 +9946,7 @@ function versionsSelectorConfig(projectType: string, loaders: string[]) {
   if (type === 'shader') {
     return { showGame: true, showLoader: loaders.length > 0, loaderKind: 'platform' as const, loaders };
   }
-  if (type === 'mod') {
+  if (type === 'mod' || type === 'plugin') {
     return { showGame: true, showLoader: loaders.length > 1, loaderKind: 'loader' as const, loaders };
   }
   return { showGame: true, showLoader: false, loaderKind: 'loader' as const, loaders: [] as string[] };
@@ -7249,8 +10032,16 @@ function setVersionsMode(mode: 'quick' | 'list'): void {
 
 async function confirmPendingVersionInstall(): Promise<void> {
   if (!pendingTargetProjectId || !pendingDownloadVersionId) return;
+  const hostInstall = hostCatalogInstall;
+  hostCatalogInstall = null;
+  versionsHostLock = false;
   closeVersionsDropdown(false);
   closeModal('modal-versions');
+  if (hostInstall) {
+    const version = pendingVersionsAll.find((row) => row.id === pendingDownloadVersionId);
+    if (version) await hostInstall(version);
+    return;
+  }
   const projectInfo = await api?.getModrinthProject(pendingTargetProjectId);
   if (projectInfo?.project_type === 'modpack') {
     updateStatus(t('status.downloadingPack'));
@@ -7258,6 +10049,9 @@ async function confirmPendingVersionInstall(): Promise<void> {
     if (result?.success) {
       updateStatus(t('status.packInstalled'));
       await loadBuilds();
+      const hook = afterContentInstall;
+      afterContentInstall = null;
+      hook?.();
     } else {
       updateStatus(t('status.error', { msg: result?.error || t('common.unknown') }));
     }
@@ -7484,6 +10278,12 @@ function renderVersionsListPanel(versions: any[]): void {
 }
 
 function openModalVersionsForDownload(projectId: string): void {
+  if (!versionsHostLock) {
+    hostCatalogInstall = null;
+    versionsPreferGame = '';
+    versionsPreferLoader = '';
+  }
+  versionsHostLock = false;
   pendingDownloadVersionId = '';
   pendingDownloadGameVersions = [];
   pendingDownloadLoaders = [];
@@ -7491,12 +10291,13 @@ function openModalVersionsForDownload(projectId: string): void {
   pendingVersionsAll = [];
   pendingProjectType = 'mod';
   versionsUiMode = 'quick';
-  // Из редактора сборки — сразу подставляем MC/loader этой сборки
-  const beMeta = editingBuildId ? getEditingBuildCatalogMeta() : null;
-  versionsPickGame = beMeta?.gameVersion || modsVersion || '';
-  versionsPickLoader = beMeta?.loader && beMeta.loader !== 'vanilla'
-    ? beMeta.loader
-    : (modsLoaders.size === 1 ? [...modsLoaders][0] : '');
+  // Из редактора сборки — сразу подставляем MC/loader этой сборки.
+  // Из каталога плагинов — версию и ядро открытого сервера.
+  const beMeta = editingBuildId && !hostCatalogInstall ? getEditingBuildCatalogMeta() : null;
+  versionsPickGame = versionsPreferGame || beMeta?.gameVersion || modsVersion || '';
+  versionsPickLoader = versionsPreferLoader
+    || (beMeta?.loader && beMeta.loader !== 'vanilla' ? beMeta.loader : '')
+    || (modsLoaders.size === 1 ? [...modsLoaders][0] : '');
   versionsShowAll = false;
   versionsOpenDd = null;
 
@@ -7594,6 +10395,22 @@ document.addEventListener('click', (e) => {
   if (versionsOpenDd && !target.closest('#versions-quick [data-vdd-toggle]') && !target.closest('.stngs-select-menu.is-portal')) {
     closeVersionsDropdown(true);
   }
+});
+
+window.addEventListener('uclient-host-catalog', (event) => {
+  const detail = (event as CustomEvent).detail || {};
+  const projectId = String(detail.projectId || '');
+  if (!projectId) return;
+  if (detail.mode === 'ask') {
+    askAgentAboutMod(getAiUiHost(), String(detail.title || projectId), projectId);
+    return;
+  }
+  hostCatalogInstall = typeof detail.install === 'function' ? detail.install : null;
+  versionsPreferGame = String(detail.gameVersion || '');
+  versionsPreferLoader = String(detail.loader || '');
+  versionsHostLock = true;
+  if (detail.mode === 'versions') openModalVersionsForDownload(projectId);
+  else void openModalDetails(projectId);
 });
 
 document.addEventListener('change', (e) => {
@@ -8452,12 +11269,27 @@ async function runInstanceExport(kind: 'zip' | 'mrpack', build: Build): Promise<
   }
   exportBusy = true;
   updateStatus(t('share.exportPreparing'));
+  upsertLauncherTask({
+    id: 'export',
+    title: t('tasks.export'),
+    stage: t('share.exportPreparing'),
+    percent: null,
+    detail: '',
+  });
   const off = api?.onInstanceExportProgress?.((data) => {
     const phase = String(data?.phase || '');
     const file = String(data?.filename || '');
-    if (phase === 'pack' && file) updateStatus(t('share.exportPacking', { file }));
-    else if (phase === 'resolve' && file) updateStatus(t('share.exportResolving', { file }));
-    else if (phase === 'prepare') updateStatus(t('share.exportPreparing'));
+    let stage = t('share.exportPreparing');
+    if (phase === 'pack' && file) stage = t('share.exportPacking', { file });
+    else if (phase === 'resolve' && file) stage = t('share.exportResolving', { file });
+    updateStatus(stage);
+    upsertLauncherTask({
+      id: 'export',
+      title: t('tasks.export'),
+      stage,
+      percent: null,
+      detail: '',
+    });
   }) || null;
 
   try {
@@ -8466,15 +11298,31 @@ async function runInstanceExport(kind: 'zip' | 'mrpack', build: Build): Promise<
       : await api?.exportInstanceMrpack?.(build.id);
     if (!result?.ok) {
       if (result?.error === 'cancelled') updateStatus(t('share.exportCancelled'));
-      else updateStatus(t('share.exportFailed'));
+      else {
+        updateStatus(t('share.exportFailed'));
+        upsertLauncherTask({ id: 'export', title: t('tasks.export'), stage: t('share.exportFailed'), percent: null, detail: '', tone: 'error' });
+        finishLauncherTask('export');
+      }
       return;
     }
     updateStatus(t('share.exportDone', { path: result.path || '' }));
+    upsertLauncherTask({
+      id: 'export',
+      title: t('tasks.export'),
+      stage: t('share.exportDone', { path: result.path || '' }),
+      percent: 100,
+      detail: '',
+      tone: 'success',
+    });
+    finishLauncherTask('export');
   } catch {
     updateStatus(t('share.exportFailed'));
+    upsertLauncherTask({ id: 'export', title: t('tasks.export'), stage: t('share.exportFailed'), percent: null, detail: '', tone: 'error' });
+    finishLauncherTask('export');
   } finally {
     off?.();
     exportBusy = false;
+    clearLauncherTask('export');
   }
 }
 
@@ -8493,11 +11341,20 @@ async function openShareModal(build: Build): Promise<void> {
     if (phase === 'hash' && total > 0) {
       shareSetProgress(current / total, t('share.phaseHash', { file: filename }));
       shareSetText('share-sub', t('share.preparing'));
+      syncTaskFromCounted('share', t('tasks.export'), t('share.phaseHash', { file: filename }), current, total);
     } else if (phase === 'upload' && total > 0) {
       shareSetProgress(current / total, t('share.phaseUpload', { file: filename }));
       shareSetText('share-sub', t('share.uploading'));
+      syncTaskFromCounted('share', t('tasks.export'), t('share.phaseUpload', { file: filename }), current, total);
     } else if (phase === 'prepare') {
       shareSetProgress(0, t('share.preparing'));
+      upsertLauncherTask({
+        id: 'share',
+        title: t('tasks.export'),
+        stage: t('share.preparing'),
+        percent: null,
+        detail: '',
+      });
     }
   }) || null;
 
@@ -8552,6 +11409,7 @@ async function openShareModal(build: Build): Promise<void> {
     shareBusy = false;
     shareProgressOff?.();
     shareProgressOff = null;
+    clearLauncherTask('share');
   }
 }
 
@@ -8717,6 +11575,7 @@ async function confirmShareImport(): Promise<void> {
     const filename = String(data?.filename || '');
     if (String(data?.phase) === 'import' && total > 0) {
       shareImportSetProgress(current / total, t('shareImport.phaseFile', { file: filename }));
+      syncTaskFromCounted('share-import', t('tasks.import'), t('shareImport.phaseFile', { file: filename }), current, total);
     }
   }) || null;
 
@@ -8753,6 +11612,7 @@ async function confirmShareImport(): Promise<void> {
     shareImportBusy = false;
     shareImportProgressOff?.();
     shareImportProgressOff = null;
+    clearLauncherTask('share-import');
   }
 }
 
@@ -9001,6 +11861,120 @@ function getHomeFeaturedBuild(): Build | null {
   return best;
 }
 
+let homeSelectedBuildId: string | null = null;
+let homeRunListOpen = false;
+
+function getHomeSelectedBuild(): Build | null {
+  if (homeSelectedBuildId) {
+    const found = savedBuilds.find((b) => b.id === homeSelectedBuildId);
+    if (found) return found;
+  }
+  const featured = getHomeFeaturedBuild();
+  if (featured) homeSelectedBuildId = featured.id;
+  return featured;
+}
+
+function selectHomeBuild(id: string | null): void {
+  homeSelectedBuildId = id;
+  renderBuildRunPanel();
+}
+
+function buildRunLabel(build: Build): string {
+  const tail = [build.gameVersion, build.loader].filter(Boolean).join(' • ');
+  return tail ? `${build.name} ${tail}` : build.name;
+}
+
+function setHomeRunListOpen(open: boolean): void {
+  homeRunListOpen = open;
+  document.getElementById('build-run-panel')?.classList.toggle('is-open', open);
+  document.getElementById('build-run-selector')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function renderBuildRunPanel(): void {
+  const label = document.getElementById('build-run-label');
+  const meta = document.getElementById('build-run-meta');
+  const icon = document.getElementById('build-run-icon');
+  const list = document.getElementById('build-run-list');
+  const selected = getHomeSelectedBuild();
+  if (label) label.textContent = selected ? selected.name : t('sidebar.noBuilds');
+  if (meta) {
+    const line = selected ? [selected.gameVersion, selected.loader].filter(Boolean).join(' · ') : '';
+    meta.textContent = line;
+    meta.classList.toggle('hidden', !line);
+  }
+  if (icon) icon.innerHTML = selected ? buildCardIconHtml(selected) : defaultBuildIconHtml();
+  setHomeRunListOpen(homeRunListOpen);
+  syncHomePlayButton();
+  if (!list) return;
+  if (!savedBuilds.length) {
+    list.innerHTML = `<div class="build-run-empty">${escapeHtml(t('sidebar.noBuilds'))}</div>`;
+    return;
+  }
+  list.innerHTML = savedBuilds.map((b) => {
+    const selectedCls = selected && b.id === selected.id ? ' is-selected' : '';
+    const metaLine = [b.gameVersion, b.loader].filter(Boolean).join(' · ');
+    return `<div class="build-run-item${selectedCls}" data-build-id="${escapeHtml(b.id)}" role="option">
+      <span class="build-run-item__icon">${buildCardIconHtml(b)}</span>
+      <span class="build-run-item__text">
+        <span class="build-run-item__name">${escapeHtml(b.name)}</span>
+        ${metaLine ? `<span class="build-run-item__meta">${escapeHtml(metaLine)}</span>` : ''}
+      </span>
+      <button type="button" class="build-run-item__edit" data-edit-id="${escapeHtml(b.id)}">
+        <span></span><span></span><span></span>
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function updateHomeLastBuild(): void {
+  const last = getLastPlayedBuild();
+  const metaEl = document.getElementById('home-last-meta');
+  const iconEl = document.getElementById('home-last-icon');
+  const btn = document.getElementById('home-last-build') as HTMLButtonElement | null;
+  if (!metaEl) return;
+  if (!last) {
+    metaEl.textContent = t('home.session.none');
+    if (iconEl) iconEl.innerHTML = '';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  if (btn) btn.disabled = false;
+  const version = [last.gameVersion, last.loader].filter(Boolean).join(' ');
+  metaEl.textContent = version ? `${last.name} • ${version}` : last.name;
+  if (iconEl) iconEl.innerHTML = buildCardIconHtml(last);
+}
+
+function ruNoun(n: number, one: string, few: string, many: string): string {
+  const abs = Math.abs(n) % 100;
+  const last = abs % 10;
+  if (abs > 10 && abs < 20) return many;
+  if (last > 1 && last < 5) return few;
+  if (last === 1) return one;
+  return many;
+}
+
+function formatHomeLibraryLine(): string {
+  const builds = savedBuilds.length;
+  const servers = savedServers.length;
+  if (currentLang === 'ru') {
+    const buildsWord = ruNoun(builds, 'сборка', 'сборки', 'сборок');
+    const serversWord = ruNoun(servers, 'сервер', 'сервера', 'серверов');
+    return `${builds} ${buildsWord} • ${servers} ${serversWord}`;
+  }
+  return t('home.insight.libraryValue', { builds, servers });
+}
+
+function formatHomePlaytimeLine(seconds: number): string {
+  if (seconds <= 0) return t('home.insight.playtimeEmpty');
+  if (currentLang !== 'ru') return formatPlaytime(seconds);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const hourWord = ruNoun(hours, 'час', 'часа', 'часов');
+  const minuteWord = ruNoun(minutes, 'минута', 'минуты', 'минут');
+  if (hours <= 0) return `${minutes} ${minuteWord}`;
+  return `${hours} ${hourWord} ${minutes} ${minuteWord}`;
+}
+
 function countInstalledMods(): number {
   return savedBuilds.reduce((sum, b) => sum + (Array.isArray(b.mods) ? b.mods.length : 0), 0);
 }
@@ -9024,7 +11998,6 @@ function updateHomeWelcomeSub(): void {
 }
 
 function updateHomeInsights(): void {
-  const featured = getHomeFeaturedBuild();
   const lastPlayed = getLastPlayedBuild();
   const sessionValue = document.getElementById('home-insight-session-value');
   const sessionHint = document.getElementById('home-insight-session-hint');
@@ -9032,61 +12005,49 @@ function updateHomeInsights(): void {
   const libraryHint = document.getElementById('home-insight-library-hint');
   const playtimeValue = document.getElementById('home-insight-playtime-value');
   const playtimeHint = document.getElementById('home-insight-playtime-hint');
-  const heroStatus = document.getElementById('quick-banner-status');
 
   updateHomeWelcomeSub();
+  updateHomeLastBuild();
 
-  if (featured) {
-    if (sessionValue) sessionValue.textContent = featured.name;
-    const lastAt = Number(localStorage.getItem('last-launch-at') || 0);
-    const rel = lastPlayed ? formatRelativeLaunch(lastAt) : '';
-    const played = featured.playtime ? formatPlaytime(featured.playtime) : '';
+  const lastAt = Number(localStorage.getItem('last-launch-at') || 0);
+  const lastSec = Number(localStorage.getItem('last-session-seconds') || 0);
+  if (runningBuild && runningBuildStart > 0) {
+    const elapsed = Math.max(0, Math.floor((Date.now() - runningBuildStart) / 1000));
+    if (sessionValue) sessionValue.textContent = formatPlaytime(elapsed);
+    if (sessionHint) sessionHint.textContent = runningBuild.name;
+  } else if (lastSec > 0) {
+    if (sessionValue) sessionValue.textContent = formatPlaytime(lastSec);
     if (sessionHint) {
-      sessionHint.textContent = [rel, played ? t('home.insight.sessionPlayed', { time: played }) : '']
+      sessionHint.textContent = [lastPlayed?.name, lastAt ? formatRelativeLaunch(lastAt) : '']
         .filter(Boolean)
-        .join(' · ') || t('home.insight.sessionReady');
+        .join(' · ');
     }
-    if (heroStatus) {
-      heroStatus.textContent = rel
-        ? t('home.hero.statusPlayed', { when: rel })
-        : t('home.hero.statusReady');
-    }
+  } else if (lastAt > 0 && lastPlayed) {
+    if (sessionValue) sessionValue.textContent = formatRelativeLaunch(lastAt);
+    if (sessionHint) sessionHint.textContent = lastPlayed.name;
   } else {
-    if (sessionValue) sessionValue.textContent = t('home.insight.sessionEmpty');
+    if (sessionValue) sessionValue.textContent = t('home.session.none');
     if (sessionHint) sessionHint.textContent = t('home.insight.sessionEmptyHint');
-    if (heroStatus) heroStatus.textContent = t('home.hero.statusEmpty');
   }
 
-  const modsN = countInstalledMods();
-  if (savedBuilds.length === 0) {
-    if (libraryValue) libraryValue.textContent = t('home.insight.libraryEmpty');
-    if (libraryHint) libraryHint.textContent = t('home.insight.libraryEmptyHint');
-  } else {
-    if (libraryValue) {
-      libraryValue.textContent = t('home.insight.libraryValue', {
-        builds: savedBuilds.length,
-        servers: savedServers.length,
-      });
-    }
-    if (libraryHint) {
-      libraryHint.textContent = modsN > 0
-        ? t('home.insight.libraryMods', { n: modsN })
-        : t('home.insight.libraryHint');
-    }
-  }
+  if (libraryValue) libraryValue.textContent = formatHomeLibraryLine();
+  if (libraryHint) libraryHint.textContent = '';
 
-  const totalPlay = savedBuilds.reduce((sum, b) => sum + (b.playtime || 0), 0);
-  if (playtimeValue) playtimeValue.textContent = formatPlaytime(totalPlay);
-  if (playtimeHint) {
-    playtimeHint.textContent = totalPlay > 0
-      ? t('home.insight.playtimeHint')
-      : t('home.insight.playtimeEmpty');
+  let totalPlay = savedBuilds.reduce((sum, b) => sum + (b.playtime || 0), 0);
+  if (runningBuild && runningBuildStart > 0) {
+    const already = savedBuilds.find((b) => b.id === runningBuild!.id)?.playtime || 0;
+    const elapsed = Math.max(0, Math.floor((Date.now() - runningBuildStart) / 1000));
+    if (already === (runningBuild.playtime || 0)) totalPlay += elapsed;
   }
+  if (playtimeValue) playtimeValue.textContent = formatHomePlaytimeLine(totalPlay);
+  if (playtimeHint) playtimeHint.textContent = '';
 }
 
 function refreshHomeDashboard(): void {
   updateBanner();
   updateHomeInsights();
+  if (!newsPosts.length && !newsLoading) void loadNews(false);
+  else renderHomeNews();
 }
 
 function updateStats(): void {
@@ -9188,8 +12149,9 @@ document.getElementById('home-insights')?.addEventListener('click', (e) => {
   const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-home-action]');
   if (!btn) return;
   const action = btn.getAttribute('data-home-action');
-  if (action === 'play') {
-    void document.getElementById('quick-banner-play')?.click();
+  if (action === 'select-last') {
+    const last = getLastPlayedBuild();
+    if (last) selectHomeBuild(last.id);
   } else if (action === 'builds') {
     switchTab('builds');
   } else if (action === 'stats') {
@@ -9235,7 +12197,7 @@ function updateSidebarLastServer(): void {
       ? `${Number(players).toLocaleString()}${max != null ? '/' + Number(max).toLocaleString() : ''}`
       : t('servers.online'))
     : (Object.keys(st).length ? t('servers.offline') : '…');
-  const fav = srvServerFavicon(st);
+  const fav = srvTileIcon(addr, st);
 
   if (lsName) lsName.textContent = srv.name;
   if (lsCard) lsCard.classList.remove('hidden-card');
@@ -9262,22 +12224,25 @@ async function ensureLastServerStatus(): Promise<void> {
   const srv = savedServers[savedServers.length - 1];
   const addr = savedServerAddr(srv);
   if (!addr) return;
-  if (srvStatusCache[addr]?.online != null || srvServerFavicon(srvStatusCache[addr] || {})) {
+  const cat = serverCatalog.find((c) => srvAddr(c) === addr);
+  const cached = srvStatusCache[addr];
+  const hasIcon = Boolean(srvServerFavicon(cached || {}) || cat?.icon);
+  if (cached?.online != null && (hasIcon || cached.iconChecked)) {
+    updateSidebarLastServer();
     return;
   }
-  const cat = serverCatalog.find((c) => srvAddr(c) === addr);
-  if (cat?.status && (cat.status.online != null || srvServerFavicon(cat.status))) {
+  if (!cached && cat?.status?.online != null && cat.icon) {
     srvStatusCache[addr] = cat.status;
     updateSidebarLastServer();
     return;
   }
   try {
     const st = (await api.serverStatus(addr)) || { online: false };
-    srvStatusCache[addr] = st;
+    srvStatusCache[addr] = { ...st, iconChecked: true };
     if (cat) cat.status = st;
     updateSidebarLastServer();
   } catch {
-    srvStatusCache[addr] = { online: false };
+    srvStatusCache[addr] = { online: false, iconChecked: true };
     updateSidebarLastServer();
   }
 }
@@ -9312,23 +12277,7 @@ function updateSidebarCards(): void {
 }
 
 function updateBanner(): void {
-  const featured = getHomeFeaturedBuild();
-  const title = document.getElementById('quick-banner-title');
-  const meta = document.getElementById('quick-banner-meta');
-  const sub = document.getElementById('quick-banner-sub');
-  if (featured) {
-    if (title) title.textContent = featured.name;
-    if (meta) {
-      meta.textContent = `${featured.gameVersion} · ${featured.loader}${featured.loaderVersion ? ' · ' + featured.loaderVersion : ''}`;
-    }
-    if (sub) sub.textContent = t('home.continueGame');
-    updateStatus(t('home.continueGame'));
-  } else {
-    if (title) title.textContent = t('sidebar.noBuilds');
-    if (meta) meta.textContent = t('home.noBuildsHint');
-    if (sub) sub.textContent = t('home.welcome');
-    updateStatus(t('home.welcomeStatus'));
-  }
+  renderBuildRunPanel();
   updateHomeInsights();
 }
 
@@ -9352,12 +12301,18 @@ function openModal(id: string): void {
   el.classList.remove('hidden', 'closing');
   // Считаем max среди уже видимых оверлеев — иначе versions может оказаться под details.
   let maxZ = modalZCounter;
-  document.querySelectorAll<HTMLElement>('.modal-overlay').forEach((node) => {
+  const considerZ = (node: HTMLElement) => {
     if (node === el || node.classList.contains('hidden')) return;
     const raw = node.style.zIndex || getComputedStyle(node).zIndex;
     const z = parseInt(raw, 10);
-    if (Number.isFinite(z) && z > maxZ) maxZ = z;
-  });
+    // Titlebar (2^31−1) и сплэш не поднимаем: модалка должна остаться под шапкой окна.
+    if (Number.isFinite(z) && z > maxZ && z < 1_000_000) maxZ = z;
+  };
+  document.querySelectorAll<HTMLElement>('.modal-overlay').forEach(considerZ);
+  // .msgr-ctx сознательно выше modal-overlay (1500 → 10050). Без этого пост из чата
+  // оказывается под слоем мессенджера, и клик по крестику/оверлею не доходит до модалки.
+  document.querySelectorAll<HTMLElement>('.msgr-ctx').forEach(considerZ);
+  if (id === 'modal-sf-post' && maxZ < 10050) maxZ = 10050;
   modalZCounter = maxZ + 1;
   el.style.zIndex = String(modalZCounter);
   if (PRESENCE_MODALS[id]) pushPresence(PRESENCE_MODALS[id]);
@@ -9365,7 +12320,19 @@ function openModal(id: string): void {
 function closeModal(id: string): void {
   const el = document.getElementById(id);
   if (!el) return;
-  if (id === 'modal-mod-details') closeBeShotViewer();
+  if (id === 'modal-mod-details') {
+    closeBeShotViewer();
+    closeImageViewer('mod');
+    closeVideoViewer('mod');
+  }
+  if (id === 'modal-news-details') {
+    closeImageViewer('news');
+    closeVideoViewer('news');
+  }
+  if (id === 'modal-srv-info') {
+    closeImageViewer('server');
+    afterContentInstall = null;
+  }
   const prev = modalCloseTimers.get(id);
   if (prev != null) clearTimeout(prev);
   el.classList.add('closing');
@@ -9470,6 +12437,7 @@ api?.onWorldBoundsSyncRequest?.(() => {
 
 const ESC_CLOSEABLE_MODALS: { id: string; close: () => void }[] = [
   { id: 'modal-build', close: closeModalBuildModal },
+  { id: 'modal-build-group', close: closeModalBuildGroup },
   { id: 'modal-server', close: closeModalServerModal },
   { id: 'modal-account', close: () => closeModal('modal-account') },
   { id: 'modal-acc-req', close: () => closeModal('modal-acc-req') },
@@ -9490,6 +12458,8 @@ const ESC_CLOSEABLE_MODALS: { id: string; close: () => void }[] = [
   { id: 'modal-crash', close: () => closeModal('modal-crash') },
   // Последним: поверх остальных (в т.ч. редактора сборки).
   { id: 'modal-world-preview', close: () => { void closeWorldPreviewModal(); } },
+  // Пост сообщества может быть открыт поверх чата (z-index выше .msgr-ctx).
+  { id: 'modal-sf-post', close: () => closeModal('modal-sf-post') },
 ];
 
 document.addEventListener('keydown', (e) => {
@@ -9525,7 +12495,10 @@ function switchBeTab(tab: string): void {
   const panelEl = document.querySelector(`.be-panel[data-be-panel="${tab}"]`);
   if (tabEl) tabEl.classList.add('active');
   if (panelEl) panelEl.classList.add('active');
-  if (tab !== 'screenshots') closeBeShotViewer();
+  if (tab !== 'screenshots') {
+    closeBeShotViewer();
+    closeImageViewer('shots');
+  }
   if (tab === 'screenshots') loadBeScreenshots();
   if (tab === 'worlds') loadBeWorlds();
 }
@@ -9665,6 +12638,9 @@ async function openModalBuild(build?: Build): Promise<void> {
   }
 
   openModal('modal-build');
+  void ensureBuildVersionsLoaded();
+  void fillBuildDriveSelect();
+  void fillInstancePathField(build);
   populateLoaderVersions(
     (document.getElementById('modal-build-loader') as HTMLSelectElement)?.value || 'vanilla',
     (document.getElementById('modal-build-version') as HTMLSelectElement)?.value || 'latest_release'
@@ -9690,6 +12666,7 @@ async function openModalBuild(build?: Build): Promise<void> {
 function closeModalBuildModal(): void {
   stopWatchingInstance();
   closeBeShotViewer();
+  closeImageViewer('shots');
   closeModal('modal-build');
 }
 
@@ -10080,9 +13057,13 @@ async function submitModalBuild(): Promise<void> {
     return items;
   }
 
+  let created: Build | null = null;
   if (editingBuildId) {
     const existing = savedBuilds.find(b => b.id === editingBuildId);
     if (existing) {
+      const runtimeChanged = existing.gameVersion !== versionSelect.value
+        || existing.loader !== loaderSelect.value
+        || (existing.loaderVersion || '') !== loaderVerInput.value.trim();
       existing.name = name;
       existing.gameVersion = versionSelect.value;
       existing.loader = loaderSelect.value;
@@ -10098,6 +13079,7 @@ async function submitModalBuild(): Promise<void> {
       existing.shaders = collectFiles('be-shaders-list');
       existing.dataPacks = collectFiles('be-dp-list');
       if (api?.saveBuild) await api.saveBuild(existing);
+      if (runtimeChanged) created = existing;
     }
   } else {
     const build: Build = {
@@ -10120,9 +13102,31 @@ async function submitModalBuild(): Promise<void> {
     };
     if (api?.saveBuild) await api.saveBuild(build);
     else savedBuilds.push(build);
+    const driveParent = (document.getElementById('modal-build-drive') as HTMLSelectElement | null)?.value || '';
+    if (driveParent && driveParent !== BUILD_PATH_PICK && api?.prepareBuildLocation) {
+      const placed = await api.prepareBuildLocation(build.id, driveParent);
+      if (!placed?.ok) updateStatus(placed?.error || t('paths.moveFailed'));
+    }
+    created = build;
   }
   await loadBuilds();
   closeModalBuildModal();
+  if (created) await prefetchBuildRuntime(created);
+}
+
+/** Клиент, библиотеки, ассеты и загрузчик — сразу после создания, до первого запуска. */
+async function prefetchBuildRuntime(build: Build): Promise<void> {
+  if (!api?.prefetchRuntime) return;
+  updateStatus(t('smp.preparingRuntime'));
+  const res = await api.prefetchRuntime({
+    buildId: build.id,
+    gameVersion: build.gameVersion,
+    loader: build.loader,
+    loaderVersion: build.loaderVersion,
+  });
+  if (res && !res.ok && res.error && res.error !== 'cancelled') {
+    updateStatus(t('smp.prefetchFailed', { msg: res.error }));
+  }
 }
 
 /* ── Modal: Server ── */
@@ -10140,7 +13144,7 @@ function openModalServer(server?: Server): void {
     if (sub) sub.textContent = t('srv.editSub');
     if (submitBtn) submitBtn.textContent = t('btn.save');
     if (nameInput) nameInput.value = server.name;
-    if (ipInput) ipInput.value = server.ip;
+    if (ipInput) ipInput.value = serverAddressField(server);
     if (verInput) verInput.value = server.version || '';
   } else {
     editingServerId = null;
@@ -10164,22 +13168,28 @@ async function submitModalServer(): Promise<void> {
   const verInput = document.getElementById('modal-server-version') as HTMLInputElement;
   if (!nameInput || !ipInput) return;
   const name = nameInput.value.trim();
-  const ip = ipInput.value.trim();
-  if (!name || !ip) return;
+  const typed = ipInput.value.trim();
+  if (!name || !typed) return;
+  const parsed = endpointFromAddress(typed);
 
   if (editingServerId) {
     const existing = savedServers.find(s => s.id === editingServerId);
     if (existing) {
       existing.name = name;
-      existing.ip = ip;
+      existing.ip = parsed.host;
+      existing.port = parsed.port;
       existing.version = verInput?.value?.trim() || '';
+      existing.manual = true;
       if (api?.saveServer) await api.saveServer(existing);
     }
   } else {
     const server: Server = {
       id: 'srv-' + Date.now().toString(36),
-      name, ip,
+      name,
+      ip: parsed.host,
+      port: parsed.port,
       version: verInput?.value?.trim() || '',
+      manual: true,
     };
     if (api?.saveServer) await api.saveServer(server);
     else savedServers.push(server);
@@ -10285,33 +13295,20 @@ function bindNewsOpenHandlers(root: ParentNode): void {
   });
 }
 
-async function loadNews(force = false): Promise<void> {
-  if (newsLoadPromise) await newsLoadPromise;
-
+async function loadNewsOfficialOnly(force = false): Promise<void> {
   const lang = newsApiLang();
-  const cacheFresh = newsLoaded && !force
-    && newsFetchLang === lang
-    && (Date.now() - newsFetchedAt) < NEWS_CACHE_MS;
-
-  if (cacheFresh) {
-    renderNews();
-    renderHomeNews();
-    return;
-  }
-
+  const cacheFresh =
+    newsLoaded &&
+    !force &&
+    newsFetchLang === lang &&
+    Date.now() - newsFetchedAt < NEWS_CACHE_MS;
+  if (cacheFresh) return;
   if (newsLoadPromise) {
     await newsLoadPromise;
-    renderNews();
-    renderHomeNews();
     return;
   }
-
   newsLoadPromise = (async () => {
     newsLoading = true;
-    newsError = null;
-    renderNews();
-    renderHomeNews();
-
     try {
       const result = await api?.fetchNewsList?.(lang, 50);
       if (!result || result.error) {
@@ -10336,18 +13333,28 @@ async function loadNews(force = false): Promise<void> {
       newsLoadPromise = null;
     }
   })();
-
   await newsLoadPromise;
-  renderNews();
+}
+
+async function loadNews(force = false): Promise<void> {
+  await loadNewsOfficialOnly(force);
   renderHomeNews();
+  if (presenceTab === 'news') {
+    await loadSocialFeed(force);
+  }
 }
 
 function renderNews(): void {
   if (presenceTab !== 'news') return;
+  const root = document.getElementById('sf-official-news');
+  if (!root) {
+    void loadSocialFeed(false);
+    return;
+  }
+  renderOfficialNewsInto(root);
+}
 
-  const root = document.getElementById('news-page');
-  if (!root) return;
-
+function renderOfficialNewsInto(root: HTMLElement): void {
   if (newsLoading && !newsLoaded) {
     root.innerHTML = `<div class="news-state-msg">${escapeHtml(t('news.loading'))}</div>`;
     return;
@@ -10355,7 +13362,9 @@ function renderNews(): void {
 
   if (newsError) {
     root.innerHTML = `<div class="news-state-msg error">${escapeHtml(t('news.error'))} <button class="mods-retry-btn" id="news-retry-btn">${escapeHtml(t('btn.retry'))}</button></div>`;
-    document.getElementById('news-retry-btn')?.addEventListener('click', () => void loadNews(true));
+    document.getElementById('news-retry-btn')?.addEventListener('click', () => {
+      void loadNewsOfficialOnly(true).then(() => renderOfficialNewsInto(root));
+    });
     return;
   }
 
@@ -10369,13 +13378,27 @@ function renderNews(): void {
     ? `<section class="news-more">
         <h2 class="news-more-title">${escapeHtml(t('news.moreArticles'))}</h2>
         <div class="news-cards-grid">
-          ${rest.map(post => renderNewsArticleCard(post)).join('')}
+          ${rest.map((post) => renderNewsArticleCard(post)).join('')}
         </div>
       </section>`
     : '';
 
   root.innerHTML = renderNewsFeatured(featured) + moreHtml;
   bindNewsOpenHandlers(root);
+}
+
+function latestOfficialNewsPost(): NewsPostSummary | null {
+  if (!newsPosts.length) return null;
+  let best = newsPosts[0];
+  let bestTime = Date.parse(best.publishedAt || '') || 0;
+  for (const post of newsPosts) {
+    const time = Date.parse(post.publishedAt || '') || 0;
+    if (time > bestTime) {
+      best = post;
+      bestTime = time;
+    }
+  }
+  return best;
 }
 
 function renderHomeNews(): void {
@@ -10385,20 +13408,14 @@ function renderHomeNews(): void {
   const summaryEl = document.getElementById('home-news-summary');
   if (!block || !coverEl || !titleEl || !summaryEl) return;
 
-  const hide = (): void => block.classList.add('hidden');
-
-  if (newsLoading && !newsLoaded) {
-    hide();
+  const post = latestOfficialNewsPost();
+  if (!post) {
+    block.classList.add('hidden');
     return;
   }
-
-  if (newsError || !newsPosts.length) {
-    hide();
-    return;
-  }
-
-  const post = newsPosts[0];
   const coverUrl = resolveNewsAssetUrl(post.cover);
+  coverEl.classList.remove('is-ready');
+  coverEl.classList.toggle('uc-frame', Boolean(coverUrl));
   coverEl.innerHTML = coverUrl
     ? `<img src="${escapeHtml(coverUrl)}" alt="" loading="lazy">`
     : '';
@@ -10432,14 +13449,18 @@ function bindNewsContentLinks(container: HTMLElement): void {
     a.addEventListener('click', (e) => {
       e.preventDefault();
       const href = (a as HTMLAnchorElement).href;
-      if (href) void api?.openExternal(href);
+      if (!href) return;
+      // Файл ролика в новости — внутренний контент, без кнопки внешней ссылки.
+      if (isDirectVideoUrl(href)) {
+        openVideoViewer([{ src: href }], 0, 'news');
+        return;
+      }
+      void api?.openExternal(href);
     });
   });
-  container.querySelectorAll('img').forEach(img => {
-    img.addEventListener('click', () => {
-      if (img.src) void api?.openExternal(img.src);
-    });
-  });
+  // Картинки новости — внутренний контент лаунчера, без кнопки внешней ссылки.
+  bindZoomableImages(container, { includeLinked: true, source: 'news' });
+  bindPlayableVideos(container, { source: 'news' });
 }
 
 async function openModalNews(postId: string): Promise<void> {
@@ -10484,7 +13505,12 @@ async function openModalNews(postId: string): Promise<void> {
     coverWrap.classList.remove('hidden');
   }
 
-  const bodyHtml = post.contentHtml || markedParse(post.content || '');
+  const bodyHtml = post.content ? markedParse(post.content) : post.contentHtml || '';
+  void noteOfficialNewsView(postId).then((views) => {
+    if (views == null) return;
+    const cached = newsPosts.find((item) => String(item.id) === String(postId));
+    if (cached) cached.views = views;
+  });
   desc.innerHTML = sanitizeHtml(bodyHtml);
   bindNewsContentLinks(desc);
 
@@ -10584,6 +13610,11 @@ function setModDetailsTab(tab: 'desc' | 'shots'): void {
 
 let modDetailsGalleryItems: ModGalleryItem[] = [];
 
+function modGalleryIsVideo(item: ModGalleryItem): boolean {
+  const raw = unwrapCatalogImageUrl(item.url);
+  return isDirectVideoUrl(raw) || isDirectVideoUrl(item.url);
+}
+
 function renderModDetailsGallery(items: ModGalleryItem[]): void {
   modDetailsGalleryItems = items;
   const gallery = document.getElementById('modal-mod-gallery');
@@ -10594,9 +13625,18 @@ function renderModDetailsGallery(items: ModGalleryItem[]): void {
   }
   gallery.innerHTML = items
     .map((item, i) => {
-      const src = escapeHtml(catalogImageUrl(item.thumb || item.url));
       const title = item.title ? escapeHtml(item.title) : '';
       const cap = title ? `<span class="mod-details-gallery__cap">${title}</span>` : '';
+      if (modGalleryIsVideo(item)) {
+        const raw = unwrapCatalogImageUrl(item.url);
+        const playable = /^https?:\/\//i.test(raw) ? raw : item.url;
+        return `<button type="button" class="mod-details-gallery__item" data-gallery-index="${i}" title="${title || escapeHtml(item.url)}">
+          <video src="${escapeHtml(playable)}" muted preload="metadata" playsinline></video>
+          <span class="mod-details-gallery__play" aria-hidden="true"><img src="../../assets/icons/videoPlayer/play.svg" alt="" width="16" height="16"></span>
+          ${cap}
+        </button>`;
+      }
+      const src = escapeHtml(catalogImageUrl(item.thumb || item.url));
       return `<button type="button" class="mod-details-gallery__item" data-gallery-index="${i}" title="${title || escapeHtml(item.url)}">
         <img src="${src}" alt="${title}" loading="lazy">
         ${cap}
@@ -10609,7 +13649,7 @@ function renderModDetailsGallery(items: ModGalleryItem[]): void {
       e.stopPropagation();
       const idx = Number(btn.getAttribute('data-gallery-index'));
       if (!Number.isFinite(idx)) return;
-      void openModGalleryViewer(idx);
+      openModGalleryViewer(idx);
     });
   });
 }
@@ -10681,6 +13721,7 @@ async function openModalDetails(projectId: string): Promise<void> {
   }
   if (dlBtn) {
     dlBtn.onclick = () => {
+      versionsHostLock = Boolean(hostCatalogInstall);
       closeModal('modal-mod-details');
       openModalVersionsForDownload(project.id || project.project_id || project.slug || projectId);
     };
@@ -10707,27 +13748,75 @@ async function openModalDetails(projectId: string): Promise<void> {
     el.style.maxWidth = '100%';
     if (el.style.width && el.style.width.includes('%')) el.style.width = '';
   });
+  // Картинки страницы мода — общий просмотр, кнопка ссылки ведёт на оригинал.
+  bindZoomableImages(desc, { external: true, source: 'mod' });
+  // Ролики страницы мода — общий плеер, ссылка только на внешний файл.
+  bindPlayableVideos(desc, { external: true, source: 'mod' });
   // Open external links in system browser
   desc.querySelectorAll('a[href]').forEach(a => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
       const href = (a as HTMLAnchorElement).href;
-      if (href) api?.openExternal(href);
+      if (!href) return;
+      if (isDirectVideoUrl(href)) {
+        openVideoViewer([{ src: href, externalUrl: href }], 0, 'mod');
+        return;
+      }
+      api?.openExternal(href);
     });
   });
 }
 
+// Markdown внутри <details> marked не разбирает: заранее превращаем тело в HTML.
 function markedParse(md: string): string {
   try {
-    return marked.parse(md, { async: false }) as string;
+    const blocks: string[] = [];
+    const source = String(md || '').replace(/<details(\s[^>]*)?>([\s\S]*?)<\/details>/gi, (_full, attrs: string, inner: string) => {
+      blocks.push(renderDetailsBlock(attrs || '', inner || ''));
+      return `\n\n%%DETAILS${blocks.length - 1}%%\n\n`;
+    });
+    let html = marked.parse(source, { async: false, breaks: true, gfm: true }) as string;
+    html = html.replace(/<p>\s*%%DETAILS(\d+)%%\s*<\/p>/g, (_m, index: string) => blocks[Number(index)] || '');
+    html = html.replace(/%%DETAILS(\d+)%%/g, (_m, index: string) => blocks[Number(index)] || '');
+    return html;
   } catch {
     return md;
   }
 }
 
+function renderDetailsBlock(attrs: string, inner: string): string {
+  const summary = inner.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i);
+  const body = summary ? inner.replace(summary[0], '') : inner;
+  let innerHtml = '';
+  try {
+    innerHtml = marked.parse(body.trim(), { async: false, breaks: true, gfm: true }) as string;
+  } catch {
+    innerHtml = body;
+  }
+  const title = summary ? summary[1].trim() : '';
+  const open = /\bopen\b/i.test(attrs) ? ' open' : '';
+  return `<details class="sf-details"${open}><summary>${title}</summary><div class="sf-details__body"><div class="sf-details__inner">${innerHtml}</div></div></details>`;
+}
+
+/** Markdown для соцленты: @ник → mention + без «ломающих» заголовков */
+function renderSocialMarkdown(md: string): string {
+  const raw = String(md || '');
+  const withMentions = raw.replace(
+    /(^|[\s(])@([A-Za-z0-9_]{2,32})\b/g,
+    '$1[@$2](#sf-mention/$2)',
+  );
+  let html = sanitizeHtml(markedParse(withMentions));
+  html = html.replace(
+    /<a\s+([^>]*?)href="#sf-mention\/([^"]+)"([^>]*)>(.*?)<\/a>/gi,
+    (_m, _a, user, _b, text) =>
+      `<span class="sf-mention" data-sf-user="${escapeHtml(decodeURIComponent(user))}">${text}</span>`,
+  );
+  return html;
+}
+
 function sanitizeHtml(html: string): string {
-  const allowedTags = ['p','br','b','i','u','strong','em','h1','h2','h3','h4','h5','h6','ul','ol','li','a','img','pre','code','blockquote','hr','table','thead','tbody','tr','th','td','span','div'];
-  const allowedAttrs = ['href','src','alt','title','target','width','height','class'];
+  const allowedTags = ['p','br','b','i','u','strong','em','h1','h2','h3','h4','h5','h6','ul','ol','li','a','img','video','source','pre','code','blockquote','hr','table','thead','tbody','tr','th','td','span','div','details','summary'];
+  const allowedAttrs = ['href','src','alt','title','target','width','height','class','poster','preload','type','playsinline','muted','open'];
   return html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<[^>]+>/g, (tag) => {
@@ -10735,9 +13824,46 @@ function sanitizeHtml(html: string): string {
       if (!tagName || !allowedTags.includes(tagName)) return '';
       if (tag.startsWith('</')) return `</${tagName}>`;
       const attrs = tag.match(/(\w+)\s*=\s*"([^"]*)"/g) || [];
-      const safe = attrs.filter((a: string) => allowedAttrs.includes(a.split('=')[0])).join(' ');
-      return `<${tagName}${safe ? ' ' + safe : ''}>`;
+      const safe = attrs.filter((a: string) => allowedAttrs.includes(a.split('=')[0].toLowerCase())).join(' ');
+      const open = tagName === 'details' && /\sopen(?:=|\s|>|$)/i.test(tag) ? ' open' : '';
+      return `<${tagName}${open}${safe ? ' ' + safe : ''}>`;
     });
+}
+
+const NOTED_VIEWS_KEY = 'uc-noted-views';
+
+function notedViewIds(): Set<string> {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(NOTED_VIEWS_KEY) || '[]');
+    return new Set(Array.isArray(raw) ? raw.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberNotedView(token: string): void {
+  const ids = notedViewIds();
+  ids.add(token);
+  sessionStorage.setItem(NOTED_VIEWS_KEY, JSON.stringify([...ids]));
+}
+
+async function noteOfficialNewsView(id: string): Promise<number | null> {
+  const clean = String(id || '').trim();
+  if (!clean) return null;
+  const token = `news:${clean}`;
+  if (notedViewIds().has(token)) return null;
+  rememberNotedView(token);
+  const res = await api?.fetchNewsView?.(clean);
+  const views = Number(res?.views);
+  if (!res || res.error || !Number.isFinite(views)) {
+    const ids = notedViewIds();
+    ids.delete(token);
+    sessionStorage.setItem(NOTED_VIEWS_KEY, JSON.stringify([...ids]));
+    return null;
+  }
+  const cached = newsPosts.find((item) => String(item.id) === clean);
+  if (cached) cached.views = views;
+  return views;
 }
 
 document.getElementById('modal-mod-versions')?.addEventListener('click', () => {
@@ -10745,6 +13871,324 @@ document.getElementById('modal-mod-versions')?.addEventListener('click', () => {
   // Как у «Скачать»: сначала закрываем Подробнее, иначе окно версий оказывается под ним.
   closeModal('modal-mod-details');
   openModalVersionsForDownload(detailsProjectId);
+});
+
+// Иконки клиентов в списке переноса. Файла нет — чужую иконку не подставляем.
+const LAUNCHER_ICON_SRC: Record<string, string> = {
+  prism: '../../assets/icons/launchersTransferIcons/prism.png',
+  pinecone: '../../assets/icons/launchersTransferIcons/pinecone.png',
+  modrinth: '../../assets/icons/launchersTransferIcons/modrinth.png',
+  millida: '../../assets/icons/launchersTransferIcons/millida.png',
+  xmcl: '../../assets/icons/launchersTransferIcons/xmcl.png',
+};
+
+const BUILD_PATH_PICK = '__pick__';
+let buildPathCommitted = '';
+
+async function fillBuildDriveSelect(): Promise<void> {
+  const select = document.getElementById('modal-build-drive') as HTMLSelectElement | null;
+  const menu = document.getElementById('modal-build-drive-menu');
+  if (!select || !menu || !document.body.classList.contains('platform-win32')) return;
+  buildPathCommitted = '';
+  const loc = await api?.getInstancesLocation?.();
+  const current = loc?.instancesDir || '';
+  const options = [
+    { value: '', label: current ? t('paths.defaultDir', { path: current }) : t('paths.defaultDisk') },
+    { value: BUILD_PATH_PICK, label: t('paths.pickBuildPath') },
+  ];
+  select.innerHTML = options.map((o) => `<option value="${o.value.replace(/"/g, '&quot;')}">${escapeHtml(o.label)}</option>`).join('');
+  menu.innerHTML = options.map((o) => `<div class="stngs-select-opt" data-value="${o.value.replace(/"/g, '&quot;')}">${escapeHtml(o.label)}</div>`).join('');
+  select.value = '';
+  const wrap = select.closest('.stngs-select-wrap') as HTMLElement | null;
+  if (wrap) syncSelectUI(wrap);
+}
+
+document.getElementById('modal-build-drive')?.addEventListener('change', async () => {
+  const select = document.getElementById('modal-build-drive') as HTMLSelectElement | null;
+  const wrap = select?.closest('.stngs-select-wrap') as HTMLElement | null;
+  if (!select || !wrap || select.value !== BUILD_PATH_PICK) {
+    if (select && select.value !== BUILD_PATH_PICK) buildPathCommitted = select.value;
+    return;
+  }
+  const picked = await api?.pickInstancesDir?.(t('paths.pickBuildPath'));
+  if (picked) {
+    let opt = Array.from(select.options).find((o) => o.value === picked);
+    if (!opt) {
+      opt = document.createElement('option');
+      select.appendChild(opt);
+      opt.value = picked;
+    }
+    opt.textContent = picked;
+    select.value = picked;
+    buildPathCommitted = picked;
+  } else {
+    select.value = buildPathCommitted;
+  }
+  syncSelectUI(wrap);
+});
+
+async function fillInstancePathField(build?: Build | null): Promise<void> {
+  const el = document.getElementById('be-instance-path-text');
+  const row = document.getElementById('be-instance-path-row');
+  const driveField = document.getElementById('modal-build-drive-field');
+  if (driveField) driveField.classList.toggle('hidden', !!build?.id);
+  if (!el || !row) return;
+  if (!build?.id || !document.body.classList.contains('platform-win32')) {
+    row.classList.add('hidden');
+    return;
+  }
+  row.classList.remove('hidden');
+  const dir = await api?.getInstancePath?.(build.id);
+  el.textContent = dir || '—';
+}
+
+async function refreshInstanceLocationSettings(): Promise<void> {
+  if (!document.body.classList.contains('platform-win32')) return;
+  const loc = await api?.getInstancesLocation?.();
+  const label = document.getElementById('setting-instance-dir');
+  if (label) label.textContent = loc?.instancesDir || '—';
+  const select = document.getElementById('setting-instance-drive') as HTMLSelectElement | null;
+  const menu = document.getElementById('setting-instance-drive-menu');
+  if (!select || !menu) return;
+  const drives = (await api?.listInstanceDrives?.()) || [];
+  select.innerHTML = `<option value="">${t('paths.pickDrive')}</option>` + drives.map((d) => `<option value="${d.letter}:">${d.letter}:</option>`).join('');
+  menu.innerHTML = `<div class="stngs-select-opt" data-value="">${t('paths.pickDrive')}</div>`
+    + drives.map((d) => `<div class="stngs-select-opt" data-value="${d.letter}:">${d.letter}:</div>`).join('');
+  const wrap = select.closest('.stngs-select-wrap') as HTMLElement | null;
+  if (wrap) syncSelectUI(wrap);
+}
+
+function renderVersionFilterSettings(): void {
+  const box = document.getElementById('setting-version-groups');
+  if (!box) return;
+  const filters = loadVersionFilters();
+  box.innerHTML = MC_VERSION_GROUPS.map((group) => `
+    <label class="stngs-check">
+      <input type="checkbox" data-version-group="${group}" ${filters[group] ? 'checked' : ''}>
+      <span>${versionGroupLabel(group)}</span>
+    </label>
+  `).join('');
+  box.querySelectorAll<HTMLInputElement>('input[data-version-group]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const next = loadVersionFilters();
+      const group = input.dataset.versionGroup as McVersionGroup;
+      next[group] = input.checked;
+      if (!MC_VERSION_GROUPS.some((g) => next[g])) next.release = true;
+      saveVersionFilters(next);
+      rebuildBuildVersionOptions();
+      renderVersionFilterSettings();
+    });
+  });
+}
+
+type CachedExternalLauncher = {
+  id: string;
+  name: string;
+  iconDataUrl?: string;
+  instances: Array<{
+    id: string;
+    name: string;
+    gameVersion: string;
+    loader: string;
+    loaderVersion: string;
+    iconDataUrl?: string;
+  }>;
+};
+
+/** Уже собранный список чужих лаунчеров. Модалка импорта не сканирует диск заново. */
+let cachedExternalLaunchers: CachedExternalLauncher[] | null = null;
+let externalScanTask: Promise<void> | null = null;
+
+function externalLauncherSectionsHtml(list: CachedExternalLauncher[]): string {
+  return list.map((launcher) => {
+    const icon = LAUNCHER_ICON_SRC[launcher.id] || launcher.iconDataUrl || '';
+    const launcherIcon = icon ? `<img class="ext-launcher__icon" src="${escapeHtml(icon)}" alt="">` : '';
+    const instances = launcher.instances || [];
+    return `<section class="ext-launcher" data-launcher="${launcher.id}">
+      <div class="ext-launcher__head">
+        ${launcherIcon}
+        <div class="ext-launcher__text">
+          <div class="ext-launcher__name">${escapeHtml(launcher.name)}</div>
+          <div class="ext-launcher__meta">${t('launchers.count', { n: instances.length })}</div>
+        </div>
+        <button type="button" class="ext-import" data-import-all="${launcher.id}" ${instances.length ? '' : 'disabled'}>${t('launchers.importAll')}</button>
+      </div>
+      <div class="ext-launcher__list">
+        ${instances.length ? instances.map((inst) => `
+          <div class="ext-instance">
+            ${inst.iconDataUrl ? `<img class="ext-instance__icon" src="${escapeHtml(inst.iconDataUrl)}" alt="">` : ''}
+            <div class="ext-instance__text">
+              <div class="ext-instance__name">${escapeHtml(inst.name)}</div>
+              <div class="ext-instance__meta">${escapeHtml([inst.gameVersion, inst.loader, inst.loaderVersion].filter(Boolean).join(' · '))}</div>
+            </div>
+            <button type="button" class="ext-import" data-import-one="${launcher.id}" data-instance="${escapeHtml(inst.id)}">${t('launchers.importOne')}</button>
+          </div>
+        `).join('') : `<div class="ext-launcher__empty">${t('launchers.empty')}</div>`}
+      </div>
+    </section>`;
+  }).join('');
+}
+
+/** Внешний контур: зазор 2px, штрих 2px, радиус осевой 13px. Мигание — в CSS. */
+const EXT_RING_RX = 13;
+const EXT_RING_PAD = 5;
+
+let externalRingFrame = 0;
+let externalRingW = 0;
+let externalRingH = 0;
+
+function stopExternalLauncherRing(): void {
+  if (externalRingFrame) cancelAnimationFrame(externalRingFrame);
+  externalRingFrame = 0;
+  externalRingW = 0;
+  externalRingH = 0;
+}
+
+// Контур повторяет высоту блока. Пульс всей линии не зависит от периметра.
+function mountExternalLauncherRing(host: HTMLElement): void {
+  stopExternalLauncherRing();
+  const loop = () => {
+    if (!host.isConnected) return;
+    paintExternalLauncherRing(host);
+    externalRingFrame = requestAnimationFrame(loop);
+  };
+  externalRingFrame = requestAnimationFrame(loop);
+}
+
+function paintExternalLauncherRing(host: HTMLElement): void {
+  const svg = host.querySelector<SVGSVGElement>('.ext-launchers__ring');
+  const base = svg?.querySelector<SVGRectElement>('.ext-ring__base');
+  if (!svg || !base) return;
+  const cardW = host.clientWidth;
+  const cardH = host.clientHeight;
+  if (cardW < 8 || cardH < 8) return;
+  if (cardW === externalRingW && cardH === externalRingH) return;
+  externalRingW = cardW;
+  externalRingH = cardH;
+
+  const boxW = cardW + EXT_RING_PAD * 2;
+  const boxH = cardH + EXT_RING_PAD * 2;
+  svg.setAttribute('width', String(boxW));
+  svg.setAttribute('height', String(boxH));
+  svg.style.left = `${-EXT_RING_PAD}px`;
+  svg.style.top = `${-EXT_RING_PAD}px`;
+  svg.style.width = `${boxW}px`;
+  svg.style.height = `${boxH}px`;
+
+  // Осевая линия на 3px снаружи карточки: зазор 2px и половина штриха 1px.
+  const inset = EXT_RING_PAD - 3;
+  const rx = Math.min(EXT_RING_RX, (cardW + 6) / 2, (cardH + 6) / 2);
+  base.setAttribute('x', String(inset));
+  base.setAttribute('y', String(inset));
+  base.setAttribute('width', String(cardW + 6));
+  base.setAttribute('height', String(cardH + 6));
+  base.setAttribute('rx', String(rx));
+  base.setAttribute('ry', String(rx));
+}
+
+async function refreshExternalLaunchers(): Promise<void> {
+  if (externalScanTask) return externalScanTask;
+  externalScanTask = refreshExternalLaunchersNow().finally(() => {
+    externalScanTask = null;
+  });
+  return externalScanTask;
+}
+
+async function refreshExternalLaunchersNow(): Promise<void> {
+  if (!api?.scanExternalLaunchers) return;
+  let res: { launchers?: CachedExternalLauncher[] } | undefined;
+  try {
+    res = await api.scanExternalLaunchers();
+  } catch (err) {
+    console.warn('[launchers] список чужих лаунчеров не загрузился', err);
+    return;
+  }
+  const list = res?.launchers || [];
+  cachedExternalLaunchers = list;
+  const host = document.getElementById('external-launchers');
+  if (!host) return;
+  if (!list.length) {
+    stopExternalLauncherRing();
+    host.classList.add('hidden');
+    host.innerHTML = '';
+    return;
+  }
+  const instanceTotal = list.reduce((sum, launcher) => sum + (launcher.instances?.length || 0), 0);
+  const marks = list.map((launcher) => {
+    const icon = LAUNCHER_ICON_SRC[launcher.id] || launcher.iconDataUrl || '';
+    return icon ? `<img class="ext-launchers__mark" src="${escapeHtml(icon)}" alt="">` : '';
+  }).join('');
+  host.classList.remove('is-expanded', 'hidden');
+  host.innerHTML = `
+    <svg class="ext-launchers__ring" aria-hidden="true">
+      <rect class="ext-ring__base"></rect>
+    </svg>
+    <div class="ext-launchers__header">
+      <button type="button" class="ext-launchers__toggle" data-ext-toggle aria-expanded="false">
+        <span class="ext-launchers__marks">${marks}</span>
+        <span class="ext-launchers__summary-text">${t('launchers.summary', { instances: instanceTotal, launchers: list.length })}</span>
+        <span class="ext-launchers__chevron" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </button>
+    </div>
+    <div class="ext-launchers__collapse">
+      <div class="ext-launchers__body">
+        ${externalLauncherSectionsHtml(list)}
+      </div>
+    </div>
+  `;
+  mountExternalLauncherRing(host);
+}
+
+async function importExternalSelection(launcherId: string, instanceIds: string[]): Promise<void> {
+  if (!api?.importExternalInstances || !instanceIds.length) return;
+  updateStatus(t('status.importing'));
+  const res = await api.importExternalInstances(launcherId, instanceIds);
+  if (!res?.ok) {
+    updateStatus(t('import.failed', { error: res?.error || 'unknown' }));
+    return;
+  }
+  await loadBuilds();
+  updateStatus(t('launchers.imported', { n: res.imported?.length || instanceIds.length }));
+}
+
+const externalLaunchersHost = document.getElementById('external-launchers');
+if (externalLaunchersHost) bindExternalLaunchersClicks(externalLaunchersHost);
+
+document.getElementById('setting-instance-drive')?.addEventListener('change', async (e) => {
+  const value = (e.target as HTMLSelectElement).value;
+  if (!value || !api?.setDefaultInstancesDir) return;
+  const drive = value.replace(/[\\/]+$/, '');
+  const parent = /^[A-Za-z]:$/.test(drive) ? `${drive}\\Undefined Client\\instances` : value;
+  const res = await api.setDefaultInstancesDir(parent);
+  if (!res?.ok) updateStatus(res?.error || t('paths.moveFailed'));
+  else updateStatus(t('paths.defaultSaved', { path: res.path || parent }));
+  await refreshInstanceLocationSettings();
+});
+
+document.getElementById('setting-instance-browse')?.addEventListener('click', async () => {
+  const picked = await api?.pickInstancesDir?.();
+  if (!picked || !api?.setDefaultInstancesDir) return;
+  const res = await api.setDefaultInstancesDir(picked);
+  if (!res?.ok) updateStatus(res?.error || t('paths.moveFailed'));
+  else updateStatus(t('paths.defaultSaved', { path: res.path || picked }));
+  await refreshInstanceLocationSettings();
+});
+
+document.getElementById('be-instance-move')?.addEventListener('click', async () => {
+  if (!editingBuildId || !api?.pickInstancesDir || !api?.moveInstance) return;
+  const dest = await api.pickInstancesDir();
+  if (!dest) return;
+  updateStatus(t('paths.moving'));
+  const res = await api.moveInstance(editingBuildId, dest);
+  if (!res?.ok) {
+    updateStatus(t('paths.moveFailedDetail', { error: res?.error || 'unknown' }));
+    return;
+  }
+  const text = document.getElementById('be-instance-path-text');
+  if (text) text.textContent = res.path || dest;
+  updateStatus(t('paths.moved', { path: res.path || dest }));
 });
 
 /* ── Modal: Import (.mrpack / .zip / ссылка шара) ── */
@@ -10814,6 +14258,31 @@ function openModalImport(): void {
   setImportLinkError('');
   syncImportConfirmEnabled();
   openModal('modal-import');
+  void renderImportExternalLaunchers();
+}
+
+async function renderImportExternalLaunchers(): Promise<void> {
+  const box = document.getElementById('import-external-launchers');
+  if (!box) return;
+  if (!cachedExternalLaunchers) await refreshExternalLaunchers();
+  const list = cachedExternalLaunchers || [];
+  if (!list.length) {
+    box.innerHTML = `<div class="import-ext-empty">${escapeHtml(t('import.launchersEmpty'))}</div>`;
+    return;
+  }
+  const instances = list.reduce((sum, launcher) => sum + (launcher.instances?.length || 0), 0);
+  const marks = list.map((launcher) => {
+    const icon = LAUNCHER_ICON_SRC[launcher.id] || '';
+    const img = icon ? `<img src="${escapeHtml(icon)}" alt="">` : '';
+    return `<button type="button" class="import-ext-launcher" data-import-launcher="${escapeHtml(launcher.id)}" title="${escapeHtml(launcher.name)}">${img}</button>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="import-ext-row">
+      <span class="import-ext-marks">${marks}</span>
+      <span class="import-ext-summary">${escapeHtml(t('import.launchersShort', { instances, launchers: list.length }))}</span>
+    </div>
+    <div class="import-ext-panel hidden"></div>
+  `;
 }
 
 function clearImportManifestPreview(): void {
@@ -10844,6 +14313,7 @@ function renderImportManifestPreview(inspect: {
     shaders: number;
     dataPacks: number;
     configs: number;
+    worlds?: number;
   };
   previewFiles?: Array<{ name: string; kind: string }>;
 }): void {
@@ -10859,6 +14329,7 @@ function renderImportManifestPreview(inspect: {
     if (c.shaders) chips.push(`<span class="import-manifest-stat">${t('import.manifest.shaders', { n: c.shaders })}</span>`);
     if (c.dataPacks) chips.push(`<span class="import-manifest-stat">${t('import.manifest.dataPacks', { n: c.dataPacks })}</span>`);
     if (c.configs) chips.push(`<span class="import-manifest-stat">${t('import.manifest.configs', { n: c.configs })}</span>`);
+    if (c.worlds) chips.push(`<span class="import-manifest-stat">${t('import.manifest.worlds', { n: c.worlds })}</span>`);
   }
   if (chips.length) {
     statsEl.innerHTML = chips.join('');
@@ -10973,8 +14444,6 @@ document.getElementById('modal-import-confirm')?.addEventListener('click', async
   const archivePath = pendingImportPath;
   closeModal('modal-import');
   updateStatus(t('status.importing'));
-  const progressEl = document.getElementById('download-progress');
-  progressEl?.classList.remove('hidden');
   try {
     const res = await api.importModpack(archivePath);
     if (!res.success || !res.build) {
@@ -11139,20 +14608,68 @@ async function showBeShotViewer(): Promise<void> {
 
 async function openBeShotViewer(name: string): Promise<void> {
   const idx = beScreenshots.findIndex((s) => s.name === name);
-  if (idx < 0) return;
-  beShotViewerMode = 'instance';
-  beShotViewerIndex = idx;
-  await showBeShotViewer();
+  if (idx < 0 || !editingBuildId) return;
+  const buildId = editingBuildId;
+  openImageViewer(
+    beScreenshots.map((shot) => ({
+      src: String(shot.thumb || ''),
+      alt: String(shot.name || ''),
+      loadFull: async () => {
+        if (!api?.getScreenshot) return shot.thumb || null;
+        try {
+          const res = await api.getScreenshot(buildId, shot.name);
+          if (res?.success && res.dataUrl) return res.dataUrl;
+        } catch {
+          /* остаётся превью */
+        }
+        return shot.thumb || null;
+      },
+    })),
+    idx,
+    'shots',
+  );
 }
 
-async function openModGalleryViewer(index: number): Promise<void> {
+function openModGalleryViewer(index: number): void {
   if (index < 0 || index >= modDetailsGalleryItems.length) return;
   // Не даём фокусу кнопки утащить modal-body наверх
   const body = document.querySelector('#modal-mod-details .modal-body') as HTMLElement | null;
   const savedScroll = body?.scrollTop ?? 0;
-  beShotViewerMode = 'gallery';
-  beShotViewerIndex = index;
-  await showBeShotViewer();
+  const item = modDetailsGalleryItems[index];
+  if (!item) return;
+  if (modGalleryIsVideo(item)) {
+    const videos = modDetailsGalleryItems.filter(modGalleryIsVideo);
+    const at = Math.max(0, videos.indexOf(item));
+    openVideoViewer(
+      videos.map((it) => {
+        const raw = unwrapCatalogImageUrl(it.url);
+        const src = /^https?:\/\//i.test(raw) ? raw : it.url;
+        return {
+          src,
+          externalUrl: /^https?:\/\//i.test(raw) ? raw : null,
+          alt: it.title || '',
+        };
+      }),
+      at,
+      'mod',
+    );
+  } else {
+    const images = modDetailsGalleryItems.filter((it) => !modGalleryIsVideo(it));
+    const at = Math.max(0, images.findIndex((it) => it === item));
+    openImageViewer(
+      images.map((it) => {
+        const raw = unwrapCatalogImageUrl(it.url);
+        return {
+          src: catalogImageUrl(it.url),
+          fallbackSrc: it.thumb ? catalogImageUrl(it.thumb) : null,
+          externalUrl: /^https?:\/\//i.test(raw) ? raw : null,
+          alt: it.title || '',
+        };
+      }),
+      at,
+      'mod',
+    );
+  }
   if (body) body.scrollTop = savedScroll;
 }
 
@@ -11832,7 +15349,7 @@ async function searchBeInstallCatalog(query: string, append: boolean): Promise<v
     const hits = result?.hits || [];
     beInstallTotal = result?.total_hits || 0;
     beInstallData = append ? beInstallData.concat(hits) : hits;
-    beInstallOffset += hits.length;
+    if (hits.length) beInstallOffset += 20;
     if (append && hits.length === 0) beInstallTotal = beInstallOffset;
     renderBeInstallGrid(append);
   } catch {
@@ -12099,16 +15616,37 @@ document.getElementById('modal-target-build')?.addEventListener('click', (e) => 
 let pendingServerBuild: { ip: string; port: number; name?: string } | null = null;
 let pendingServerAddr = '';
 
-function openServerLaunchPicker(ip: string, port: number, name?: string): void {
+function beginServerLaunch(ip: string, port: number, name?: string): void {
+  const parsed = endpointFromAddress(ip, port);
+  const host = parsed.host;
+  const usePort = parsed.port;
+  const cat = catalogByEndpoint(host, usePort);
+  if (cat && srvServerHasPack(cat)) {
+    const packs = srvPackBuilds(cat);
+    if (packs.length === 0) {
+      openServerInfo(srvAddr(cat));
+      return;
+    }
+    openServerLaunchPicker(host, usePort, name || cat.name, packs);
+    return;
+  }
+  openServerLaunchPicker(host, usePort, name);
+}
+
+function openServerLaunchPicker(ip: string, port: number, name?: string, only?: Build[]): void {
   const [host] = ip.split(':');
   const usePort = parseInt(String(port), 10) > 0 ? parseInt(String(port), 10) : 25565;
   pendingServerBuild = { ip: host, port: usePort, name: name || undefined };
   const list = document.getElementById('server-build-list');
   if (!list) return;
-  if (savedBuilds.length === 0) {
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t('servers.noBuildsForLaunch') + '</div>';
+  const builds = only || savedBuilds;
+  const sub = document.getElementById('server-build-sub');
+  if (sub) sub.textContent = only ? t('servers.packOnlySub') : t('servers.pickBuildSub');
+  if (builds.length === 0) {
+    const emptyKey = only ? 'servers.packNeedDownload' : 'servers.noBuildsForLaunch';
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);">' + t(emptyKey) + '</div>';
   } else {
-    list.innerHTML = savedBuilds.map(b => {
+    list.innerHTML = builds.map(b => {
       const iconSrc = b.icon ? buildIconSrc(b.icon) : DEFAULT_BUILD_ICON_SRC;
       return `<div class="build-option-item" data-build-id="${srvEsc(b.id)}">
         <div class="build-option-icon" style="background:transparent"><img src="${iconSrc}" style="width:100%;height:100%;object-fit:cover;"></div>
@@ -12129,6 +15667,10 @@ function openServerLaunchPicker(ip: string, port: number, name?: string): void {
   }
   const confirmBtn = document.getElementById('server-build-confirm') as HTMLButtonElement;
   if (confirmBtn) confirmBtn.disabled = true;
+  if (builds.length === 1) {
+    list.querySelector('.build-option-item')?.classList.add('selected');
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
   openModal('modal-server-build');
 }
 document.getElementById('server-build-close')?.addEventListener('click', () => closeModal('modal-server-build'));
@@ -12186,17 +15728,80 @@ document.getElementById('modal-mod-ask-agent')?.addEventListener('click', () => 
 });
 
 // Import
+document.getElementById('import-external-launchers')?.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  const allBtn = target.closest<HTMLElement>('[data-import-all]');
+  if (allBtn) {
+    const id = allBtn.getAttribute('data-import-all') || '';
+    const ids = (cachedExternalLaunchers?.find((launcher) => launcher.id === id)?.instances || []).map((inst) => inst.id);
+    closeModal('modal-import');
+    void importExternalSelection(id, ids);
+    return;
+  }
+  const one = target.closest<HTMLElement>('[data-import-one]');
+  if (one) {
+    const launcherId = one.getAttribute('data-import-one') || '';
+    const instanceId = one.getAttribute('data-instance') || '';
+    closeModal('modal-import');
+    void importExternalSelection(launcherId, instanceId ? [instanceId] : []);
+    return;
+  }
+  const launcherBtn = target.closest<HTMLElement>('[data-import-launcher]');
+  if (!launcherBtn) return;
+  const id = launcherBtn.getAttribute('data-import-launcher') || '';
+  const panel = document.querySelector<HTMLElement>('#import-external-launchers .import-ext-panel');
+  const buttons = document.querySelectorAll<HTMLElement>('#import-external-launchers .import-ext-launcher');
+  const wasOpen = launcherBtn.classList.contains('is-on');
+  buttons.forEach((btn) => btn.classList.remove('is-on'));
+  if (!panel || wasOpen) {
+    if (panel) {
+      panel.classList.add('hidden');
+      panel.innerHTML = '';
+    }
+    return;
+  }
+  const launcher = (cachedExternalLaunchers || []).find((item) => item.id === id);
+  launcherBtn.classList.add('is-on');
+  panel.classList.remove('hidden');
+  panel.innerHTML = launcher ? externalLauncherSectionsHtml([launcher]) : '';
+});
+
 document.getElementById('modal-import-close')?.addEventListener('click', () => closeModal('modal-import'));
 document.getElementById('modal-import-cancel')?.addEventListener('click', () => closeModal('modal-import'));
 document.getElementById('modal-import')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closeModal('modal-import'); });
 
 // ===== AI-агент (AgentChatUI + MCP tools + контекст сборки) =====
 
+type AiToolTrace = {
+  id: string;
+  name: string;
+  arg: string;
+  status: 'running' | 'done' | 'error';
+  argsText?: string;
+  resultText?: string;
+};
 type AiToolCall = { id: string; type?: string; function: { name: string; arguments: string } };
 type AiWireMessage =
-  | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string | null; tool_calls?: AiToolCall[] }
+  | {
+      role: 'user';
+      content: string;
+      /** Служебная подсказка для модели. В ленте не показывается. */
+      hint?: string;
+    }
+  | {
+      role: 'assistant';
+      content: string | null;
+      tool_calls?: AiToolCall[];
+      workedMs?: number;
+      /** Снимок шагов для UI. В запрос модели не уходит. */
+      toolTrace?: AiToolTrace[];
+    }
   | { role: 'tool'; tool_call_id: string; content: string };
+
+type AiFolder = {
+  id: string;
+  name: string;
+};
 
 type AiModCard = {
   id: string;
@@ -12214,10 +15819,15 @@ type AiSession = {
   updatedAt: number;
   messages: AiWireMessage[];
   buildId?: string | null;
+  /** null / пусто — чат в группе «Без папки» */
+  folderId?: string | null;
+  source?: 'telegram';
 };
 
 const AI_STORE_KEY = 'Undefined Client-ai-sessions';
-const AI_MAX_TOOL_ROUNDS = 5;
+/** Жёсткий потолок раундов. Раньше лимита ход закрывается ответом, а не обрывом. */
+const AI_MAX_TOOL_ROUNDS = 16;
+const AI_WRAP_AT = 12;
 /** Бюджет контекста агента (токены) */
 const AI_CONTEXT_BUDGET_TOKENS = 65_000;
 /** Порог, после которого запускаем компакт истории */
@@ -12254,6 +15864,14 @@ const AI_TOOL_LABELS: Record<string, string> = {
   open_launcher_data_folder: 'Данные лаунчера',
   ensure_instance_dirs: 'Папки инстанса',
   install_mod: 'Установка мода',
+  launch_build: 'Запуск сборки',
+  game_status: 'Статус игры',
+  set_build_memory: 'Память сборки',
+  set_java_for_build: 'Java сборки',
+  install_java: 'Установка Java',
+  remove_java: 'Удаление Java',
+  set_jvm_args: 'Аргументы JVM',
+  recommend_java_for_build: 'Рекомендация Java',
   list_worlds: 'Список миров',
   delete_world: 'Удаление мира',
   list_screenshots: 'Скриншоты',
@@ -12264,10 +15882,29 @@ const AI_TOOL_LABELS: Record<string, string> = {
   get_launcher_info: 'Сводка лаунчера',
   web_search: 'Инструмент поиска',
   fetch_url: 'Чтение страницы',
+  list_hosted_servers: 'Свои серверы',
+  create_hosted_server: 'Создание сервера',
+  update_hosted_server: 'Настройки сервера',
+  install_hosted_core: 'Ядро сервера',
+  start_hosted_server: 'Запуск сервера',
+  restart_hosted_server: 'Перезапуск сервера',
+  stop_hosted_server: 'Остановка сервера',
+  hosted_command: 'Команда сервера',
+  hosted_log: 'Консоль сервера',
+  list_hosted_plugins: 'Плагины сервера',
+  install_hosted_plugin: 'Установка плагина',
+  toggle_hosted_plugin: 'Плагин сервера',
+  list_hosted_files: 'Файлы сервера',
+  read_hosted_file: 'Чтение конфига',
+  write_hosted_file: 'Запись конфига',
+  list_hosted_core_versions: 'Версии ядра',
 };
 
 let aiSessions: AiSession[] = [];
+let aiFolders: AiFolder[] = [];
 let aiActiveId = '';
+/** Свёрнутые папки сайдбара — только на время сессии окна */
+const aiFolderCollapsed = new Set<string>();
 let aiBusy = false;
 let aiBusySessionId: string | null = null;
 let aiInited = false;
@@ -12452,6 +16089,16 @@ const AI_WRITE_TOOLS = new Set([
   'clear_instance_cache',
   'set_java_for_build',
   'rename_build',
+  'create_hosted_server',
+  'update_hosted_server',
+  'install_hosted_core',
+  'start_hosted_server',
+  'restart_hosted_server',
+  'stop_hosted_server',
+  'hosted_command',
+  'install_hosted_plugin',
+  'toggle_hosted_plugin',
+  'write_hosted_file',
 ]);
 
 function escapeAiHtml(text: string): string {
@@ -12474,8 +16121,14 @@ function loadAiSessions(): void {
       aiSessions = parsed.sessions;
       aiActiveId = String(parsed.activeId || aiSessions[0]?.id || '');
     }
+    aiFolders = Array.isArray(parsed?.folders)
+      ? parsed.folders
+          .filter((f: AiFolder) => f && typeof f.id === 'string' && typeof f.name === 'string')
+          .slice(0, 40)
+      : [];
   } catch {
     aiSessions = [];
+    aiFolders = [];
     aiActiveId = '';
   }
   if (!aiSessions.length) {
@@ -12490,7 +16143,11 @@ function saveAiSessions(): void {
   try {
     localStorage.setItem(
       AI_STORE_KEY,
-      JSON.stringify({ activeId: aiActiveId, sessions: aiSessions.slice(0, 40) }),
+      JSON.stringify({
+        activeId: aiActiveId,
+        sessions: aiSessions.slice(0, 40),
+        folders: aiFolders.slice(0, 40),
+      }),
     );
   } catch {
     /* quota */
@@ -12503,7 +16160,7 @@ function activeAiSession(): AiSession | null {
 
 function createAiSession(
   persist = true,
-  opts?: { buildId?: string | null; title?: string },
+  opts?: { buildId?: string | null; title?: string; folderId?: string | null; source?: 'telegram' },
 ): AiSession {
   const lastId = localStorage.getItem('Undefined Client-last-build') || '';
   const fallback = savedBuilds.find((b) => b.id === lastId) || savedBuilds[0];
@@ -12513,6 +16170,8 @@ function createAiSession(
     updatedAt: Date.now(),
     messages: [],
     buildId: opts?.buildId !== undefined ? opts.buildId : fallback?.id || null,
+    folderId: opts?.folderId || null,
+    source: opts?.source,
   };
   aiSessions.unshift(session);
   aiActiveId = session.id;
@@ -12742,8 +16401,11 @@ function setAiContextMenuOpen(open: boolean): void {
   if (open) {
     renderAiContextMenu();
     menu.classList.remove('hidden');
-    // следующий кадр — чтобы сыграла CSS-анимация
-    requestAnimationFrame(() => menu.classList.add('is-open'));
+    placeAiFloating(menu, ring, 'up');
+    requestAnimationFrame(() => {
+      menu.classList.add('is-open');
+      placeAiFloating(menu, ring, 'up');
+    });
     ring.setAttribute('aria-expanded', 'true');
   } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
     menu.classList.remove('is-open');
@@ -12759,8 +16421,14 @@ function setAiChatMenuOpen(open: boolean): void {
   const btn = document.getElementById('ai-chat-menu');
   if (!menu || !btn) return;
   if (open) {
+    renderAiMoveMenu();
     menu.classList.remove('hidden');
-    requestAnimationFrame(() => menu.classList.add('is-open'));
+    const anchor = btn;
+    placeAiFloating(menu, anchor, 'down');
+    requestAnimationFrame(() => {
+      menu.classList.add('is-open');
+      placeAiFloating(menu, anchor, 'down');
+    });
     btn.setAttribute('aria-expanded', 'true');
   } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
     menu.classList.remove('is-open');
@@ -12778,7 +16446,11 @@ function setAiBuildMenuOpen(open: boolean): void {
   if (open) {
     renderAiBuildMenu();
     menu.classList.remove('hidden');
-    requestAnimationFrame(() => menu.classList.add('is-open'));
+    placeAiFloating(menu, btn, 'up');
+    requestAnimationFrame(() => {
+      menu.classList.add('is-open');
+      placeAiFloating(menu, btn, 'up');
+    });
     btn.setAttribute('aria-expanded', 'true');
   } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
     menu.classList.remove('is-open');
@@ -12795,27 +16467,99 @@ function closeAiPopovers(except?: string): void {
   if (except !== 'ai-attach-menu') closeAiAttachMenu();
   if (except !== 'ai-chat-menu-pop') setAiChatMenuOpen(false);
   if (except !== 'ai-model-menu') setAiModelMenuOpen(false);
+  if (except !== 'ai-suggest') closeAiSuggest();
 }
 
-function renderAiModelMenu(): void {
+const AI_MODEL_KEY = 'Undefined Client-ai-model';
+
+function currentAiModel(): 'pixi-1.0' | 'pixi-1.5' | 'custom' {
+  const saved = localStorage.getItem(AI_MODEL_KEY);
+  if (saved === 'pixi-1.5') return 'pixi-1.5';
+  // Своя модель в настройках скрыта, пока от неё отказались.
+  return 'pixi-1.0';
+}
+
+function usingCustomAi(): boolean {
+  return currentAiModel() === 'custom';
+}
+
+function syncAiModelButton(): void {
+  const btn = document.getElementById('ai-agent-ver');
+  if (!btn) return;
+  const id = currentAiModel();
+  const customName = localStorage.getItem('Undefined Client-ai-custom-label') || 'Своя модель';
+  const title = id === 'pixi-1.5' ? 'Pixi 1.5' : id === 'custom' ? customName : 'Pixi 1.0';
+  btn.textContent = title;
+  btn.title = title;
+}
+
+function setCurrentAiModel(id: 'pixi-1.0' | 'pixi-1.5' | 'custom'): void {
+  localStorage.setItem(AI_MODEL_KEY, id);
+  syncAiModelButton();
+}
+
+async function renderAiModelMenu(): Promise<void> {
   const menu = document.getElementById('ai-model-menu');
   if (!menu) return;
-  const pills = [
-    t('ai.model.pillParams'),
-    t('ai.model.pillContext'),
-    t('ai.model.pillTools'),
-    t('ai.model.pillLang'),
+  const current = currentAiModel();
+  const cards: Array<{ id: 'pixi-1.0' | 'pixi-1.5' | 'custom'; title: string; blurb: string; params: string }> = [
+    {
+      id: 'pixi-1.0',
+      title: 'Pixi 1.0',
+      blurb: 'Базовый режим агента лаунчера. В запрос уходит pixi-1.0.',
+      params: 'Короче и быстрее',
+    },
+    {
+      id: 'pixi-1.5',
+      title: 'Pixi 1.5',
+      blurb: 'Более сильный режим того же агента. В запрос уходит pixi-1.5.',
+      params: 'Длиннее и точнее',
+    },
   ];
-  menu.innerHTML = `
-    <div class="ai-model-menu__head">
-      <div class="ai-model-menu__title">${escapeAiHtml(t('ai.model.title'))}</div>
-      <div class="ai-model-menu__desc">${escapeAiHtml(t('ai.model.desc'))}</div>
-    </div>
-    <div class="ai-model-menu__pills">
-      ${pills.map((p) => `<span class="ai-model-menu__pill">${escapeAiHtml(p)}</span>`).join('')}
-    </div>
-    <div class="ai-model-menu__foot">${escapeAiHtml(t('ai.model.foot'))}</div>
-  `;
+  const check = `<svg class="ai-model-menu__check" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8.2 6.4 11.1 12.5 4.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  menu.innerHTML = cards
+    .map(
+      (card) => `
+    <button type="button" class="ai-model-menu__choice${current === card.id ? ' is-on' : ''}" data-model="${card.id}">
+      <span class="ai-model-menu__copy">
+        <span class="ai-model-menu__name">${escapeAiHtml(card.title)}</span>
+        <span class="ai-model-menu__hint">${escapeAiHtml(card.params)}</span>
+      </span>
+      ${current === card.id ? check : '<span class="ai-model-menu__check"></span>'}
+    </button>`,
+    )
+    .join('');
+}
+
+/** Меню на documentElement + fixed, чтобы его не резал overflow колонки и ленты. */
+function placeAiFloating(menu: HTMLElement, anchor: HTMLElement, prefer: 'up' | 'down'): void {
+  if (menu.parentElement !== document.documentElement) {
+    document.documentElement.appendChild(menu);
+  }
+  const pad = 8;
+  const topLimit = 40;
+  menu.style.position = 'fixed';
+  menu.style.zIndex = '100060';
+  menu.style.right = 'auto';
+  menu.style.bottom = 'auto';
+  menu.style.transform = 'none';
+  menu.style.maxHeight = `${Math.max(140, window.innerHeight - topLimit - pad)}px`;
+  menu.style.overflowY = 'auto';
+  const rect = anchor.getBoundingClientRect();
+  const mw = Math.min(Math.max(menu.scrollWidth, 260), window.innerWidth - pad * 2);
+  const mh = Math.min(menu.offsetHeight || 160, window.innerHeight - topLimit - pad);
+  let left = rect.left;
+  if (left + mw > window.innerWidth - pad) left = window.innerWidth - pad - mw;
+  left = Math.max(pad, left);
+  const above = rect.top - pad - mh;
+  const below = rect.bottom + pad;
+  let top = prefer === 'up' ? above : below;
+  if (prefer === 'up' && top < topLimit) top = below;
+  if (prefer === 'down' && top + mh > window.innerHeight - pad) top = Math.max(topLimit, above);
+  top = Math.max(topLimit, Math.min(top, window.innerHeight - pad - 48));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.width = `${Math.round(mw)}px`;
 }
 
 /** Меню модели — на documentElement + fixed, чтобы не резалось overflow rail/tab */
@@ -12829,29 +16573,7 @@ function positionAiModelMenu(): void {
   const menu = document.getElementById('ai-model-menu');
   const btn = document.getElementById('ai-agent-ver');
   if (!menu || !btn || menu.classList.contains('hidden')) return;
-  const rect = btn.getBoundingClientRect();
-  const gap = 8;
-  const pad = 12;
-  // Сначала ставим примерно, потом меряем реальную ширину
-  menu.style.top = `${Math.round(rect.bottom + gap)}px`;
-  menu.style.left = `${pad}px`;
-  const mw = Math.max(menu.offsetWidth, 280);
-  const mh = menu.offsetHeight;
-  let left = rect.left;
-  // Если не влезает вправо — прижимаем к правому краю кнопки / окна
-  if (left + mw > window.innerWidth - pad) {
-    left = Math.min(rect.right, window.innerWidth - pad) - mw;
-  }
-  left = Math.max(pad, Math.min(left, window.innerWidth - mw - pad));
-  let top = rect.bottom + gap;
-  if (top + mh > window.innerHeight - pad && rect.top - gap - mh > pad) {
-    top = rect.top - gap - mh;
-    menu.style.transformOrigin = 'bottom left';
-  } else {
-    menu.style.transformOrigin = 'top left';
-  }
-  menu.style.left = `${Math.round(left)}px`;
-  menu.style.top = `${Math.round(top)}px`;
+  placeAiFloating(menu, btn, 'up');
 }
 
 function setAiModelMenuOpen(open: boolean): void {
@@ -12860,7 +16582,7 @@ function setAiModelMenuOpen(open: boolean): void {
   if (!menu || !btn) return;
   if (open) {
     ensureAiModelMenuHost(menu);
-    renderAiModelMenu();
+    void renderAiModelMenu().then(() => positionAiModelMenu());
     menu.classList.remove('hidden');
     positionAiModelMenu();
     requestAnimationFrame(() => {
@@ -12920,6 +16642,7 @@ async function compactAiSession(session: AiSession): Promise<boolean> {
   const started = Date.now();
   try {
     const result = await api?.aiChat?.({
+      model: currentAiModel(),
       tools: false,
       context: aiContextPayload(session),
       messages: [
@@ -13074,112 +16797,127 @@ function ensureUcCaretEl(): HTMLElement {
   return caret;
 }
 
-/** Текущий UI zoom (body.style.zoom), для перевода локальных offset → viewport. */
-function getUiZoomFactor(): number {
-  const raw = String(document.body?.style?.zoom || '').trim();
-  if (!raw) return 1;
-  const n = parseFloat(raw);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
 /** Размер кастомного caret: всегда 2×16 (в локальных CSS px поля) */
 const UC_CARET_W = 2;
 const UC_CARET_H = 16;
 
-let ucCaretMeasureCtx: CanvasRenderingContext2D | null = null;
-function measureCaretTextWidth(text: string, style: CSSStyleDeclaration): number {
-  if (!ucCaretMeasureCtx) {
-    const c = document.createElement('canvas');
-    ucCaretMeasureCtx = c.getContext('2d');
-  }
-  const ctx = ucCaretMeasureCtx;
-  if (!ctx) return 0;
-  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`.replace(/\s+/g, ' ').trim();
-  let w = ctx.measureText(text).width;
-  const ls = style.letterSpacing;
-  if (ls && ls !== 'normal' && text.length > 1) {
-    const n = parseFloat(ls);
-    if (Number.isFinite(n)) w += n * (text.length - 1);
-  }
-  return w;
-}
+const UC_CARET_MIRROR_PROPS = [
+  'boxSizing',
+  'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+  'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
+  'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent',
+  'textDecoration', 'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace',
+  'wordWrap', 'wordBreak', 'direction',
+] as const;
 
-/** Смещение каретки внутри input/textarea относительно border-box */
-function getTextFieldCaretOffset(el: HTMLInputElement | HTMLTextAreaElement): { top: number; left: number; height: number } {
+/** Координаты caret в viewport (устойчиво к body zoom / transform предков). */
+function getTextFieldCaretViewportPos(
+  el: HTMLInputElement | HTMLTextAreaElement,
+): { x: number; y: number; w: number; h: number } | null {
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
+
   const style = window.getComputedStyle(el);
   const isTextarea = el instanceof HTMLTextAreaElement;
   const pos = el.selectionEnd ?? 0;
   const isPassword = el instanceof HTMLInputElement && el.type === 'password';
   const before = isPassword ? '\u2022'.repeat(pos) : el.value.slice(0, pos);
-  const borderTop = parseFloat(style.borderTopWidth) || 0;
-  const borderLeft = parseFloat(style.borderLeftWidth) || 0;
-  const padTop = parseFloat(style.paddingTop) || 0;
-  const padBot = parseFloat(style.paddingBottom) || 0;
-  const padLeft = parseFloat(style.paddingLeft) || 0;
-  const padRight = parseFloat(style.paddingRight) || 0;
-  const height = UC_CARET_H;
 
-  // ===== Однострочный input: canvas по X, вертикальный центр контента =====
+  const layoutW = el.offsetWidth || rect.width;
+  const layoutH = el.offsetHeight || rect.height;
+  const scaleX = layoutW > 0 ? rect.width / layoutW : 1;
+  const scaleY = layoutH > 0 ? rect.height / layoutH : 1;
+
+  const w = UC_CARET_W * scaleX;
+  const h = UC_CARET_H * scaleY;
+
+  // ===== Однострочный input: Y из content-box, X из зеркала =====
+  // Flex-зеркало по Y часто врёт (пустой value / line-height:normal),
+  // а во время scaleIn модалки «залипает» неверная вертикаль.
   if (!isTextarea) {
-    const contentW = Math.max(0, el.clientWidth - padLeft - padRight);
-    const contentH = Math.max(0, el.clientHeight - padTop - padBot);
-    const textW = measureCaretTextWidth(before, style);
-    const full = isPassword ? '\u2022'.repeat(el.value.length) : el.value;
-    const fullW = measureCaretTextWidth(full, style);
-    const align = style.textAlign;
-    let xInContent = textW;
-    if (align === 'center') xInContent = (contentW - fullW) / 2 + textW;
-    else if (align === 'right' || align === 'end') xInContent = contentW - fullW + textW;
-    if (style.direction === 'rtl') xInContent = contentW - xInContent;
-    // Пустое поле / начало: xInContent ≈ 0 → caret у старта текста
-    const top = borderTop + padTop + Math.max(0, (contentH - height) / 2);
-    const left = borderLeft + padLeft + xInContent - el.scrollLeft;
-    return { top, left, height };
+    const bt = parseFloat(style.borderTopWidth) || 0;
+    const bb = parseFloat(style.borderBottomWidth) || 0;
+    const pt = parseFloat(style.paddingTop) || 0;
+    const pb = parseFloat(style.paddingBottom) || 0;
+    const contentTop = rect.top + (bt + pt) * scaleY;
+    const contentBottom = rect.bottom - (bb + pb) * scaleY;
+    const contentH = Math.max(0, contentBottom - contentTop);
+    const y = contentTop + Math.max(0, (contentH - h) / 2);
+
+    const mirror = document.createElement('div');
+    mirror.setAttribute('aria-hidden', 'true');
+    for (const prop of UC_CARET_MIRROR_PROPS) {
+      mirror.style[prop] = style[prop];
+    }
+    mirror.style.position = 'fixed';
+    mirror.style.left = `${rect.left}px`;
+    mirror.style.top = `${rect.top}px`;
+    mirror.style.width = `${layoutW}px`;
+    mirror.style.height = `${layoutH}px`;
+    mirror.style.transform = `scale(${scaleX}, ${scaleY})`;
+    mirror.style.transformOrigin = '0 0';
+    mirror.style.visibility = 'hidden';
+    mirror.style.pointerEvents = 'none';
+    mirror.style.overflow = 'hidden';
+    mirror.style.zIndex = '-1';
+    mirror.style.display = 'flex';
+    mirror.style.alignItems = 'center';
+    mirror.style.whiteSpace = 'pre';
+
+    const textSpan = document.createElement('span');
+    textSpan.style.whiteSpace = 'pre';
+    textSpan.style.marginLeft = `${-el.scrollLeft}px`;
+    textSpan.textContent = before;
+    const marker = document.createElement('span');
+    marker.textContent = '\u200b';
+    textSpan.appendChild(marker);
+    mirror.appendChild(textSpan);
+
+    document.documentElement.appendChild(mirror);
+    const mr = marker.getBoundingClientRect();
+    mirror.remove();
+
+    return { x: mr.left, y, w, h };
   }
 
-  // ===== Textarea: зеркало стилей =====
+  // ===== Textarea: X/Y из зеркала строки =====
   const mirror = document.createElement('div');
-  const copyProps = [
-    'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
-    'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
-    'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
-    'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize',
-    'lineHeight', 'fontFamily', 'textAlign', 'textTransform', 'textIndent',
-    'textDecoration', 'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace',
-    'wordWrap', 'wordBreak', 'direction',
-  ] as const;
-  mirror.style.position = 'absolute';
-  mirror.style.visibility = 'hidden';
-  mirror.style.pointerEvents = 'none';
-  mirror.style.top = '0';
-  mirror.style.left = '-9999px';
-  mirror.style.whiteSpace = 'pre-wrap';
-  mirror.style.overflowWrap = 'break-word';
-  for (const prop of copyProps) {
+  mirror.setAttribute('aria-hidden', 'true');
+  for (const prop of UC_CARET_MIRROR_PROPS) {
     mirror.style[prop] = style[prop];
   }
-  mirror.style.width = style.width;
-  mirror.textContent = before;
+  mirror.style.position = 'fixed';
+  mirror.style.left = `${rect.left}px`;
+  mirror.style.top = `${rect.top}px`;
+  mirror.style.width = `${layoutW}px`;
+  mirror.style.height = `${layoutH}px`;
+  mirror.style.transform = `scale(${scaleX}, ${scaleY})`;
+  mirror.style.transformOrigin = '0 0';
+  mirror.style.visibility = 'hidden';
+  mirror.style.pointerEvents = 'none';
+  mirror.style.overflow = 'hidden';
+  mirror.style.zIndex = '-1';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
+  mirror.style.wordBreak = style.wordBreak;
+  mirror.scrollTop = el.scrollTop;
+  mirror.scrollLeft = el.scrollLeft;
+
+  const textSpan = document.createElement('span');
+  textSpan.style.whiteSpace = 'pre-wrap';
+  textSpan.textContent = before;
   const marker = document.createElement('span');
   marker.textContent = '\u200b';
-  mirror.appendChild(marker);
-  document.body.appendChild(mirror);
+  textSpan.appendChild(marker);
+  mirror.appendChild(textSpan);
 
-  const lineH = (() => {
-    const lh = style.lineHeight;
-    if (lh && lh !== 'normal') {
-      const n = parseFloat(lh);
-      if (Number.isFinite(n)) return n;
-    }
-    return parseFloat(style.fontSize) * 1.2 || 16;
-  })();
-
-  const left = borderLeft + marker.offsetLeft - el.scrollLeft;
-  // 2×16 по центру строки (не растягиваем caret по line-height)
-  const rowTop = marker.offsetTop - el.scrollTop;
-  const top = rowTop + Math.max(0, (lineH - height) / 2);
+  document.documentElement.appendChild(mirror);
+  const mr = marker.getBoundingClientRect();
   mirror.remove();
-  return { top, left, height };
+
+  const y = mr.top + Math.max(0, (mr.height - h) / 2);
+  return { x: mr.left, y, w, h };
 }
 
 function syncCustomCaret(): void {
@@ -13204,33 +16942,30 @@ function syncCustomCaret(): void {
     return;
   }
 
-  const rect = el.getBoundingClientRect();
-  if (rect.width < 1 || rect.height < 1) {
+  const pos = getTextFieldCaretViewportPos(el);
+  if (!pos) {
     caret.hidden = true;
     return;
   }
 
-  const { top, left, height } = getTextFieldCaretOffset(el);
-  const zoom = getUiZoomFactor();
-  // getBoundingClientRect — уже в координатах viewport (с учётом zoom).
-  // top/left из поля — в локальных CSS px → умножаем на zoom.
-  const viewLeft = left * zoom;
-  const viewTop = top * zoom;
-  const viewW = UC_CARET_W * zoom;
-  const viewH = height * zoom;
-  // Прячем, если ушло за края поля (горизонтальный/вертикальный скролл)
-  if (left < -1 || left > el.clientWidth + 1 || top < -2 || top > el.clientHeight + 2) {
+  const field = el.getBoundingClientRect();
+  // Прячем, если ушло за края поля
+  if (
+    pos.x < field.left - 2 ||
+    pos.x > field.right + 2 ||
+    pos.y + pos.h < field.top - 2 ||
+    pos.y > field.bottom + 2
+  ) {
     caret.hidden = true;
     return;
   }
 
   caret.hidden = false;
-  caret.style.width = `${viewW}px`;
-  caret.style.height = `${viewH}px`;
-  caret.style.transform = `translate(${Math.round(rect.left + viewLeft)}px, ${Math.round(rect.top + viewTop)}px)`;
-  caret.style.animation = 'none';
-  void caret.offsetWidth;
-  caret.style.animation = '';
+  caret.style.width = `${pos.w}px`;
+  caret.style.height = `${pos.h}px`;
+  caret.style.left = `${Math.round(pos.x)}px`;
+  caret.style.top = `${Math.round(pos.y)}px`;
+  caret.style.transform = 'none';
 }
 
 let customCaretBound = false;
@@ -13239,12 +16974,42 @@ function initCustomCarets(): void {
   customCaretBound = true;
   ensureUcCaretEl();
 
-  const sync = () => syncCustomCaret();
+  let raf = 0;
+  let settleRaf = 0;
+  let settleUntil = 0;
+
+  const sync = (): void => {
+    if (raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      syncCustomCaret();
+    });
+  };
+
+  // Пока у предков идёт scaleIn/transform — пересчитываем caret несколько кадров,
+  // иначе позиция «залипает» от промежуточного getBoundingClientRect.
+  const settle = (ms = 220): void => {
+    settleUntil = Math.max(settleUntil, performance.now() + ms);
+    if (settleRaf) return;
+    const tick = (): void => {
+      settleRaf = 0;
+      syncCustomCaret();
+      if (performance.now() < settleUntil && isCustomCaretField(document.activeElement)) {
+        settleRaf = requestAnimationFrame(tick);
+      }
+    };
+    settleRaf = requestAnimationFrame(tick);
+  };
+
   document.addEventListener('focusin', (e) => {
-    if (isCustomCaretField(e.target as Element)) sync();
+    if (isCustomCaretField(e.target as Element)) settle(240);
   });
   document.addEventListener('focusout', () => {
-    // Даём следующему focusin сработать в том же тике
+    settleUntil = 0;
+    if (settleRaf) {
+      cancelAnimationFrame(settleRaf);
+      settleRaf = 0;
+    }
     requestAnimationFrame(() => {
       if (!isCustomCaretField(document.activeElement)) {
         ensureUcCaretEl().hidden = true;
@@ -13266,11 +17031,27 @@ function initCustomCarets(): void {
   document.addEventListener('scroll', (e) => {
     if (isCustomCaretField(e.target as Element) || isCustomCaretField(document.activeElement)) sync();
   }, true);
+  document.addEventListener(
+    'animationend',
+    () => {
+      if (isCustomCaretField(document.activeElement)) sync();
+    },
+    true,
+  );
+  document.addEventListener(
+    'transitionend',
+    () => {
+      if (isCustomCaretField(document.activeElement)) sync();
+    },
+    true,
+  );
   window.addEventListener('resize', sync);
 }
 
 function setAiEmptyVisible(show: boolean): void {
-  document.getElementById('ai-empty')?.classList.toggle('hidden', !show);
+  document.getElementById('ai-empty')?.classList.add('hidden');
+  document.getElementById('ai-empty-dock')?.classList.toggle('hidden', !show);
+  document.querySelector('#tab-ai .ai-stage')?.classList.toggle('is-empty', show);
 }
 
 function clearAiMessages(keepEmpty = true): void {
@@ -13326,6 +17107,40 @@ function appendAiDayDivider(ts = Date.now()): void {
   root.appendChild(el);
 }
 
+/** Голова текущего скина. mc-heads и Стив сюда не подходят. */
+function aiSelfHeadSrc(): string {
+  const cached = String(currentAccount?.uiAvatarDataUrl || '');
+  if (cached.startsWith('data:')) return cached;
+  const shown = document.querySelector<HTMLImageElement>('.account-skin-img')?.getAttribute('src') || '';
+  return shown.startsWith('data:') ? shown : '';
+}
+
+function aiFaceHtml(role: 'user' | 'assistant'): string {
+  if (role === 'assistant') {
+    return '<span class="ai-ava ai-ava--agent"><img src="../../assets/images/UAgentLogo.png" alt="" draggable="false"></span>';
+  }
+  const name = String(currentAccount?.username || 'Вы');
+  const src = aiSelfHeadSrc();
+  const inner = src
+    ? `<img src="${escapeAiHtml(src)}" alt="" draggable="false">`
+    : `<span class="ai-ava__letter">${escapeAiHtml(name.slice(0, 1).toUpperCase())}</span>`;
+  return `<span class="ai-ava ai-ava--self" data-ai-self-ava>${inner}</span>`;
+}
+
+function fillAiSelfHead(root: ParentNode): void {
+  const slot = root.querySelector<HTMLElement>('[data-ai-self-ava]');
+  if (!slot || slot.querySelector('img')) return;
+  void resolveAccountHeadAvatar(currentAccount).then((url) => {
+    if (!url || !slot.isConnected) return;
+    slot.replaceChildren();
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.src = url;
+    slot.appendChild(img);
+  });
+}
+
 function appendAiNode(role: string, html: string): HTMLElement | null {
   const root = aiActiveRound?.isConnected
     ? aiActiveRound
@@ -13334,7 +17149,23 @@ function appendAiNode(role: string, html: string): HTMLElement | null {
   setAiEmptyVisible(false);
   const el = document.createElement('div');
   el.className = `ai-msg ai-msg--${role}`;
-  el.innerHTML = `<div class="ai-msg__bubble">${html}</div>`;
+  const stamp = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  if (role === 'assistant' || role === 'user') {
+    const last = root.lastElementChild;
+    const grouped = !!last?.classList.contains('ai-msg') && last.classList.contains(`ai-msg--${role}`);
+    el.classList.add(grouped ? 'is-cont' : 'is-head');
+    const who = role === 'assistant' ? 'UAgent' : String(currentAccount?.username || 'Вы');
+    const gutter = grouped
+      ? `<span class="ai-msg__hm">${stamp}</span>`
+      : aiFaceHtml(role);
+    const head = grouped
+      ? ''
+      : `<div class="ai-msg__head"><span class="ai-msg__name">${escapeAiHtml(who)}</span><span class="ai-msg__time">${stamp}</span></div>`;
+    el.innerHTML = `<div class="ai-msg__row"><div class="ai-msg__gutter">${gutter}</div><div class="ai-msg__main">${head}<div class="ai-msg__bubble">${html}</div></div></div>`;
+    if (role === 'user') fillAiSelfHead(el);
+  } else {
+    el.innerHTML = `<div class="ai-msg__bubble">${html}</div>`;
+  }
   root.appendChild(el);
   scrollAiMessagesToEnd();
   return el;
@@ -13584,23 +17415,366 @@ function renderAiSessionList(): void {
   if (!list) return;
   list.innerHTML = '';
   const q = aiSearchQuery.trim().toLowerCase();
-  for (const session of aiSessions) {
-    if (q && !session.title.toLowerCase().includes(q)) continue;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = `ai-session${session.id === aiActiveId ? ' active' : ''}`;
-    row.dataset.id = session.id;
-    const busy = session.id === aiBusySessionId;
-    row.innerHTML = `
-      ${busy
-        ? '<span class="ai-pixel is-running" aria-hidden="true"></span>'
-        : `<img class="ai-session__ico" src="../../assets/icons/aiPanel/chat.svg" width="14" height="14" alt="" aria-hidden="true">`}
-      <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
-      <span class="ai-session__time">${escapeAiHtml(formatAiRelative(session.updatedAt))}</span>
-    `;
-    row.addEventListener('click', () => selectAiSession(session.id));
-    list.appendChild(row);
+  const loose = aiSessions.filter((s) => !s.folderId || !aiFolders.some((f) => f.id === s.folderId));
+  const groups: { id: string; name: string; sessions: AiSession[] }[] = [
+    ...aiFolders.map((f) => ({
+      id: f.id,
+      name: f.name,
+      sessions: aiSessions.filter((s) => s.folderId === f.id),
+    })),
+    { id: '', name: t('ai.folder.none'), sessions: loose },
+  ];
+  for (const group of groups) {
+    const sessions = group.sessions.filter((s) => !q || s.title.toLowerCase().includes(q) || group.name.toLowerCase().includes(q));
+    if (!group.id && !sessions.length) continue;
+    if (q && !sessions.length && !group.name.toLowerCase().includes(q)) continue;
+    const folder = document.createElement('div');
+    folder.className = 'ai-folder';
+    if (group.id && aiFolderCollapsed.has(group.id) && !q) folder.classList.add('is-collapsed');
+    const head = document.createElement('div');
+    head.className = 'ai-folder__head';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'ai-folder__name';
+    toggle.dataset.folderId = group.id;
+    toggle.textContent = group.name;
+    if (group.id) {
+      toggle.addEventListener('click', () => {
+        if (aiFolderCollapsed.has(group.id)) aiFolderCollapsed.delete(group.id);
+        else aiFolderCollapsed.add(group.id);
+        renderAiSessionList();
+      });
+      toggle.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        beginAiFolderRename(group.id, toggle);
+      });
+    }
+    head.appendChild(toggle);
+    if (group.id) {
+      const renameBtn = document.createElement('button');
+      renameBtn.type = 'button';
+      renameBtn.className = 'ai-folder__act';
+      renameBtn.title = t('ai.folder.rename');
+      renameBtn.textContent = '✎';
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        beginAiFolderRename(group.id, toggle);
+      });
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'ai-folder__act ai-folder__act--danger';
+      delBtn.title = t('ai.folder.delete');
+      delBtn.textContent = '×';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteAiFolder(group.id);
+      });
+      head.appendChild(renameBtn);
+      head.appendChild(delBtn);
+    }
+    folder.appendChild(head);
+    const chats = document.createElement('div');
+    chats.className = 'ai-folder__chats';
+    for (const session of sessions) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = `ai-session${session.id === aiActiveId ? ' active' : ''}`;
+      row.dataset.id = session.id;
+      const busy = session.id === aiBusySessionId;
+      row.innerHTML = `
+        ${busy
+          ? '<span class="ai-pixel is-running" aria-hidden="true"></span>'
+          : `<img class="ai-session__ico" src="../../assets/icons/aiPanel/chat.svg" width="14" height="14" alt="" aria-hidden="true">`}
+        <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
+        <span class="ai-session__time">${escapeAiHtml(formatAiRelative(session.updatedAt))}</span>
+      `;
+      row.addEventListener('click', () => selectAiSession(session.id));
+      chats.appendChild(row);
+    }
+    folder.appendChild(chats);
+    list.appendChild(folder);
   }
+}
+
+function beginAiFolderRename(folderId: string, nameBtn: HTMLButtonElement): void {
+  const folder = aiFolders.find((f) => f.id === folderId);
+  if (!folder) return;
+  const input = document.createElement('input');
+  input.className = 'ai-folder__rename';
+  input.value = folder.name;
+  nameBtn.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const next = input.value.replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (next) folder.name = next;
+    saveAiSessions();
+    renderAiSessionList();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    } else if (e.key === 'Escape') {
+      renderAiSessionList();
+    }
+  });
+  input.addEventListener('blur', commit);
+}
+
+function deleteAiFolder(folderId: string): void {
+  aiFolders = aiFolders.filter((f) => f.id !== folderId);
+  for (const session of aiSessions) {
+    if (session.folderId === folderId) session.folderId = null;
+  }
+  aiFolderCollapsed.delete(folderId);
+  saveAiSessions();
+  renderAiSessionList();
+}
+
+function renderAiMoveMenu(): void {
+  const host = document.getElementById('ai-menu-move');
+  const session = activeAiSession();
+  if (!host) return;
+  const items = [
+    { id: '', name: t('ai.folder.none') },
+    ...aiFolders.map((f) => ({ id: f.id, name: f.name })),
+  ];
+  host.innerHTML = items
+    .map((item) => {
+      const on = (session?.folderId || '') === item.id || (!session?.folderId && !item.id);
+      return `<button type="button" class="ai-chat-menu__move-btn${on ? ' is-on' : ''}" data-move-folder="${escapeAiHtml(item.id)}">${escapeAiHtml(item.name)}</button>`;
+    })
+    .join('');
+}
+
+function shortToolArg(args: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (key === 'buildId' || value == null || value === '') continue;
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    parts.push(`${key}: ${text.replace(/\s+/g, ' ').slice(0, 48)}`);
+    if (parts.length >= 2) break;
+  }
+  return parts.join(' · ');
+}
+
+function toolStatusWord(status: 'running' | 'done' | 'error'): string {
+  if (status === 'running') return '…';
+  if (status === 'error') return 'ошибка';
+  return 'готово';
+}
+
+type AiToolGroup = {
+  root: HTMLElement;
+  list: HTMLElement;
+  labelEl: HTMLElement;
+  countEl: HTMLElement;
+  statusEl: HTMLElement;
+};
+
+let aiRoundTrace: AiToolTrace[] = [];
+
+/** «1 действие», «2 действия», «5 действий». */
+function actionCountPhrase(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  let word = 'действий';
+  if (mod10 === 1 && mod100 !== 11) word = 'действие';
+  else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) word = 'действия';
+  return `${n} ${word}`;
+}
+
+function clipToolText(value: unknown, max = 700): string {
+  if (value == null) return '';
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return '';
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/** Один свёрнутый блок на весь ход: шеврон, время, число действий, статус. */
+function mountAiToolGroup(): AiToolGroup | null {
+  const host = document.getElementById('ai-messages');
+  if (!host) return null;
+  aiRoundTrace = [];
+  setAiEmptyVisible(false);
+  const root = document.createElement('div');
+  root.className = 'ai-tool-group is-collapsed';
+  root.innerHTML = `
+    <button type="button" class="ai-tool-group__sum">
+      <span class="ai-worked__chev" aria-hidden="true"></span>
+      <span class="ai-tool-group__label"></span>
+      <span class="ai-tool-group__count"></span>
+      <span class="ai-tool-group__sum-st"></span>
+    </button>
+    <div class="ai-tool-group__list" hidden></div>`;
+  const list = root.querySelector('.ai-tool-group__list') as HTMLElement;
+  const labelEl = root.querySelector('.ai-tool-group__label') as HTMLElement;
+  const countEl = root.querySelector('.ai-tool-group__count') as HTMLElement;
+  const statusEl = root.querySelector('.ai-tool-group__sum-st') as HTMLElement;
+  root.querySelector('button')?.addEventListener('click', () => {
+    const open = root.classList.toggle('is-open');
+    root.classList.toggle('is-collapsed', !open);
+    list.hidden = !open;
+  });
+  host.appendChild(root);
+  scrollAiMessagesToEnd();
+  return { root, list, labelEl, countEl, statusEl };
+}
+
+function noteToolGroup(
+  group: AiToolGroup | null,
+  id: string,
+  opts: {
+    name: string;
+    arg: string;
+    status: 'running' | 'done' | 'error';
+    argsText?: string;
+    resultText?: string;
+  },
+): void {
+  const prev = aiRoundTrace.find((row) => row.id === id);
+  const next: AiToolTrace = {
+    id,
+    name: opts.name,
+    arg: opts.arg,
+    status: opts.status,
+    argsText: opts.argsText || prev?.argsText || '',
+    resultText: opts.resultText || prev?.resultText || '',
+  };
+  if (prev) Object.assign(prev, next);
+  else aiRoundTrace.push(next);
+  if (!group) return;
+  let row: HTMLElement | null = null;
+  for (const child of Array.from(group.list.children)) {
+    if ((child as HTMLElement).dataset.toolId === id) row = child as HTMLElement;
+  }
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'ai-tool-group__row';
+    row.dataset.toolId = id;
+    row.innerHTML = `
+      <button type="button" class="ai-tool-group__item">
+        <span class="ai-tool-group__name"></span>
+        <span class="ai-tool-group__arg"></span>
+        <span class="ai-tool-group__st"></span>
+      </button>
+      <pre class="ai-tool-group__detail" hidden></pre>`;
+    const detail = row.querySelector('.ai-tool-group__detail') as HTMLElement;
+    row.querySelector('button')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!detail.textContent?.trim()) return;
+      detail.hidden = !detail.hidden;
+    });
+    group.list.appendChild(row);
+  }
+  row.className = `ai-tool-group__row is-${opts.status}`;
+  const nameEl = row.querySelector('.ai-tool-group__name');
+  const argEl = row.querySelector('.ai-tool-group__arg');
+  const stEl = row.querySelector('.ai-tool-group__st');
+  const detail = row.querySelector('.ai-tool-group__detail') as HTMLElement;
+  if (nameEl) nameEl.textContent = opts.name;
+  if (argEl) argEl.textContent = opts.arg;
+  if (stEl) stEl.textContent = toolStatusWord(opts.status);
+  const chunks = [next.argsText, next.resultText].filter(Boolean);
+  detail.textContent = chunks.join('\n\n');
+  const n = group.list.children.length;
+  group.countEl.textContent = n ? actionCountPhrase(n) : '';
+  if (opts.status === 'running') group.statusEl.textContent = toolStatusWord('running');
+}
+
+/** Сводка блока: время всего хода, число действий и общий статус. */
+function finishToolGroup(
+  group: AiToolGroup | null,
+  workedMs?: number,
+  status: 'running' | 'done' | 'error' = 'done',
+): void {
+  if (!group) return;
+  const n = group.list.children.length;
+  if (workedMs != null && workedMs > 0) {
+    group.labelEl.textContent = t('ai.worked', { sec: Math.max(1, Math.round(workedMs / 1000)) });
+  } else if (!group.labelEl.textContent) {
+    group.labelEl.textContent = n ? actionCountPhrase(n) : '';
+  }
+  group.countEl.textContent = n ? actionCountPhrase(n) : '';
+  const rowError = Boolean(group.list.querySelector('.is-error'));
+  const shown = status === 'running' ? 'running' : rowError ? 'error' : 'done';
+  group.statusEl.textContent = n ? toolStatusWord(shown) : '';
+  group.root.classList.toggle('is-running', shown === 'running');
+}
+
+/** Весь ход лежит одним массивом шагов на первом сообщении ассистента. */
+function commitTurnTrace(session: AiSession, anchorToolId: string, workedMs: number): void {
+  if (!anchorToolId || !aiRoundTrace.length) return;
+  const anchor = session.messages.findIndex(
+    (msg) =>
+      msg.role === 'assistant' &&
+      msg.tool_calls?.some((tc) => tc.id === anchorToolId),
+  );
+  const anchorMsg = anchor >= 0 ? session.messages[anchor] : undefined;
+  if (!anchorMsg || anchorMsg.role !== 'assistant') return;
+  anchorMsg.toolTrace = aiRoundTrace.map((row) => ({
+    ...row,
+    status: row.status === 'running' ? 'done' : row.status,
+  }));
+  anchorMsg.workedMs = workedMs;
+  for (let i = anchor + 1; i < session.messages.length; i += 1) {
+    const msg = session.messages[i];
+    if (msg.role === 'user') {
+      const text = 'content' in msg ? String(msg.content || '') : '';
+      if (!text.startsWith('[Контекст]')) break;
+      continue;
+    }
+    if (msg.role === 'assistant') {
+      delete msg.toolTrace;
+      delete msg.workedMs;
+    }
+  }
+}
+
+function appendAiWorkedSummary(steps: AiToolTrace[], workedMs?: number): void {
+  if (!steps.length) return;
+  const group = mountAiToolGroup();
+  for (const step of steps) {
+    noteToolGroup(group, step.id, {
+      name: step.name,
+      arg: step.arg,
+      status: step.status === 'running' ? 'done' : step.status,
+      argsText: step.argsText,
+      resultText: step.resultText,
+    });
+  }
+  const failed = steps.some((step) => step.status === 'error');
+  finishToolGroup(group, workedMs, failed ? 'error' : 'done');
+}
+
+/** Шаги одного сообщения: снимок хода или разбор tool_calls. */
+function stepsFromAssistant(
+  msg: Extract<AiWireMessage, { role: 'assistant' }>,
+  toolResults: Map<string, any>,
+): AiToolTrace[] {
+  if (msg.toolTrace?.length) {
+    return msg.toolTrace.map((step) => ({
+      ...step,
+      status: step.status === 'running' ? 'done' : step.status,
+    }));
+  }
+  return (msg.tool_calls || []).map((tc) => {
+    const args = parseToolArgs(tc.function.arguments);
+    const result = toolResults.get(tc.id);
+    return {
+      id: tc.id,
+      name: toolLabel(tc.function.name, args),
+      arg: shortToolArg(args),
+      status: (result?.error ? 'error' : 'done') as 'error' | 'done',
+      argsText: clipToolText(args, 500),
+      resultText: clipToolText(result, 700),
+    };
+  });
 }
 
 function renderAiConversation(): void {
@@ -13640,25 +17814,61 @@ function renderAiConversation(): void {
   }
 
   let lastUserPrompt = '';
-  for (const msg of session.messages) {
+  for (let i = 0; i < session.messages.length; i += 1) {
+    const msg = session.messages[i];
+    if (msg.role === 'tool') continue;
     if (msg.role === 'user') {
-      lastUserPrompt = msg.content;
-      appendAiText('user', msg.content);
-    } else if (msg.role === 'assistant') {
-      if (msg.content) appendAiText('assistant', msg.content, { retryPrompt: lastUserPrompt });
-      if (msg.tool_calls?.length) {
-        for (const tc of msg.tool_calls) {
-          const result = toolResults.get(tc.id);
-          // В истории пиксель не показываем — только завершённый статус
-          appendAiToolStatus(tc.function.name, result?.error ? 'error' : 'done', {
-            label: toolLabel(tc.function.name, parseToolArgs(tc.function.arguments)),
-            durationMs: undefined,
-          });
-          const mods = extractModsFromToolResult(result);
-          if (mods.length) appendAiModCards(mods);
-        }
-      }
+      if (!String(msg.content || '').startsWith('[Контекст]')) lastUserPrompt = msg.content;
+      appendAiText('user', visibleUserText(msg.content));
+      continue;
     }
+    if (msg.role !== 'assistant') continue;
+    const hasTools = Boolean(msg.tool_calls?.length || msg.toolTrace?.length);
+    if (!hasTools) {
+      if (msg.content) appendAiText('assistant', msg.content, { retryPrompt: lastUserPrompt });
+      continue;
+    }
+
+    // Подряд идущие вызовы одного ответа — один блок, даже если раньше лежали отдельными сообщениями.
+    const steps: AiToolTrace[] = [];
+    let workedMs = 0;
+    const texts: string[] = [];
+    const sideNotes: string[] = [];
+    const modCalls: AiToolCall[] = [];
+    let j = i;
+    for (; j < session.messages.length; j += 1) {
+      const stepMsg = session.messages[j];
+      if (stepMsg.role === 'tool') continue;
+      if (stepMsg.role === 'user') {
+        if (String(stepMsg.content || '').startsWith('[Контекст]')) {
+          sideNotes.push(stepMsg.content);
+          continue;
+        }
+        break;
+      }
+      if (stepMsg.role !== 'assistant') break;
+      const stepHasTools = Boolean(stepMsg.tool_calls?.length || stepMsg.toolTrace?.length);
+      if (!stepHasTools) {
+        if (stepMsg.content) texts.push(stepMsg.content);
+        j += 1;
+        break;
+      }
+      const before = steps.length;
+      for (const step of stepsFromAssistant(stepMsg, toolResults)) {
+        if (!steps.some((row) => row.id === step.id)) steps.push(step);
+      }
+      if (steps.length > before && typeof stepMsg.workedMs === 'number') workedMs += stepMsg.workedMs;
+      if (stepMsg.tool_calls?.length) modCalls.push(...stepMsg.tool_calls);
+      if (stepMsg.content) texts.push(stepMsg.content);
+    }
+    appendAiWorkedSummary(steps, workedMs || undefined);
+    for (const note of sideNotes) appendAiText('user', note);
+    for (const text of texts) appendAiText('assistant', text, { retryPrompt: lastUserPrompt });
+    for (const tc of modCalls) {
+      const mods = extractModsFromToolResult(toolResults.get(tc.id));
+      if (mods.length) appendAiModCards(mods);
+    }
+    i = j - 1;
   }
 
   restoreAiConfirmsForSession(session.id, getAiUiHost());
@@ -13780,15 +17990,31 @@ function prepareAiWireMessages(messages: AiWireMessage[]): AiWireMessage[] {
       };
     }
     if (m.role === 'user') {
+      const visible = compactAiUserContent(
+        String(m.content || ''),
+        hot ? AI_WIRE_USER_HOT_CHARS : AI_WIRE_USER_COLD_CHARS,
+        !hot,
+      );
+      const hint = 'hint' in m && m.hint ? String(m.hint).trim() : '';
       return {
-        ...m,
-        content: compactAiUserContent(String(m.content || ''), hot ? AI_WIRE_USER_HOT_CHARS : AI_WIRE_USER_COLD_CHARS, !hot),
+        role: 'user',
+        content: hint ? `${hint}\n${visible}` : visible,
       };
     }
     if (m.role === 'assistant' && m.content) {
       const text = String(m.content);
       const max = hot ? 4000 : 1200;
-      return { ...m, content: text.length > max ? text.slice(0, max) + '…' : text };
+      const next: AiWireMessage = {
+        role: 'assistant',
+        content: text.length > max ? text.slice(0, max) + '…' : text,
+      };
+      if (m.tool_calls?.length) next.tool_calls = m.tool_calls;
+      return next;
+    }
+    if (m.role === 'assistant') {
+      const next: AiWireMessage = { role: 'assistant', content: m.content };
+      if (m.tool_calls?.length) next.tool_calls = m.tool_calls;
+      return next;
     }
     return m;
   });
@@ -13814,18 +18040,25 @@ function sanitizeAiWireMessages(messages: AiWireMessage[]): AiWireMessage[] {
     if (m.role === 'user') {
       flushPending('interrupted');
       const content = String(m.content || '').trim();
-      if (content) out.push({ role: 'user', content: m.content });
+      if (content) {
+        const kept: AiWireMessage = { role: 'user', content: m.content };
+        if ('hint' in m && m.hint) kept.hint = m.hint;
+        out.push(kept);
+      }
       continue;
     }
     if (m.role === 'assistant') {
       flushPending('interrupted');
       const tcs = Array.isArray(m.tool_calls) ? m.tool_calls.filter((tc) => tc?.id && tc?.function?.name) : [];
       if (tcs.length) {
-        out.push({
+        const kept: AiWireMessage = {
           role: 'assistant',
           content: m.content == null || m.content === '' ? null : m.content,
           tool_calls: tcs,
-        });
+        };
+        if (typeof m.workedMs === 'number') kept.workedMs = m.workedMs;
+        if (m.toolTrace?.length) kept.toolTrace = m.toolTrace;
+        out.push(kept);
         pending = new Set(tcs.map((tc) => String(tc.id)));
       } else if (String(m.content || '').trim()) {
         out.push({ role: 'assistant', content: String(m.content) });
@@ -13858,23 +18091,136 @@ async function runAiToolSafe(
     opts?.preconfirmed ? { confirmed: true } : undefined,
   );
   if (exec && !exec.ok && exec.error === 'confirm_required') {
-    setAiAgentStatus('confirm');
-    const ok = await askAiConfirmInChat({
-      host: getAiUiHost(),
-      tool: name,
-      args,
-      risk: 'write',
-      sessionId: opts?.sessionId || activeAiSession()?.id,
-    });
+    const sessionId = opts?.sessionId || activeAiSession()?.id;
+    const fromTelegram = sessionById(sessionId)?.source === 'telegram';
+    if (!fromTelegram) setAiAgentStatus('confirm');
+    const described = describeAiAction(name, args, t, getAiUiHost());
+    const line = [described.title, described.detail].filter(Boolean).join(' — ');
+    const ok = fromTelegram
+      ? await askTelegramConfirm(line)
+      : await askAiConfirmInChat({
+          host: getAiUiHost(),
+          tool: name,
+          args,
+          risk: 'write',
+          sessionId,
+        });
     if (!ok) return { ok: false, error: 'cancelled' };
     exec = await api?.aiToolsRun?.(name, args, { confirmed: true });
   }
   return exec || { ok: false, error: 'no_api' };
 }
 
+function toolCallSignature(name: string, args: Record<string, unknown>): string {
+  const stable: Record<string, unknown> = {};
+  for (const key of Object.keys(args).sort()) stable[key] = args[key];
+  return `${name}::${JSON.stringify(stable)}`;
+}
+
+/** Пустой объект или явная ошибка — это не прогресс хода. */
+function isUselessToolPayload(payload: unknown): boolean {
+  if (payload == null) return true;
+  if (typeof payload === 'string') return !payload.trim();
+  if (typeof payload !== 'object') return false;
+  const obj = payload as Record<string, unknown>;
+  if (obj.error) return true;
+  return Object.keys(obj).length === 0;
+}
+
+function localAiTurnFallback(session: AiSession): string {
+  const done: string[] = [];
+  const failed: string[] = [];
+  for (const msg of session.messages) {
+    if (msg.role !== 'assistant' || !msg.tool_calls?.length) continue;
+    for (const tc of msg.tool_calls) {
+      const label = toolLabel(tc.function.name, parseToolArgs(tc.function.arguments));
+      const toolMsg = session.messages.find((m) => m.role === 'tool' && m.tool_call_id === tc.id);
+      let err = false;
+      try {
+        const parsed = JSON.parse(toolMsg && toolMsg.role === 'tool' ? toolMsg.content : '{}');
+        err = Boolean(parsed?.error);
+      } catch {
+        err = true;
+      }
+      if (err) failed.push(label);
+      else done.push(label);
+    }
+  }
+  const lines = ['Остановился, чтобы не зациклиться на инструментах.'];
+  if (done.length) lines.push(`Сделано: ${[...new Set(done)].slice(-8).join(', ')}.`);
+  if (failed.length) lines.push(`Не вышло: ${[...new Set(failed)].slice(-6).join(', ')}.`);
+  lines.push('Напиши, что сделать следующим шагом.');
+  return lines.join(' ');
+}
+
+/** Финальный ответ без инструментов: что сделано и что осталось. */
+async function finishAiTurnWithSummary(session: AiSession, reason: 'stall' | 'limit'): Promise<void> {
+  const note =
+    reason === 'stall'
+      ? 'Одинаковые или пустые вызовы инструментов не дают нового результата. Не вызывай инструменты. Коротко напиши пользователю, что уже сделано и что осталось.'
+      : 'Лимит шагов с инструментами почти исчерпан. Не вызывай инструменты. Коротко напиши пользователю, что уже сделано и что осталось.';
+  setAiAgentStatus('thinking');
+  const result = await api?.aiChat?.({
+    model: currentAiModel(),
+    messages: wireWithBuildCatalog([...session.messages, { role: 'user', content: note }]) as any,
+    tools: false,
+    context: aiContextPayload(session),
+  });
+  const reply = String(result?.reply || '').trim() || localAiTurnFallback(session);
+  session.messages.push({ role: 'assistant', content: reply });
+  setAiAgentStatus('streaming');
+  await streamAiAssistantText(reply);
+  session.updatedAt = Date.now();
+  saveAiSessions();
+  renderAiSessionList();
+  updateAiContextRing(session);
+}
+
+async function answerHostedRequest(session: AiSession, text: string): Promise<boolean> {
+  const raw = text.toLowerCase().replace(/ё/g, 'е');
+  if (!asksOwnHostedServer(raw)) return false;
+  if (/создай|поставь|установи|измени|запусти|останови|удали|включи|выключи|скачай|пропиши|настрой/.test(raw)) return false;
+  const wantPlugins = /плагин/.test(raw);
+  const wantList = /сервер/.test(raw);
+  if (!wantPlugins && !wantList) return false;
+  await refreshHostedBriefs();
+  if (!hostedBriefs.length) return false;
+  const chunks: string[] = [];
+  for (const server of hostedBriefs) {
+    const head = `${server.name} — ${server.software || '?'} ${server.gameVersion || '?'}, ${server.status || 'stopped'}`;
+    if (!wantPlugins) {
+      chunks.push(head);
+      continue;
+    }
+    const plugins = (await api?.hostedServersPlugins?.(server.id)) || [];
+    const body = plugins.length
+      ? plugins.map((plugin) => `• ${plugin.name}${plugin.enabled ? '' : ' (выключен)'}`).join('\n')
+      : 'Плагинов нет.';
+    chunks.push(`${head}\n${body}`);
+  }
+  const reply = chunks.join('\n\n');
+  session.messages.push({ role: 'assistant', content: reply });
+  appendAiText('assistant', reply);
+  saveAiSessions();
+  return true;
+}
+
 async function runAiAgentTurn(session: AiSession): Promise<void> {
+  await refreshHostedBriefs();
+  aiTurnReadConfig = false;
+  const askedNow = latestHumanUserText(session);
+  if (/плагин|конфиг|сервер|\.ya?ml/i.test(askedNow)) await refreshHostedFileNote();
   let rounds = 0;
+  let stallRounds = 0;
+  let needWrap: 'stall' | 'limit' | null = null;
+  let lastToolSig = '';
+  const toolErrorHits = new Map<string, number>();
+  const seenResult = new Map<string, string>();
   const messagesRoot = document.getElementById('ai-messages');
+  // Один блок на весь ответ пользователю, а не на каждый раунд модели.
+  let turnGroup: AiToolGroup | null = null;
+  let turnAnchorToolId = '';
+  let turnWorkedMs = 0;
   while (rounds < AI_MAX_TOOL_ROUNDS) {
     if (aiStopRequested) break;
     rounds += 1;
@@ -13882,7 +18228,8 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
     syncAiComposerBusyUi();
     showAiSkeleton(messagesRoot);
     const result = await api?.aiChat?.({
-      messages: prepareAiWireMessages(session.messages) as any,
+      model: currentAiModel(),
+      messages: wireWithBuildCatalog(session.messages) as any,
       tools: true,
       context: aiContextPayload(session),
     });
@@ -13900,29 +18247,20 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
     }
 
     const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
-    const round = messagesRoot ? beginAiRound(messagesRoot) : null;
-    aiActiveRound = round;
+    let round: HTMLElement | null = null;
+    let pendingVisibleReply = '';
 
     if (toolCalls.length) {
-      if (round) {
-        mountAiPlan(
-          round,
-          toolCalls.map((tc: any, i: number) => ({
-            id: `step_${rounds}_${i}`,
-            label: toolLabel(tc.function.name, parseToolArgs(tc.function.arguments)),
-            status: 'pending' as const,
-          })),
-        );
-      }
-
+      // Итог пишем под общим блоком инструментов, не отдельным «Работал N с» на каждый вызов.
+      aiActiveRound = null;
+      if (!turnGroup) turnGroup = mountAiToolGroup();
       if (result.reply) {
+        pendingVisibleReply = result.reply;
         session.messages.push({
           role: 'assistant',
           content: result.reply,
           tool_calls: toolCalls,
         });
-        setAiAgentStatus('streaming');
-        await streamAiAssistantText(result.reply);
       } else {
         session.messages.push({
           role: 'assistant',
@@ -13930,37 +18268,108 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
           tool_calls: toolCalls,
         });
       }
+      if (!turnAnchorToolId) turnAnchorToolId = String(toolCalls[0]?.id || '');
+    } else {
+      round = messagesRoot ? beginAiRound(messagesRoot) : null;
+      aiActiveRound = round;
+    }
+
+    if (toolCalls.length) {
 
       const prepared = toolCalls.map((tc: any) => {
         const args = parseToolArgs(tc.function.arguments);
-        if (!args.buildId && session.buildId) args.buildId = session.buildId;
-        return { tc, args };
+        if (
+          !args.buildId &&
+          session.buildId &&
+          tc.function.name !== 'launch_build' &&
+          tc.function.name !== 'create_build' &&
+          !asksOwnHostedServer(latestHumanUserText(session))
+        ) {
+          args.buildId = session.buildId;
+        }
+        const adjusted = adjustBuildToolArgs(tc.function.name, args, session);
+        return { tc, args: adjusted.args, blocked: adjusted.blocked || '' };
       });
       const writeItems = prepared
-        .filter((x) => AI_WRITE_TOOLS.has(x.tc.function.name))
+        .filter((x) => !x.blocked && AI_WRITE_TOOLS.has(x.tc.function.name))
         .map((x) => ({ tool: x.tc.function.name as string, args: x.args }));
       let batchOk = true;
       if (writeItems.length > 1) {
-        setAiAgentStatus('confirm');
-        batchOk = await askAiConfirmBatch({
-          host: getAiUiHost(),
-          items: writeItems,
-          sessionId: session.id,
-        });
+        if (session.source === 'telegram') {
+          const lines = writeItems.map((item) => {
+            const described = describeAiAction(item.tool, item.args, t, getAiUiHost());
+            return [described.title, described.detail].filter(Boolean).join(' — ');
+          });
+          batchOk = await askTelegramConfirm(lines.join('\n'));
+        } else {
+          setAiAgentStatus('confirm');
+          batchOk = await askAiConfirmBatch({
+            host: getAiUiHost(),
+            items: writeItems,
+            sessionId: session.id,
+          });
+        }
       }
       const preconfirmed = writeItems.length > 1 && batchOk;
+      const roundStarted = Date.now();
+      let roundHadProgress = false;
 
       const answeredToolIds = new Set<string>();
       for (let i = 0; i < prepared.length; i += 1) {
         if (aiStopRequested) break;
-        const { tc, args } = prepared[i];
+        const { tc, args, blocked } = prepared[i];
+        if (blocked) {
+          noteToolGroup(turnGroup, tc.id, {
+            name: toolLabel(tc.function.name, args),
+            arg: shortToolArg(args),
+            status: 'error',
+            resultText: blocked,
+          });
+          session.messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify({
+              error: blocked.startsWith('Запись запрещена') ? 'need_read' : 'build_mismatch',
+              hint: blocked,
+            }),
+          });
+          answeredToolIds.add(tc.id);
+          continue;
+        }
+        const sig = toolCallSignature(tc.function.name, args);
+        const repeat = sig === lastToolSig;
+        const hammer = (toolErrorHits.get(sig) || 0) >= 2;
+        lastToolSig = sig;
         updateAiPlanStep(`step_${rounds}_${i}`, 'running');
         setAiAgentStatus('tool', toolLabel(tc.function.name, args));
         syncAiComposerBusyUi();
 
+        if (repeat || hammer) {
+          updateAiPlanStep(`step_${rounds}_${i}`, 'error');
+          noteToolGroup(turnGroup, tc.id, {
+            name: toolLabel(tc.function.name, args),
+            arg: shortToolArg(args),
+            status: 'error',
+          });
+          session.messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: JSON.stringify({
+              error: repeat ? 'repeat_call' : 'error_loop',
+              hint: 'Не повторяй этот вызов. Ответь пользователю, что уже известно и что осталось.',
+            }),
+          });
+          answeredToolIds.add(tc.id);
+          continue;
+        }
+
         if (writeItems.length > 1 && AI_WRITE_TOOLS.has(tc.function.name) && !batchOk) {
           updateAiPlanStep(`step_${rounds}_${i}`, 'error');
-          appendAiToolStatus(tc.function.name, 'error', { label: toolLabel(tc.function.name, args) });
+          noteToolGroup(turnGroup, tc.id, {
+            name: toolLabel(tc.function.name, args),
+            arg: shortToolArg(args),
+            status: 'error',
+          });
           session.messages.push({
             role: 'tool',
             tool_call_id: tc.id,
@@ -13975,8 +18384,10 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
             ? savedBuilds.find((b) => b.id === args.buildId) || null
             : null;
 
-        const chip = appendAiToolStatus(tc.function.name, 'running', {
-          label: toolLabel(tc.function.name, args),
+        noteToolGroup(turnGroup, tc.id, {
+          name: toolLabel(tc.function.name, args),
+          arg: shortToolArg(args),
+          status: 'running',
         });
         const started = Date.now();
         const exec = await runAiToolSafe(tc.function.name, args, {
@@ -13984,10 +18395,24 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
           sessionId: session.id,
         });
         const durationMs = Date.now() - started;
-        setAiToolStatus(chip, exec?.ok ? 'done' : 'error', durationMs);
+        const toolPayload = exec?.ok ? exec.result : { error: exec?.error || 'tool_failed' };
+        noteToolGroup(turnGroup, tc.id, {
+          name: toolLabel(tc.function.name, args),
+          arg: shortToolArg(args),
+          status: exec?.ok ? 'done' : 'error',
+          argsText: clipToolText(args, 500),
+          resultText: clipToolText(toolPayload, 700),
+        });
         updateAiPlanStep(`step_${rounds}_${i}`, exec?.ok ? 'done' : 'error');
 
         // Контекст чата: select_build обновляет чип UI
+        if (
+          exec?.ok &&
+          (            tc.function.name === 'read_config' ||
+            tc.function.name === 'read_hosted_file')
+        ) {
+          aiTurnReadConfig = true;
+        }
         if (exec?.ok && tc.function.name === 'select_build') {
           const selectedId =
             asStringMaybe(args.buildId) ||
@@ -14016,25 +18441,23 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
           }
         }
 
-        const payload = exec?.ok ? exec.result : { error: exec?.error || 'tool_failed' };
-        if (chip) {
-          wrapAiToolCollapsible(chip, {
-            label: toolLabel(tc.function.name, args),
-            detail: JSON.stringify(payload).slice(0, 2500),
-            status: exec?.ok ? 'done' : 'error',
-          });
-        }
+        const fingerprint = JSON.stringify(toolPayload).slice(0, 600);
+        const sameResult = seenResult.get(sig) === fingerprint;
+        seenResult.set(sig, fingerprint);
+        if (!exec?.ok) toolErrorHits.set(sig, (toolErrorHits.get(sig) || 0) + 1);
+        else toolErrorHits.delete(sig);
+        if (exec?.ok && !sameResult && !isUselessToolPayload(toolPayload)) roundHadProgress = true;
 
         session.messages.push({
           role: 'tool',
           tool_call_id: tc.id,
-          content: compactAiToolContent(JSON.stringify(payload), AI_WIRE_TOOL_HOT_CHARS),
+          content: compactAiToolContent(JSON.stringify(toolPayload), AI_WIRE_TOOL_HOT_CHARS),
         });
         answeredToolIds.add(tc.id);
 
         if (exec?.ok && AI_WRITE_TOOLS.has(tc.function.name)) {
           const payloadObj =
-            payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+            toolPayload && typeof toolPayload === 'object' ? (toolPayload as Record<string, unknown>) : null;
           const touchedId =
             asStringMaybe(args.buildId) ||
             asStringMaybe(payloadObj?.id) ||
@@ -14126,7 +18549,7 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
           }
         }
 
-        const mods = extractModsFromToolResult(payload);
+        const mods = extractModsFromToolResult(toolPayload);
         if (mods.length) appendAiModCards(mods);
       }
       // Stop / обрыв: закрываем незакрытые tool_calls, иначе следующий запрос падает 400
@@ -14140,13 +18563,30 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
         answeredToolIds.add(tc.id);
       }
       session.messages = sanitizeAiWireMessages(session.messages);
-      if (round) endAiRound(round);
+      turnWorkedMs += Date.now() - roundStarted;
+      finishToolGroup(turnGroup, turnWorkedMs, 'running');
+      commitTurnTrace(session, turnAnchorToolId, turnWorkedMs);
+      if (pendingVisibleReply && !aiStopRequested) {
+        setAiAgentStatus('streaming');
+        await streamAiAssistantText(pendingVisibleReply);
+      }
+      if (round) {
+        endAiRound(round, t('ai.worked', { sec: Math.max(1, Math.round(turnWorkedMs / 1000)) }));
+      }
       aiActiveRound = null;
       session.updatedAt = Date.now();
       saveAiSessions();
       updateAiContextRing(session);
+      if (aiStopRequested) break;
+      if (roundHadProgress) stallRounds = 0;
+      else stallRounds += 1;
+      if (stallRounds >= 2) needWrap = 'stall';
+      else if (rounds >= AI_WRAP_AT) needWrap = 'limit';
+      if (needWrap) break;
       continue;
     }
+
+    if (turnGroup) finishToolGroup(turnGroup, turnWorkedMs, 'done');
 
     if (!result.reply) {
       if (round) endAiRound(round);
@@ -14167,8 +18607,11 @@ async function runAiAgentTurn(session: AiSession): Promise<void> {
     syncAiComposerBusyUi();
     return;
   }
+  if (turnGroup) finishToolGroup(turnGroup, turnWorkedMs, 'done');
   aiActiveRound = null;
-  if (rounds >= AI_MAX_TOOL_ROUNDS) appendAiText('system', t('ai.toolLoopLimit'));
+  if (needWrap || rounds >= AI_MAX_TOOL_ROUNDS) {
+    await finishAiTurnWithSummary(session, needWrap || 'limit');
+  }
   setAiAgentStatus('idle');
   syncAiComposerBusyUi();
 }
@@ -14180,7 +18623,381 @@ function requestAiStop(): void {
   syncAiComposerBusyUi();
 }
 
-async function sendAiMessage(text: string): Promise<void> {
+const TG_PREAMBLE_RE = /^Запрос из Telegram\.[\s\S]*?Не отказывайся и не проси скриншот\.\s*/;
+
+function visibleUserText(text: string): string {
+  const raw = String(text || '').trim();
+  if (raw.startsWith('@@pixi ')) return 'Запрос из Telegram';
+  const stripped = raw.replace(TG_PREAMBLE_RE, '').trim();
+  return stripped || raw;
+}
+
+function latestHumanUserText(session: AiSession): string {
+  for (let i = session.messages.length - 1; i >= 0; i -= 1) {
+    const msg = session.messages[i];
+    if (msg.role !== 'user') continue;
+    const text = String(msg.content || '');
+    if (text.startsWith('[Контекст]')) continue;
+    return visibleUserText(text);
+  }
+  return '';
+}
+
+function recentBuildContext(session: AiSession): string {
+  const bits: string[] = [];
+  for (const msg of session.messages.slice(-12)) {
+    if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+    const text = visibleUserText(String(msg.content || ''));
+    if (!text || text.startsWith('[Контекст]')) continue;
+    bits.push(text);
+  }
+  return bits.join('\n');
+}
+
+let hostedFileNote = '';
+let aiTurnReadConfig = false;
+let hostedBriefs: Array<{
+  id: string;
+  name: string;
+  software?: string;
+  gameVersion?: string;
+  status?: string;
+  publicHost?: string;
+  publicPort?: number;
+  port?: number;
+}> = [];
+
+async function refreshHostedBriefs(): Promise<void> {
+  try {
+    const list = await api?.hostedServersList?.();
+    hostedBriefs = Array.isArray(list) ? list : [];
+  } catch {
+    hostedBriefs = [];
+  }
+}
+
+function hostedCatalogNote(): string {
+  if (!hostedBriefs.length) {
+    return '[Свои серверы (вкладка «Хостинг»): список пуст. Это не папка сборки в .uclient. Повторно вызови list_hosted_servers, прежде чем говорить, что сервера нет.]';
+  }
+  const lines = hostedBriefs.slice(0, 20).map((server) => {
+    const addr =
+      server.publicHost && server.publicPort ? `${server.publicHost}:${server.publicPort}` : `порт ${server.port || '?'}`;
+    return `- id=${server.id} | ${server.name} | ${server.software || '?'} ${server.gameVersion || '?'} | ${server.status || 'stopped'} | ${addr}`;
+  });
+  return [
+    '[Факт: свои серверы уже есть в лаунчере. Не ищи их в папках сборок и не пиши, что серверов нет.]',
+    ...lines,
+    'Плагины — list_hosted_plugins. Файлы — list_hosted_files и read_hosted_file. Консоль — hosted_log. id бери только отсюда.',
+    hostedFileNote
+      ? `Реальные файлы плагинов. Не выдумывай путь и не пиши новый yaml, пока не прочитал один из этих файлов:\n${hostedFileNote}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function refreshHostedFileNote(): Promise<void> {
+  const chunks: string[] = [];
+  for (const server of hostedBriefs.slice(0, 3)) {
+    const plugins = (await api?.hostedServersPlugins?.(server.id)) || [];
+    const root = await api?.hostedServersFiles?.(server.id, 'plugins');
+    const dirs = (root?.entries || []).filter((entry) => entry.dir).slice(0, 40);
+    const files: string[] = [];
+    for (const dir of dirs) {
+      const inner = await api?.hostedServersFiles?.(server.id, `plugins/${dir.name}`);
+      for (const file of inner?.entries || []) {
+        if (!file.dir && /\.(ya?ml|json|properties|conf|txt)$/i.test(file.name)) {
+          files.push(`plugins/${dir.name}/${file.name}`);
+        }
+      }
+    }
+    chunks.push(
+      `Сервер «${server.name}» id=${server.id}. Плагины: ${plugins.map((plugin) => plugin.name).join(', ') || 'нет'}.\n${files.slice(0, 80).map((file) => `- ${file}`).join('\n') || '- конфигов нет'}`,
+    );
+  }
+  hostedFileNote = chunks.join('\n');
+}
+
+function asksOwnHostedServer(text: string): boolean {
+  const raw = text.toLowerCase().replace(/ё/g, 'е');
+  if (/сборк/.test(raw) && !/сервер/.test(raw)) return false;
+  if (/плагин/.test(raw)) return true;
+  if (/на\s+сервере/.test(raw)) return true;
+  if (/(?:запусти|останови|перезапусти|перезагрузи|рестарт|консол)/.test(raw) && /сервер/.test(raw)) return true;
+  return /мо(?:й|его|ем|ём)\s+сервер|сво(?:й|его|ем|ём)\s+сервер|локальн\w*\s+сервер|self-?hosted|хостинг|вкладк\w*\s+хост/.test(raw);
+}
+
+function buildsCatalogNote(): string {
+  if (!savedBuilds.length) return '[Каталог сборок клиента пуст.]';
+  const lines = savedBuilds.slice(0, 48).map((build) => {
+    const pack = build.modpackVersion ? ` | модпак ${build.modpackVersion}` : '';
+    return `- id=${build.id} | ${build.name} | Minecraft ${build.gameVersion || '?'} | ${build.loader || 'vanilla'}${pack}`;
+  });
+  const featured = getHomeFeaturedBuild();
+  const last = featured
+    ? `Последняя сборка, на которой играли: id=${featured.id} | ${featured.name} | Minecraft ${featured.gameVersion || '?'} | ${featured.loader || 'vanilla'}${featured.modpackVersion ? ` | модпак ${featured.modpackVersion}` : ''}. Просьба запустить последнюю — launch_build с этим id.`
+    : '';
+  return [
+    '[Факт: установленные сборки. Не говори, что сборки нет, если она в этом списке. Версия модпака и версия Minecraft — разные поля.]',
+    last,
+    ...lines,
+  ].filter(Boolean).join('\n');
+}
+
+function wireWithBuildCatalog(messages: AiWireMessage[]): AiWireMessage[] {
+  const prepared = prepareAiWireMessages(messages);
+  for (let i = prepared.length - 1; i >= 0; i -= 1) {
+    if (prepared[i].role !== 'user') continue;
+    const content = String(prepared[i].content || '');
+    if (content.includes('[Факт: свои серверы') || content.includes('[Свои серверы (вкладка')) return prepared;
+    prepared[i] = { ...prepared[i], content: `${content}\n\n${hostedCatalogNote()}\n\n${buildsCatalogNote()}` };
+    break;
+  }
+  return prepared;
+}
+
+function launchCandidates(session: AiSession): Build[] {
+  return resolveLaunchBuilds(latestHumanUserText(session), recentBuildContext(session), savedBuilds);
+}
+
+function adjustBuildToolArgs(
+  name: string,
+  args: Record<string, unknown>,
+  session: AiSession,
+): { args: Record<string, unknown>; blocked?: string } {
+  const asked = latestHumanUserText(session);
+  if ((name === 'write_config' || name === 'write_hosted_file') && !aiTurnReadConfig) {
+    return {
+      args,
+      blocked:
+        'Запись запрещена: реальный конфиг ещё не прочитан. Открой файл из списка плагинов через read_hosted_file или read_config и меняй только его текст. Не выдумывай yaml.',
+    };
+  }
+  if (hostedBriefs.length === 1 && /hosted/.test(name)) {
+    const serverId = hostedBriefs[0].id;
+    if (!args.id) args = { ...args, id: serverId };
+  }
+  if (asksOwnHostedServer(asked) && hostedBriefs.length === 1) {
+    const serverId = hostedBriefs[0].id;
+    if (name === 'read_config' || name === 'write_config' || name === 'list_configs' || name === 'list_build_content') {
+      args = { ...args, buildId: serverId, id: serverId };
+    }
+  }
+  if (name === 'launch_build' && isLastPlayedRequest(asked)) {
+    const featured = getHomeFeaturedBuild();
+    if (featured) return { args: { ...args, buildId: featured.id } };
+  }
+  if (
+    asksOwnHostedServer(asked) &&
+    (name === 'get_instance_path' ||
+      name === 'list_build_content' ||
+      name === 'list_build_mods' ||
+      name === 'open_build_folder' ||
+      name === 'open_build_subfolder' ||
+      name === 'list_servers' ||
+      name === 'get_build' ||
+      name === 'ensure_instance_dirs')
+  ) {
+    return {
+      args,
+      blocked: `${hostedCatalogNote()} Не ищи сервер в инстансе сборки. Вызови list_hosted_servers или инструмент с id из списка.`,
+    };
+  }
+  const matches = launchCandidates(session);
+  const named = matchBuildsByName(asked, savedBuilds);
+  if (name === 'create_build' && (matches.length || named.length)) {
+    const found = matches.length ? matches : named;
+    return {
+      args,
+      blocked: `Сборка уже установлена: ${found.map((build) => formatBuildChoice(build)).join('; ')}. Не создавай новую. Для запуска вызови launch_build с этим id.`,
+    };
+  }
+  if (name === 'launch_build' && isLaunchRequest(asked)) {
+    if (matches.length === 1) return { args: { ...args, buildId: matches[0].id } };
+    if (matches.length > 1) {
+      return {
+        args,
+        blocked: `Подходят несколько сборок: ${matches.map((build) => formatBuildChoice(build)).join('; ')}. Уточни версию и не запускай другую.`,
+      };
+    }
+    const chosen = String(args.buildId || '');
+    if (chosen && savedBuilds.some((build) => build.id === chosen)) return { args };
+    if (named.length) {
+      return {
+        args,
+        blocked: `По имени подходят: ${named.map((build) => formatBuildChoice(build)).join('; ')}. Вызови launch_build с id нужной. Не пиши, что сборки нет.`,
+      };
+    }
+  }
+  return { args };
+}
+
+async function performLaunch(
+  session: AiSession,
+  build: Build,
+  opts: { viaTelegram: boolean; showLine?: string; skipConfirm?: boolean },
+): Promise<string> {
+  if (opts.showLine) {
+    session.messages.push({ role: 'user', content: opts.showLine });
+    appendAiText('user', opts.showLine);
+    saveAiSessions();
+  }
+  const label = formatBuildChoice(build);
+  const group = mountAiToolGroup();
+  const started = Date.now();
+  const stepId = `launch_${build.id}`;
+  noteToolGroup(group, stepId, { name: 'Запуск сборки', arg: label, status: 'running' });
+  let allowed = true;
+  if (!opts.skipConfirm) {
+    if (opts.viaTelegram) {
+      allowed = await askTelegramConfirm(`Запустить сборку — ${label}?`);
+    } else {
+      setAiAgentStatus('confirm');
+      allowed = await askAiConfirmInChat({
+        host: getAiUiHost(),
+        tool: 'launch_build',
+        args: { buildId: build.id },
+        risk: 'write',
+        sessionId: session.id,
+      });
+    }
+  }
+  let reply = 'Запуск отменён.';
+  if (allowed) {
+    if (runningBuild) {
+      reply = `Игра уже запущена: ${runningBuild.name}.`;
+    } else {
+      await launchBuild(build);
+      const live = runningBuild as Build | null;
+      reply =
+        live?.id === build.id
+          ? `Запущено: ${label}.`
+          : 'Не удалось запустить сборку. Проверь аккаунт и что игра ещё не запущена.';
+    }
+  }
+  const ok = reply.startsWith('Запущено');
+  noteToolGroup(group, stepId, {
+    name: 'Запуск сборки',
+    arg: label,
+    status: ok ? 'done' : 'error',
+    argsText: label,
+    resultText: reply,
+  });
+  const workedMs = Date.now() - started;
+  finishToolGroup(group, workedMs, ok ? 'done' : 'error');
+  session.messages.push({
+    role: 'assistant',
+    content: reply,
+    workedMs,
+    toolTrace: aiRoundTrace.map((row) => ({ ...row })),
+  });
+  appendAiText('assistant', reply);
+  saveAiSessions();
+  renderAiSessionList();
+  return reply;
+}
+
+async function answerBuildRequest(session: AiSession, text: string): Promise<boolean> {
+  const launch = isLaunchRequest(text) && !isCreateRequest(text);
+  if (launch && isLastPlayedRequest(text)) {
+    const named = matchBuildsByName(text, savedBuilds);
+    const featured = named.length === 1 ? named[0] : named.length === 0 ? getHomeFeaturedBuild() : null;
+    if (featured) {
+      await performLaunch(session, featured, { viaTelegram: session.source === 'telegram' });
+      return true;
+    }
+  }
+  const matches = resolveLaunchBuilds(text, recentBuildContext(session), savedBuilds);
+  const named = matchBuildsByName(text, savedBuilds);
+  const createExisting = isCreateRequest(text) && (matches.length > 0 || named.length > 0);
+  if (!launch && !createExisting) return false;
+  if (launch && !matches.length) {
+    if (!named.length) return false;
+    const reply = `Нашёл сборки с таким именем, но версия не совпала один в один:\n${named
+      .map((build) => `• ${formatBuildChoice(build)}`)
+      .join('\n')}\nНапиши имя вместе с версией модпака или Minecraft.`;
+    session.messages.push({ role: 'assistant', content: reply });
+    appendAiText('assistant', reply);
+    saveAiSessions();
+    return true;
+  }
+  if (createExisting && !matches.length) {
+    const reply = `Такая сборка уже есть:\n${named.map((build) => `• ${formatBuildChoice(build)}`).join('\n')}\nНовую создавать не буду. Напиши «запусти» и версию.`;
+    session.messages.push({ role: 'assistant', content: reply });
+    appendAiText('assistant', reply);
+    saveAiSessions();
+    return true;
+  }
+  if (matches.length > 1) {
+    const reply = `Подходят несколько сборок:\n${matches
+      .map((build) => `• ${formatBuildChoice(build)}`)
+      .join('\n')}\nНапиши имя вместе с версией.`;
+    session.messages.push({ role: 'assistant', content: reply });
+    appendAiText('assistant', reply);
+    saveAiSessions();
+    return true;
+  }
+  await performLaunch(session, matches[0], { viaTelegram: session.source === 'telegram' });
+  return true;
+}
+
+function collectTelegramReply(session: AiSession | null): string {
+  const msgs = session?.messages || [];
+  let lastUser = -1;
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    if (msgs[i].role === 'user') {
+      lastUser = i;
+      break;
+    }
+  }
+  return (
+    msgs
+      .slice(lastUser + 1)
+      .filter((msg) => msg.role === 'assistant' && msg.content)
+      .map((msg) => String(msg.content))
+      .join('\n\n')
+      .trim() || 'Агент завершил шаг без текста.'
+  );
+}
+
+async function runPixiOp(op: Record<string, unknown>): Promise<string> {
+  const kind = String(op.op || '');
+  if (kind === 'catalog') {
+    return JSON.stringify({
+      ok: true,
+      builds: savedBuilds.map((build) => ({
+        id: build.id,
+        name: build.name,
+        gameVersion: build.gameVersion,
+        loader: build.loader,
+        loaderVersion: build.loaderVersion || '',
+        modpackVersion: (build as { modpackVersion?: string }).modpackVersion || '',
+      })),
+    });
+  }
+  if (kind === 'launch') {
+    const session = ensureTelegramAiSession();
+    const build = savedBuilds.find((item) => item.id === String(op.buildId || ''));
+    if (!build) return 'Сборка не найдена в клиенте.';
+    return performLaunch(session, build, {
+      viaTelegram: true,
+      skipConfirm: op.confirmed === true,
+      showLine: visibleUserText(String(op.show || `Запустить сборку ${formatBuildChoice(build)}`)),
+    });
+  }
+  if (kind === 'agent') {
+    ensureTelegramAiSession();
+    const show = visibleUserText(String(op.show || ''));
+    const hint = String(op.hint || '');
+    await sendAiMessage(show, hint);
+    const session = aiSessions.find((item) => item.source === 'telegram') || activeAiSession();
+    return collectTelegramReply(session);
+  }
+  return 'Неизвестная команда клиента.';
+}
+
+async function sendAiMessage(text: string, hint?: string): Promise<void> {
   const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
   const session = activeAiSession();
   if (!session || aiBusy) return;
@@ -14188,23 +19005,25 @@ async function sendAiMessage(text: string): Promise<void> {
   const attachments = [...getAiAttachments()];
   if (!prompt && !attachments.length) return;
 
-  if (aiConfigured === false) {
+  if (!usingCustomAi() && aiConfigured === false) {
     appendAiText('system', t('ai.unavailable'));
     return;
   }
-  if (aiAccessOk === false) {
+  if (!usingCustomAi() && aiAccessOk === false) {
     handleAiAccessDenied();
     return;
   }
 
   // Вложения: в чат — badge-ряд, в API — полный блок с текстом логов/файлов
   const attachBlock = formatAiAttachmentsPrompt(attachments);
-  const userLine = prompt;
+  const userLine = visibleUserText(prompt);
   const wirePrompt = [attachBlock, userLine].filter(Boolean).join('\n\n') || t('ai.attach.title');
   const titleSource = userLine || attachments.map((a) => a.label).join(', ') || t('ai.attach.title');
 
   if (!session.messages.length) session.title = titleFromPrompt(titleSource);
-  session.messages.push({ role: 'user', content: wirePrompt });
+  const userMsg: AiWireMessage = { role: 'user', content: wirePrompt };
+  if (hint?.trim()) userMsg.hint = hint.trim();
+  session.messages.push(userMsg);
   session.updatedAt = Date.now();
   saveAiSessions();
   renderAiSessionList();
@@ -14226,8 +19045,11 @@ async function sendAiMessage(text: string): Promise<void> {
     // Лечим уже сохранённую битую историю (Stop / slice / reject)
     session.messages = sanitizeAiWireMessages(session.messages);
     saveAiSessions();
-    await ensureAiContextCapacity(session);
-    await runAiAgentTurn(session);
+    const handled = (await answerBuildRequest(session, userLine)) || (await answerHostedRequest(session, userLine));
+    if (!handled) {
+      await ensureAiContextCapacity(session);
+      await runAiAgentTurn(session);
+    }
   } catch (err: any) {
     appendAiText('system', t('ai.error', { error: err?.message || 'unknown' }));
   } finally {
@@ -14278,11 +19100,24 @@ function bindAiActionBridge(): void {
           string,
           unknown
         >;
-        if (action === 'launch_build') {
+        if (action === 'game_status') {
+          const detected = !runningBuild && api.detectRunningGame ? await api.detectRunningGame() : null;
+          const adopted = Boolean(detected?.ok && detected.running);
+          result = {
+            ok: true,
+            running: Boolean(runningBuild) || adopted,
+            buildId: runningBuild?.id || (adopted ? detected?.buildId || null : null),
+            name: runningBuild?.name || (adopted ? detected?.name || null : null),
+            gameVersion: runningBuild?.gameVersion || (adopted ? detected?.gameVersion || null : null),
+            loader: runningBuild?.loader || (adopted ? detected?.loader || null : null),
+          };
+        } else if (action === 'launch_build') {
           const buildId = String(payload.buildId || '');
           const build = savedBuilds.find((b) => b.id === buildId);
           if (!build) result = { ok: false, error: 'build_not_found' };
-          else {
+          else if (runningBuild) {
+            result = { ok: false, error: 'game_already_running', name: runningBuild.name, buildId: runningBuild.id };
+          } else {
             const ip = typeof payload.serverIp === 'string' ? payload.serverIp.trim() : '';
             const port = Number(payload.serverPort);
             const server =
@@ -14290,7 +19125,11 @@ function bindAiActionBridge(): void {
                 ? { ip, port: Number.isFinite(port) && port > 0 ? port : 25565 }
                 : undefined;
             await launchBuild(build, server);
-            result = { ok: true, launched: true, buildId };
+            const live = runningBuild as Build | null;
+            const started = live?.id === build.id;
+            result = started
+              ? { ok: true, launched: true, buildId, name: build.name }
+              : { ok: false, error: 'launch_not_started' };
           }
         } else if (action === 'install_java') {
           const version = Number(payload.version);
@@ -14355,6 +19194,579 @@ function bindAiActionBridge(): void {
   });
 }
 
+let tgToastTimer = 0;
+let agentBridgeStarted = false;
+let tgPendingCode = '';
+let tgLinkSeenAt = 0;
+let tgFootTimer = 0;
+let agentBridgeBusy = false;
+let tgActiveJobId = '';
+const TG_CONFIRM_MS = 70 * 1000;
+
+function sessionById(id?: string | null): AiSession | null {
+  if (!id) return activeAiSession();
+  return aiSessions.find((s) => s.id === id) || null;
+}
+
+/** Опасное действие из Telegram: кнопки в боте, без модалки на ПК. */
+async function askTelegramConfirm(text: string): Promise<boolean> {
+  const summary = String(text || 'Выполнить действие в лаунчере').trim();
+  const question = summary.endsWith('?') ? summary : `${summary}?`;
+  const opened = await agentBridgeRequest('/confirm', 'POST', {
+    jobId: tgActiveJobId,
+    text: question.slice(0, 400),
+  });
+  const id = String(opened?.data?.id || '');
+  if (!opened?.ok || !id) return false;
+  const deadline = Date.now() + TG_CONFIRM_MS;
+  while (Date.now() < deadline) {
+    if (aiStopRequested) return false;
+    const res = await agentBridgeRequest(`/confirm/${encodeURIComponent(id)}`, 'GET');
+    const status = String(res?.data?.status || '');
+    if (status === 'yes') return true;
+    if (status === 'no' || status === 'timeout') return false;
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+  return false;
+}
+
+function showTgAgentToast(ms = 4500): void {
+  const el = document.getElementById('tb-agent-tg');
+  if (!el) return;
+  el.hidden = false;
+  window.clearTimeout(tgToastTimer);
+  tgToastTimer = window.setTimeout(() => {
+    el.hidden = true;
+  }, ms);
+}
+
+function agentBridgeRequest(path: string, method = 'GET', body?: unknown) {
+  return api?.messengerRequest?.({ path: `/agent-bridge${path}`, method, body });
+}
+
+function ensureTelegramAiSession(): AiSession {
+  ensureAiTab();
+  let session = aiSessions.find((s) => s.source === 'telegram');
+  if (!session) {
+    let folder = aiFolders.find((f) => f.name === 'Telegram');
+    if (!folder) {
+      folder = { id: aiUid(), name: 'Telegram' };
+      aiFolders.unshift(folder);
+    }
+    session = createAiSession(false, { title: 'Telegram', folderId: folder.id, source: 'telegram' });
+  }
+  aiActiveId = session.id;
+  saveAiSessions();
+  renderAiSessionList();
+  renderAiConversation();
+  return session;
+}
+
+async function runTelegramAgentJob(job: { id: string; text: string }): Promise<void> {
+  showTgAgentToast(5000);
+  const text = String(job.text || '').trim();
+  if (text.startsWith('@@pixi ')) {
+    let op: Record<string, unknown> = {};
+    try {
+      op = JSON.parse(text.slice('@@pixi '.length));
+    } catch {
+      await agentBridgeRequest('/result', 'POST', { id: job.id, reply: 'Не понял команду клиента.' });
+      return;
+    }
+    if (aiBusy) {
+      await agentBridgeRequest('/result', 'POST', {
+        id: job.id,
+        reply: 'Агент клиента сейчас занят другим запросом. Повтори чуть позже.',
+      });
+      return;
+    }
+    const kind = String(op.op || '');
+    if (kind === 'agent') {
+      if (aiAccessOk == null) await refreshAiAccessStatus();
+      if (!usingCustomAi() && aiAccessOk === false) {
+        await agentBridgeRequest('/result', 'POST', {
+          id: job.id,
+          reply: 'У этого аккаунта нет доступа к агенту в клиенте.',
+        });
+        return;
+      }
+    }
+    tgActiveJobId = String(job.id || '');
+    if (kind === 'launch') {
+      aiBusy = true;
+      setAiBusySession(ensureTelegramAiSession().id);
+    }
+    try {
+      const reply = await runPixiOp(op);
+      await agentBridgeRequest('/result', 'POST', { id: job.id, reply });
+    } finally {
+      tgActiveJobId = '';
+      if (kind === 'launch') {
+        aiBusy = false;
+        setAiBusySession(null);
+        setAiAgentStatus('idle');
+      }
+    }
+    return;
+  }
+  if (!text) {
+    await agentBridgeRequest('/result', 'POST', { id: job.id, reply: 'Пустой запрос.' });
+    return;
+  }
+  if (aiBusy) {
+    await agentBridgeRequest('/result', 'POST', {
+      id: job.id,
+      reply: 'Агент клиента сейчас занят другим запросом. Повтори чуть позже.',
+    });
+    return;
+  }
+  if (aiAccessOk == null) await refreshAiAccessStatus();
+  if (!usingCustomAi() && aiAccessOk === false) {
+    await agentBridgeRequest('/result', 'POST', {
+      id: job.id,
+      reply: 'У этого аккаунта нет доступа к агенту в клиенте.',
+    });
+    return;
+  }
+  showTgAgentToast(1800);
+  ensureTelegramAiSession();
+  tgActiveJobId = String(job.id || '');
+  try {
+    await sendAiMessage(text);
+  } finally {
+    tgActiveJobId = '';
+  }
+  const session = aiSessions.find((s) => s.source === 'telegram') || activeAiSession();
+  const msgs = session?.messages || [];
+  let lastUser = -1;
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    if (msgs[i].role === 'user') {
+      lastUser = i;
+      break;
+    }
+  }
+  const parts = msgs
+    .slice(lastUser + 1)
+    .filter((m) => m.role === 'assistant' && m.content)
+    .map((m) => String(m.content));
+  const reply = parts.join('\n\n').trim() || 'Агент завершил шаг без текста.';
+  await agentBridgeRequest('/result', 'POST', { id: job.id, reply });
+}
+
+async function pollAgentBridge(): Promise<void> {
+  if (agentBridgeBusy) return;
+  const res = await agentBridgeRequest('/poll');
+  if (!res?.ok) return;
+  const jobs = Array.isArray(res.data?.jobs) ? res.data.jobs : [];
+  if (!jobs.length) return;
+  agentBridgeBusy = true;
+  try {
+    for (const job of jobs) {
+      if (!job?.id) continue;
+      await runTelegramAgentJob({ id: String(job.id), text: String(job.text || '') });
+    }
+  } finally {
+    agentBridgeBusy = false;
+  }
+}
+
+function armTelegramFootTimer(ms: number): void {
+  window.clearInterval(tgFootTimer);
+  tgFootTimer = window.setInterval(() => {
+    void refreshAiTelegramFoot();
+  }, ms);
+}
+
+function startAgentTelegramBridge(): void {
+  if (agentBridgeStarted) return;
+  agentBridgeStarted = true;
+  window.setInterval(() => {
+    void agentBridgeRequest('/heartbeat', 'POST', {});
+  }, 8000);
+  window.setInterval(() => {
+    void pollAgentBridge();
+  }, 3000);
+  void agentBridgeRequest('/heartbeat', 'POST', {});
+  void refreshAiTelegramFoot();
+  // Пока код на экране — чаще, чтобы модалка закрылась сразу после ответа бота.
+  armTelegramFootTimer(4000);
+}
+
+function telegramPhotoSrc(data: { photoUrl?: string; photoDataUrl?: string } | null): string {
+  const remote = String(data?.photoUrl || '').trim();
+  if (remote.startsWith('https://') || remote.startsWith('http://')) return remote;
+  if (remote.startsWith('/')) return absoluteApiUrl(remote);
+  const inline = String(data?.photoDataUrl || '').trim();
+  if (inline.startsWith('data:image/')) return inline;
+  return '';
+}
+
+function renderAiTelegramFoot(data: {
+  linked?: boolean;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  telegramUserId?: string;
+  photoUrl?: string;
+  photoDataUrl?: string;
+  linkedAt?: number;
+  claimedCode?: string;
+} | null): void {
+  const bind = document.getElementById('ai-tg-bind');
+  const user = document.getElementById('ai-tg-user');
+  const avatar = document.getElementById('ai-tg-avatar');
+  const display = document.getElementById('ai-tg-display');
+  const handle = document.getElementById('ai-tg-handle');
+  if (!bind || !user || !avatar || !display || !handle) return;
+  const linked = Boolean(data?.linked);
+  bind.classList.toggle('hidden', linked);
+  user.classList.toggle('hidden', !linked);
+  if (!linked) {
+    avatar.replaceChildren();
+    avatar.style.backgroundImage = '';
+    display.textContent = '';
+    handle.textContent = '';
+    return;
+  }
+  const username = String(data?.username || '').replace(/^@/, '').trim();
+  const id = String(data?.telegramUserId || '').trim();
+  const fullName = [data?.firstName, data?.lastName].map((part) => String(part || '').trim()).filter(Boolean).join(' ');
+  display.textContent = fullName || username || id;
+  handle.textContent = username ? `@${username}` : id;
+  const letter = (fullName || username || id || '?').charAt(0).toUpperCase();
+  const src = telegramPhotoSrc(data || null);
+  const currentImg = avatar.querySelector('img');
+  const currentSrc = currentImg?.getAttribute('src') || '';
+  if (src && currentSrc === src) return;
+  if (!src && !currentImg && avatar.textContent === letter) return;
+  avatar.replaceChildren();
+  avatar.style.backgroundImage = '';
+  if (!src) {
+    avatar.textContent = letter;
+    return;
+  }
+  const img = document.createElement('img');
+  img.alt = '';
+  img.referrerPolicy = 'no-referrer';
+  img.src = src;
+  img.addEventListener('error', () => {
+    if (!avatar.contains(img)) return;
+    avatar.replaceChildren();
+    avatar.textContent = letter;
+  });
+  avatar.appendChild(img);
+}
+
+async function refreshAiTelegramFoot(): Promise<void> {
+  const res = await agentBridgeRequest('/status');
+  if (!res?.ok) return;
+  const data = (res.data || {}) as {
+    linked?: boolean;
+    username?: string;
+    firstName?: string;
+    lastName?: string;
+    telegramUserId?: string;
+    photoUrl?: string;
+    photoDataUrl?: string;
+    linkedAt?: number;
+    claimedCode?: string;
+  };
+  renderAiTelegramFoot(data);
+  const modal = document.getElementById('modal-tg-link');
+  const modalOpen = Boolean(modal && !modal.classList.contains('hidden'));
+  if (!modalOpen) {
+    if (tgPendingCode) {
+      tgPendingCode = '';
+      armTelegramFootTimer(4000);
+    }
+    return;
+  }
+  if (!tgPendingCode) return;
+  const claimed = String(data.claimedCode || '').trim().toUpperCase();
+  const linkedAt = Number(data.linkedAt || 0);
+  const sameCode = claimed === tgPendingCode.toUpperCase();
+  const newerLink = Boolean(data.linked) && linkedAt > tgLinkSeenAt && tgLinkSeenAt > 0;
+  if (sameCode || newerLink) {
+    tgPendingCode = '';
+    closeModal('modal-tg-link');
+    armTelegramFootTimer(4000);
+  }
+}
+
+function showLinkCode(code: string): void {
+  const el = document.getElementById('modal-tg-link-code');
+  if (!el) return;
+  el.classList.remove('is-wait');
+  el.dataset.code = code;
+  el.replaceChildren();
+  [...code].forEach((ch, index) => {
+    const span = document.createElement('span');
+    span.className = 'ai-tg-link__ch';
+    span.style.animationDelay = `${index * 55}ms`;
+    span.textContent = ch;
+    el.appendChild(span);
+  });
+}
+
+async function openTelegramLinkModal(): Promise<void> {
+  openModal('modal-tg-link');
+  const hint = document.getElementById('modal-tg-link-hint');
+  const codeEl = document.getElementById('modal-tg-link-code');
+  if (hint) hint.textContent = t('ai.tg.bindHint');
+  if (codeEl) {
+    delete codeEl.dataset.code;
+    codeEl.classList.add('is-wait');
+    codeEl.replaceChildren();
+  }
+  tgPendingCode = '';
+  await warmMessengerSession();
+  const before = await agentBridgeRequest('/status');
+  tgLinkSeenAt = before?.ok ? Number(before.data?.linkedAt || 0) : 0;
+  const issued = await agentBridgeRequest('/code', 'POST', {});
+  const code = String(issued?.data?.code || '').trim();
+  if (!issued?.ok || !code) {
+    if (codeEl) {
+      codeEl.classList.remove('is-wait');
+      codeEl.textContent = issued?.ok === false && issued?.code === 'unauthorized'
+        ? t('ai.tg.needAccount')
+        : t('ai.tg.codeFail');
+    }
+    return;
+  }
+  showLinkCode(code);
+  tgPendingCode = code;
+  armTelegramFootTimer(1500);
+}
+
+function bindTelegramLinkModal(): void {
+  document.getElementById('modal-tg-link-close')?.addEventListener('click', () => closeModal('modal-tg-link'));
+  document.getElementById('modal-tg-link')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeModal('modal-tg-link');
+  });
+  document.getElementById('modal-tg-link-refresh')?.addEventListener('click', () => {
+    void openTelegramLinkModal();
+  });
+  document.getElementById('modal-tg-link-copy')?.addEventListener('click', () => {
+    const host = document.getElementById('modal-tg-link-code');
+    const code = String(host?.dataset.code || host?.textContent || '').trim();
+    if (!code || code.includes('·')) return;
+    void navigator.clipboard.writeText(code).catch(() => {});
+  });
+  document.getElementById('ai-tg-bind')?.addEventListener('click', () => {
+    void openTelegramLinkModal();
+  });
+  document.getElementById('ai-tg-unlink')?.addEventListener('click', () => {
+    void (async () => {
+      await agentBridgeRequest('/unlink', 'POST', {});
+      await refreshAiTelegramFoot();
+    })();
+  });
+}
+
+type AiSuggestItem = { id: string; title: string; hint: string };
+let aiSuggestItems: AiSuggestItem[] = [];
+let aiSuggestIndex = 0;
+let aiSuggestMode: 'slash' | 'mention' | null = null;
+let aiMentionFiles: AiSuggestItem[] = [];
+let aiMentionBuildId = '';
+
+function closeAiSuggest(): void {
+  aiSuggestMode = null;
+  aiSuggestItems = [];
+  document.getElementById('ai-suggest')?.classList.add('hidden');
+}
+
+function ensureAiSuggest(): HTMLElement {
+  let menu = document.getElementById('ai-suggest');
+  if (menu) return menu;
+  menu = document.createElement('div');
+  menu.id = 'ai-suggest';
+  menu.className = 'ai-suggest hidden';
+  menu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-suggest]');
+    if (!btn?.dataset.suggest) return;
+    void runAiSuggest(btn.dataset.suggest);
+  });
+  document.documentElement.appendChild(menu);
+  return menu;
+}
+
+function tokenAtCursor(input: HTMLTextAreaElement): { kind: 'slash' | 'mention'; query: string; start: number } | null {
+  const pos = input.selectionStart ?? input.value.length;
+  const before = input.value.slice(0, pos);
+  const slash = before.match(/(?:^|\s)\/([^\s]*)$/);
+  if (slash) return { kind: 'slash', query: slash[1] || '', start: pos - (slash[1] || '').length - 1 };
+  const at = before.match(/(?:^|\s)@([^\s]*)$/);
+  if (at) return { kind: 'mention', query: at[1] || '', start: pos - (at[1] || '').length - 1 };
+  return null;
+}
+
+function replaceActiveToken(text: string): void {
+  const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
+  if (!input) return;
+  const mark = tokenAtCursor(input);
+  if (!mark) return;
+  const pos = input.selectionStart ?? input.value.length;
+  input.value = `${input.value.slice(0, mark.start)}${text}${input.value.slice(pos)}`;
+  const caret = mark.start + text.length;
+  input.setSelectionRange(caret, caret);
+  autoResizeAiInput();
+}
+
+function slashCommands(): AiSuggestItem[] {
+  return [
+    { id: 'slash:new', title: 'Новый чат', hint: '/new' },
+    { id: 'slash:clear', title: 'Очистить чат', hint: '/clear' },
+    { id: 'slash:folder', title: 'Новая папка', hint: '/folder' },
+    { id: 'slash:search', title: 'Поиск по чатам', hint: '/search' },
+    { id: 'slash:telegram', title: 'Привязать Telegram', hint: '/telegram' },
+    { id: 'slash:tools', title: 'Показать инструменты', hint: '/tools' },
+  ];
+}
+
+async function refreshMentionFiles(buildId: string): Promise<void> {
+  if (!buildId || !api?.scanInstance) {
+    aiMentionFiles = [];
+    aiMentionBuildId = '';
+    return;
+  }
+  if (aiMentionBuildId === buildId) return;
+  aiMentionBuildId = buildId;
+  try {
+    const data = await api.scanInstance(buildId);
+    aiMentionFiles = (data?.mods || [])
+      .slice(0, 24)
+      .map((m: any) => {
+        const filename = String(m.filename || m.file || m.name || '');
+        return { id: `file:${filename}`, title: String(m.name || filename), hint: filename };
+      })
+      .filter((row: AiSuggestItem) => row.hint);
+  } catch {
+    aiMentionFiles = [];
+  }
+  if (aiSuggestMode === 'mention') syncAiSuggest();
+}
+
+function syncAiSuggest(): void {
+  const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
+  if (!input) return;
+  const token = tokenAtCursor(input);
+  if (!token) {
+    closeAiSuggest();
+    return;
+  }
+  closeAiPopovers('ai-suggest');
+  const q = token.query.toLowerCase();
+  let items: AiSuggestItem[] = [];
+  if (token.kind === 'slash') {
+    items = slashCommands().filter((item) => !q || `${item.title} ${item.hint}`.toLowerCase().includes(q));
+  } else {
+    const session = activeAiSession();
+    const builds = savedBuilds.map((b) => ({
+      id: `build:${b.id}`,
+      title: b.name,
+      hint: [b.gameVersion, b.loader].filter(Boolean).join(' · ') || 'сборка',
+    }));
+    const current = session?.buildId ? builds.filter((b) => b.id === `build:${session.buildId}`) : [];
+    items = [...current, ...builds.filter((b) => !current.some((c) => c.id === b.id)), ...aiMentionFiles];
+    items = items.filter((item) => !q || `${item.title} ${item.hint}`.toLowerCase().includes(q)).slice(0, 12);
+    if (session?.buildId) void refreshMentionFiles(session.buildId);
+  }
+  aiSuggestMode = token.kind;
+  aiSuggestItems = items;
+  aiSuggestIndex = Math.max(0, Math.min(aiSuggestIndex, Math.max(0, items.length - 1)));
+  const menu = ensureAiSuggest();
+  if (!items.length) {
+    menu.classList.add('hidden');
+    return;
+  }
+  menu.innerHTML = items
+    .map(
+      (item, i) =>
+        `<button type="button" class="ai-suggest__row${i === aiSuggestIndex ? ' is-on' : ''}" data-suggest="${escapeAiHtml(item.id)}"><span>${escapeAiHtml(item.title)}</span><span class="ai-suggest__hint">${escapeAiHtml(item.hint)}</span></button>`,
+    )
+    .join('');
+  menu.classList.remove('hidden');
+  placeAiFloating(menu, input, 'up');
+}
+
+function moveAiSuggest(delta: number): void {
+  if (!aiSuggestItems.length) return;
+  aiSuggestIndex = (aiSuggestIndex + delta + aiSuggestItems.length) % aiSuggestItems.length;
+  syncAiSuggest();
+}
+
+async function showAiToolNames(): Promise<void> {
+  const data = await api?.aiToolsList?.();
+  const names = Array.isArray(data?.names) ? data.names.map((name) => String(name)) : [];
+  const lines = names.slice(0, 28).map((name) => `• ${toolLabel(name)} — ${name}`);
+  appendAiText(
+    'system',
+    lines.length ? `Инструменты агента:\n${lines.join('\n')}` : 'Список инструментов сейчас недоступен.',
+  );
+}
+
+async function runAiSuggest(id: string): Promise<void> {
+  closeAiSuggest();
+  if (id.startsWith('slash:')) replaceActiveToken('');
+  if (id === 'slash:new') {
+    document.getElementById('ai-new-chat')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return;
+  }
+  if (id === 'slash:clear') {
+    document.getElementById('ai-menu-clear')?.click();
+    return;
+  }
+  if (id === 'slash:folder') {
+    document.getElementById('ai-new-folder')?.click();
+    return;
+  }
+  if (id === 'slash:search') {
+    document.querySelector('.ai-shell')?.classList.add('is-rail-open');
+    document.getElementById('ai-search-toggle')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return;
+  }
+  if (id === 'slash:telegram') {
+    await openTelegramLinkModal();
+    return;
+  }
+  if (id === 'slash:tools') {
+    await showAiToolNames();
+    return;
+  }
+  if (id.startsWith('build:')) {
+    const buildId = id.slice('build:'.length);
+    const build = savedBuilds.find((b) => b.id === buildId);
+    const session = activeAiSession();
+    if (!build || !session) return;
+    session.buildId = build.id;
+    session.updatedAt = Date.now();
+    saveAiSessions();
+    updateAiBuildChip(session);
+    pushAiAttachment({
+      kind: 'build',
+      label: build.name,
+      buildId: build.id,
+      detail: [build.gameVersion, build.loader].filter(Boolean).join(' · '),
+    });
+    replaceActiveToken(`@${build.name} `);
+    return;
+  }
+  if (id.startsWith('file:')) {
+    const filename = id.slice('file:'.length);
+    const session = activeAiSession();
+    if (!filename || !session?.buildId) return;
+    pushAiAttachment({
+      kind: 'mod',
+      label: filename.replace(/\.(jar|zip)$/i, ''),
+      filename,
+      buildId: session.buildId,
+    });
+    replaceActiveToken(`@${filename} `);
+  }
+}
+
 function initAiAssistant(): void {
   if (aiInited) return;
   const form = document.getElementById('ai-form') as HTMLFormElement | null;
@@ -14364,6 +19776,8 @@ function initAiAssistant(): void {
   aiInited = true;
 
   bindAiActionBridge();
+  bindTelegramLinkModal();
+  startAgentTelegramBridge();
 
   loadAiSessions();
   renderAiEmptyScenarios(getAiUiHost());
@@ -14381,24 +19795,63 @@ function initAiAssistant(): void {
     requestAiStop();
   });
 
-  // Pill бренда: всегда Pixi 1.0 (публичное имя модели)
-  const verBtn = document.getElementById('ai-agent-ver');
-  if (verBtn) verBtn.textContent = t('ai.model.pill');
+  // Выбор модели сохраняется локально и уходит в запрос как pixi-1.0 / pixi-1.5.
+  syncAiModelButton();
   void api?.getAppVersion?.().then((v) => {
     if (!v) return;
     appVersion = String(v);
   });
 
+  const verBtn = document.getElementById('ai-agent-ver');
   verBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleAiModelMenu();
   });
   document.getElementById('ai-model-menu')?.addEventListener('click', (e) => {
     e.stopPropagation();
+    const info = (e.target as HTMLElement).closest<HTMLElement>('[data-model-info]');
+    if (info?.dataset.modelInfo) {
+      const card = document.querySelector<HTMLElement>(
+        `.ai-model-menu__card[data-card="${info.dataset.modelInfo}"]`,
+      );
+      if (card) card.hidden = !card.hidden;
+      positionAiModelMenu();
+      return;
+    }
+    const choice = (e.target as HTMLElement).closest<HTMLElement>('[data-model]');
+    const id = choice?.dataset.model;
+    if (id === 'pixi-1.0' || id === 'pixi-1.5' || id === 'custom') {
+      setCurrentAiModel(id);
+      setAiModelMenuOpen(false);
+    }
   });
   window.addEventListener('resize', () => {
+    if (window.innerWidth > 1040) document.querySelector('.ai-shell')?.classList.remove('is-rail-open');
     const menu = document.getElementById('ai-model-menu');
-    if (menu?.classList.contains('is-open')) positionAiModelMenu();
+    const anchor = document.getElementById('ai-agent-ver');
+    if (menu?.classList.contains('is-open') && anchor) placeAiFloating(menu, anchor, 'up');
+    for (const id of ['ai-chat-menu-pop', 'ai-build-menu', 'ai-attach-menu', 'ai-context-menu', 'ai-suggest']) {
+      const pop = document.getElementById(id);
+      if (!pop || pop.classList.contains('hidden') || !pop.classList.contains('is-open') && id !== 'ai-suggest') continue;
+      const button =
+        id === 'ai-chat-menu-pop'
+          ? document.getElementById('ai-chat-menu')
+          : id === 'ai-build-menu'
+            ? document.getElementById('ai-build-btn')
+            : id === 'ai-attach-menu'
+              ? document.getElementById('ai-attach')
+              : id === 'ai-context-menu'
+                ? document.getElementById('ai-context-ring')
+                : document.getElementById('ai-input');
+      if (button && !pop.classList.contains('hidden')) {
+        placeAiFloating(pop, button, id === 'ai-chat-menu-pop' ? 'down' : 'up');
+      }
+    }
+  });
+
+  document.getElementById('ai-rail-toggle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.querySelector('.ai-shell')?.classList.toggle('is-rail-open');
   });
 
   newBtn?.addEventListener('click', () => {
@@ -14409,6 +19862,29 @@ function initAiAssistant(): void {
     renderAiConversation();
     refreshAiShellUi(activeAiSession());
     input.focus();
+  });
+
+  document.getElementById('ai-new-folder')?.addEventListener('click', () => {
+    const folder: AiFolder = { id: aiUid(), name: t('ai.folder.new') };
+    aiFolders.unshift(folder);
+    saveAiSessions();
+    renderAiSessionList();
+    const created = document.querySelector<HTMLButtonElement>(
+      `.ai-folder__name[data-folder-id="${folder.id}"]`,
+    );
+    if (created) beginAiFolderRename(folder.id, created);
+  });
+
+  document.getElementById('ai-menu-move')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-move-folder]');
+    if (!btn) return;
+    const session = activeAiSession();
+    if (!session) return;
+    const folderId = btn.getAttribute('data-move-folder') || '';
+    session.folderId = folderId || null;
+    saveAiSessions();
+    renderAiSessionList();
+    closeAiPopovers();
   });
 
   // ===== Меню вложений (@) — сборки, моды, паки, файлы, логи =====
@@ -14455,12 +19931,15 @@ function initAiAssistant(): void {
       }
     },
     closeOtherPopovers: () => closeAiPopovers('ai-attach-menu'),
+    onMenuPlace: (menu, anchor) => placeAiFloating(menu, anchor, 'up'),
     onAttachmentsChange: () => {
       /* чипы рисует attach-ui */
     },
   });
 
-  document.getElementById('ai-search-toggle')?.addEventListener('click', () => {
+  document.getElementById('ai-search-toggle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.querySelector('.ai-shell')?.classList.add('is-rail-open');
     const search = document.getElementById('ai-search') as HTMLInputElement | null;
     if (!search) return;
     search.classList.toggle('hidden');
@@ -14477,9 +19956,37 @@ function initAiAssistant(): void {
     renderAiSessionList();
   });
 
-  input.addEventListener('input', autoResizeAiInput);
+  input.addEventListener('input', () => {
+    autoResizeAiInput();
+    aiSuggestIndex = 0;
+    syncAiSuggest();
+  });
   autoResizeAiInput();
   input.addEventListener('keydown', (e) => {
+    if (aiSuggestMode && aiSuggestItems.length) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeAiSuggest();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveAiSuggest(1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveAiSuggest(-1);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const item = aiSuggestItems[aiSuggestIndex];
+        if (item) void runAiSuggest(item.id);
+        return;
+      }
+    }
+    if (e.key === 'Escape') closeAiSuggest();
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       form.requestSubmit();
@@ -14588,17 +20095,87 @@ function initAiAssistant(): void {
     closeAiPopovers();
   });
 
-  document.addEventListener('click', () => {
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('#ai-suggest, #ai-input, #ai-model-menu, #ai-chat-menu-pop, #ai-build-menu, #ai-attach-menu, #ai-context-menu, #ai-agent-ver, #ai-chat-menu, #ai-build-btn, #ai-attach, #ai-context-ring')) {
+      return;
+    }
     closeAiPopovers();
   });
 
   void api?.aiStatus?.().then((status) => {
+    // Может прийти до warmMessengerSession — не затираем true, если статус уже ок
     aiConfigured = status?.configured !== false;
-    aiAccessOk = Boolean(status?.access);
+    if (status?.access) aiAccessOk = true;
+    else if (aiAccessOk == null) aiAccessOk = false;
   });
 }
 
 let aiAccessSettingsBound = false;
+
+function fillAiProviderModels(models: string[], selected: string): void {
+  const select = document.getElementById('setting-ai-provider-model') as HTMLSelectElement | null;
+  if (!select) return;
+  const list = models.length ? models : selected ? [selected] : [];
+  select.innerHTML = list
+    .map((id) => `<option value="${escapeAiHtml(id)}">${escapeAiHtml(id)}</option>`)
+    .join('');
+  if (selected) select.value = selected;
+}
+
+function bindAiProviderSettings(): void {
+  const kind = document.getElementById('setting-ai-provider-kind') as HTMLSelectElement | null;
+  const url = document.getElementById('setting-ai-provider-url') as HTMLInputElement | null;
+  const key = document.getElementById('setting-ai-provider-key') as HTMLInputElement | null;
+  const status = document.getElementById('setting-ai-provider-status');
+  if (!kind || !url || !key || kind.dataset.bound === '1') return;
+  kind.dataset.bound = '1';
+  void api?.aiProviderGet?.().then((cfg) => {
+    if (!cfg) return;
+    kind.value = cfg.kind || 'pixi';
+    url.value = cfg.baseUrl || '';
+    key.value = '';
+    key.placeholder = cfg.hasKey ? `сохранён ••••${cfg.keyTail || ''}` : 'sk-...';
+    fillAiProviderModels(cfg.model ? [cfg.model] : [], cfg.model || '');
+    syncAiModelButton();
+  });
+  document.getElementById('setting-ai-provider-detect')?.addEventListener('click', () => {
+    void (async () => {
+      if (status) status.textContent = 'Ищу модели…';
+      await api?.aiProviderSet?.({
+        kind: kind.value,
+        baseUrl: url.value.trim(),
+        apiKey: key.value.trim(),
+      });
+      const found = await api?.aiProviderModels?.();
+      if (!found?.ok) {
+        if (status) status.textContent = found?.error || 'Не удалось получить список';
+        return;
+      }
+      const models = found.models || [];
+      const select = document.getElementById('setting-ai-provider-model') as HTMLSelectElement | null;
+      fillAiProviderModels(models, select?.value || models[0] || '');
+      if (status) status.textContent = models.length ? `Найдено: ${models.length}` : 'Список пуст';
+    })();
+  });
+  document.getElementById('setting-ai-provider-save')?.addEventListener('click', () => {
+    void (async () => {
+      const select = document.getElementById('setting-ai-provider-model') as HTMLSelectElement | null;
+      const saved = await api?.aiProviderSet?.({
+        kind: kind.value,
+        baseUrl: url.value.trim(),
+        apiKey: key.value.trim(),
+        model: select?.value || '',
+      });
+      if (saved?.model) localStorage.setItem('Undefined Client-ai-custom-label', saved.model);
+      if (saved?.kind && saved.kind !== 'pixi' && saved.hasKey && saved.model) setCurrentAiModel('custom');
+      else if (saved?.kind === 'pixi' && currentAiModel() === 'custom') setCurrentAiModel('pixi-1.0');
+      key.value = '';
+      if (saved?.hasKey) key.placeholder = `сохранён ••••${saved.keyTail || ''}`;
+      if (status) status.textContent = 'Сохранено';
+    })();
+  });
+}
 
 function bindAiAccessSettingsUi(): void {
   if (aiAccessSettingsBound) {
@@ -14633,6 +20210,8 @@ function bindAiAccessSettingsUi(): void {
   document.getElementById('modal-ai-access-settings')?.addEventListener('click', () => {
     openUagentApplyFromModal();
   });
+
+  bindAiProviderSettings();
 
   const closeMsgrOffline = () => closeModal('modal-msgr-offline');
   document.getElementById('modal-msgr-offline-close')?.addEventListener('click', closeMsgrOffline);

@@ -1,0 +1,418 @@
+/* Frame 1313 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 272px;
+height: 104px;
+left: 239px;
+top: 765px;
+
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.05);
+box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.15);
+backdrop-filter: blur(16px);
+/* Note: backdrop-filter has minimal browser support */
+border-radius: 12px;
+
+
+/* Rectangle 10095 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 8px;
+top: 8px;
+
+background: url(image.png);
+border-radius: 6px;
+
+
+/* Steve */
+
+position: absolute;
+width: 169px;
+height: 20px;
+left: 56px;
+top: 8px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Оффлайн-аккаунт */
+
+position: absolute;
+width: 169px;
+height: 20px;
+left: 56px;
+top: 28px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 1316 */
+
+position: absolute;
+width: 256px;
+height: 40px;
+left: 8px;
+top: 56px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* Не в сети */
+
+position: absolute;
+width: 256px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Это автономная учётная запись */
+
+position: absolute;
+width: 256px;
+height: 14px;
+left: 0px;
+top: 26px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 1314 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 272px;
+height: 104px;
+left: 678px;
+top: 765px;
+
+background: rgba(255, 255, 255, 0.1);
+border: 1px solid rgba(255, 255, 255, 0.05);
+box-shadow: 0px 8px 32px rgba(0, 0, 0, 0.15);
+backdrop-filter: blur(16px);
+/* Note: backdrop-filter has minimal browser support */
+border-radius: 12px;
+
+
+/* Rectangle 10095 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 8px;
+top: 8px;
+
+background: url(image.png);
+border-radius: 6px;
+
+
+/* vova12_PRO */
+
+position: absolute;
+width: 169px;
+height: 20px;
+left: 56px;
+top: 8px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Лицензия */
+
+position: absolute;
+width: 169px;
+height: 20px;
+left: 56px;
+top: 28px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 1316 */
+
+position: absolute;
+width: 80px;
+height: 40px;
+left: 8px;
+top: 56px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* 7 */
+
+position: absolute;
+width: 80px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Посты */
+
+position: absolute;
+width: 80px;
+height: 14px;
+left: 0px;
+top: 26px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 1317 */
+
+position: absolute;
+width: 80px;
+height: 40px;
+left: 96px;
+top: 56px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* 4 */
+
+position: absolute;
+width: 80px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Друзья */
+
+position: absolute;
+width: 80px;
+height: 14px;
+left: 0px;
+top: 26px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 1318 */
+
+position: absolute;
+width: 80px;
+height: 40px;
+left: 184px;
+top: 56px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* 6 */
+
+position: absolute;
+width: 80px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 18px;
+line-height: 22px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Скины */
+
+position: absolute;
+width: 80px;
+height: 14px;
+left: 0px;
+top: 26px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 12px;
+line-height: 14px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+text-align: center;
+
+color: #FFFFFF;
+

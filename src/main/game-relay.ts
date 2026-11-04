@@ -31,6 +31,8 @@ type ShareMeta = {
   loader?: string;
   /** Отображаемое имя мира для друзей */
   serverName?: string;
+  /** Свой сервер: сессия садится на заранее выданный порт и поддомен */
+  serverId?: string;
 };
 
 type PersistedShare = RelaySessionInfo &
@@ -43,6 +45,7 @@ type ActiveTunnel = {
   meta: ShareMeta | null;
   control: net.Socket;
   closed: boolean;
+  pulse?: ReturnType<typeof setInterval>;
 };
 
 let logWatchTimer: ReturnType<typeof setInterval> | null = null;
@@ -51,6 +54,34 @@ let logWatchOffset = 0;
 let lastLanPort: number | null = null;
 let activeTunnel: ActiveTunnel | null = null;
 let activeMeta: ShareMeta | null = null;
+/** Неожиданный обрыв control-сокета. Свой сервер поднимает реле заново. */
+let onRelayDropped: ((buildId: string) => void) | null = null;
+
+export function setRelayDropHandler(fn: ((buildId: string) => void) | null): void {
+  onRelayDropped = fn;
+}
+
+export function relayOwnerBuildId(): string | null {
+  return activeTunnel?.meta?.buildId || null;
+}
+
+/** Адрес открытого для друзей мира. Свой сервер на том же реле сюда не входит. */
+export function friendWorldEndpoint(): { serverHost: string; serverName?: string } | null {
+  if (!activeTunnel || activeTunnel.closed || !activeMeta || activeMeta.serverId) return null;
+  const host = activeTunnel.session.publicHost;
+  const port = Number(activeTunnel.session.publicPort);
+  if (!host || !Number.isInteger(port) || port < 1) return null;
+  return { serverHost: `${host}:${port}`, serverName: activeMeta.serverName };
+}
+
+function repostMessengerActivity(): void {
+  try {
+    const api = require('./messenger-api') as typeof import('./messenger-api');
+    api.repostActivity();
+  } catch {
+    /* мессенджер ещё не поднят */
+  }
+}
 let messengerTokenProvider: (() => string | null) | null = null;
 let restoreInFlight: Promise<{
   ok: boolean;
@@ -125,6 +156,7 @@ function savePersistedShare(session: RelaySessionInfo, meta: ShareMeta | null): 
     gameVersion: meta.gameVersion,
     loader: meta.loader,
     serverName: meta.serverName,
+    serverId: meta.serverId,
     savedAt: Date.now(),
   };
   try {
@@ -356,17 +388,21 @@ async function relayFetch(
 
 function readSocketLine(socket: net.Socket, timeoutMs = 10000): Promise<string> {
   return new Promise((resolve, reject) => {
-    let buf = '';
+    let buf = Buffer.alloc(0);
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error('timeout'));
     }, timeoutMs);
     const onData = (chunk: Buffer) => {
-      buf += chunk.toString('utf8');
-      const idx = buf.indexOf('\n');
+      buf = Buffer.concat([buf, chunk]);
+      const idx = buf.indexOf(0x0a);
       if (idx < 0) return;
       cleanup();
-      resolve(buf.slice(0, idx).replace(/\r$/, ''));
+      const line = buf.slice(0, idx).toString('utf8').replace(/\r$/, '');
+      const rest = buf.slice(idx + 1);
+      // В том же пакете, что и OK DATA, уже могут быть байты игры. Их нельзя терять.
+      if (rest.length) socket.unshift(rest);
+      resolve(line);
     };
     const onErr = (err: Error) => {
       cleanup();
@@ -407,6 +443,8 @@ function openDataChannel(session: RelaySessionInfo, connId: string): void {
     port: session.tunnelPort,
   });
   dataSock.once('connect', async () => {
+    dataSock.setNoDelay(true);
+    dataSock.setKeepAlive(true, 30000);
     try {
       dataSock.write(`DATA ${session.sessionId} ${session.tunnelToken} ${connId}\n`);
       const line = await readSocketLine(dataSock, 10000);
@@ -416,6 +454,7 @@ function openDataChannel(session: RelaySessionInfo, connId: string): void {
       }
       const local = net.connect({ host: '127.0.0.1', port: session.localPort });
       local.once('connect', () => {
+        local.setNoDelay(true);
         dataSock.pipe(local);
         local.pipe(dataSock);
       });
@@ -444,7 +483,7 @@ function openDataChannel(session: RelaySessionInfo, connId: string): void {
   });
 }
 
-async function stopTunnel(opts?: { destroyRemote?: boolean; clearPersist?: boolean }): Promise<void> {
+export async function stopTunnel(opts?: { destroyRemote?: boolean; clearPersist?: boolean }): Promise<void> {
   const destroyRemote = opts?.destroyRemote !== false;
   const clearPersist = opts?.clearPersist !== false;
   const current = activeTunnel;
@@ -455,6 +494,7 @@ async function stopTunnel(opts?: { destroyRemote?: boolean; clearPersist?: boole
     return;
   }
   current.closed = true;
+  if (current.pulse) clearInterval(current.pulse);
   try {
     current.control.destroy();
   } catch {
@@ -474,7 +514,8 @@ async function stopTunnel(opts?: { destroyRemote?: boolean; clearPersist?: boole
     }
   }
   if (clearPersist) clearPersistedShare();
-  sendToRenderer('game-relay:tunnel', { active: false });
+  sendToRenderer('game-relay:tunnel', { active: false, serverId: current.meta?.serverId || null });
+  repostMessengerActivity();
 }
 
 function emitTunnelActive(session: RelaySessionInfo, meta: ShareMeta | null, restored = false): void {
@@ -489,6 +530,7 @@ function emitTunnelActive(session: RelaySessionInfo, meta: ShareMeta | null, res
     buildName: meta?.buildName || null,
     gameVersion: meta?.gameVersion || null,
     loader: meta?.loader || null,
+    serverId: meta?.serverId || null,
   });
 }
 
@@ -500,7 +542,11 @@ async function attachHostControl(
   const control = net.connect({ host: session.tunnelHost, port: session.tunnelPort });
   try {
     await new Promise<void>((resolve, reject) => {
-      control.once('connect', () => resolve());
+      control.once('connect', () => {
+        control.setNoDelay(true);
+        control.setKeepAlive(true, 60000);
+        resolve();
+      });
       control.once('error', reject);
     });
     control.write(`HOST ${session.sessionId} ${session.tunnelToken}\n`);
@@ -521,16 +567,60 @@ async function attachHostControl(
   const tunnel: ActiveTunnel = { session, meta, control, closed: false };
   activeTunnel = tunnel;
   activeMeta = meta;
+  let lastPong = Date.now();
+  let pongSeen = false;
+  const pulseStarted = Date.now();
   attachControlLines(control, (line) => {
     if (tunnel.closed || activeTunnel !== tunnel) return;
-    const m = line.trim().match(/^CONNECT\s+(\S+)/i);
+    const text = line.trim();
+    if (/^PONG\b/i.test(text)) {
+      lastPong = Date.now();
+      pongSeen = true;
+      return;
+    }
+    const m = text.match(/^CONNECT\s+(\S+)/i);
     if (m) openDataChannel(session, m[1]);
   });
+  const beat = () => {
+    if (tunnel.closed || activeTunnel !== tunnel) return;
+    if (pongSeen && Date.now() - lastPong > 60000) {
+      control.destroy();
+      return;
+    }
+    try {
+      control.write('PING\n');
+    } catch {
+      control.destroy();
+    }
+  };
+  beat();
+  tunnel.pulse = setInterval(() => {
+    if (tunnel.closed || activeTunnel !== tunnel) {
+      if (tunnel.pulse) clearInterval(tunnel.pulse);
+      return;
+    }
+    // Старое реле не читает PING: пару проб и останавливаемся, чтобы не забить буфер.
+    if (!pongSeen && Date.now() - pulseStarted > 20000) {
+      if (tunnel.pulse) clearInterval(tunnel.pulse);
+      tunnel.pulse = undefined;
+      return;
+    }
+    beat();
+  }, 20000);
   control.on('close', () => {
+    if (tunnel.pulse) clearInterval(tunnel.pulse);
     if (activeTunnel === tunnel) {
       activeTunnel = null;
+      const buildId = tunnel.meta?.buildId || null;
+      const unexpected = !tunnel.closed;
       // Persist оставляем — лаунчер/сеть могли моргнуть, восстановим при старте
-      sendToRenderer('game-relay:tunnel', { active: false, reason: 'control_closed' });
+      sendToRenderer('game-relay:tunnel', {
+        active: false,
+        reason: 'control_closed',
+        serverId: tunnel.meta?.serverId || null,
+      });
+      repostMessengerActivity();
+      if (unexpected && buildId) onRelayDropped?.(buildId);
     }
   });
   control.on('error', () => {
@@ -539,10 +629,49 @@ async function attachHostControl(
 
   if (meta?.buildId) savePersistedShare(session, meta);
   emitTunnelActive(session, meta, restored);
+  repostMessengerActivity();
   return { ok: true, session };
 }
 
-async function startTunnel(
+export async function reserveHostedAddress(
+  serverId: string,
+  nickname: string,
+): Promise<{ ok: boolean; error?: string; publicHost?: string; publicPort?: number; publicSlug?: string }> {
+  const token = messengerTokenProvider?.();
+  if (!token) return { ok: false, error: 'no_messenger_session' };
+  const created = await relayFetch('/reservations', {
+    method: 'POST',
+    token,
+    body: { serverId, nickname },
+  });
+  if (!created.ok) return { ok: false, error: created.data?.error || 'reservation_failed' };
+  const publicPort = Number(created.data?.publicPort);
+  const publicHost = String(created.data?.publicHost || '');
+  if (!publicHost || !Number.isInteger(publicPort) || publicPort < 1) {
+    return { ok: false, error: 'reservation_failed' };
+  }
+  return {
+    ok: true,
+    publicHost,
+    publicPort,
+    publicSlug: String(created.data?.publicSlug || ''),
+  };
+}
+
+export async function releaseHostedAddress(serverId: string): Promise<void> {
+  const token = messengerTokenProvider?.();
+  if (!token || !serverId) return;
+  try {
+    await relayFetch(`/reservations/${encodeURIComponent(serverId)}`, {
+      method: 'DELETE',
+      token,
+    });
+  } catch {
+    /* адрес освободится при следующем удалении, если реле было недоступно */
+  }
+}
+
+export async function startTunnel(
   localPort: number,
   meta?: ShareMeta | null,
 ): Promise<{
@@ -558,12 +687,45 @@ async function startTunnel(
     return { ok: false, error: 'invalid_port', code: 'invalid_port' };
   }
 
+  const shareMetaEarly: ShareMeta | null = meta?.buildId
+    ? {
+        buildId: String(meta.buildId),
+        buildName: meta.buildName,
+        gameVersion: meta.gameVersion,
+        loader: meta.loader,
+        serverName: meta.serverName,
+        serverId: meta.serverId,
+      }
+    : null;
+  // Свой сервер переподключает только control. Публичный порт и игроки остаются.
+  if (meta?.serverId && meta.buildId) {
+    const live = activeTunnel?.meta?.buildId === meta.buildId ? activeTunnel.session : null;
+    const persisted = live
+      ? { ...live, buildId: meta.buildId }
+      : loadPersistedShare();
+    if (persisted && persisted.buildId === meta.buildId && Date.now() < Number(persisted.expiresAt || 0)) {
+      const kept: RelaySessionInfo = {
+        sessionId: persisted.sessionId,
+        tunnelToken: persisted.tunnelToken,
+        publicHost: persisted.publicHost,
+        publicPort: Number(persisted.publicPort),
+        tunnelHost: String(persisted.tunnelHost || 'uprojects.site'),
+        tunnelPort: Number(persisted.tunnelPort) || 25570,
+        localPort: port,
+        expiresAt: Number(persisted.expiresAt),
+      };
+      await stopTunnel({ destroyRemote: false, clearPersist: false });
+      const again = await attachHostControl(kept, shareMetaEarly, true);
+      if (again.ok) return again;
+    }
+  }
+
   await stopTunnel({ destroyRemote: true, clearPersist: true });
 
   const created = await relayFetch('/sessions', {
     method: 'POST',
     token,
-    body: { localPort: port },
+    body: meta?.serverId ? { localPort: port, serverId: meta.serverId } : { localPort: port },
   });
   if (!created.ok) {
     return {
@@ -591,6 +753,7 @@ async function startTunnel(
         gameVersion: meta.gameVersion,
         loader: meta.loader,
         serverName: meta.serverName,
+        serverId: meta.serverId,
       }
     : null;
 
@@ -672,6 +835,7 @@ export async function tryRestoreGameRelayShare(): Promise<{
       gameVersion: persisted.gameVersion,
       loader: persisted.loader,
       serverName: persisted.serverName,
+      serverId: persisted.serverId,
     };
 
     const attached = await attachHostControl(session, meta, true);
@@ -733,6 +897,7 @@ export function registerGameRelayIpc(): void {
           localPort: activeTunnel.session.localPort,
           buildId: activeTunnel.meta?.buildId || null,
           buildName: activeTunnel.meta?.buildName || null,
+          serverId: activeTunnel.meta?.serverId || null,
         }
       : { active: false },
   }));

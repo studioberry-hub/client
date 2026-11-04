@@ -1,0 +1,1 @@
+﻿const fs = require("fs"); let html = fs.readFileSync("src/renderer/index.html", "utf8"); html = html.replace(/<link rel="stylesheet" href="home-dashboard.css">/, `<link rel="stylesheet" href="home-dashboard.css">\n  <link rel="stylesheet" href="social-feed.css">\n  <link rel="stylesheet" href="messenger-tg-refresh.css">`); fs.writeFileSync("src/renderer/index.html", html);

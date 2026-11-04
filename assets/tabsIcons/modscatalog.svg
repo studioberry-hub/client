@@ -1,6 +1,6 @@
 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="1" y="13" width="6" height="6" rx="2" stroke="white" stroke-width="2"/>
-<rect x="11" y="13" width="6" height="6" rx="2" stroke="white" stroke-width="2"/>
-<rect x="1" y="3" width="6" height="6" rx="2" stroke="white" stroke-width="2"/>
-<rect x="11" width="9" height="9" rx="3" fill="white"/>
+<rect x="10" width="10" height="10" rx="3" fill="white"/>
+<path d="M5 18V20H3V18H5ZM6 17V15C6 14.4477 5.55228 14 5 14H3C2.44772 14 2 14.4477 2 15V17C2 17.5523 2.44772 18 3 18V20C1.34315 20 0 18.6569 0 17V15C0 13.3431 1.34315 12 3 12H5C6.65685 12 8 13.3431 8 15V17C8 18.6569 6.65685 20 5 20V18C5.55228 18 6 17.5523 6 17Z" fill="white"/>
+<path d="M5 8V10H3V8H5ZM6 7V5C6 4.44772 5.55228 4 5 4H3C2.44772 4 2 4.44772 2 5V7C2 7.55228 2.44772 8 3 8V10C1.34315 10 0 8.65685 0 7V5C0 3.34315 1.34315 2 3 2H5C6.65685 2 8 3.34315 8 5V7C8 8.65685 6.65685 10 5 10V8C5.55228 8 6 7.55228 6 7Z" fill="white"/>
+<path d="M15 18V20H13V18H15ZM16 17V15C16 14.4477 15.5523 14 15 14H13C12.4477 14 12 14.4477 12 15V17C12 17.5523 12.4477 18 13 18V20C11.3431 20 10 18.6569 10 17V15C10 13.3431 11.3431 12 13 12H15C16.6569 12 18 13.3431 18 15V17C18 18.6569 16.6569 20 15 20V18C15.5523 18 16 17.5523 16 17Z" fill="white"/>
 </svg>

@@ -1,0 +1,38 @@
+<div id="modal-sf-post" class="modal-overlay hidden sf-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="sf-modal-title">Пост</h2>
+        <button class="modal-close" id="modal-sf-post-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="sf-modal-body"></div>
+    </div>
+  </div>
+
+  <div id="modal-sf-compose" class="modal-overlay hidden sf-compose-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 data-i18n="news.newPost">Новый пост</h2>
+        <button class="modal-close" id="modal-sf-compose-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="news-composer" id="sf-composer">
+          <div class="news-composer__row">
+            <img class="news-composer__avatar" id="sf-composer-avatar" alt="">
+            <textarea class="news-composer__input" id="sf-composer-input" rows="5" placeholder="Что нового? Поддерживается Markdown" data-i18n-placeholder="news.composerPlaceholder"></textarea>
+          </div>
+          <div class="news-composer__previews" id="sf-composer-previews"></div>
+          <div class="news-composer__actions">
+            <div class="news-composer__meta">
+              <select class="news-composer__clan" id="sf-composer-clan" title="От имени"></select>
+              <button type="button" class="action-btn" id="sf-composer-photo" data-i18n="news.photo">Фото</button>
+              <button type="button" class="action-btn" id="sf-create-clan" data-i18n="news.createClan">Клан</button>
+              <input type="file" id="sf-photo-input" accept="image/*" multiple hidden>
+            </div>
+            <button type="button" class="action-btn primary" id="sf-composer-publish" data-i18n="news.publish">Опубликовать</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  

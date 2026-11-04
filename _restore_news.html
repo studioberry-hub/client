@@ -1,0 +1,52 @@
+<div class="tab-view" id="tab-news">
+
+          <div class="tab-header-row" hidden aria-hidden="true">
+            <div class="tab-title-block">
+              <img class="tab-title-icon" src="../../assets/tabsIcons/news.svg" alt="">
+              <div class="tab-title-texts">
+                <h1 data-i18n="tab.news">Новости</h1>
+                <p data-i18n="news.subtitle">Лента сообщества и новости лаунчера</p>
+              </div>
+            </div>
+            <div class="tab-actions">
+              <button class="action-btn" id="news-refresh-btn">
+                <span class="action-btn__icon" style="--action-icon: url('../../assets/icons/refresh.svg')" aria-hidden="true"></span>
+                <span data-i18n="news.refresh">Обновить</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="news-page" class="news-page news-remaster">
+            <section class="nr-wall" aria-label="Стена">
+              <header class="nr-wall__header">
+                <div class="nr-wall__left">
+                  <img class="nr-wall__avatar" id="sf-wall-avatar" alt="">
+                  <button type="button" class="nr-wall__title-btn" id="sf-wall-type" title="Стена">
+                    <span data-i18n="news.wall">Стена</span>
+                    <img src="../../assets/icons/news/chevron.svg" alt="" aria-hidden="true">
+                  </button>
+                </div>
+                <div class="nr-wall__actions">
+                  <button type="button" class="nr-icon-btn" id="sf-notifications-btn" aria-label="Уведомления" title="Уведомления">
+                    <img src="../../assets/icons/news/notifications.svg" alt="">
+                  </button>
+                  <button type="button" class="nr-icon-btn" id="sf-new-post-btn" aria-label="Новый пост" title="Новый пост">
+                    <img src="../../assets/icons/news/new-post.svg" alt="">
+                  </button>
+                </div>
+              </header>
+              <div class="nr-wall__feed" id="sf-community-list"></div>
+            </section>
+
+            <aside class="nr-launcher" aria-label="Новости лаунчера">
+              <div class="nr-launcher__head">
+                <img class="nr-launcher__mark" src="../../assets/icons/news/launcher-mark.svg" alt="">
+                <div class="nr-launcher__title" data-i18n="news.launcherTitle">Новости Undefined Client</div>
+              </div>
+              <div class="nr-launcher__list" id="sf-launcher-list"></div>
+            </aside>
+          </div>
+
+        </div>
+
+        <!-- Skins Tab -->

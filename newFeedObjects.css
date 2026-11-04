@@ -1,0 +1,1383 @@
+/* NewPostWriter */
+
+box-sizing: border-box;
+
+position: relative;
+width: 688px;
+height: 58px;
+
+background: #282828;
+border: 1px solid #383838;
+border-radius: 12px;
+
+
+/* Frame 788 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 9px;
+top: 9px;
+
+border-radius: 4px;
+
+
+/* image 8 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* Frame 789 */
+
+position: absolute;
+width: 572px;
+height: 40px;
+left: 58px;
+top: 9px;
+
+background: #1F1F1F;
+border-radius: 8px;
+
+
+/* Что нового у вас? */
+
+position: absolute;
+width: 233px;
+height: 40px;
+left: 10px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.35);
+
+
+
+/* Frame 791 */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 532px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 13px;
+top: 13px;
+
+background: #FFFFFF;
+
+
+/* Frame 790 */
+
+position: absolute;
+width: 32px;
+height: 32px;
+left: 643px;
+top: 13px;
+
+background: #FFFFFF;
+border-radius: 16px;
+
+
+/* Arrow 1 (Stroke) */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 9px;
+top: 9px;
+
+background: #000000;
+transform: rotate(-90deg);
+
+
+/* Post */
+
+box-sizing: border-box;
+
+position: relative;
+width: 688px;
+height: 178px;
+
+background: #282828;
+border: 1px solid #383838;
+border-radius: 12px;
+
+
+/* Frame 788 */
+
+position: absolute;
+width: 32px;
+height: 32px;
+left: 12px;
+top: 12px;
+
+border-radius: 4px;
+
+
+/* image 8 */
+
+position: absolute;
+width: 32px;
+height: 32px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* vova12_PRO */
+
+position: absolute;
+width: 217px;
+height: 14px;
+left: 56px;
+top: 12px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* 11.10.2026 в 01:24 */
+
+position: absolute;
+width: 217px;
+height: 14px;
+left: 56px;
+top: 30px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.35);
+
+
+
+/* Привет всем обитателям Интернета! С вами создатель и автор поста! #привет #undefined */
+
+position: absolute;
+width: 664px;
+height: 57px;
+left: 12px;
+top: 58px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+
+color: #FFFFFF;
+
+
+
+/* Separator */
+
+position: absolute;
+width: 664px;
+height: 1px;
+left: 12px;
+top: 129px;
+
+background: #383838;
+
+
+/* liked */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 35px;
+top: 138px;
+
+
+
+/* like */
+
+position: absolute;
+width: 45px;
+height: 26px;
+left: 12px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+width: 45px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 61, 61, 0.25);
+border-radius: 8px;
+
+
+/* Vector */
+
+position: absolute;
+height: 12px;
+left: 15.56%;
+right: 53.33%;
+top: calc(50% - 12px/2);
+
+background: #FF3D3D;
+
+
+/* 10 */
+
+position: absolute;
+width: 16px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FF3D3D;
+
+
+
+/* comment */
+
+position: absolute;
+width: 35px;
+height: 26px;
+left: 65px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+visibility: hidden;
+width: 35px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* comment */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 6px;
+
+
+
+/* Rectangle 114 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 0px;
+top: 0px;
+
+border: 2px solid #FFFFFF;
+
+
+/* 1 */
+
+position: absolute;
+width: 6px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* repost */
+
+position: absolute;
+width: 35px;
+height: 26px;
+left: 108px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+visibility: hidden;
+width: 35px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* repost */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 6px;
+
+
+
+/* Rectangle 112 */
+
+position: absolute;
+width: 6px;
+height: 10px;
+left: 0px;
+top: 2px;
+
+background: #FFFFFF;
+border-radius: 2px;
+
+
+/* Rectangle 113 */
+
+position: absolute;
+width: 8px;
+height: 5px;
+left: 6px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* 1 */
+
+position: absolute;
+width: 6px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* viewsCount */
+
+position: absolute;
+width: 53px;
+height: 26px;
+left: 151px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+visibility: hidden;
+width: 53px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* Group 28 */
+
+position: absolute;
+width: 41px;
+height: 20px;
+left: 7px;
+top: 3px;
+
+opacity: 0.35;
+
+
+/* views */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 6px;
+
+
+
+/* Rectangle 110 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 0px;
+top: 0px;
+
+border: 1px solid #FFFFFF;
+
+
+/* Rectangle 111 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 12px;
+left: 0px;
+top: 2px;
+
+border: 1px solid #FFFFFF;
+
+
+/* Ellipse 6 */
+
+position: absolute;
+width: 4px;
+height: 4px;
+left: 5px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* 100 */
+
+position: absolute;
+width: 24px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 792 */
+
+position: absolute;
+width: 26px;
+height: 26px;
+left: 650px;
+top: 140px;
+
+
+
+/* favorite */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 6px;
+top: 6px;
+
+
+
+/* Rectangle 116 */
+
+position: absolute;
+width: 12px;
+height: 14px;
+left: 1px;
+top: 0px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Frame 793 */
+
+position: absolute;
+width: 26px;
+height: 26px;
+left: 616px;
+top: 140px;
+
+
+
+/* report */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 6px;
+top: 6px;
+
+
+
+/* Rectangle 115 */
+
+position: absolute;
+width: 12px;
+height: 14px;
+left: 1px;
+top: 0px;
+
+background: #FFFFFF;
+
+
+/* Frame 798 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 650px;
+top: 16px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 6px;
+
+
+/* Group 29 */
+
+position: absolute;
+width: 14px;
+height: 2px;
+left: 5px;
+top: 11px;
+
+
+
+/* Rectangle 119 */
+
+position: absolute;
+width: 2px;
+height: 2px;
+left: 5px;
+top: 11px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Rectangle 120 */
+
+position: absolute;
+width: 2px;
+height: 2px;
+left: 11px;
+top: 11px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Rectangle 121 */
+
+position: absolute;
+width: 2px;
+height: 2px;
+left: 17px;
+top: 11px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* postOtherUsers */
+
+box-sizing: border-box;
+
+position: relative;
+width: 688px;
+height: 178px;
+
+background: #282828;
+border: 1px solid #383838;
+border-radius: 12px;
+
+
+/* Frame 788 */
+
+position: absolute;
+width: 32px;
+height: 32px;
+left: 12px;
+top: 12px;
+
+border-radius: 4px;
+
+
+/* image 8 */
+
+position: absolute;
+width: 32px;
+height: 32px;
+left: 0px;
+top: 0px;
+
+background: url(image.png);
+
+
+/* vova12_PRO */
+
+position: absolute;
+width: 217px;
+height: 14px;
+left: 56px;
+top: 12px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* 11.10.2026 в 01:24 */
+
+position: absolute;
+width: 217px;
+height: 14px;
+left: 56px;
+top: 30px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.35);
+
+
+
+/* Привет всем обитателям Интернета! С вами создатель и автор поста! #привет #undefined */
+
+position: absolute;
+width: 664px;
+height: 57px;
+left: 12px;
+top: 58px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+
+color: #FFFFFF;
+
+
+
+/* Separator */
+
+position: absolute;
+width: 664px;
+height: 1px;
+left: 12px;
+top: 129px;
+
+background: #383838;
+
+
+/* liked */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 35px;
+top: 138px;
+
+
+
+/* like */
+
+position: absolute;
+width: 45px;
+height: 26px;
+left: 12px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+width: 45px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+border-radius: 8px;
+
+
+/* Vector */
+
+box-sizing: border-box;
+
+position: absolute;
+height: 12px;
+left: 15.56%;
+right: 53.33%;
+top: calc(50% - 12px/2);
+
+border: 2px solid #FFFFFF;
+
+
+/* 10 */
+
+position: absolute;
+width: 16px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* comment */
+
+position: absolute;
+width: 35px;
+height: 26px;
+left: 65px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+visibility: hidden;
+width: 35px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* comment */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 6px;
+
+
+
+/* Rectangle 114 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 0px;
+top: 0px;
+
+border: 2px solid #FFFFFF;
+
+
+/* 1 */
+
+position: absolute;
+width: 6px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* repost */
+
+position: absolute;
+width: 35px;
+height: 26px;
+left: 108px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+visibility: hidden;
+width: 35px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* repost */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 6px;
+
+
+
+/* Rectangle 112 */
+
+position: absolute;
+width: 6px;
+height: 10px;
+left: 0px;
+top: 2px;
+
+background: #FFFFFF;
+border-radius: 2px;
+
+
+/* Rectangle 113 */
+
+position: absolute;
+width: 8px;
+height: 5px;
+left: 6px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* 1 */
+
+position: absolute;
+width: 6px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* viewsCount */
+
+position: absolute;
+width: 53px;
+height: 26px;
+left: 151px;
+top: 140px;
+
+
+
+/* Rectangle 117 */
+
+position: absolute;
+visibility: hidden;
+width: 53px;
+height: 26px;
+left: 0px;
+top: 0px;
+
+background: rgba(255, 255, 255, 0.1);
+border-radius: 8px;
+
+
+/* Group 28 */
+
+position: absolute;
+width: 41px;
+height: 20px;
+left: 7px;
+top: 3px;
+
+opacity: 0.35;
+
+
+/* views */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 7px;
+top: 6px;
+
+
+
+/* Rectangle 110 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 0px;
+top: 0px;
+
+border: 1px solid #FFFFFF;
+
+
+/* Rectangle 111 */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 14px;
+height: 12px;
+left: 0px;
+top: 2px;
+
+border: 1px solid #FFFFFF;
+
+
+/* Ellipse 6 */
+
+position: absolute;
+width: 4px;
+height: 4px;
+left: 5px;
+top: 5px;
+
+background: #FFFFFF;
+
+
+/* 100 */
+
+position: absolute;
+width: 24px;
+height: 20px;
+left: 24px;
+top: 3px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 17px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 792 */
+
+position: absolute;
+width: 26px;
+height: 26px;
+left: 650px;
+top: 140px;
+
+
+
+/* favorite */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 6px;
+top: 6px;
+
+
+
+/* Rectangle 116 */
+
+position: absolute;
+width: 12px;
+height: 14px;
+left: 1px;
+top: 0px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Frame 793 */
+
+position: absolute;
+width: 26px;
+height: 26px;
+left: 616px;
+top: 140px;
+
+
+
+/* report */
+
+position: absolute;
+width: 14px;
+height: 14px;
+left: 6px;
+top: 6px;
+
+
+
+/* Rectangle 115 */
+
+position: absolute;
+width: 12px;
+height: 14px;
+left: 1px;
+top: 0px;
+
+background: #FFFFFF;
+
+
+/* tablistFeedSelector */
+
+box-sizing: border-box;
+
+position: relative;
+width: 688px;
+height: 40px;
+
+background: #272727;
+border: 1px solid #303030;
+border-radius: 12px;
+
+
+/* Frame 795 */
+
+position: absolute;
+width: 224px;
+height: 32px;
+left: 4px;
+top: 4px;
+
+background: #3C3C3C;
+border-radius: 8px;
+
+
+/* Рекомендации */
+
+position: absolute;
+width: 224px;
+height: 32px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Rectangle 118 */
+
+position: absolute;
+width: 40px;
+height: 2px;
+left: 92px;
+top: 30px;
+
+background: #FFFFFF;
+border-radius: 1px;
+
+
+/* Frame 796 */
+
+position: absolute;
+width: 224px;
+height: 32px;
+left: 232px;
+top: 4px;
+
+border-radius: 8px;
+
+
+/* Подписки */
+
+position: absolute;
+width: 224px;
+height: 32px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #636363;
+
+
+
+/* Frame 797 */
+
+position: absolute;
+width: 224px;
+height: 32px;
+left: 460px;
+top: 4px;
+
+border-radius: 8px;
+
+
+/* Статьи */
+
+position: absolute;
+width: 224px;
+height: 32px;
+left: 0px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #636363;
+
+
+
+/* postsSearch */
+
+box-sizing: border-box;
+
+position: relative;
+width: 688px;
+height: 40px;
+
+background: #1F1F1F;
+border: 1px solid #303030;
+border-radius: 12px;
+
+
+/* Vector */
+
+position: absolute;
+width: 16px;
+height: 16px;
+left: 12px;
+top: 12px;
+
+background: rgba(255, 255, 255, 0.35);
+
+
+/* Поиск в ленте... */
+
+position: absolute;
+width: 343px;
+height: 40px;
+left: 40px;
+top: 0px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+
+color: rgba(255, 255, 255, 0.35);
+

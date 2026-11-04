@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import AdmZip from 'adm-zip';
 import { getInstanceRoot } from './launcher';
+import { getLauncherDataDir } from './paths';
 
 const USER_AGENT = 'Undefined-Client';
 
@@ -45,7 +46,7 @@ function sendProgress(win: BrowserWindow | null, data: Record<string, unknown>):
 }
 
 function buildsPath(): string {
-  return path.join(process.env.APPDATA || process.cwd(), '.Undefined Client', 'builds.json');
+  return path.join(getLauncherDataDir(), 'builds.json');
 }
 
 function readBuild(buildId: string): any | null {

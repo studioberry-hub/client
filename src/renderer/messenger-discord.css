@@ -1,0 +1,367 @@
+/* Раскладка чатов в стиле серверов: колонка гильдий, каналы, участники, карточки. */
+
+#tab-messenger .msgr-shell {
+  grid-template-columns: 72px minmax(220px, 280px) minmax(0, 1fr);
+  background: var(--bg-base, #202020);
+}
+
+#tab-messenger .msgr-shell.is-guild {
+  grid-template-columns: 72px minmax(220px, 260px) minmax(0, 1fr) 232px;
+}
+
+#tab-messenger .msgr-stage {
+  background: var(--bg-content, #2a2a2a);
+}
+
+#tab-messenger .msgr-shell.is-guild #msgr-home-head,
+#tab-messenger .msgr-shell.is-guild .msgr-search-wrap,
+#tab-messenger .msgr-shell.is-guild .msgr-rail__actions {
+  display: none;
+}
+
+.mdl-btn[hidden],
+#msgr-call-btn[hidden],
+#msgr-call-accept[hidden],
+#msgr-call-decline[hidden],
+#msgr-call-mute[hidden],
+#msgr-server-head[hidden],
+#msgr-members[hidden],
+#modal-msgr-call[hidden],
+#modal-msgr-share[hidden] {
+  display: none !important;
+}
+
+/* ===== Колонка серверов ===== */
+
+.msgr-guilds {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px 0 12px 10px;
+  background: var(--bg-deep, #161616);
+  overflow: auto;
+}
+
+.msgr-guild {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  background: #2a2a2a;
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.msgr-guild img,
+.msgr-guild .msgr-avatar__photo,
+.msgr-guild .msgr-avatar__fallback {
+  width: 48px;
+  height: 48px;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.msgr-guild:hover,
+.msgr-guild.is-active {
+  border-radius: 16px;
+  background: var(--accent, #70addf);
+  color: #161616;
+}
+
+.msgr-guild.is-active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 10px;
+  width: 4px;
+  height: 28px;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.msgr-guild__sep {
+  width: 32px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.msgr-guild__badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #e25b5b;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.msgr-guild--add {
+  background: transparent;
+  color: #bdbdbd;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+/* ===== Шапка сервера и каналы ===== */
+
+#msgr-server-head:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: #202020;
+}
+
+.msgr-server-banner {
+  height: 92px;
+  background: #161616 center/cover no-repeat;
+}
+
+.msgr-server-banner.is-empty {
+  background-image: none;
+  background: linear-gradient(160deg, #2a2a2a, #161616);
+}
+
+.msgr-server-head__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 10px;
+}
+
+.msgr-server-head__name {
+  min-width: 0;
+  flex: 1;
+  font-size: 15px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msgr-server-head__row .mdl-btn {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.msgr-channel-cat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 8px 4px;
+  padding: 0 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.msgr-channel,
+.msgr-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 16px);
+  margin: 1px 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.msgr-channel:hover,
+.msgr-channel.is-active,
+.msgr-member:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.msgr-channel__hash {
+  width: 18px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.msgr-channel.is-active .msgr-channel__hash {
+  color: #fff;
+}
+
+.msgr-channel__name,
+.msgr-member__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msgr-channel--add {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.msgr-channel-empty {
+  padding: 28px 16px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+.msgr-channel-hash {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #202020;
+  color: #fff;
+  font-size: 18px;
+}
+
+/* ===== Участники ===== */
+
+#msgr-members:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 0;
+  background: var(--bg-base, #202020);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: auto;
+}
+
+.msgr-members__label {
+  margin: 8px 16px 4px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.msgr-member .msgr-avatar {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.msgr-member.is-offline {
+  opacity: 0.55;
+}
+
+/* ===== Звонок ===== */
+
+.msgr-call-window .msgr-call__status {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.45;
+}
+
+.msgr-call__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#msgr-call-btn:not([hidden]) {
+  align-self: center;
+  margin-right: 8px;
+  height: 32px;
+}
+
+/* ===== Карточки в сообщениях ===== */
+
+.msgr-card {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  text-align: left;
+}
+
+.msgr-card__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #161616 center/cover no-repeat;
+  flex-shrink: 0;
+}
+
+.msgr-card__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.msgr-card__kicker {
+  color: var(--accent, #70addf);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.msgr-card__title {
+  color: #fff;
+  font-size: 14px;
+}
+
+.msgr-card__sub {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+}
+
+.msgr-share-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.msgr-share-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #202020;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.msgr-share-hit:hover,
+.msgr-share-hit.is-active {
+  background: rgba(112, 173, 223, 0.18);
+}
+
+.msgr-share-hit__sub {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}

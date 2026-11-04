@@ -10,6 +10,7 @@ import {
   downloadModrinthFile,
   runWithConcurrency,
   PROXY_MAX_CONCURRENT_DOWNLOADS,
+  isDownloadCancelled,
 } from './modrinthDownload';
 import { catalogCfFileUrl } from '../shared/apiBase';
 
@@ -36,6 +37,7 @@ export type ModpackInspect = {
     shaders: number;
     dataPacks: number;
     configs: number;
+    worlds?: number;
   };
   /** Укороченный список имён для превью (до ~40 на тип). */
   previewFiles?: ModpackInspectContentItem[];
@@ -319,6 +321,105 @@ function mergeDirs(src: string, dest: string, skipped?: string[]): void {
     } catch (e) {
       skipped?.push(d);
       console.warn('[import] merge skip', d, e instanceof Error ? e.message : e);
+    }
+  }
+}
+
+const WORLD_SKIP_TOP = new Set([
+  'saves', 'mods', 'config', 'resourcepacks', 'shaderpacks', 'libraries', 'versions',
+  'assets', 'bin', 'logs', 'crash-reports', 'overrides', 'client-overrides',
+  'server-overrides', 'datapacks', 'screenshots', 'customskinloader', 'natives',
+]);
+
+function dirHasLevelDat(dir: string): boolean {
+  const level = path.join(dir, 'level.dat');
+  return fs.existsSync(winLongPath(level)) || fs.existsSync(level);
+}
+
+/** Мир в корне пакета или рядом со сборкой переносим в saves/, не теряя level.dat. */
+function adoptLooseWorlds(instanceDir: string): number {
+  const saves = path.join(instanceDir, 'saves');
+  fs.mkdirSync(winLongPath(saves), { recursive: true });
+  let moved = 0;
+  const queue: Array<{ dir: string; depth: number }> = [{ dir: instanceDir, depth: 0 }];
+  const seen = new Set<string>();
+  while (queue.length) {
+    const { dir, depth } = queue.shift()!;
+    const resolved = path.resolve(dir);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(fs.existsSync(winLongPath(dir)) ? winLongPath(dir) : dir, { withFileTypes: true }); }
+    catch { continue; }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const sub = path.join(dir, entry.name);
+      const rel = path.relative(instanceDir, sub).replace(/\\/g, '/');
+      if (rel === 'saves' || rel.startsWith('saves/')) continue;
+      if (dirHasLevelDat(sub)) {
+        const dest = path.join(saves, entry.name);
+        if (!dirHasLevelDat(dest)) {
+          try {
+            fs.renameSync(winLongPath(sub), winLongPath(dest));
+          } catch {
+            mergeDirs(sub, dest);
+            try { fs.rmSync(winLongPath(sub), { recursive: true, force: true }); } catch { /* остаётся копия */ }
+          }
+          moved++;
+        }
+        continue;
+      }
+      const top = rel.split('/')[0].toLowerCase();
+      if (depth < 3 && !WORLD_SKIP_TOP.has(top)) queue.push({ dir: sub, depth: depth + 1 });
+      else if (depth < 3 && (top === 'minecraft' || entry.name === '.minecraft')) queue.push({ dir: sub, depth: depth + 1 });
+    }
+  }
+
+  // Экспорт одного мира: level.dat лежит прямо в корне архива.
+  if (dirHasLevelDat(instanceDir)) {
+    const dest = path.join(saves, 'world');
+    if (!dirHasLevelDat(dest)) {
+      fs.mkdirSync(winLongPath(dest), { recursive: true });
+      const worldNames = new Set([
+        'level.dat', 'level.dat_old', 'session.lock', 'icon.png', 'region', 'data',
+        'playerdata', 'poi', 'entities', 'stats', 'advancements', 'dimensions',
+        'DIM-1', 'DIM1', 'generated', 'serverconfig',
+      ]);
+      for (const name of fs.readdirSync(instanceDir)) {
+        if (WORLD_SKIP_TOP.has(name.toLowerCase())) continue;
+        if (!worldNames.has(name) && !name.startsWith('DIM')) continue;
+        const src = path.join(instanceDir, name);
+        const target = path.join(dest, name);
+        try { fs.renameSync(winLongPath(src), winLongPath(target)); }
+        catch {
+          mergeDirs(src, target);
+          try { fs.rmSync(winLongPath(src), { recursive: true, force: true }); } catch { /* ignore */ }
+        }
+      }
+      if (dirHasLevelDat(dest)) moved++;
+    }
+  }
+  return moved;
+}
+
+/** Поднимаем игровые папки из minecraft/ или .minecraft, не таща библиотеки и аккаунты. */
+function hoistNestedGameContent(instanceDir: string): void {
+  const names = [
+    'mods', 'resourcepacks', 'shaderpacks', 'datapacks', 'config', 'defaultconfigs',
+    'saves', 'kubejs', 'scripts', 'schematics', 'options.txt', 'optionsof.txt', 'servers.dat',
+  ];
+  for (const nestedName of ['minecraft', '.minecraft']) {
+    const nested = path.join(instanceDir, nestedName);
+    if (!fs.existsSync(nested) && !fs.existsSync(winLongPath(nested))) continue;
+    for (const name of names) {
+      const src = path.join(nested, name);
+      if (!fs.existsSync(src) && !fs.existsSync(winLongPath(src))) continue;
+      const dest = path.join(instanceDir, name);
+      try {
+        const st = fs.statSync(fs.existsSync(winLongPath(src)) ? winLongPath(src) : src);
+        if (st.isDirectory()) mergeDirs(src, dest);
+        else fs.copyFileSync(winLongPath(src), winLongPath(dest));
+      } catch { /* следующий файл */ }
     }
   }
 }
@@ -727,7 +828,7 @@ function detectFromDir(dir: string, archiveName: string): ModpackInspect {
 type InspectCounts = NonNullable<ModpackInspect['counts']>;
 
 function emptyCounts(): InspectCounts {
-  return { mods: 0, resourcePacks: 0, shaders: 0, dataPacks: 0, configs: 0 };
+  return { mods: 0, resourcePacks: 0, shaders: 0, dataPacks: 0, configs: 0, worlds: 0 };
 }
 
 function basenameZip(p: string): string {
@@ -765,6 +866,7 @@ function inventoryFromZipNames(names: string[]): {
   for (const raw of names) {
     if (!raw || raw.endsWith('/')) continue;
     fileCount++;
+    if (/(^|\/)level\.dat$/i.test(raw)) counts.worlds = (counts.worlds || 0) + 1;
     const kind = classifyZipPath(raw);
     if (!kind) continue;
     if (kind === 'mod') counts.mods++;
@@ -809,6 +911,7 @@ function mergeCounts(a: InspectCounts, b: InspectCounts): InspectCounts {
     shaders: Math.max(a.shaders, b.shaders),
     dataPacks: Math.max(a.dataPacks, b.dataPacks),
     configs: Math.max(a.configs, b.configs),
+    worlds: Math.max(a.worlds || 0, b.worlds || 0),
   };
 }
 
@@ -1060,6 +1163,8 @@ export type ImportLocalOptions = {
   sendProgress: ProgressFn;
   resolveJavaPath?: (gameVersion: string) => Promise<string | undefined>;
   defaultLoaderVersions?: Record<string, string>;
+  /** Готовность сборки сообщает вызывающий код, после докачки клиента. */
+  deferDone?: boolean;
 };
 
 export async function importLocalModpack(opts: ImportLocalOptions): Promise<ImportModpackResult> {
@@ -1078,6 +1183,7 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
 
   sendProgress({ type: 'start', filename: archiveName, size: fs.statSync(archivePath).size });
   sendProgress({ kind: 'status', key: 'import.extracting' });
+  sendProgress({ type: 'progress', percent: 2, filename: archiveName, received: 0, total: 0 });
 
   const zipPath = path.join(instanceDir, `pack-${crypto.randomBytes(4).toString('hex')}.zip`);
   let extractSkipped: string[] = [];
@@ -1094,6 +1200,8 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
       extractSkipped: skippedList,
     };
   }
+
+  sendProgress({ type: 'progress', percent: 35, filename: archiveName, received: 0, total: 0 });
 
   if (extractSkipped.length) {
     sendProgress({
@@ -1232,6 +1340,7 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
             params: { i, n: indexFiles.length, file: name, size: (bytes / 1024 / 1024).toFixed(1) },
           });
         } catch (err) {
+          if (isDownloadCancelled(err)) throw err;
           const i = ++done;
           skipped++;
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -1304,6 +1413,7 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
             },
           });
         } catch (err) {
+          if (isDownloadCancelled(err)) throw err;
           skipped++;
           const i = ++done;
           const msg = err instanceof Error ? err.message : String(err);
@@ -1333,7 +1443,9 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
     fs.mkdirSync(winLongPath(path.join(instanceDir, d)), { recursive: true });
   }
 
-  const worldsCount = countWorlds(path.join(instanceDir, 'saves'));
+  hoistNestedGameContent(instanceDir);
+  const adopted = adoptLooseWorlds(instanceDir);
+  const worldsCount = countWorlds(path.join(instanceDir, 'saves')) || adopted;
   if (worldsCount > 0) {
     sendProgress({ kind: 'status', key: 'import.worldsReady', params: { n: worldsCount } });
   }
@@ -1401,13 +1513,15 @@ export async function importLocalModpack(opts: ImportLocalOptions): Promise<Impo
   fs.mkdirSync(path.dirname(buildsPath), { recursive: true });
   fs.writeFileSync(buildsPath, JSON.stringify(builds, null, 2), 'utf-8');
 
-  sendProgress({
-    type: 'done',
-    filename: archiveName,
-    filePath: instanceDir,
-    buildCreated: true,
-    build,
-  });
+  if (!opts.deferDone) {
+    sendProgress({
+      type: 'done',
+      filename: archiveName,
+      filePath: instanceDir,
+      buildCreated: true,
+      build,
+    });
+  }
 
   return {
     success: true,
