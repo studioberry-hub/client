@@ -1,0 +1,492 @@
+/* Экран выбора аккаунта в духе Xbox 360: серый зал и подписи под персонажами. */
+
+.acc-stage {
+  position: fixed;
+  top: var(--titlebar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000600;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-deep, #161616);
+  color: rgba(255, 255, 255, 0.92);
+  font-family: 'Nekst', Arial, sans-serif;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.acc-stage.is-shown {
+  opacity: 1;
+}
+
+.acc-stage.is-dimming {
+  pointer-events: none;
+}
+
+.acc-stage.is-leaving {
+  opacity: 0;
+  transition: opacity 480ms ease;
+}
+
+.acc-stage__veil {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 560ms ease;
+}
+
+.acc-stage.is-dimming .acc-stage__veil {
+  opacity: 0.92;
+}
+
+.acc-stage__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: pointer;
+}
+
+.acc-stage__head {
+  position: relative;
+  z-index: 2;
+  padding: 28px 36px 0;
+  text-align: right;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+
+.acc-stage__head.is-shown {
+  opacity: 1;
+}
+
+.acc-stage__intro {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 48px;
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+
+.acc-stage__intro.is-out {
+  opacity: 0;
+}
+
+.acc-stage__intro-title {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.acc-stage__intro-sub {
+  margin-top: 12px;
+  max-width: 640px;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.acc-stage__nav {
+  opacity: 0;
+  transition: opacity 600ms ease, background 160ms ease;
+}
+
+.acc-stage.is-ready .acc-stage__nav {
+  opacity: 1;
+}
+
+.acc-stage__title {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.acc-stage__hint {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.acc-stage__close {
+  position: absolute;
+  z-index: 3;
+  top: 18px;
+  left: 18px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.acc-stage__close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.acc-stage__vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, transparent 28%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+.acc-stage__nav {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  width: 42px;
+  height: 72px;
+  margin-top: -36px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.acc-stage__nav:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Подсказка геймпада: иконка и короткое действие, как в меню Xbox 360 и GTA. */
+.acc-pad {
+  position: absolute;
+  z-index: 5;
+  right: 28px;
+  bottom: 22px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(12, 12, 12, 0.72);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  pointer-events: none;
+}
+
+.acc-pad[hidden] {
+  display: none;
+}
+
+.acc-pad__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.acc-pad__icon {
+  /* Круг кнопки занимает ~60% кадра SVG, 34px дают сам знак около 20px. */
+  width: 34px;
+  height: 34px;
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.acc-pad__item .acc-pad__icon + .acc-pad__icon {
+  margin-left: -2px;
+}
+
+.acc-stage__nav--prev { left: 22px; }
+.acc-stage__nav--next { right: 22px; }
+
+.acc-stage__nav::before {
+  content: '';
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin: 0 auto;
+  border-top: 2px solid #fff;
+  border-right: 2px solid #fff;
+}
+
+.acc-stage__nav--prev::before { transform: rotate(-135deg) translate(1px, 1px); }
+.acc-stage__nav--next::before { transform: rotate(45deg) translate(-1px, -1px); }
+
+/* Стеклянная карточка аккаунта: 272×104, как в референсе. */
+.acc-card {
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 2;
+  width: 272px;
+  height: 104px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transform: translate(-50%, 0) scale(1);
+  transform-origin: center top;
+  transition: transform 220ms ease;
+  visibility: hidden;
+}
+
+.acc-card.is-focus {
+  z-index: 3;
+  transform: translate(-50%, 0) scale(1.06);
+}
+
+.acc-card__avatar {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  image-rendering: pixelated;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.acc-card__name,
+.acc-card__type {
+  position: absolute;
+  left: 56px;
+  width: 200px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 400;
+  color: #fff;
+}
+
+.acc-card__name {
+  top: 8px;
+  height: 20px;
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.acc-card__type {
+  top: 28px;
+  height: 20px;
+  font-size: 14px;
+  line-height: 17px;
+}
+
+.acc-card__status,
+.acc-card__stat {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.acc-card__status {
+  position: absolute;
+  left: 8px;
+  top: 56px;
+  width: 256px;
+  height: 40px;
+}
+
+.acc-card__status[hidden],
+.acc-card__stats[hidden] {
+  display: none;
+}
+
+.acc-card__status-title,
+.acc-card__stat b {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: center;
+}
+
+.acc-card__status-sub,
+.acc-card__stat span {
+  display: block;
+  height: 14px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 14px;
+  text-align: center;
+}
+
+.acc-card__stats {
+  position: absolute;
+  left: 8px;
+  top: 56px;
+  display: flex;
+  gap: 8px;
+}
+
+.acc-card__stat {
+  width: 80px;
+  height: 40px;
+}
+
+/* Карточка «добавить аккаунт» справа от персонажа. Один шаг отступа на все края и промежутки. */
+.acc-note {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 300px;
+  height: auto;
+  box-sizing: border-box;
+  padding: 12px;
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(28px, -50%);
+  transition: opacity 420ms ease, transform 420ms ease;
+}
+
+.acc-note[hidden] {
+  display: none;
+}
+
+.acc-note.is-shown {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.acc-note__media {
+  height: 140px;
+  border-radius: 6px;
+  background: #262626;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.acc-note__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  object-fit: cover;
+  object-position: center;
+}
+
+.acc-note__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  height: auto;
+  padding: 0;
+}
+
+.acc-note__title {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #fff;
+}
+
+.acc-note__text {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 17px;
+  color: #fff;
+}
+
+.acc-note__text p {
+  margin: 0;
+}
+
+.acc-stage__label {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, 0);
+  min-width: 120px;
+  max-width: 220px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: center;
+  pointer-events: auto;
+  cursor: pointer;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  visibility: hidden;
+}
+
+.acc-stage__name {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.acc-stage__detail {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.acc-stage__label.is-focus .acc-stage__name {
+  color: var(--accent, #fff);
+  font-size: 18px;
+}
+
+.acc-stage__label.is-focus .acc-stage__detail {
+  color: #fff;
+}
+
+.acc-stage__label.is-focus::after {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 3px;
+  margin: 6px auto 0;
+  border-radius: 99px;
+  background: var(--accent, #fff);
+}
+
+.acc-stage__badge {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent, #fff);
+}
+
+.acc-stage__badge[hidden] {
+  display: none;
+}

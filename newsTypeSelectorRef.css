@@ -1,0 +1,75 @@
+/* Rectangle 8691 */
+
+position: absolute;
+width: 172px;
+height: 28px;
+left: 257px;
+top: 21px;
+
+background: #FFFFFF;
+
+
+/* Rectangle 8692 */
+
+position: absolute;
+width: 158px;
+height: 28px;
+left: 425px;
+top: 21px;
+
+background: rgba(255, 255, 255, 0.15);
+transform: rotate(-180deg);
+
+
+/* Лента сообщества */
+
+position: absolute;
+width: 164px;
+height: 28px;
+left: 257px;
+top: 21px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #1E1E1E;
+
+
+
+/* Новости клиента */
+
+position: absolute;
+width: 150px;
+height: 28px;
+left: 433px;
+top: 21px;
+
+font-family: 'Nekst';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 19px;
+/* leading-trim and text-edge are draft CSS properties.
+
+Read more: https://drafts.csswg.org/css-inline-3/#leading-trim
+*/
+leading-trim: both;
+text-edge: cap;
+display: flex;
+align-items: center;
+text-align: center;
+
+color: #FFFFFF;
+

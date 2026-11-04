@@ -38,15 +38,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getActiveAccount: () => ipcRenderer.invoke('launcher:account:getActive') as Promise<string | null>,
 
   saveBuild: (build: any) => ipcRenderer.invoke('launcher:build:save', build),
+  prefetchRuntime: (opts: { buildId: string; gameVersion: string; loader?: string; loaderVersion?: string }) =>
+    ipcRenderer.invoke('launcher:prefetch-runtime', opts) as Promise<{ ok: boolean; error?: string }>,
   loadBuilds: () => ipcRenderer.invoke('launcher:build:load'),
   removeBuild: (id: string) => ipcRenderer.invoke('launcher:build:remove', id),
+  loadBuildGroups: () => ipcRenderer.invoke('launcher:build-groups:load'),
+  saveBuildGroup: (group: any) => ipcRenderer.invoke('launcher:build-groups:save', group),
+  removeBuildGroup: (id: string) => ipcRenderer.invoke('launcher:build-groups:remove', id),
   listInstanceIcons: () => ipcRenderer.invoke('launcher:instance-icons:list') as Promise<string[]>,
 
   saveServer: (server: any) => ipcRenderer.invoke('launcher:server:save', server),
   loadServers: () => ipcRenderer.invoke('launcher:server:load'),
   removeServer: (id: string) => ipcRenderer.invoke('launcher:server:remove', id),
   serverStatus: (ip: string) => ipcRenderer.invoke('servers:status', ip),
-  fetchServerCatalog: () => ipcRenderer.invoke('servers:catalog'),
+  fetchServerCatalog: (force?: boolean) => ipcRenderer.invoke('servers:catalog', force === true),
+  fetchServerDetail: (source: string, id: string) => ipcRenderer.invoke('servers:detail', source, id),
+  fetchServerHistory: (projectId: string, serverId: string, period: string) =>
+    ipcRenderer.invoke('servers:history', projectId, serverId, period),
 
   getSkinData: (uuid: string, serverUrl?: string) => ipcRenderer.invoke('launcher:skin:get', uuid, serverUrl),
   fetchSkinImage: (url: string) => ipcRenderer.invoke('launcher:skin:fetch', url),
@@ -63,11 +71,56 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getModrinthProject: (projectId: string) => ipcRenderer.invoke('modrinth:project', projectId),
   getModrinthVersions: (projectId: string) => ipcRenderer.invoke('modrinth:versions', projectId),
   downloadMod: (projectId: string, versionId?: string) => ipcRenderer.invoke('modrinth:download', projectId, versionId),
+  cancelDownloads: () => ipcRenderer.invoke('launcher:cancel-downloads') as Promise<{ ok: boolean }>,
   installMod: (buildId: string, projectId: string, versionId?: string, contentType?: string, options?: { force?: boolean; skipDeps?: boolean; installOptional?: boolean }) => ipcRenderer.invoke('launcher:install-mod', buildId, projectId, versionId, contentType, options),
   resolveProjectByName: (name: string) => ipcRenderer.invoke('modrinth:resolve-project-by-name', name),
 
   getVersions: () => ipcRenderer.invoke('launcher:versions:list'),
-  getLoaderVersions: (loader: string, mcVersion: string) => ipcRenderer.invoke('launcher:loader:versions', loader, mcVersion),
+  getLoaderVersions: (loader: string, mcVersion: string) => ipcRenderer.invoke('launcher:loader:versions', loader, mcVersion) as Promise<{
+    versions: string[];
+    error?: string;
+    unavailable?: boolean;
+  }>,
+  listInstanceDrives: () => ipcRenderer.invoke('launcher:instances:drives') as Promise<Array<{ letter: string; path: string }>>,
+  getInstancesLocation: () => ipcRenderer.invoke('launcher:instances:location') as Promise<{
+    platform: string;
+    instancesDir: string;
+    windowsOnly: boolean;
+  }>,
+  setDefaultInstancesDir: (dir: string) => ipcRenderer.invoke('launcher:instances:set-default-dir', dir) as Promise<{
+    ok: boolean;
+    error?: string;
+    path?: string;
+  }>,
+  pickInstancesDir: (title?: string) => ipcRenderer.invoke('launcher:instances:pick-dir', title) as Promise<string | null>,
+  prepareBuildLocation: (buildId: string, parentDir: string) =>
+    ipcRenderer.invoke('launcher:instances:prepare-build', buildId, parentDir) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  moveInstance: (buildId: string, destParent: string) =>
+    ipcRenderer.invoke('launcher:instances:move', buildId, destParent) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  scanExternalLaunchers: () => ipcRenderer.invoke('launcher:external-launchers:scan') as Promise<{
+    ok: boolean;
+    error?: string;
+    launchers: Array<{
+      id: string;
+      name: string;
+      root: string;
+      iconDataUrl?: string;
+      instances: Array<{
+        id: string;
+        name: string;
+        gameVersion: string;
+        loader: string;
+        loaderVersion: string;
+        iconDataUrl?: string;
+      }>;
+    }>;
+  }>,
+  importExternalInstances: (launcherId: string, instanceIds: string[]) =>
+    ipcRenderer.invoke('launcher:external-launchers:import', launcherId, instanceIds) as Promise<{
+      ok: boolean;
+      error?: string;
+      imported: any[];
+    }>,
   detectJava: (refresh?: boolean) => ipcRenderer.invoke('launcher:java:detect', refresh),
   listJavaVersions: (refresh?: boolean) => ipcRenderer.invoke('launcher:java:list', refresh),
   pickJava: () => ipcRenderer.invoke('launcher:java:pick') as Promise<{ path: string; version: number; name: string } | null>,
@@ -85,6 +138,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   fetchNewsList: (lang?: string, limit?: number) => ipcRenderer.invoke('news:list', lang, limit),
   fetchNewsPost: (id: string, lang?: string) => ipcRenderer.invoke('news:get', id, lang),
+  fetchNewsView: (id: string) => ipcRenderer.invoke('news:view', id) as Promise<{ views?: number; error?: string }>,
 
   // MC Messenger: сессия MSA/Ely + REST через сайт
   messengerSession: (account: any) => ipcRenderer.invoke('messenger:session', account),
@@ -118,6 +172,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ok: boolean;
       error?: string;
     }>,
+  // Проверка Range и, если докачки нет, байты ролика для локальной перемотки.
+  mediaPrepareSeek: (payload: { url: string; forceBlob?: boolean }) =>
+    ipcRenderer.invoke('media:prepareSeek', payload) as Promise<{
+      ok: boolean;
+      ranges?: boolean;
+      tooLarge?: boolean;
+      mime?: string;
+      data?: Uint8Array;
+      error?: string;
+    }>,
 
   // Join с друзьями: LAN-порт + relay-туннель
   gameRelayWatchLan: (buildId: string) => ipcRenderer.invoke('game-relay:watch-lan', buildId),
@@ -149,11 +213,62 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('game-relay:tunnel', handler);
   },
 
+  hostedServersList: () => ipcRenderer.invoke('hosted-servers:list'),
+  hostedServersCreate: () => ipcRenderer.invoke('hosted-servers:create'),
+  hostedServersUpdate: (id: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke('hosted-servers:update', id, patch),
+  hostedServersDelete: (id: string) => ipcRenderer.invoke('hosted-servers:delete', id),
+  hostedServersStart: (id: string) => ipcRenderer.invoke('hosted-servers:start', id),
+  hostedServersStop: (id: string) => ipcRenderer.invoke('hosted-servers:stop', id),
+  hostedServersCommand: (id: string, command: string) =>
+    ipcRenderer.invoke('hosted-servers:command', id, command),
+  hostedServersLog: (id: string) => ipcRenderer.invoke('hosted-servers:log', id),
+  hostedServersPlugins: (id: string) => ipcRenderer.invoke('hosted-servers:plugins', id),
+  commandCatalog: (version: string) => ipcRenderer.invoke('command-catalog:get', version),
+  commandCatalogIcons: (version: string, ids: string[]) => ipcRenderer.invoke('command-catalog:icons', version, ids),
+  hostedServersPluginAdd: (id: string) => ipcRenderer.invoke('hosted-servers:plugin-add', id),
+  hostedServersPluginToggle: (id: string, name: string) =>
+    ipcRenderer.invoke('hosted-servers:plugin-toggle', id, name),
+  hostedServersPluginRemove: (id: string, name: string) =>
+    ipcRenderer.invoke('hosted-servers:plugin-remove', id, name),
+  hostedServersVersions: (software: string) => ipcRenderer.invoke('hosted-servers:versions', software),
+  hostedServersInstallCore: (id: string) => ipcRenderer.invoke('hosted-servers:install-core', id),
+  hostedServersOpenDir: (id: string) => ipcRenderer.invoke('hosted-servers:open-dir', id),
+  hostedServersSetIcon: (id: string, dataUrl: string) => ipcRenderer.invoke('hosted-servers:set-icon', id, dataUrl),
+  hostedServersFiles: (id: string, rel?: string) => ipcRenderer.invoke('hosted-servers:files', id, rel || ''),
+  hostedServersFileDelete: (id: string, rel: string) => ipcRenderer.invoke('hosted-servers:file-delete', id, rel),
+  hostedServersFileImport: (id: string, rel?: string) => ipcRenderer.invoke('hosted-servers:file-import', id, rel || ''),
+  hostedServersFileTransfer: (id: string, mode: 'copy' | 'move', rels: string[], dest: string) =>
+    ipcRenderer.invoke('hosted-servers:file-transfer', id, mode, rels, dest),
+  hostedServersInstallUrl: (id: string, url: string, filename: string) =>
+    ipcRenderer.invoke('hosted-servers:install-url', id, url, filename),
+  onHostedPluginProgress: (cb: (data: { id: string; filename: string; received?: number; total?: number; done?: boolean; error?: string; clear?: boolean }) => void) => {
+    const handler = (_e: unknown, data: { id: string; filename: string; received?: number; total?: number; done?: boolean; error?: string; clear?: boolean }) => cb(data);
+    ipcRenderer.on('hosted-servers:plugin-progress', handler);
+  },
+  onHostedServerLog: (cb: (data: { id: string; line: string }) => void) => {
+    const handler = (_e: unknown, data: { id: string; line: string }) => cb(data);
+    ipcRenderer.on('hosted-servers:log', handler);
+  },
+  onHostedServerState: (cb: (server: Record<string, unknown>) => void) => {
+    const handler = (_e: unknown, server: Record<string, unknown>) => cb(server);
+    ipcRenderer.on('hosted-servers:state', handler);
+  },
+  onHostedServerUsage: (cb: (data: { id: string; cpuPercent: number; ramUsedMb: number }) => void) => {
+    const handler = (_e: unknown, data: { id: string; cpuPercent: number; ramUsedMb: number }) => cb(data);
+    ipcRenderer.on('hosted-servers:usage', handler);
+  },
+
   // AI-агент: чат через сайт, доступ по JWT мессенджера
   aiStatus: () => ipcRenderer.invoke('ai:status'),
+  aiProviderGet: () => ipcRenderer.invoke('ai:provider:get'),
+  aiProviderSet: (patch: { kind?: string; baseUrl?: string; apiKey?: string; model?: string }) =>
+    ipcRenderer.invoke('ai:provider:set', patch),
+  aiProviderModels: () => ipcRenderer.invoke('ai:provider:models'),
   aiChat: (payload: {
     messages: Array<Record<string, unknown>>;
     tools?: boolean;
+    model?: string;
     context?: { buildId?: string; buildName?: string } | null;
   }) => ipcRenderer.invoke('ai:chat', payload),
   aiToolsList: () => ipcRenderer.invoke('ai:tools:list'),
@@ -304,6 +419,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('launcher:import-instance-files', buildId, sub, sourcePaths),
   scanInstance: (buildId: string) => ipcRenderer.invoke('launcher:scan-instance', buildId),
   pickModpack: () => ipcRenderer.invoke('launcher:pick-modpack') as Promise<string | null>,
+  pickWallpaper: () => ipcRenderer.invoke('wallpaper:pick') as Promise<{ name: string; media: 'image' | 'video' } | { error: string } | null>,
   inspectModpack: (archivePath: string) =>
     ipcRenderer.invoke('launcher:inspect-modpack', archivePath) as Promise<{
       success: boolean;

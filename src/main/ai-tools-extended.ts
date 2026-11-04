@@ -8,6 +8,7 @@ import { app, shell } from 'electron';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { importLocalModpack } from './importModpack';
+import { agentHostedAction } from './hostedServers';
 import { getApiBase, releaseLatestUrl } from '../shared/apiBase';
 
 // ===== Типы =====
@@ -582,7 +583,7 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     read_config: tool(
       'read_config',
       'read',
-      'Прочитать файл из config/ сборки, не больше 64 КБ.',
+      'Прочитать конфиг. Если buildId начинается с hs, это свой сервер: путь ищется в plugins/ и config/ сервера.',
       {
         buildId: { type: 'string' },
         relativePath: { type: 'string' },
@@ -1147,12 +1148,21 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
       async () => await callBridge(deps, 'list_server_catalog', {}, 60_000),
     ),
 
+    game_status: tool(
+      'game_status',
+      'read',
+      'Статус: запущена ли сейчас игра и какая сборка. Без подтверждения.',
+      {},
+      [],
+      async () => callBridge(deps, 'game_status', {}, 15_000),
+    ),
+
     // ===== WRITE =====
 
     launch_build: tool(
       'launch_build',
       'write',
-      'Запустить сборку, при необходимости с адресом сервера.',
+      'Запустить сборку Minecraft. Опционально сразу на сервер. Требует подтверждения.',
       {
         buildId: { type: 'string' },
         serverIp: { type: 'string' },
@@ -1173,7 +1183,7 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
             serverPort: serverIp ? serverPort : undefined,
             build: deps.buildSummary(build),
           },
-          30_000,
+          120_000,
         );
       },
     ),
@@ -1273,7 +1283,7 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     write_config: tool(
       'write_config',
       'write',
-      'Записать текст в файл внутри config/.',
+      'Записать конфиг. Если buildId начинается с hs, файл пишется в папку своего сервера, не в сборку.',
       {
         buildId: { type: 'string' },
         relativePath: { type: 'string' },
@@ -1914,6 +1924,175 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
         });
         return { ok: true, build: deps.buildSummary(updated) };
       },
+    ),
+
+    // ===== Свои серверы =====
+
+    list_hosted_servers: tool(
+      'list_hosted_servers',
+      'read',
+      'Свои серверы вкладки «Хостинг» на этом ПК. Не путать со сборками и со списком серверов для подключения.',
+      {},
+      [],
+      async () => agentHostedAction('list'),
+    ),
+
+    create_hosted_server: tool(
+      'create_hosted_server',
+      'write',
+      'Создать свой сервер. Дальше update_hosted_server задаёт имя, ядро и версию, install_hosted_core качает ядро.',
+      {
+        name: { type: 'string' },
+        software: { type: 'string', description: 'paper, purpur, fabric, leaf и другие ядра лаунчера' },
+        gameVersion: { type: 'string' },
+        memoryMb: { type: 'number' },
+        motd: { type: 'string' },
+      },
+      [],
+      async (args) => agentHostedAction('create', args),
+    ),
+
+    update_hosted_server: tool(
+      'update_hosted_server',
+      'write',
+      'Изменить настройки своего сервера: имя, ядро, версию, память, MOTD, гейммод, сложность, онлайн-режим. eulaAccepted=true только после явного согласия пользователя.',
+      {
+        id: { type: 'string' },
+        name: { type: 'string' },
+        software: { type: 'string' },
+        gameVersion: { type: 'string' },
+        memoryMb: { type: 'number' },
+        motd: { type: 'string' },
+        maxPlayers: { type: 'number' },
+        gamemode: { type: 'string' },
+        difficulty: { type: 'string' },
+        onlineMode: { type: 'boolean' },
+        eulaAccepted: { type: 'boolean' },
+        port: { type: 'number' },
+      },
+      ['id'],
+      async (args) => agentHostedAction('update', args),
+    ),
+
+    install_hosted_core: tool(
+      'install_hosted_core',
+      'write',
+      'Скачать ядро своего сервера. Сервер должен уже иметь software и gameVersion.',
+      { id: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('install-core', args),
+    ),
+
+    start_hosted_server: tool(
+      'start_hosted_server',
+      'write',
+      'Запустить свой сервер.',
+      { id: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('start', args),
+    ),
+
+    stop_hosted_server: tool(
+      'stop_hosted_server',
+      'write',
+      'Остановить свой сервер.',
+      { id: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('stop', args),
+    ),
+
+    restart_hosted_server: tool(
+      'restart_hosted_server',
+      'write',
+      'Перезапустить свой сервер: остановить и сразу запустить снова.',
+      { id: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('restart', args),
+    ),
+
+    hosted_command: tool(
+      'hosted_command',
+      'write',
+      'Отправить команду в консоль запущенного своего сервера, без ведущего слэша или с ним.',
+      { id: { type: 'string' }, command: { type: 'string' } },
+      ['id', 'command'],
+      async (args) => agentHostedAction('command', args),
+    ),
+
+    hosted_log: tool(
+      'hosted_log',
+      'read',
+      'Последние строки консоли своего сервера.',
+      { id: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('log', args),
+    ),
+
+    list_hosted_plugins: tool(
+      'list_hosted_plugins',
+      'read',
+      'Плагины или моды своего сервера и их команды.',
+      { id: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('plugins', args),
+    ),
+
+    install_hosted_plugin: tool(
+      'install_hosted_plugin',
+      'write',
+      'Скачать jar плагина или мода на свой сервер по https-ссылке.',
+      {
+        id: { type: 'string' },
+        url: { type: 'string' },
+        filename: { type: 'string' },
+      },
+      ['id', 'url'],
+      async (args) => agentHostedAction('install-url', args),
+    ),
+
+    toggle_hosted_plugin: tool(
+      'toggle_hosted_plugin',
+      'write',
+      'Включить или выключить jar плагина на своём сервере.',
+      { id: { type: 'string' }, name: { type: 'string' } },
+      ['id', 'name'],
+      async (args) => agentHostedAction('plugin-toggle', args),
+    ),
+
+    list_hosted_files: tool(
+      'list_hosted_files',
+      'read',
+      'Список файлов в каталоге своего сервера. path пустой — корень.',
+      { id: { type: 'string' }, path: { type: 'string' } },
+      ['id'],
+      async (args) => agentHostedAction('files', { id: args.id, path: args.path }),
+    ),
+
+    read_hosted_file: tool(
+      'read_hosted_file',
+      'read',
+      'Прочитать текстовый конфиг своего сервера, например server.properties или config/paper-world-defaults.yml.',
+      { id: { type: 'string' }, path: { type: 'string' } },
+      ['id', 'path'],
+      async (args) => agentHostedAction('read-file', { id: args.id, path: args.path }),
+    ),
+
+    write_hosted_file: tool(
+      'write_hosted_file',
+      'write',
+      'Перезаписать текстовый конфиг своего сервера. Сначала прочитай файл и меняй только нужные строки.',
+      { id: { type: 'string' }, path: { type: 'string' }, text: { type: 'string' } },
+      ['id', 'path', 'text'],
+      async (args) => agentHostedAction('write-file', { id: args.id, path: args.path, text: args.text }),
+    ),
+
+    list_hosted_core_versions: tool(
+      'list_hosted_core_versions',
+      'read',
+      'Какие версии Minecraft доступны для ядра своего сервера.',
+      { software: { type: 'string' } },
+      ['software'],
+      async (args) => agentHostedAction('versions', args),
     ),
   };
 }

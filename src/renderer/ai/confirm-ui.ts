@@ -152,6 +152,56 @@ export function describeAiAction(
         detail: [strArg(args, 'filename'), buildPart].filter(Boolean).join(' · '),
       };
     }
+    case 'create_hosted_server':
+      return { title: 'Создать свой сервер', detail: strArg(args, 'name') };
+    case 'update_hosted_server':
+      return { title: 'Изменить свой сервер', detail: [strArg(args, 'name'), strArg(args, 'id')].filter(Boolean).join(' · ') };
+    case 'start_hosted_server':
+      return { title: 'Запустить свой сервер', detail: strArg(args, 'id') };
+    case 'stop_hosted_server':
+      return { title: 'Остановить свой сервер', detail: strArg(args, 'id') };
+    case 'install_hosted_plugin':
+      return { title: 'Установить плагин', detail: strArg(args, 'filename') || strArg(args, 'url') };
+    case 'write_hosted_file':
+      return { title: 'Записать конфиг сервера', detail: strArg(args, 'path') };
+    case 'launch_build': {
+      const ip = strArg(args, 'serverIp');
+      const port = args.serverPort != null ? String(args.serverPort) : '';
+      const server = ip ? `${ip}${port ? `:${port}` : ''}` : '';
+      return {
+        title: 'Запустить сборку',
+        detail: [buildPart, server].filter(Boolean).join(' · '),
+      };
+    }
+    case 'set_build_memory': {
+      const max = args.memoryMax != null ? `${args.memoryMax} МБ` : '';
+      return {
+        title: 'Изменить память сборки',
+        detail: [buildPart, max].filter(Boolean).join(' · '),
+      };
+    }
+    case 'set_java_for_build': {
+      const ver = args.version != null ? `Java ${args.version}` : '';
+      return {
+        title: 'Назначить Java',
+        detail: [buildPart, ver].filter(Boolean).join(' · '),
+      };
+    }
+    case 'install_java': {
+      return {
+        title: 'Установить Java',
+        detail: args.version != null ? `Java ${args.version}` : '',
+      };
+    }
+    case 'remove_java': {
+      return {
+        title: 'Удалить Java',
+        detail: args.version != null ? `Java ${args.version}` : '',
+      };
+    }
+    case 'open_build_folder': {
+      return { title: 'Открыть папку сборки', detail: buildPart };
+    }
     case 'clear_logs': {
       return {
         title: t('ai.action.clear_logs'),

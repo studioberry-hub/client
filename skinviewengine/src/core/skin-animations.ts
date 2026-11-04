@@ -59,21 +59,52 @@ export function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
-/** Плавный in-out для ванильных циклов (мягче сырого sin) */
-function smoothWave(t: number): number {
-  // sin → почти-синусоида с более мягкими краями
-  const s = Math.sin(t);
-  return Math.sign(s) * Math.pow(Math.abs(s), 0.85);
-}
 
 function smooth01(t: number): number {
   const x = Math.max(0, Math.min(1, t));
   return x * x * (3 - 2 * x);
 }
 
-/** «Ударная» кривая шага — как в трейлерном спринте */
-function punch(x: number): number {
-  return Math.sin(x) * Math.abs(Math.sin(x));
+/**
+ * Редкий поворот головы: на стыке цикла угол и скорость нулевые,
+ * поэтому повтор не щёлкает.
+ */
+function rareHeadYaw(t: number): number {
+  const period = 12.4;
+  const phase = (t % period) / period;
+  const hump = (center: number, half: number, amp: number): number => {
+    const d = (phase - center) / half;
+    if (d <= -1 || d >= 1) return 0;
+    const x = 0.5 + 0.5 * Math.cos(Math.PI * d);
+    return amp * x * x;
+  };
+  return hump(0.42, 0.1, 0.36) - hump(0.78, 0.08, 0.28);
+}
+
+/**
+ * Шаг, в котором нижняя стопа остаётся на полу.
+ * Угол 0 — нога вертикально, стопа внизу. Корню даём отрицательный Y,
+ * равный подъёму дуги более прямой ноги (длина ноги skin3d ≈ 12).
+ */
+function groundedStride(
+  phase: number,
+  swing: number,
+  support: number,
+): { left: number; right: number; drop: number } {
+  const s = Math.sin(phase);
+  const left = s >= 0 ? s * swing : s * support;
+  const right = s >= 0 ? -s * support : -s * swing;
+  const lift = Math.min(1 - Math.cos(left), 1 - Math.cos(right));
+  return { left, right, drop: -12 * lift };
+}
+
+/** Импульс удара: 0 на краях фазы, без рывка при зацикливании */
+function strikePulse(phase: number): number {
+  const p = phase - Math.floor(phase);
+  if (p < 0.16 || p > 0.7) return 0;
+  const u = (p - 0.16) / (0.7 - 0.16);
+  const s = Math.sin(u * Math.PI);
+  return s * s;
 }
 
 export function capturePose(player: any): PoseSnapshot {
@@ -175,13 +206,15 @@ export function animationControlsLegs(animation: SkinAnimation | null): boolean 
 }
 
 /**
- * Trailer idle — «живой» герой: дыхание, slim/classic осанка, толчок по клику.
+ * Idle: стопы на земле, дыхание грудью, редкий взгляд.
+ * Корень по Y не двигается — иначе модель «левитирует».
  */
 export class HeroIdleAnimation extends BaseSkinAnimation {
   override readonly controlsLegs = true;
   /**
-   * Движок включает при взгляде за курсором: анимация не крутит голову,
-   * иначе взгляд и idle-look конфликтуют и выглядят криво.
+   * Движок ставит true, когда взгляд за курсором включён.
+   * Сам idle голову всё равно чуть поворачивает; курсор подмешивается поверх,
+   * только если указатель реально ушёл от центра.
    */
   suppressAutoLook = false;
   /** Тонкая модель — чуть другая осанка */
@@ -214,41 +247,43 @@ export class HeroIdleAnimation extends BaseSkinAnimation {
 
   protected animate(player: any, delta: number): void {
     const t = this.progress;
-    const breathe = Math.sin(t * 1.35);
-    const wind = Math.sin(t * 2.1) * 0.5 + Math.sin(t * 3.4) * 0.5;
-    const weight = 0.55 + Math.sin(t * 0.35) * 0.45;
+    // В нуле все добавки = 0: синусы и горб взгляда сходятся со стойкой
+    const settle = smooth01(Math.min(1, t * 1.1));
+    const breath = Math.sin(t * 0.78);
+    const weight = Math.sin(t * 0.24);
+    const look = rareHeadYaw(t);
     const slim = this.modelSlim ? 1 : 0;
 
-    // Спокойная стойка: лёгкое дыхание, руки у тела (не «распахнуты»)
-    player.skin.body.rotation.x = 0.02 + breathe * 0.025 - slim * 0.01;
-    player.skin.body.rotation.z = (weight - 0.5) * (0.04 + slim * 0.02);
+    // Пол. Подскок всего тела убран — из‑за него ноги «плыли»
+    player.position.x = 0;
+    player.position.y = 0;
 
-    const busyHead = this.blocksCursorLook;
-    if (this.suppressAutoLook && !busyHead) {
-      player.skin.body.rotation.y = -0.04 + slim * 0.02;
-      player.skin.head.rotation.set(-0.03, 0, 0);
-    } else {
-      const lookRaw = Math.sin(t * 0.55);
-      const look = lookRaw * lookRaw * lookRaw;
-      player.skin.body.rotation.y = -0.06 + look * 0.06 + slim * 0.02;
-      player.skin.head.rotation.y = look * 0.4;
-      player.skin.head.rotation.x = -0.04 + Math.sin(t * 0.8) * 0.05;
-      player.skin.head.rotation.z = look * 0.03 + slim * 0.02;
+    // Дыхание — наклон груди. Таз без крена в сторону
+    player.skin.body.rotation.x = breath * 0.055 * settle;
+    player.skin.body.rotation.y = weight * 0.025 * settle;
+    player.skin.body.rotation.z = 0;
+
+    player.skin.head.rotation.x = breath * 0.018 * settle;
+    player.skin.head.rotation.y = look * settle;
+    player.skin.head.rotation.z = look * 0.05 * settle;
+
+    // Плечи дышат вместе с грудью, руки не машут как при шаге
+    player.skin.leftArm.rotation.x = breath * 0.04 * settle - weight * 0.035 * settle;
+    player.skin.rightArm.rotation.x = breath * 0.04 * settle + weight * 0.035 * settle;
+    player.skin.leftArm.rotation.y = 0;
+    player.skin.rightArm.rotation.y = 0;
+    player.skin.leftArm.rotation.z = (0.05 - slim * 0.012) * settle + breath * 0.02 * settle;
+    player.skin.rightArm.rotation.z = (-0.05 + slim * 0.012) * settle - breath * 0.02 * settle;
+
+    // Обе ноги прямые весь цикл: без сгиба колена и без крена в бедре
+    player.skin.leftLeg.rotation.set(0, 0, 0);
+    player.skin.rightLeg.rotation.set(0, 0, 0);
+
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + breath * 0.045 + weight * 0.025;
+      player.cape.rotation.z = weight * 0.035;
+      player.cape.rotation.y = CAPE_YAW;
     }
-
-    // Руки почти вдоль тела; z ≈ ±0.06 — естественный зазор, не разведение
-    player.skin.leftArm.rotation.x = -0.05 + breathe * 0.035 + slim * 0.02;
-    player.skin.leftArm.rotation.z = 0.06 + wind * 0.015 - slim * 0.015;
-    player.skin.rightArm.rotation.x = -0.03 + Math.sin(t * 0.9 + 1.2) * 0.04;
-    player.skin.rightArm.rotation.z = -0.06 - weight * 0.02 + slim * 0.015;
-
-    // Ноги почти параллельно — ощущение «стоит», а не контрапоста
-    player.skin.leftLeg.rotation.x = -0.03 * weight;
-    player.skin.rightLeg.rotation.x = 0.04 * weight + slim * 0.02;
-    player.skin.leftLeg.rotation.z = 0.015;
-    player.skin.rightLeg.rotation.z = -0.015;
-
-    player.cape.rotation.x = Math.PI * 0.1 + wind * 0.06 + breathe * 0.02;
 
     if (this._nudgeElapsed >= 0) {
       this._nudgeElapsed += delta;
@@ -289,6 +324,54 @@ export class HeroIdleAnimation extends BaseSkinAnimation {
 }
 
 /**
+ * Парение в зале аккаунтов: тот же скелет, что у idle,
+ * только тело мягко поднимается и покачивается.
+ */
+export class HoverAnimation extends BaseSkinAnimation {
+  override readonly controlsLegs = true;
+
+  private lift = 0;
+
+  protected animate(player: any, delta: number): void {
+    const t = this.progress;
+    this.lift = Math.min(1, this.lift + delta * 1.5);
+    const rise = this.lift;
+    const bob = Math.sin(t * 1.35);
+    const breath = Math.sin(t * 0.78);
+
+    player.position.x = 0;
+    player.position.z = 0;
+    player.position.y = (2.4 + bob * 0.45) * rise;
+    player.rotation.x = bob * 0.015 * rise;
+    player.rotation.z = bob * 0.02 * rise;
+
+    player.skin.body.rotation.x = breath * 0.045 * rise;
+    player.skin.body.rotation.y = bob * 0.02 * rise;
+    player.skin.body.rotation.z = 0;
+
+    player.skin.head.rotation.x = -0.04 * rise + breath * 0.015;
+    player.skin.head.rotation.y = Math.sin(t * 0.32) * 0.1 * rise;
+    player.skin.head.rotation.z = 0;
+
+    player.skin.leftArm.rotation.x = -0.08 * rise;
+    player.skin.rightArm.rotation.x = -0.08 * rise;
+    player.skin.leftArm.rotation.y = 0;
+    player.skin.rightArm.rotation.y = 0;
+    player.skin.leftArm.rotation.z = 0.16 * rise;
+    player.skin.rightArm.rotation.z = -0.16 * rise;
+
+    player.skin.leftLeg.rotation.set(0.04 * rise, 0, -0.02 * rise);
+    player.skin.rightLeg.rotation.set(-0.02 * rise, 0, 0.02 * rise);
+
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + (0.22 + bob * 0.05) * rise;
+      player.cape.rotation.y = CAPE_YAW;
+      player.cape.rotation.z = 0;
+    }
+  }
+}
+
+/**
  * Trailer sprint — широкий шаг, сильный наклон, плащ парусом,
  * противоположный мах рук; темп чуть выше среднего игрового спринта.
  */
@@ -297,106 +380,206 @@ export class TrailerRunAnimation extends BaseSkinAnimation {
   override speed = 1.12;
 
   protected animate(player: any): void {
-    const t = this.progress * 9.6;
-    const stride = Math.sin(t);
-    const strideOpp = Math.sin(t + Math.PI);
-    const plant = punch(t);
-    const plantOpp = punch(t + Math.PI);
-    const bob = Math.abs(Math.sin(t));
+    const phase = this.progress * 8.6;
+    const settle = smooth01(Math.min(1, this.progress * 2.2));
+    // Маховая нога выше, опорная ближе к вертикали — её стопа на полу
+    const step = groundedStride(phase, 1.05, 0.48);
+    const sway = Math.sin(phase);
 
-    player.rotation.x = 0.26;
-    player.rotation.z = stride * 0.035;
-    player.position.y = bob * 0.55;
-    player.position.x = stride * 0.08;
+    player.position.x = 0;
+    player.position.y = step.drop;
+    player.rotation.x = 0.22 * settle;
+    player.rotation.z = sway * 0.04;
 
-    player.skin.body.rotation.x = 0.12;
-    player.skin.body.rotation.y = stride * 0.12;
-    player.skin.body.rotation.z = stride * 0.04;
+    player.skin.body.rotation.x = 0.1 * settle;
+    player.skin.body.rotation.y = sway * 0.1;
+    player.skin.body.rotation.z = sway * 0.035;
 
-    player.skin.head.rotation.x = -0.18;
-    player.skin.head.rotation.y = stride * 0.07;
-    player.skin.head.rotation.z = -stride * 0.03;
+    player.skin.head.rotation.x = -0.16 * settle;
+    player.skin.head.rotation.y = sway * 0.05;
+    player.skin.head.rotation.z = -sway * 0.03;
 
-    // Ноги — широкий театральный шаг
-    player.skin.leftLeg.rotation.x = strideOpp * 1.15;
-    player.skin.rightLeg.rotation.x = stride * 1.15;
-    player.skin.leftLeg.rotation.z = plantOpp * 0.06;
-    player.skin.rightLeg.rotation.z = -plant * 0.06;
+    player.skin.leftLeg.rotation.x = step.left;
+    player.skin.rightLeg.rotation.x = step.right;
+    player.skin.leftLeg.rotation.z = 0.02 * settle;
+    player.skin.rightLeg.rotation.z = -0.02 * settle;
 
-    // Руки — противоположный мах с раскрытием в стороны
-    player.skin.leftArm.rotation.x = stride * 1.25;
-    player.skin.rightArm.rotation.x = strideOpp * 1.25;
-    player.skin.leftArm.rotation.z = 0.22 + Math.abs(stride) * 0.12;
-    player.skin.rightArm.rotation.z = -0.22 - Math.abs(strideOpp) * 0.12;
+    // Противоход: рука назад, когда своя нога впереди
+    player.skin.leftArm.rotation.x = -step.left * 1.05;
+    player.skin.rightArm.rotation.x = -step.right * 1.05;
+    player.skin.leftArm.rotation.z = 0.16 * settle;
+    player.skin.rightArm.rotation.z = -0.16 * settle;
 
-    player.cape.rotation.x = Math.PI * 0.42 + bob * 0.14;
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + 0.95 * settle + Math.abs(sway) * 0.08;
+      player.cape.rotation.y = CAPE_YAW;
+    }
   }
 }
 
 /**
- * Махать — быстрее и живее: активный мах, лёгкий подскок, голова в ритме.
+ * Ходьба — тот же скелет, что у бега, но спокойнее:
+ * короткий шаг, небольшой наклон, плащ едва отходит.
  */
-export class WaveHelloAnimation extends BaseSkinAnimation {
+export class WalkCycleAnimation extends BaseSkinAnimation {
   override readonly controlsLegs = true;
-  override speed = 1.15;
+  override speed = 1;
 
   protected animate(player: any): void {
-    const t = this.progress * 6.8;
-    const wave = Math.sin(t);
-    const lift = smooth01(Math.min(1, this.progress * 3.2));
-    const bounce = (0.5 - 0.5 * Math.cos(t * 0.5)) * 0.14 * lift;
+    const phase = this.progress * 4.4;
+    const settle = smooth01(Math.min(1, this.progress * 1.8));
+    const step = groundedStride(phase, 0.68, 0.34);
+    const sway = Math.sin(phase);
 
-    player.position.y = bounce;
+    player.position.x = 0;
+    player.position.y = step.drop;
+    player.rotation.x = 0.06 * settle;
+    player.rotation.z = sway * 0.018;
 
-    player.skin.head.rotation.x = -0.05 + bounce * 0.05;
-    player.skin.head.rotation.y = 0.14 * lift + wave * 0.04 * lift;
-    player.skin.head.rotation.z = 0.05 * lift + wave * 0.03 * lift;
+    player.skin.body.rotation.x = 0.04 * settle;
+    player.skin.body.rotation.y = sway * 0.06;
+    player.skin.body.rotation.z = sway * 0.025;
 
-    player.skin.body.rotation.x = 0.025 + bounce * 0.02;
-    player.skin.body.rotation.y = 0.07 * lift;
-    player.skin.body.rotation.z = wave * 0.025 * lift;
+    player.skin.head.rotation.x = -0.03 * settle;
+    player.skin.head.rotation.y = -sway * 0.045;
+    player.skin.head.rotation.z = -sway * 0.012;
 
-    player.skin.rightArm.rotation.x = wave * 0.06 * lift;
-    player.skin.rightArm.rotation.y = 0;
-    player.skin.rightArm.rotation.z = (-2.15 + wave * 0.48) * lift;
+    player.skin.leftLeg.rotation.x = step.left;
+    player.skin.rightLeg.rotation.x = step.right;
+    player.skin.leftLeg.rotation.z = 0.015 * settle;
+    player.skin.rightLeg.rotation.z = -0.015 * settle;
 
-    player.skin.leftArm.rotation.x = -0.08 + bounce * 0.04;
-    player.skin.leftArm.rotation.y = 0;
-    player.skin.leftArm.rotation.z = 0.1;
+    player.skin.leftArm.rotation.x = -step.left * 0.8;
+    player.skin.rightArm.rotation.x = -step.right * 0.8;
+    player.skin.leftArm.rotation.z = 0.06 * settle;
+    player.skin.rightArm.rotation.z = -0.06 * settle;
 
-    player.skin.leftLeg.rotation.set(-0.04 - bounce * 0.04, 0, 0.025);
-    player.skin.rightLeg.rotation.set(0.05 + bounce * 0.05, 0, -0.025);
-    player.cape.rotation.x = CAPE_REST_X + bounce * 0.08;
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + 0.18 * settle + Math.abs(sway) * 0.04;
+      player.cape.rotation.y = CAPE_YAW;
+    }
   }
 }
 
-/** Красться — чуть бодрее шаг */
-export class SneakAnimation extends BaseSkinAnimation {
+/** Удар — короткий выпад правой рукой и возврат без щелчка на стыке */
+export class HitAnimation extends BaseSkinAnimation {
   override readonly controlsLegs = true;
-  override speed = 1.1;
+  override speed = 1.05;
 
   protected animate(player: any): void {
-    const t = this.progress * 3.4;
-    const stride = Math.sin(t) * 0.32;
-    const bob = Math.abs(Math.sin(t)) * 0.06;
+    const period = 1.5;
+    const phase = (this.progress % period) / period;
+    const strike = strikePulse(phase);
+    const sway = Math.sin(phase * Math.PI);
 
-    player.position.y = -0.95 + bob;
-    player.rotation.x = 0.1;
+    // Без подскока: вес на задней ноге, передняя чуть подаётся
+    player.position.y = 0;
+    player.skin.body.rotation.y = -0.22 * strike;
+    player.skin.body.rotation.x = 0.1 * strike;
+    player.skin.body.rotation.z = 0.03 * sway * strike;
 
-    player.skin.body.rotation.x = 0.12;
-    player.skin.body.rotation.y = stride * 0.05;
-    player.skin.body.rotation.z = 0;
+    player.skin.head.rotation.y = -0.1 * strike;
+    player.skin.head.rotation.x = -0.05 * strike;
 
-    player.skin.head.rotation.x = -0.02 + bob * 0.1;
-    player.skin.head.rotation.y = stride * 0.08;
+    player.skin.rightArm.rotation.x = -1.2 * strike;
+    player.skin.rightArm.rotation.z = -0.18 * strike;
+    player.skin.leftArm.rotation.x = 0.28 * strike;
+    player.skin.leftArm.rotation.z = 0.16 * strike;
+
+    player.skin.leftLeg.rotation.x = 0.22 * strike;
+    player.skin.rightLeg.rotation.x = -0.06 * strike;
+    player.skin.leftLeg.rotation.z = 0.02 * strike;
+    player.skin.rightLeg.rotation.z = -0.02 * strike;
+
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + 0.28 * strike;
+      player.cape.rotation.y = CAPE_YAW;
+    }
+  }
+}
+
+/**
+ * Махать — рука над головой, корпус чуть качается.
+ * Стопы на земле: подскока нет.
+ */
+export class WaveHelloAnimation extends BaseSkinAnimation {
+  override readonly controlsLegs = true;
+  override speed = 1.05;
+
+  protected animate(player: any): void {
+    const t = this.progress * 5.4;
+    const wave = Math.sin(t);
+    const lift = smooth01(Math.min(1, this.progress * 2.2));
+
+    player.position.y = 0;
+
+    player.skin.head.rotation.x = -0.04 * lift;
+    player.skin.head.rotation.y = (0.16 + wave * 0.04) * lift;
+    player.skin.head.rotation.z = (0.04 + wave * 0.02) * lift;
+
+    player.skin.body.rotation.x = 0.02 * lift;
+    player.skin.body.rotation.y = 0.08 * lift;
+    player.skin.body.rotation.z = wave * 0.03 * lift;
+
+    player.skin.rightArm.rotation.x = wave * 0.08 * lift;
+    player.skin.rightArm.rotation.y = 0;
+    player.skin.rightArm.rotation.z = (-2.2 + wave * 0.42) * lift;
+
+    player.skin.leftArm.rotation.x = -0.06 * lift;
+    player.skin.leftArm.rotation.y = 0;
+    player.skin.leftArm.rotation.z = 0.08 * lift;
+
+    // Опора на левую, правая чуть согнута — не шаг
+    player.skin.leftLeg.rotation.set(0, 0, 0.02 * lift);
+    player.skin.rightLeg.rotation.set(0.08 * lift, 0, -0.02 * lift);
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + wave * 0.04 * lift;
+      player.cape.rotation.y = CAPE_YAW;
+    }
+  }
+}
+
+/** Красться — низкий корпус, короткий шаг, стопа в опоре */
+export class SneakAnimation extends BaseSkinAnimation {
+  override readonly controlsLegs = true;
+  override speed = 1;
+
+  protected animate(player: any): void {
+    const phase = this.progress * 3.1;
+    const settle = smooth01(Math.min(1, this.progress * 1.6));
+    const step = groundedStride(phase, 0.42, 0.2);
+    const sway = Math.sin(phase);
+
+    // Бёдра назад: общий угол ног вперёд, стопы остаются под грудью.
+    // Корень по X не крутим — раньше 0.16 рад плюс торс 0.32 клевали модель вперёд.
+    const crouch = 0.48 * settle;
+    const left = crouch + step.left;
+    const right = crouch + step.right;
+    const footLift = Math.min(1 - Math.cos(left), 1 - Math.cos(right));
+
+    player.position.x = 0;
+    player.position.y = -12 * footLift;
+    player.rotation.x = 0;
+    player.rotation.z = sway * 0.012;
+
+    // Около 4° на груди, голова компенсирует — взгляд вперёд, не в пол
+    player.skin.body.rotation.x = 0.07 * settle;
+    player.skin.body.rotation.y = sway * 0.04;
+    player.skin.body.rotation.z = sway * 0.015;
+
+    player.skin.head.rotation.x = -player.skin.body.rotation.x;
+    player.skin.head.rotation.y = sway * 0.04;
     player.skin.head.rotation.z = 0;
 
-    player.skin.leftLeg.rotation.set(stride, 0, 0.015);
-    player.skin.rightLeg.rotation.set(-stride, 0, -0.015);
-    player.skin.leftArm.rotation.set(-stride * 0.28 - 0.18, 0, 0.09);
-    player.skin.rightArm.rotation.set(stride * 0.28 - 0.18, 0, -0.09);
+    player.skin.leftLeg.rotation.set(left, 0, 0.02 * settle);
+    player.skin.rightLeg.rotation.set(right, 0, -0.02 * settle);
+    player.skin.leftArm.rotation.set(0.48 * settle - step.left * 0.28, 0, 0.16 * settle);
+    player.skin.rightArm.rotation.set(0.48 * settle - step.right * 0.28, 0, -0.16 * settle);
 
-    player.cape.rotation.x = CAPE_REST_X + 0.1 + bob * 0.05;
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + 0.22 * settle;
+      player.cape.rotation.y = CAPE_YAW;
+    }
   }
 }
 
@@ -490,44 +673,46 @@ export class VictoryAnimation extends BaseSkinAnimation {
   }
 }
 
-/** Сон стоя — ноги на полу; дышат только голова и руки */
+/**
+ * Прежняя стойка сна: стоит, корпус чуть опущен, голова опущена.
+ * Сверху только тихое дыхание груди и редкий маленький поворот головы.
+ */
 export class SleepAnimation extends BaseSkinAnimation {
   override readonly controlsLegs = true;
   override speed = 0.75;
 
   protected animate(player: any): void {
     const inPose = smooth01(Math.min(1, this.progress * 1.35));
-    const breath = Math.sin(this.progress * 1.15) * 0.03;
-    const snore = Math.sin(this.progress * 2.3) * 0.014;
+    const breath = Math.sin(this.progress * 1.05);
+    const glance = rareHeadYaw(this.progress * 0.65);
 
-    // Корень и ноги не двигаем — стоим на полу
+    // Корень на полу, без крена и без подъёма
     player.position.y = 0;
     player.rotation.x = 0;
     player.rotation.z = 0;
 
-    // Корпус статично чуть опущен (без дыхания)
     const sink = 0.9 * inPose;
     player.skin.body.position.y = -6 - sink;
     player.skin.head.position.y = -sink;
     player.skin.leftArm.position.y = -2 - sink;
     player.skin.rightArm.position.y = -2 - sink;
 
-    player.skin.body.rotation.x = 0.1 * inPose;
+    // Старый наклон груди плюс тихая волна дыхания
+    player.skin.body.rotation.x = 0.1 * inPose + breath * 0.035 * inPose;
     player.skin.body.rotation.y = 0;
     player.skin.body.rotation.z = 0;
 
     player.skin.leftLeg.rotation.set(0, 0, 0.02);
     player.skin.rightLeg.rotation.set(0, 0, -0.02);
 
-    // Дыхание / сопение — только голова и руки
-    player.skin.head.rotation.x = (0.78 + breath + snore) * inPose;
-    player.skin.head.rotation.y = snore * 0.35;
+    player.skin.head.rotation.x = 0.78 * inPose + breath * 0.012 * inPose;
+    player.skin.head.rotation.y = glance * 0.18 * inPose;
     player.skin.head.rotation.z = 0;
 
-    player.skin.leftArm.rotation.set(0.12 * inPose + breath * 0.85, 0, 0.04);
-    player.skin.rightArm.rotation.set(0.14 * inPose + breath * 0.85, 0, -0.04);
+    player.skin.leftArm.rotation.set(0.12 * inPose + breath * 0.04 * inPose, 0, 0.04);
+    player.skin.rightArm.rotation.set(0.14 * inPose + breath * 0.04 * inPose, 0, -0.04);
 
-    player.cape.rotation.x = CAPE_REST_X + 0.03 * inPose;
+    player.cape.rotation.x = CAPE_REST_X + 0.03 * inPose + breath * 0.02 * inPose;
   }
 }
 
@@ -564,47 +749,74 @@ export class DanceAnimation extends BaseSkinAnimation {
   }
 }
 
-/** Парение — пикирующий «cinema»-ракурс из трейлеров с elytra */
+/**
+ * Парение — отдельный полёт, не Idle.
+ * Тело в воздухе, руки в стороны, ноги тянутся назад и не шагают.
+ */
 export class GlideAnimation extends BaseSkinAnimation {
   override readonly controlsLegs = true;
-  override speed = 1.1;
+  override speed = 1;
 
   protected animate(player: any): void {
     const t = this.progress;
-    const bob = Math.sin(t * 2.2);
-    const bank = Math.sin(t * 1.15);
+    const settle = smooth01(Math.min(1, t * 1.2));
+    const drift = Math.sin(t * 1.15);
+    const bank = Math.sin(t * 0.55);
 
-    player.rotation.x = -0.72;
-    player.rotation.z = bank * 0.14;
-    player.position.y = 1.6 + bob * 0.48;
+    player.rotation.x = -0.82 * settle;
+    player.rotation.z = bank * 0.16 * settle;
+    player.position.y = (2.4 + drift * 0.28) * settle;
 
-    player.skin.head.rotation.x = 0.45;
-    player.skin.head.rotation.y = bank * 0.12;
-    player.skin.body.rotation.x = 0.08;
+    player.skin.head.rotation.x = 0.38 * settle;
+    player.skin.head.rotation.y = bank * 0.1 * settle;
+    player.skin.head.rotation.z = bank * 0.04 * settle;
+    player.skin.body.rotation.x = 0.06 * settle + drift * 0.02;
 
-    player.skin.leftArm.rotation.x = -0.35;
+    player.skin.leftArm.rotation.x = -0.28 * settle;
     player.skin.leftArm.rotation.y = 0;
-    player.skin.leftArm.rotation.z = 1.05 + bob * 0.07;
-    player.skin.rightArm.rotation.x = -0.35;
+    player.skin.leftArm.rotation.z = (1.15 + drift * 0.04) * settle;
+    player.skin.rightArm.rotation.x = -0.28 * settle;
     player.skin.rightArm.rotation.y = 0;
-    player.skin.rightArm.rotation.z = -1.05 - bob * 0.07;
+    player.skin.rightArm.rotation.z = (-1.15 - drift * 0.04) * settle;
 
-    player.skin.leftLeg.rotation.x = 0.3 + bob * 0.05;
-    player.skin.rightLeg.rotation.x = 0.18 - bob * 0.05;
-    player.skin.leftLeg.rotation.z = 0.06;
-    player.skin.rightLeg.rotation.z = -0.06;
+    player.skin.leftLeg.rotation.x = (0.42 + drift * 0.03) * settle;
+    player.skin.rightLeg.rotation.x = (0.36 - drift * 0.03) * settle;
+    player.skin.leftLeg.rotation.z = 0.05 * settle;
+    player.skin.rightLeg.rotation.z = -0.05 * settle;
 
-    player.cape.rotation.x = CAPE_REST_X + 1.85 + bob * 0.08;
+    if (player.cape?.visible) {
+      player.cape.rotation.x = CAPE_REST_X + 1.7 * settle + drift * 0.06;
+      player.cape.rotation.y = CAPE_YAW;
+    }
   }
 }
 
-/** Погрудные позы для карточек — постеровый вайб */
+/** Погрудные позы. upright — ровный кадр карточки, без наклона корпуса. */
 export class BustPoseAnimation extends BaseSkinAnimation {
-  constructor(private readonly variant = 0) {
+  constructor(private readonly variant = 0, readonly upright = false) {
     super();
   }
 
   protected animate(player: any): void {
+    if (this.upright) {
+      player.position.y = 0;
+      player.rotation.x = 0;
+      player.rotation.z = 0;
+      player.skin.head.rotation.x = 0;
+      player.skin.head.rotation.y = 0.16;
+      player.skin.head.rotation.z = 0;
+      player.skin.body.rotation.x = 0;
+      player.skin.body.rotation.y = 0;
+      player.skin.body.rotation.z = 0;
+      player.skin.leftArm.rotation.x = -0.05;
+      player.skin.leftArm.rotation.y = 0;
+      player.skin.leftArm.rotation.z = 0.05;
+      player.skin.rightArm.rotation.x = -0.05;
+      player.skin.rightArm.rotation.y = 0;
+      player.skin.rightArm.rotation.z = -0.05;
+      return;
+    }
+
     const t = this.progress;
     const breathe = Math.sin(t * 1.4) * 0.02;
     const v = this.variant % 4;
@@ -658,8 +870,10 @@ export function resetPlayerRootPose(player: any): void {
 
 export type SkinAnimId =
   | "idle"
+  | "walk"
   | "run"
   | "wave"
+  | "hit"
   | "sneak"
   | "look"
   | "cool"
@@ -669,7 +883,8 @@ export type SkinAnimId =
   | "dance"
   | "dab"
   | "think"
-  | "hello";
+  | "hello"
+  | "sad";
 
 /** Dab — быстрый snap в позу */
 export class DabAnimation extends BaseSkinAnimation {
@@ -773,11 +988,15 @@ export class HelloNodAnimation extends BaseSkinAnimation {
 /** Пресеты кадра под скриншот */
 export type ShotPresetId = "hero" | "bust" | "back" | "discord";
 
-export function createSkinAnimation(id: SkinAnimId | "sad"): SkinAnimation {
+export function createSkinAnimation(id: SkinAnimId): SkinAnimation {
   // Процедурные позы (идея SPE, без сырых ключей Emotecraft)
   switch (id) {
+    case "walk":
+      return new WalkCycleAnimation();
     case "run":
       return new TrailerRunAnimation();
+    case "hit":
+      return new HitAnimation();
     case "wave":
       return new WaveHelloAnimation();
     case "hello":

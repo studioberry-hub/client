@@ -1,33 +1,23 @@
-// Извлечение текстур блоков из клиентского jar версии Minecraft.
-// Ищется в .uclient (общий кэш и инстансы) и в .minecraft/versions.
-
 import { app, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import AdmZip from 'adm-zip';
+import { getInstancesDir, getDefaultMinecraftDir, getLauncherDataDir } from './paths';
+import { catalogIcons, loadCommandCatalog } from './commandCatalog';
 
 const BLOCK_PREFIX = 'assets/minecraft/textures/block/';
-
-function appDataRoaming(): string {
-  return process.env.APPDATA
-    || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
-}
-
-function uclientRoot(): string {
-  return path.join(appDataRoaming(), '.uclient');
-}
 
 /** Кандидаты пути к client jar для строки версии (26.2, 1.21.6, …). */
 export function findClientJar(gameVersion: string): string | null {
   const ver = String(gameVersion || '').trim();
   if (!ver || ver === 'latest_release' || ver === 'latest_snapshot') return null;
 
-  const roaming = appDataRoaming();
-  const root = uclientRoot();
+  const root = getInstancesDir();
+  const mcDir = getDefaultMinecraftDir();
   const candidates: string[] = [
     path.join(root, 'versions', ver, `${ver}.jar`),
-    path.join(roaming, '.minecraft', 'versions', ver, `${ver}.jar`),
+    path.join(mcDir, 'versions', ver, `${ver}.jar`),
   ];
 
   try {
@@ -35,7 +25,7 @@ export function findClientJar(gameVersion: string): string | null {
       if (id === 'versions' || id === 'bin' || id === 'assets') continue;
       candidates.push(path.join(root, id, 'versions', ver, `${ver}.jar`));
     }
-  } catch { /* нет .uclient */ }
+  } catch { /* нет instances dir */ }
 
   for (const c of candidates) {
     try {
@@ -51,7 +41,7 @@ function textureCacheDir(gameVersion: string, jarPath: string): string {
   try {
     userData = app.getPath('userData');
   } catch {
-    userData = path.join(appDataRoaming(), 'Undefined Client');
+    userData = getLauncherDataDir();
   }
   return path.join(userData, 'cache', 'block-textures', `${gameVersion}-${hash}`);
 }
@@ -121,8 +111,56 @@ export function extractBlockTextures(gameVersion: string, jarPathHint?: string):
   }
 }
 
+function collectClientJars(): Array<{ version: string; jarPath: string }> {
+  const roots = [path.join(getInstancesDir(), 'versions'), path.join(getDefaultMinecraftDir(), 'versions')];
+  try {
+    for (const id of fs.readdirSync(getInstancesDir())) {
+      roots.push(path.join(getInstancesDir(), id, 'versions'));
+    }
+  } catch { /* каталога сборок нет */ }
+  const found: Array<{ version: string; jarPath: string }> = [];
+  for (const root of roots) {
+    let versions: string[] = [];
+    try { versions = fs.readdirSync(root); } catch { continue; }
+    for (const version of versions) {
+      const jarPath = path.join(root, version, `${version}.jar`);
+      try {
+        if (fs.statSync(jarPath).size > 1_000_000) found.push({ version, jarPath });
+      } catch { /* нет jar */ }
+    }
+  }
+  return found;
+}
+
+export function findNearestClientJar(preferred: string): { version: string; jarPath: string } | null {
+  const exact = findClientJar(preferred);
+  if (exact) return { version: preferred || path.basename(exact, '.jar'), jarPath: exact };
+  const jars = collectClientJars();
+  if (!jars.length) return null;
+  jars.sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true }));
+  return jars[jars.length - 1];
+}
+
 export function registerClientJarIpc(): void {
   ipcMain.handle('world:find-client-jar', (_e, gameVersion: string) => findClientJar(String(gameVersion || '')));
   ipcMain.handle('world:block-textures', (_e, gameVersion: string, jarPath?: string) =>
     extractBlockTextures(String(gameVersion || ''), typeof jarPath === 'string' ? jarPath : undefined));
+  ipcMain.handle('command-catalog:get', (_e, gameVersion: string) => {
+    const jar = findNearestClientJar(String(gameVersion || ''));
+    if (!jar) return { ok: false, version: gameVersion, error: 'Клиентский jar не найден', items: [], blocks: [], entities: [], effects: [], enchantments: [], biomes: [], structures: [], particles: [], attributes: [], features: [], damageTypes: [] };
+    try {
+      return loadCommandCatalog(jar.jarPath, jar.version);
+    } catch (err) {
+      return { ok: false, version: gameVersion, error: err instanceof Error ? err.message : String(err), items: [], blocks: [], entities: [], effects: [], enchantments: [], biomes: [], structures: [], particles: [], attributes: [], features: [], damageTypes: [] };
+    }
+  });
+  ipcMain.handle('command-catalog:icons', (_e, gameVersion: string, ids: string[]) => {
+    const jar = findNearestClientJar(String(gameVersion || ''));
+    if (!jar) return {};
+    try {
+      return catalogIcons(jar.jarPath, jar.version, Array.isArray(ids) ? ids.slice(0, 64) : []);
+    } catch {
+      return {};
+    }
+  });
 }

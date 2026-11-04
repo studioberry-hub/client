@@ -85,6 +85,8 @@ type AttachHost = AiUiHost & {
   getLatestLog: (buildId: string) => Promise<string | null>;
   closeOtherPopovers: () => void;
   onAttachmentsChange: (items: AiAttachment[]) => void;
+  /** Ставит меню над композером, чтобы его не обрезал overflow. */
+  onMenuPlace?: (menu: HTMLElement, anchor: HTMLElement) => void;
 };
 
 const MAX_ATTACH = 12;
@@ -197,6 +199,10 @@ export function clearAiAttachments(): void {
   attachments = [];
   host?.onAttachmentsChange(attachments);
   renderAiAttachChips();
+}
+
+export function pushAiAttachment(item: Omit<AiAttachment, 'id'>): void {
+  pushAttachment({ ...item, id: uid() });
 }
 
 function pushAttachment(item: AiAttachment): void {
@@ -523,7 +529,11 @@ function setAttachMenuOpen(open: boolean): void {
     viewAnimDir = 'forward';
     renderAttachMenuBody();
     menu.classList.remove('hidden');
-    requestAnimationFrame(() => menu.classList.add('is-open'));
+    host?.onMenuPlace?.(menu, btn);
+    requestAnimationFrame(() => {
+      menu.classList.add('is-open');
+      host?.onMenuPlace?.(menu, btn);
+    });
     btn.setAttribute('aria-expanded', 'true');
   } else if (menu.classList.contains('is-open') || !menu.classList.contains('hidden')) {
     menu.classList.remove('is-open');

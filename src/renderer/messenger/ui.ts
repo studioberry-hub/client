@@ -1,7 +1,22 @@
 // ===== UI MC Messenger: диалоги, группы, reply, профиль, SSE =====
 
 import { createSkinAnimation, locatorColorFromUuid, SkinViewEngine } from 'skinviewengine';
-import { getApiBase, skinImageUrl, DEFAULT_ACCOUNT_SKIN_URL } from '../../shared/apiBase';
+import { catalogImageUrl, DEFAULT_ACCOUNT_SKIN_URL, getApiBase, skinImageUrl } from '../../shared/apiBase';
+import { cropWornHead, resolveWornSkinUrl, wornSkinProxyUrl, type SkinLookup } from '../worn-skin';
+import { fetchUserSocialPosts, openSocialPost, renderUserPostsHtml } from '../social-feed';
+import { openImageViewer } from '../image-viewer';
+import { openVideoViewer } from '../video-player';
+import { feedMessengerEvent, syncChatsScreen } from '../chatsV2/uclientBridge';
+import { shouldPlayMessageSound } from '../chatsV2/store';
+import {
+  acceptIncoming,
+  declineIncoming,
+  getCallState,
+  hangupCall,
+  joinVoiceChannel,
+  startDmCall,
+  toggleCallMute,
+} from './call';
 
 export type MessengerActivity = {
   build?: string | null;
@@ -13,6 +28,8 @@ export type MessengerActivity = {
   playing?: boolean;
   /** Хост открыл мир для друзей (не гость на чужом сервере) */
   hosting?: boolean;
+  /** false — вход на сервер или свой хост, это не мир для друзей */
+  worldShare?: boolean;
   at?: number | null;
 };
 
@@ -34,6 +51,7 @@ export type MessengerUser = {
   lastServerMeta?: string | null;
   createdAt?: number | null;
   sharedChats?: number | null;
+  verified?: boolean;
   role?: string;
   blockedByMe?: boolean;
   /** none | outgoing | incoming | friends */
@@ -79,6 +97,8 @@ export type MessengerMessage = {
   attachment?: MessengerAttachment | null;
   deleted?: boolean;
   reactions?: { emoji: string; count: number; me?: boolean }[];
+  /** Текстовый канал сервера. null — общий канал или личка. */
+  channelId?: string | null;
 };
 
 export type MessengerConversation = {
@@ -137,6 +157,7 @@ export type MessengerHost = {
   listLocalBuilds?: () => { id: string; name: string; meta: string }[];
   /** Открыть импорт шаринга по id */
   openInstanceShare?: (shareId: string) => void | Promise<void>;
+  openOfficialNews?: (postId: string) => void;
   /** Создать шаринг сборки → { id, url } */
   createInstanceShare?: (buildId: string) => Promise<{
     ok: boolean;
@@ -146,6 +167,14 @@ export type MessengerHost = {
   }>;
   /** Перейти к сборке по имени (если есть локально) */
   focusBuildByName?: (name: string) => void;
+  /** Карточка мода: существующая модалка каталога */
+  openModProject?: (projectId: string) => void;
+  /** Карточка сервера каталога: существующее окно информации */
+  openCatalogServer?: (address: string) => void;
+  /** Подгрузить каталог серверов, если его ещё нет в памяти */
+  ensureServerCatalog?: () => Promise<void>;
+  listCatalogServers?: () => { name: string; address: string; icon?: string; meta?: string }[];
+  lookupCatalogServer?: (address: string) => { name: string; icon?: string; meta?: string } | null;
   /** Запуск на сервер (picker сборки / join) */
   launchJoinServer?: (
     server: { ip: string; port: number; name?: string },
@@ -171,6 +200,8 @@ export type MessengerHost = {
       body?: unknown;
       query?: Record<string, string | number | undefined>;
     }) => Promise<any>;
+    getSkinData?: (uuid: string) => Promise<{ skinUrl?: string | null; capeUrl?: string | null } | null>;
+    getElyWornSkin?: (nickname: string, force?: boolean) => Promise<string | null>;
     messengerPickFiles?: (opts?: { media?: boolean }) => Promise<string[]>;
     messengerReadFile?: (filePath: string) => Promise<{
       ok: boolean;
@@ -202,6 +233,25 @@ export type MessengerHost = {
     gameRelayStop?: () => Promise<any>;
     gameRelayRestore?: () => Promise<any>;
     gameRelayStatus?: () => Promise<any>;
+    /** Манифест шаринга сборки — тот же IPC, что модалка импорта (instance-share:get). */
+    getInstanceShare?: (id: string) => Promise<{
+      ok: boolean;
+      manifest?: {
+        name?: string;
+        iconUrl?: string;
+        gameVersion?: string;
+        loader?: string;
+        loaderVersion?: string;
+      };
+      error?: string;
+    }>;
+    getModrinthProjects?: (
+      query: string,
+      type: string,
+      offset?: number,
+      limit?: number,
+    ) => Promise<{ hits?: any[]; error?: string }>;
+    getModrinthProject?: (projectId: string) => Promise<any>;
     gameRelayJoinSession?: (sessionId: string) => Promise<any>;
     onGameRelayLanPort?: (cb: (data: { buildId: string; port: number | null }) => void) => () => void;
     onGameRelayTunnel?: (cb: (data: Record<string, unknown>) => void) => () => void;
@@ -221,10 +271,35 @@ let me: MessengerUser | null = null;
 let sessionToken: string | null = null;
 let conversations: MessengerConversation[] = [];
 let activeId: string | null = null;
+/** Открытый сервер (группа). null — колонка личных сообщений. */
+let guildId: string | null = null;
+/** Текстовый канал внутри сервера. general — поток без метки. */
+let activeChannelSlug = 'general';
+/** Пока открыта модалка звонка: dm или voice. */
+let callScope: 'dm' | 'voice' | null = null;
+let callMuted = false;
+
+type ServerChannel = {
+  id: string;
+  conversationId: string;
+  kind: 'text' | 'voice';
+  name: string;
+  slug: string;
+};
+/** Каналы, пришедшие с API сайта. Ключ — id группы. */
+const serverChannels = new Map<string, ServerChannel[]>();
+let activeChannelId: string | null = null;
 let messages: MessengerMessage[] = [];
 /** Есть ли ещё более старые сообщения на сервере */
 let messagesHasMore = true;
 let messagesLoadingOlder = false;
+/** Список чатов ещё ни разу не пришёл с сервера и в кеше пусто */
+let chatsKnown = false;
+let friendsKnown = false;
+let usersKnown = false;
+let blockedKnown = false;
+/** Открытие чата: лента пустая, пока не пришли сообщения */
+let threadLoading = false;
 let replyTo: MessengerMessage | null = null;
 /** Кто сейчас печатает в активном чате (userId → untilTs) */
 const typingPeers = new Map<string, { name: string; until: number }>();
@@ -290,7 +365,11 @@ let lastGameInvite: {
 let unsubLanPort: (() => void) | null = null;
 let unsubTunnel: (() => void) | null = null;
 const avatarCache = new Map<string, string>();
+/** Поколение головы: живой запрос профиля отменяет более ранний кроп, чтобы Стив не затёр новый скин. */
+const avatarEpoch = new Map<string, number>();
+const PROFILE_STEVE_SKIN = '../../assets/skins/steve.png';
 const avatarInflight = new Map<string, Promise<string>>();
+const avatarMiss = new Set<string>();
 const MSGR_CACHE_PREFIX = 'msgr-cache-v1:';
 const MSGR_PRESENCE_PREFIX = 'msgr-presence-v1:';
 const MSGR_PREFS_PREFIX = 'msgr-prefs-v1:';
@@ -674,6 +753,8 @@ function formatMediaTime(sec: number): string {
 
 let mediaViewerZoom = 1;
 let mediaViewerKind: 'image' | 'video' | null = null;
+/** Медиа профиля: галерея картинок листается в общем просмотре. */
+let profileMediaItems: MessengerMessage[] = [];
 
 function setMediaViewerZoom(z: number): void {
   mediaViewerZoom = Math.min(4, Math.max(0.25, z));
@@ -708,49 +789,45 @@ function closeMediaViewer(): void {
   overlay?.setAttribute('aria-hidden', 'true');
 }
 
-function openMediaViewer(messageId: string, kind: 'image' | 'video'): void {
-  if (!host || !sessionToken) return;
-  const url = attachmentMediaUrl(messageId);
-  if (!url) return;
-  const overlay = $('modal-msgr-media');
-  const img = $('msgr-media-img') as HTMLImageElement | null;
-  const video = $('msgr-media-video') as HTMLVideoElement | null;
-  const barPhoto = $('msgr-media-bar-photo');
-  const barVideo = $('msgr-media-bar-video');
-  const playBtn = $('msgr-media-play');
-  mediaViewerKind = kind;
-  openOverlay('modal-msgr-media');
-  overlay?.setAttribute('aria-hidden', 'false');
-  if (kind === 'image') {
-    if (video) {
-      video.pause();
-      video.hidden = true;
-      video.removeAttribute('src');
-    }
-    if (barVideo) barVideo.hidden = true;
-    if (barPhoto) barPhoto.hidden = false;
-    if (img) {
-      img.hidden = false;
-      img.src = url;
-      setMediaViewerZoom(1);
-    }
-  } else {
-    if (img) {
-      img.hidden = true;
-      img.removeAttribute('src');
-    }
-    if (barPhoto) barPhoto.hidden = true;
-    if (barVideo) barVideo.hidden = false;
-    if (video) {
-      video.hidden = false;
-      video.src = url;
-      void video.play().catch(() => undefined);
-    }
-    if (playBtn) {
-      playBtn.innerHTML =
-        '<svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2.5" y="2" width="2.5" height="8" rx="0.5" fill="currentColor"/><rect x="7" y="2" width="2.5" height="8" rx="0.5" fill="currentColor"/></svg>';
-    }
+/** Картинки чата — общий просмотр, без кнопки внешней ссылки. */
+function openChatImage(messageId: string, source: 'thread' | 'profile'): void {
+  const pool = source === 'profile' ? profileMediaItems : messages;
+  const images = pool.filter((m) => !m.deleted && m.attachment && isImageAttachment(m.attachment));
+  const at = images.findIndex((m) => m.id === messageId);
+  if (at < 0) {
+    const src = attachmentMediaUrl(messageId);
+    if (src) openImageViewer([{ src }], 0);
+    return;
   }
+  openImageViewer(
+    images.map((m) => ({
+      src: attachmentMediaUrl(m.id),
+      alt: String(m.attachment?.name || ''),
+    })),
+    at,
+  );
+}
+
+/** Один ролик сообщения. В сообщении одно вложение, отдельную галерею не собираем. */
+function openChatVideo(messageId: string, source: 'thread' | 'profile'): void {
+  const src = attachmentMediaUrl(messageId);
+  if (!src) return;
+  const pool = source === 'profile' ? profileMediaItems : messages;
+  const msg = pool.find((m) => m.id === messageId);
+  openVideoViewer(
+    [{ src, alt: String(msg?.attachment?.name || '') }],
+    0,
+    source === 'profile' ? 'profile' : 'chat',
+  );
+}
+
+function openMediaViewer(messageId: string, kind: 'image' | 'video', source: 'thread' | 'profile' = 'thread'): void {
+  if (kind === 'image') {
+    openChatImage(messageId, source);
+    return;
+  }
+  if (!sessionToken) return;
+  openChatVideo(messageId, source);
 }
 
 function renderAttachmentBlock(m: MessengerMessage): string {
@@ -758,13 +835,13 @@ function renderAttachmentBlock(m: MessengerMessage): string {
   const att = m.attachment;
   if (isImageAttachment(att)) {
     const url = attachmentMediaUrl(m.id);
-    return `<button type="button" class="msgr-media msgr-media--image" data-msgr-media="image" data-msg-id="${host.escapeHtml(m.id)}">
+    return `<button type="button" class="msgr-media msgr-media--image uc-frame" data-msgr-media="image" data-msg-id="${host.escapeHtml(m.id)}">
       <img class="msgr-media__thumb" src="${host.escapeHtml(url)}" alt="${host.escapeHtml(att.name)}" loading="lazy">
     </button>`;
   }
   if (isVideoAttachment(att)) {
     const url = attachmentMediaUrl(m.id);
-    return `<button type="button" class="msgr-media msgr-media--video" data-msgr-media="video" data-msg-id="${host.escapeHtml(m.id)}">
+    return `<button type="button" class="msgr-media msgr-media--video uc-frame" data-msgr-media="video" data-msg-id="${host.escapeHtml(m.id)}">
       <video class="msgr-media__thumb" src="${host.escapeHtml(url)}" muted preload="metadata" playsinline></video>
       <span class="msgr-media__play" aria-hidden="true">
         <svg width="18" height="18" viewBox="0 0 12 12" fill="none"><path d="M3 1.5v9l7-4.5L3 1.5z" fill="currentColor"/></svg>
@@ -1021,11 +1098,13 @@ function renderWorldsList(): void {
   const list = $('msgr-worlds-list');
   if (!list || !host) return;
   const worlds = friendsBundle.friends.filter(
-    (u) => u.activity?.playing && u.activity?.hosting && u.activity?.serverHost,
+    (u) => u.activity?.playing && u.activity?.hosting && u.activity?.serverHost && u.activity?.worldShare !== false,
   );
   const hostPanel = renderHostPanelHtml();
   const head = `<div class="msgr-friends-head"><div class="msgr-friends-title">${host.escapeHtml(host.t('msgr.worldsTitle'))}</div></div>`;
-  const emptyOrList = worlds.length
+  const emptyOrList = !friendsKnown
+    ? railSkeletonHtml(3)
+    : worlds.length
     ? worlds
         .map((u) => {
           ensureAvatar(u);
@@ -1056,7 +1135,7 @@ function renderWorldsList(): void {
 
 async function joinFriendWorld(userId: string): Promise<void> {
   const user = friendsBundle.friends.find((u) => u.id === userId);
-  if (!user?.activity?.hosting || !user.activity?.serverHost || !host) return;
+  if (!user?.activity?.hosting || user.activity.worldShare === false || !user.activity?.serverHost || !host) return;
   const parsed = parseHostPort(String(user.activity.serverHost));
   if (!parsed) {
     toast(host.t('msgr.joinFailed', { msg: relayErrMsg('address') }));
@@ -1083,6 +1162,111 @@ function hostDisplayNick(): string {
 function shareLanServerName(nick?: string | null): string {
   const name = String(nick || hostDisplayNick()).trim() || 'Player';
   return host?.t('msgr.shareLanLabel', { name }) || `Мир игрока ${name}`;
+}
+
+type ShareHit = { id: string; title: string; sub: string };
+
+function openSharePicker(kind: 'post' | 'mod' | 'server'): Promise<ShareHit | null> {
+  return new Promise((resolve) => {
+    const overlay = $('modal-msgr-share');
+    const title = $('msgr-share-title');
+    const input = $('msgr-share-search') as HTMLInputElement | null;
+    const results = $('msgr-share-results');
+    const cancel = $('msgr-share-cancel');
+    const closeBtn = $('msgr-share-close');
+    if (!overlay || !input || !results || !cancel || !host) {
+      resolve(null);
+      return;
+    }
+    const titleKey =
+      kind === 'post' ? 'msgr.sharePickPost' : kind === 'mod' ? 'msgr.sharePickMod' : 'msgr.sharePickServer';
+    if (title) title.textContent = host.t(titleKey);
+    input.value = '';
+    results.innerHTML = '';
+    let hits: ShareHit[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const paint = () => {
+      results.innerHTML = hits.length
+        ? hits
+            .map(
+              (h, i) =>
+                `<button type="button" class="msgr-share-hit" data-pick="${i}"><span>${host!.escapeHtml(h.title)}</span><span class="msgr-share-hit__sub">${host!.escapeHtml(h.sub)}</span></button>`,
+            )
+            .join('')
+        : `<div class="msgr-empty-list">${host!.escapeHtml(host!.t('msgr.sharePickEmpty'))}</div>`;
+    };
+    const finish = (value: ShareHit | null) => {
+      if (timer) clearTimeout(timer);
+      closeOverlay('modal-msgr-share');
+      cancel.removeEventListener('click', onCancel);
+      closeBtn?.removeEventListener('click', onCancel);
+      overlay.removeEventListener('click', onBackdrop);
+      input.removeEventListener('input', onInput);
+      results.removeEventListener('click', onPick);
+      resolve(value);
+    };
+    const onCancel = () => finish(null);
+    const onBackdrop = (e: Event) => {
+      if (e.target === overlay) onCancel();
+    };
+    const onPick = (e: Event) => {
+      const btn = (e.target as HTMLElement).closest('[data-pick]') as HTMLElement | null;
+      const idx = Number(btn?.getAttribute('data-pick'));
+      if (!Number.isFinite(idx) || !hits[idx]) return;
+      finish(hits[idx]);
+    };
+    const load = async (q: string) => {
+      if (kind === 'post') {
+        const res = await req('/social/feed', { query: { channel: 'community', limit: 30 } });
+        const posts = Array.isArray(res?.data?.posts) ? res.data.posts : [];
+        const needle = q.trim().toLowerCase();
+        hits = posts
+          .map((p: any) => ({
+            id: String(p?.id || ''),
+            title: plainPostPreview(String(p?.bodyMd || p?.body || ''), 80) || host!.t('msgr.cardPost'),
+            sub: String(p?.author?.user?.username || p?.author?.name || ''),
+          }))
+          .filter((h: ShareHit) => h.id && (!needle || h.title.toLowerCase().includes(needle) || h.sub.toLowerCase().includes(needle)))
+          .slice(0, 20);
+      } else if (kind === 'server') {
+        await host!.ensureServerCatalog?.();
+        const needle = q.trim().toLowerCase();
+        hits = (host!.listCatalogServers?.() || [])
+          .filter((s) => !needle || s.name.toLowerCase().includes(needle) || s.address.toLowerCase().includes(needle))
+          .slice(0, 30)
+          .map((s) => ({ id: s.address, title: s.name, sub: s.meta || s.address }));
+      } else {
+        const res = await host!.api.getModrinthProjects?.(q.trim(), 'mod', 0, 12);
+        hits = (res?.hits || []).slice(0, 12).map((p: any) => ({
+          id: String(p.project_id || p.slug || ''),
+          title: String(p.title || p.slug || ''),
+          sub: String(p.description || '').replace(/\s+/g, ' ').trim().slice(0, 90),
+        })).filter((h: ShareHit) => h.id);
+      }
+      paint();
+    };
+    const onInput = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void load(input.value), kind === 'mod' ? 250 : 0);
+    };
+    cancel.addEventListener('click', onCancel);
+    closeBtn?.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onBackdrop);
+    input.addEventListener('input', onInput);
+    results.addEventListener('click', onPick);
+    openOverlay('modal-msgr-share');
+    void load('');
+    setTimeout(() => input.focus(), 30);
+  });
+}
+
+async function shareCatalogCard(kind: 'post' | 'mod' | 'server'): Promise<void> {
+  if (!activeId) return;
+  const hit = await openSharePicker(kind);
+  if (!hit) return;
+  if (kind === 'post') await sendMessage(`#post:${hit.id}`);
+  else if (kind === 'mod') await sendMessage(`#ucard:mod:${hit.id}`);
+  else await sendMessage(`#ucard:server:${encodeURIComponent(hit.id)}`);
 }
 
 /** Отправить ссылку на шаринг сборки в активный чат */
@@ -1114,6 +1298,127 @@ async function shareBuildFromChat(): Promise<void> {
 }
 
 /** Пригласить в LAN-мир из композера */
+export async function shareWorldFromChats(): Promise<void> {
+  await shareWorldFromChat();
+}
+
+export type LanHostView = {
+  gameOn: boolean;
+  lanReady: boolean;
+  open: boolean;
+  addr: string;
+  name: string;
+  build: string;
+  version: string;
+  loader: string;
+};
+
+/** Состояние своего мира для экрана «Миры по сети». */
+export function lanHostView(): LanHostView {
+  const running = host?.getRunningBuild?.();
+  const open = Boolean(hostRelaySession?.publicHost && hostRelaySession.publicPort);
+  return {
+    gameOn: Boolean(running?.id),
+    lanReady: open || Boolean(lastDetectedLanPort),
+    open,
+    addr: open ? `${hostRelaySession!.publicHost}:${hostRelaySession!.publicPort}` : '',
+    name: shareLanServerName(),
+    build: String(hostRelaySession?.buildName || running?.name || ''),
+    version: String(hostRelaySession?.gameVersion || running?.gameVersion || ''),
+    loader: String(hostRelaySession?.loader || running?.loader || ''),
+  };
+}
+
+export function lanHostStamp(): string {
+  const v = lanHostView();
+  return `${v.gameOn ? 1 : 0}${v.lanReady ? 1 : 0}${v.open ? 1 : 0}:${v.addr}`;
+}
+
+/** Открыть свой мир, не рассылая карточки друзьям. */
+export async function openMyLanWorld(): Promise<boolean> {
+  if (hostRelaySession?.publicHost) return true;
+  await shareLanWithFriends({ silent: true });
+  return Boolean(hostRelaySession?.publicHost);
+}
+
+export async function closeMyLanWorld(): Promise<void> {
+  await stopHostRelayShare();
+}
+
+/** Карточка мира в личку выбранным друзьям. id — строковый id сайта. */
+export async function inviteLanFriends(siteIds: string[]): Promise<number> {
+  if (!hostRelaySession?.publicHost) {
+    toast('Сначала откройте мир по сети');
+    return 0;
+  }
+  const ids = [...new Set(siteIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) {
+    toast('Некого приглашать');
+    return 0;
+  }
+  const meta = {
+    mode: 'relay',
+    sessionId: hostRelaySession.sessionId,
+    publicHost: hostRelaySession.publicHost,
+    publicPort: hostRelaySession.publicPort,
+    buildName: hostRelaySession.buildName,
+    gameVersion: hostRelaySession.gameVersion,
+    loader: hostRelaySession.loader,
+    serverName: shareLanServerName(),
+    from: me?.id ? { id: me.id, username: me.username || '' } : undefined,
+  };
+  const body = `#ucard:world:${encodeURIComponent(JSON.stringify(meta))}`;
+  let sent = 0;
+  for (const id of ids) {
+    try {
+      const opened = await req('/conversations/dm', { method: 'POST', body: { userId: id } });
+      const convId = opened?.data?.conversation?.id;
+      if (!convId) continue;
+      const res = await req(`/conversations/${encodeURIComponent(convId)}/messages`, { method: 'POST', body: { body } });
+      if (res?.ok !== false) sent += 1;
+    } catch {
+      /* одного друга пропускаем, остальных зовём */
+    }
+  }
+  toast(sent ? `Приглашение отправлено: ${sent}` : 'Не удалось отправить приглашение');
+  return sent;
+}
+
+export function chatLocalBuilds(): { id: string; name: string; meta: string }[] {
+  return host?.listLocalBuilds?.() || [];
+}
+
+export async function createBuildShareLink(buildId: string): Promise<{ ok: boolean; id?: string; name?: string }> {
+  const name = chatLocalBuilds().find((b) => b.id === buildId)?.name || '';
+  const res = await host?.createInstanceShare?.(buildId);
+  if (!res?.ok || !res.id) return { ok: false };
+  return { ok: true, id: res.id, name };
+}
+
+export function pickCatalogShare(kind: 'mod' | 'server'): Promise<ShareHit | null> {
+  return openSharePicker(kind);
+}
+
+export function openSharedBuild(shareId: string): void {
+  if (shareId) void host?.openInstanceShare?.(shareId);
+}
+
+export async function playSharedWorld(
+  meta: Record<string, unknown> | null | undefined,
+  from?: { id: string; username: string },
+): Promise<void> {
+  const inv = inviteFromMeta(meta, from);
+  if (!inv) return;
+  await joinFromInvite(inv);
+}
+
+export function openSharedCard(kind: 'post' | 'mod' | 'server', id: string): void {
+  if (!id) return;
+  if (kind === 'post') void openSocialPost(id);
+  else if (kind === 'mod') host?.openModProject?.(id);
+  else host?.openCatalogServer?.(id);
+}
+
 async function shareWorldFromChat(): Promise<void> {
   if (!host) return;
   if (hostRelaySession) {
@@ -1124,7 +1429,7 @@ async function shareWorldFromChat(): Promise<void> {
   await shareLanWithFriends();
 }
 
-async function shareLanWithFriends(): Promise<void> {
+async function shareLanWithFriends(opts?: { silent?: boolean }): Promise<void> {
   if (!host) return;
   const running = host.getRunningBuild?.();
   if (!running?.id) {
@@ -1193,20 +1498,41 @@ async function shareLanWithFriends(): Promise<void> {
     }
   }
 
+  const worldMeta = {
+    mode: 'relay' as const,
+    sessionId: session.sessionId,
+    publicHost: session.publicHost,
+    publicPort: session.publicPort,
+    buildName: running.name,
+    gameVersion: running.gameVersion,
+    loader: running.loader,
+    serverName: worldName,
+    shareId,
+    shareUrl,
+  };
+  // Открытие с экрана миров только публикует активность. Карточки в чаты уходят по кнопке «Пригласить».
+  if (opts?.silent) {
+    const addr = `${session.publicHost}:${session.publicPort}`;
+    await req('/activity', {
+      method: 'POST',
+      body: {
+        playing: true,
+        hosting: true,
+        worldShare: true,
+        buildName: running.name,
+        gameVersion: running.gameVersion,
+        loader: running.loader,
+        serverName: worldName,
+        serverHost: addr,
+      },
+    });
+    toast('Мир открыт по сети');
+    updateSharePanel();
+    return;
+  }
   const inviteRes = await req('/game-invites', {
     method: 'POST',
-    body: {
-      mode: 'relay',
-      sessionId: session.sessionId,
-      publicHost: session.publicHost,
-      publicPort: session.publicPort,
-      buildName: running.name,
-      gameVersion: running.gameVersion,
-      loader: running.loader,
-      serverName: worldName,
-      shareId,
-      shareUrl,
-    },
+    body: worldMeta,
   });
   if (!inviteRes?.ok) {
     toast(host.t('msgr.shareFailed', { msg: relayErrMsg(inviteRes?.code, inviteRes?.error) }));
@@ -1233,6 +1559,10 @@ async function stopHostRelayShare(): Promise<void> {
   if (sessionId) {
     await req('/game-invites/end', { method: 'POST', body: { sessionId } });
   }
+  await req('/activity', {
+    method: 'POST',
+    body: { playing: Boolean(host?.getRunningBuild?.()?.id), hosting: false, serverHost: '', serverName: '' },
+  });
   updateSharePanel();
   toast(host?.t('msgr.shareStopped') || 'Share stopped');
 }
@@ -1267,6 +1597,8 @@ export async function notifyMessengerGameRunning(): Promise<void> {
 }
 
 function applyHostTunnelState(data: Record<string, unknown>): void {
+  // Свой сервер занимает то же реле, но в «миры друзей» не попадает.
+  if (data?.serverId) return;
   if (!data?.active) {
     hostRelaySession = null;
     updateSharePanel();
@@ -1301,6 +1633,7 @@ async function refreshHostingAfterRestore(
     body: {
       playing: true,
       hosting: true,
+      worldShare: true,
       buildName: session.buildName || undefined,
       gameVersion: session.gameVersion || undefined,
       loader: session.loader || undefined,
@@ -1326,6 +1659,7 @@ async function syncHostRelayFromMain(): Promise<void> {
         localPort: tunnel.localPort,
         buildId: tunnel.buildId || st?.buildId,
         buildName: tunnel.buildName,
+        serverId: tunnel.serverId,
       });
       return;
     }
@@ -1484,80 +1818,54 @@ function restoreAccountCache(key: string | null): void {
   } catch {
     /* ignore */
   }
+  chatsKnown = conversations.length > 0;
+  friendsKnown = false;
+  usersKnown = false;
+  blockedKnown = false;
+  threadLoading = false;
 }
 
 function cropSkinHead(skinUrl: string, size = AVATAR_SIZE): Promise<string | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(null);
-          return;
-        }
-        ctx.imageSmoothingEnabled = false;
-        const scale = img.width / 64;
-        const h = 8 * scale;
-        ctx.drawImage(img, 8 * scale, 8 * scale, h, h, 0, 0, size, size);
-        ctx.drawImage(img, 40 * scale, 8 * scale, h, h, 0, 0, size, size);
-        resolve(canvas.toDataURL('image/png'));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = skinUrl;
-  });
+  return cropWornHead(skinUrl, size).then((url) => url || null);
 }
 
-function rawSkinUrl(user: MessengerUser): string {
-  const toHttps = (u: string) => String(u || '').replace(/^http:\/\//i, 'https://');
-  if (user.provider === 'ely') {
-    // Без своего скина — дефолтная текстура (skinsystem/{nick}.png часто 404)
-    const candidate = user.skinUrl ? toHttps(user.skinUrl) : DEFAULT_ACCOUNT_SKIN_URL;
-    return skinImageUrl(candidate) || candidate;
-  }
-  if (user.skinUrl) {
-    const https = toHttps(user.skinUrl);
-    return skinImageUrl(https) || https;
-  }
-  const uuid = String(user.uuid || '').replace(/-/g, '');
-  if (uuid) {
-    return (
-      skinImageUrl(`https://mc-heads.net/avatar/${uuid}/64`) ||
-      `${getApiBase()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/avatar/${uuid}/64`)}`
-    );
-  }
-  return skinImageUrl(DEFAULT_ACCOUNT_SKIN_URL) || DEFAULT_ACCOUNT_SKIN_URL;
+function skinLookup(): SkinLookup {
+  return {
+    getMojangSkin: host?.api?.getSkinData,
+    getElyWornSkin: host?.api?.getElyWornSkin,
+  };
 }
 
-/** Полная текстура скина для SkinViewEngine (не аватар-голова). */
-function fullSkinTextureUrl(user: MessengerUser): string {
+function isDefaultAccountSkin(url: string): boolean {
+  return !url || url === DEFAULT_ACCOUNT_SKIN_URL;
+}
+
+/** Полная текстура для 3D. Нет своего скина — локальный Steve, он же стоит на аккаунте. */
+async function resolveProfileSkinUrl(user: MessengerUser, live = false): Promise<string> {
   if (isProjectBotUser(user)) {
+    // skinUrl бота — квадратный аватар чата, не текстура. В 3D всегда стоит скин NameMC.
     return skinImageUrl(PROJECT_BOT_SKIN_URL) || PROJECT_BOT_SKIN_URL;
   }
-  const toHttps = (u: string) => String(u || '').replace(/^http:\/\//i, 'https://');
-  if (user.provider === 'ely') {
-    const candidate = user.skinUrl ? toHttps(user.skinUrl) : DEFAULT_ACCOUNT_SKIN_URL;
-    return skinImageUrl(candidate) || candidate;
+  const texture = await resolveWornSkinUrl(user, skinLookup(), live ? { live: true } : undefined);
+  if (isDefaultAccountSkin(texture)) return PROFILE_STEVE_SKIN;
+  return wornSkinProxyUrl(texture);
+}
+
+/** Голова в карточке из той же текстуры, что и 3D. live переспрашивает Ely/Mojang. */
+async function loadProfileSkin(user: MessengerUser, live: boolean): Promise<string> {
+  const url = await resolveProfileSkinUrl(user, live);
+  if (isProjectBotUser(user)) return url;
+  const epoch = (avatarEpoch.get(user.id) || 0) + 1;
+  avatarEpoch.set(user.id, epoch);
+  const cropped = await cropSkinHead(url);
+  if ((avatarEpoch.get(user.id) || 0) !== epoch) return url;
+  if (!cropped) return url;
+  avatarMiss.delete(user.id);
+  if (avatarCache.get(user.id) !== cropped) {
+    avatarCache.set(user.id, cropped);
+    applyAvatarsInDom(user.id);
   }
-  if (user.skinUrl && /textures\.minecraft\.net|skin/i.test(user.skinUrl)) {
-    const https = toHttps(user.skinUrl);
-    return skinImageUrl(https) || https;
-  }
-  const uuid = String(user.uuid || '').replace(/-/g, '');
-  if (uuid) {
-    return (
-      skinImageUrl(`https://mc-heads.net/skin/${uuid}`) ||
-      `${getApiBase()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/skin/${uuid}`)}`
-    );
-  }
-  return rawSkinUrl(user);
+  return url;
 }
 
 function openOverlay(id: string): void {
@@ -1578,15 +1886,6 @@ function avatarUrlSync(user?: MessengerUser | null): string {
   if (isProjectBotUser(user) && user.skinUrl) {
     return resolveMsgrMediaUrl(user.skinUrl);
   }
-  if (user.provider === 'msa') {
-    const uuid = String(user.uuid || '').replace(/-/g, '');
-    if (uuid) {
-      return (
-        skinImageUrl(`https://mc-heads.net/avatar/${uuid}/48`) ||
-        `${getApiBase()}/api/skin/image?url=${encodeURIComponent(`https://mc-heads.net/avatar/${uuid}/48`)}`
-      );
-    }
-  }
   return '';
 }
 
@@ -1602,28 +1901,15 @@ function ensureAvatar(user: MessengerUser): void {
     return;
   }
   if (avatarCache.has(user.id) || avatarInflight.has(user.id)) return;
-  const raw = rawSkinUrl(user);
-  if (!raw) return;
+  const epoch = avatarEpoch.get(user.id) || 0;
   const task = (async () => {
-    if (
-      user.provider === 'ely' ||
-      /\.png(\?|$)/i.test(raw) ||
-      raw.includes('skinsystem.ely.by') ||
-      raw.includes('textures.minecraft.net')
-    ) {
-      const cropped = await cropSkinHead(raw);
-      if (cropped) {
-        avatarCache.set(user.id, cropped);
-        return cropped;
-      }
-    }
-    if (user.provider === 'msa') {
-      const url = avatarUrlSync(user);
-      if (url) avatarCache.set(user.id, url);
-      return url;
-    }
-    avatarCache.set(user.id, raw);
-    return raw;
+    const texture = await resolveWornSkinUrl(user, { getMojangSkin: host?.api?.getSkinData });
+    if ((avatarEpoch.get(user.id) || 0) !== epoch) return '';
+    const src = isDefaultAccountSkin(texture) ? PROFILE_STEVE_SKIN : wornSkinProxyUrl(texture);
+    const cropped = await cropSkinHead(src);
+    if ((avatarEpoch.get(user.id) || 0) !== epoch || !cropped) return '';
+    avatarCache.set(user.id, cropped);
+    return cropped;
   })().finally(() => {
     avatarInflight.delete(user.id);
   });
@@ -1656,7 +1942,7 @@ function applyAvatarsInDom(userId: string): void {
 
 function avatarImgHtml(user: MessengerUser | null | undefined, size: number, fallbackLetter: string): string {
   if (!user) {
-    return `<span class="msgr-avatar__fallback">${host!.escapeHtml(fallbackLetter)}</span>`;
+    return `<div class="msgr-avatar__skeleton" style="width:${size}px; height:${size}px;"></div>`;
   }
   ensureAvatar(user);
   const url = avatarCache.get(user.id) || avatarUrlSync(user);
@@ -1664,19 +1950,17 @@ function avatarImgHtml(user: MessengerUser | null | undefined, size: number, fal
   if (url) {
     return `<img data-msgr-user="${idAttr}" src="${host!.escapeHtml(url)}" alt="" width="${size}" height="${size}">`;
   }
-  // data-msgr-user нужен, чтобы applyAvatarsInDom заменил placeholder после загрузки
-  return `<span class="msgr-avatar__fallback" data-msgr-user="${idAttr}" data-size="${size}">${host!.escapeHtml(fallbackLetter)}</span>`;
+  return `<img class="msgr-avatar__skeleton" onload="if(this.naturalWidth>1) this.classList.remove('msgr-avatar__skeleton')" data-msgr-user="${idAttr}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-size="${size}" alt="" width="${size}" height="${size}">`;
 }
 
 function groupAvatarHtml(conv: MessengerConversation, size: number): string {
-  const letter = host!.escapeHtml((conv.title || '?').slice(0, 1));
-  if (conv.avatarUrl) {
-    const url = resolveMsgrMediaUrl(conv.avatarUrl, conv.updatedAt);
-    // При 404/битом файле — буква вместо «сломанной» картинки браузера
-    return `<img class="msgr-avatar__photo" src="${host!.escapeHtml(url)}" alt="" width="${size}" height="${size}" data-fallback="${letter}" onerror="var s=document.createElement('span');s.className='msgr-avatar__fallback';s.textContent=this.getAttribute('data-fallback')||'?';this.replaceWith(s)">`;
+    const letter = host!.escapeHtml((conv.title || '?').slice(0, 1));
+    if (conv.avatarUrl) {
+      const url = resolveMsgrMediaUrl(conv.avatarUrl, conv.updatedAt);
+      return `<img class="msgr-avatar__photo" src="${host!.escapeHtml(url)}" alt="" width="${size}" height="${size}" data-fallback="${letter}" onerror="var s=document.createElement(\'span\');s.className=\'msgr-avatar__fallback\';s.textContent=this.getAttribute(\'data-fallback\')||\'?\';this.replaceWith(s)">`;
+    }
+    return `<span class="msgr-avatar__fallback">${letter}</span>`;
   }
-  return `<span class="msgr-avatar__fallback">${letter}</span>`;
-}
 
 /** URL медиа мессенджера; cacheBust ломает HTTP-кэш при той же пути к файлу */
 function resolveMsgrMediaUrl(raw: string, cacheBust?: string | number | null): string {
@@ -1942,6 +2226,131 @@ function openCoverCropEditor(file: File): Promise<string | null> {
   });
 }
 
+
+function cardBlockHtml(cards: CardMarkers): string {
+  if (!host) return '';
+  const parts: string[] = [];
+  if (cards.postId) {
+    parts.push(`
+      <div class="sf-repost-tile is-loading" data-sf-open-post="${host.escapeHtml(cards.postId)}" data-enrich-repost="${host.escapeHtml(cards.postId)}">
+        <div class="sf-repost-tile__head">
+          <div class="sf-repost-tile__avatar is-skel"></div>
+          <div class="sf-repost-tile__who">
+            <div class="sf-repost-tile__name is-skel"></div>
+            <div class="sf-repost-tile__time is-skel"></div>
+          </div>
+        </div>
+        <div class="sf-repost-tile__line is-skel"></div>
+      </div>`);
+  }
+  if (cards.modId) {
+    parts.push(`
+      <div class="msgr-card" data-msgr-open-mod="${host.escapeHtml(cards.modId)}" data-enrich-mod="${host.escapeHtml(cards.modId)}">
+        <div class="msgr-card__icon"></div>
+        <div class="msgr-card__body">
+          <div class="msgr-card__kicker">${host.escapeHtml(host.t('msgr.cardMod'))}</div>
+          <div class="msgr-card__title">${host.escapeHtml(host.t('msgr.cardMod'))}</div>
+          <div class="msgr-card__sub"></div>
+        </div>
+      </div>`);
+  }
+  if (cards.server) {
+    parts.push(`
+      <div class="msgr-card" data-msgr-open-server="${host.escapeHtml(cards.server)}" data-enrich-server="${host.escapeHtml(cards.server)}">
+        <div class="msgr-card__icon"></div>
+        <div class="msgr-card__body">
+          <div class="msgr-card__kicker">${host.escapeHtml(host.t('msgr.cardServer'))}</div>
+          <div class="msgr-card__title">${host.escapeHtml(cards.server)}</div>
+          <div class="msgr-card__sub"></div>
+        </div>
+      </div>`);
+  }
+  return parts.join('');
+}
+
+function formatMessageBodyHtml(m: MessengerMessage): string {
+  if (!m.body) return '';
+  if (m.attachment && m.body === m.attachment.name) return '';
+
+  const raw0 = messageBodyVisible(m.body);
+  const cards = splitCardMarkers(raw0);
+  const raw = cards.text;
+  const esc = (s: string) => host?.escapeHtml(s) || '';
+  const cardsHtml = cardBlockHtml(cards);
+
+  // Бэкенд шлёт: "📁 Репост · Author\nФрагмент\n\n#post:uuid"
+  // Аватара и времени в тексте нет — карточку дорисовывает enrichRepostTiles.
+  const repostMatch = raw0.match(/Репост · ([^\n]+)\n([\s\S]*?)#post:([\w-]+)/);
+  if (repostMatch) {
+    const author = repostMatch[1].trim();
+    const postId = repostMatch[3].trim();
+    return `
+      <div class="sf-repost-tile is-loading" data-sf-open-post="${esc(postId)}" data-enrich-repost="${esc(postId)}" data-repost-author="${esc(author)}">
+        <div class="sf-repost-tile__head">
+          <div class="sf-repost-tile__avatar is-skel"></div>
+          <div class="sf-repost-tile__who">
+            <div class="sf-repost-tile__name is-skel"></div>
+            <div class="sf-repost-tile__time is-skel"></div>
+          </div>
+        </div>
+        <div class="sf-repost-tile__line is-skel"></div>
+        <div class="sf-repost-tile__line is-skel is-short"></div>
+      </div>`;
+  }
+
+  let hasSpecialTile = '';
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  let html = '';
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = urlRegex.exec(raw))) {
+    html += esc(raw.slice(last, match.index));
+    const url = match[1];
+    last = match.index + url.length;
+    if (url.includes('/client/instanceShare/')) {
+      const shareId = url.split('/client/instanceShare/')[1]?.split(/[?#&]/)[0];
+      if (shareId) {
+        hasSpecialTile += `
+          <div class="msgr-share-tile" data-enrich-share="${esc(shareId)}">
+            <div class="msgr-share-tile-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+            </div>
+            <div class="msgr-share-tile-info">
+              <div class="msgr-share-tile-title">Загрузка сборки…</div>
+              <button type="button" class="stngs-btn primary msgr-share-btn" data-share-id="${esc(shareId)}">Открыть</button>
+            </div>
+          </div>`;
+        continue;
+      }
+    }
+    if (url.includes('/client/msgr/')) {
+      const inviteId = url.split('/client/msgr/')[1]?.split(/[?#&]/)[0];
+      if (inviteId) {
+        hasSpecialTile += `
+          <div class="msgr-share-tile">
+            <div class="msgr-share-tile-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div class="msgr-share-tile-info">
+              <div class="msgr-share-tile-title">Приглашение в чат</div>
+              <button type="button" class="stngs-btn primary msgr-join-chat-btn" data-invite-id="${esc(inviteId)}">Присоединиться</button>
+            </div>
+          </div>`;
+        continue;
+      }
+    }
+    html += `<a href="${esc(url)}" target="_blank" class="msgr-link" rel="noopener noreferrer">${esc(url)}</a>`;
+  }
+  html += esc(raw.slice(last));
+  html = html.trim();
+
+  let finalHtml = '';
+  if (html) finalHtml += `<div class="msgr-bubble__text">${html}</div>`;
+  if (hasSpecialTile) finalHtml += hasSpecialTile;
+  if (cardsHtml && !repostMatch) finalHtml += cardsHtml;
+  return finalHtml;
+}
+
 function formatMsgTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -1973,6 +2382,12 @@ function activityLine(user?: MessengerUser | null): string {
   return parts.join(' · ');
 }
 
+/** Карточка репоста поста: «Репост · …» и/или маркер #post: */
+function isPostRepostPreview(body: string): boolean {
+  const text = String(body || '');
+  return /Репост\s*·/.test(text) || /#post:[\w-]+/.test(text);
+}
+
 function previewText(conv: MessengerConversation): string {
   const last = conv.lastMessage;
   if (!last) return host?.t('msgr.noMessages') || '';
@@ -1982,7 +2397,24 @@ function previewText(conv: MessengerConversation): string {
   if (last.kind === 'game_invite') {
     return prefix + (host?.t('msgr.invitePreview') || 'Invite');
   }
-  return prefix + last.body;
+  if (isPostRepostPreview(last.body) || /#post:[\w-]+/.test(last.body)) {
+    return prefix + (host?.t('msgr.cardPost') || 'Post');
+  }
+  if (/#ucard:mod:/.test(last.body)) return prefix + (host?.t('msgr.cardMod') || 'Mod');
+  if (/#ucard:server:/.test(last.body)) return prefix + (host?.t('msgr.cardServer') || 'Server');
+  return prefix + (splitCardMarkers(messageBodyVisible(last.body)).text || messageBodyVisible(last.body));
+}
+
+/** Превью списка: у репоста фраза цветная, префикс «Вы:» — обычным цветом. */
+function previewHtml(conv: MessengerConversation): string {
+  if (!host) return '';
+  const last = conv.lastMessage;
+  if (!last || last.deleted || last.kind === 'game_invite' || !isPostRepostPreview(last.body || '')) {
+    return host.escapeHtml(previewText(conv));
+  }
+  const mine = me && last.senderId === me.id;
+  const prefix = mine ? `${host.t('msgr.you') || 'You'}: ` : '';
+  return `${host.escapeHtml(prefix)}<span class="msgr-chat-item__repost">Поделился постом</span>`;
 }
 
 async function req(
@@ -2029,6 +2461,7 @@ function setGate(mode: 'loading' | 'need-account' | 'error' | 'ready', errorText
   if (retry) retry.classList.remove('hidden');
   conversations = [];
   updateMessengerTabBadge();
+  if (mode === 'need-account') syncChatsScreen(null);
 }
 
 function renderPresence(state: 'online' | 'connecting' | 'offline' | 'busy' | 'dnd' = 'online'): void {
@@ -2113,16 +2546,481 @@ function updateMessengerTabBadge(): void {
   badge.textContent = total > 99 ? '99+' : String(total);
 }
 
+function railSkeletonHtml(rows = 6): string {
+  const row = `<div class="uc-skel-row" aria-hidden="true"><div class="uc-skel-ava"></div><div class="uc-skel-lines"><div class="uc-skel-bar"></div><div class="uc-skel-bar is-short"></div></div></div>`;
+  return `<div class="uc-skel-list">${row.repeat(rows)}</div>`;
+}
+
+function threadSkeletonHtml(): string {
+  return `<div class="uc-skel-thread" aria-hidden="true"><div class="uc-skel-bubble"></div><div class="uc-skel-bubble is-short"></div><div class="uc-skel-bubble is-mine"></div><div class="uc-skel-bubble is-mine is-short"></div><div class="uc-skel-bubble"></div></div>`;
+}
+
+// ===== Серверы, каналы, звонок =====
+
+const CHANNEL_TAG = /^#ch:([a-z0-9]{2,16})(?::([^\n]{1,40}))?\n?/;
+const EXTRA_CHANNELS_KEY = 'uc.msgr.textChannels';
+
+type ExtraTextChannel = { slug: string; name: string };
+
+function parseChannelTag(body: string): { slug: string; name: string; rest: string } | null {
+  const match = String(body || '').match(CHANNEL_TAG);
+  if (!match) return null;
+  const slug = match[1];
+  const name = String(match[2] || slug).trim() || slug;
+  return { slug, name, rest: String(body || '').slice(match[0].length) };
+}
+
+function messageBodyVisible(body: string): string {
+  return parseChannelTag(body)?.rest ?? String(body || '');
+}
+
+type CardMarkers = { text: string; postId: string; modId: string; server: string };
+
+function splitCardMarkers(raw: string): CardMarkers {
+  const postId = raw.match(/#post:([\w-]+)/)?.[1] || '';
+  const modId = raw.match(/#ucard:mod:([A-Za-z0-9_-]+)/)?.[1] || '';
+  const serverRaw = raw.match(/#ucard:server:(\S+)/)?.[1] || '';
+  let server = '';
+  if (serverRaw) {
+    try {
+      server = decodeURIComponent(serverRaw);
+    } catch {
+      server = serverRaw;
+    }
+  }
+  const text = raw
+    .replace(/#post:[\w-]+/g, '')
+    .replace(/#ucard:mod:[A-Za-z0-9_-]+/g, '')
+    .replace(/#ucard:server:\S+/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { text, postId, modId, server };
+}
+
+function loadExtraChannels(convId: string): ExtraTextChannel[] {
+  try {
+    const all = JSON.parse(localStorage.getItem(EXTRA_CHANNELS_KEY) || '{}') as Record<string, ExtraTextChannel[]>;
+    const list = all[convId];
+    return Array.isArray(list) ? list.filter((c) => c && c.slug && c.slug !== 'general') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveExtraChannels(convId: string, list: ExtraTextChannel[]): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(EXTRA_CHANNELS_KEY) || '{}') as Record<string, ExtraTextChannel[]>;
+    all[convId] = list;
+    localStorage.setItem(EXTRA_CHANNELS_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
+
+function activeChannelLabel(): string {
+  if (guildId && activeChannelId) {
+    const found = serverChannelList(guildId)?.find((ch) => ch.id === activeChannelId);
+    if (found) return found.name;
+  }
+  return channelTitle(activeChannelSlug);
+}
+
+function channelTitle(slug: string): string {
+  if (!host) return slug;
+  if (slug === 'general') return host.t('msgr.channelGeneral');
+  const convId = guildId || '';
+  const known = loadExtraChannels(convId).find((c) => c.slug === slug);
+  if (known?.name) return known.name;
+  if (convId && convId === activeId) {
+    for (const m of messages) {
+      const tag = parseChannelTag(m.body || '');
+      if (tag?.slug === slug) return tag.name;
+    }
+  }
+  return slug;
+}
+
+/** Каналы сервера: общий, локальные и те, что уже встречались в сообщениях. */
+function channelsFor(convId: string): ExtraTextChannel[] {
+  const map = new Map<string, string>();
+  map.set('general', host?.t('msgr.channelGeneral') || 'general');
+  for (const ch of loadExtraChannels(convId)) map.set(ch.slug, ch.name);
+  let dirty = false;
+  if (convId === activeId) {
+    for (const m of messages) {
+      const tag = parseChannelTag(m.body || '');
+      if (!tag || tag.slug === 'general' || map.has(tag.slug)) continue;
+      map.set(tag.slug, tag.name);
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    const extra = [...map.entries()]
+      .filter(([slug]) => slug !== 'general')
+      .map(([slug, name]) => ({ slug, name }));
+    saveExtraChannels(convId, extra);
+  }
+  return [...map.entries()].map(([slug, name]) => ({ slug, name }));
+}
+
+function serverChannelList(convId: string): ServerChannel[] | null {
+  const list = serverChannels.get(convId);
+  return list && list.length ? list : null;
+}
+
+function generalServerChannel(convId: string): ServerChannel | null {
+  return serverChannelList(convId)?.find((ch) => ch.kind === 'text' && ch.slug === 'general') || null;
+}
+
+function messagesForView(): MessengerMessage[] {
+  if (!guildId || activeId !== guildId) return messages;
+  const remote = serverChannelList(guildId);
+  if (remote && activeChannelId) {
+    const general = generalServerChannel(guildId);
+    return messages.filter((m) => {
+      if (general && activeChannelId === general.id) return !m.channelId || m.channelId === general.id;
+      return m.channelId === activeChannelId;
+    });
+  }
+  const slug = activeChannelSlug || 'general';
+  return messages.filter((m) => (parseChannelTag(m.body || '')?.slug || 'general') === slug);
+}
+
+function outgoingBody(text: string): string {
+  const body = text.trim();
+  if (guildId && serverChannelList(guildId)) return body;
+  if (!guildId || guildId !== activeId || !activeChannelSlug || activeChannelSlug === 'general') return body;
+  const name = channelTitle(activeChannelSlug).replace(/[\n:]/g, ' ').trim().slice(0, 40) || activeChannelSlug;
+  return `#ch:${activeChannelSlug}:${name}\n${body}`.trimEnd();
+}
+
+function currentTextChannelId(): string | undefined {
+  if (!guildId || guildId !== activeId || !activeChannelId) return undefined;
+  if (!serverChannelList(guildId)) return undefined;
+  return activeChannelId;
+}
+
+function paintServerHead(): void {
+  const shell = $('msgr-shell');
+  const head = $('msgr-server-head');
+  const conv = guildId ? conversations.find((c) => c.id === guildId) || null : null;
+  shell?.classList.toggle('is-guild', Boolean(conv));
+  if (!head || !host) return;
+  if (!conv) {
+    head.hidden = true;
+    const members = $('msgr-members');
+    if (members) {
+      members.hidden = true;
+      members.innerHTML = '';
+    }
+    return;
+  }
+  head.hidden = false;
+  const name = $('msgr-server-name');
+  if (name) name.textContent = conv.isProject ? host.t('msgr.projectChat') : conv.title;
+  const banner = $('msgr-server-banner');
+  if (banner) {
+    if (conv.coverUrl) {
+      const url = resolveMsgrMediaUrl(conv.coverUrl, conv.updatedAt);
+      banner.classList.remove('is-empty');
+      banner.style.backgroundImage = `url("${url.replace(/"/g, '%22')}")`;
+    } else {
+      banner.classList.add('is-empty');
+      banner.style.backgroundImage = '';
+    }
+  }
+}
+
+function renderGuildRail(): void {
+  const rail = $('msgr-guilds');
+  if (!rail || !host) return;
+  const groups = conversations.filter((c) => c.type === 'group');
+  const homeActive = !guildId ? ' is-active' : '';
+  const icons = groups
+    .map((c) => {
+      const active = c.id === guildId ? ' is-active' : '';
+      const unread =
+        c.unreadCount && c.id !== activeId
+          ? `<span class="msgr-guild__badge">${c.unreadCount > 99 ? '99+' : c.unreadCount}</span>`
+          : '';
+      const title = host!.escapeHtml(c.isProject ? host!.t('msgr.projectChat') : c.title || 'Server');
+      return `<button type="button" class="msgr-guild${active}" data-guild="${host!.escapeHtml(c.id)}" title="${title}">${groupAvatarHtml(c, 48)}${unread}</button>`;
+    })
+    .join('');
+  rail.innerHTML = `
+    <button type="button" class="msgr-guild${homeActive}" data-guild="home" title="${host.escapeHtml(host.t('msgr.homeTitle'))}">U</button>
+    <div class="msgr-guild__sep"></div>
+    ${icons}
+    <button type="button" class="msgr-guild msgr-guild--add" data-guild-add title="${host.escapeHtml(host.t('msgr.newGroup'))}">+</button>`;
+}
+
+function renderChannelListHtml(convId: string): string {
+  if (!host) return '';
+  const remote = serverChannelList(convId);
+  if (remote) {
+    const text = remote
+      .filter((ch) => ch.kind === 'text')
+      .map((ch) => {
+        const active = getCallState().phase !== 'voice' && ch.id === activeChannelId ? ' is-active' : '';
+        return `<button type="button" class="msgr-channel${active}" data-channel="${host!.escapeHtml(ch.id)}" data-channel-kind="text"><span class="msgr-channel__hash">#</span><span class="msgr-channel__name">${host!.escapeHtml(ch.name)}</span></button>`;
+      })
+      .join('');
+    const voice = remote
+      .filter((ch) => ch.kind === 'voice')
+      .map((ch) => {
+        const active = getCallState().voiceChannelId === ch.id ? ' is-active' : '';
+        return `<button type="button" class="msgr-channel${active}" data-channel="${host!.escapeHtml(ch.id)}" data-channel-kind="voice"><span class="msgr-channel__hash">♫</span><span class="msgr-channel__name">${host!.escapeHtml(ch.name)}</span></button>`;
+      })
+      .join('');
+    return `
+      <div class="msgr-channel-cat"><span>${host.escapeHtml(host.t('msgr.channelText'))}</span></div>
+      ${text}
+      <button type="button" class="msgr-channel msgr-channel--add" data-channel-add><span class="msgr-channel__hash">+</span><span class="msgr-channel__name">${host.escapeHtml(host.t('msgr.channelCreate'))}</span></button>
+      <div class="msgr-channel-cat"><span>${host.escapeHtml(host.t('msgr.channelVoice'))}</span></div>
+      ${voice}`;
+  }
+  const channels = channelsFor(convId);
+  const text = channels
+    .map((ch) => {
+      const active = !callScope && ch.slug === activeChannelSlug ? ' is-active' : '';
+      return `<button type="button" class="msgr-channel${active}" data-channel="${host!.escapeHtml(ch.slug)}" data-channel-kind="text"><span class="msgr-channel__hash">#</span><span class="msgr-channel__name">${host!.escapeHtml(ch.name)}</span></button>`;
+    })
+    .join('');
+  const voiceActive = callScope === 'voice' ? ' is-active' : '';
+  return `
+    <div class="msgr-channel-cat"><span>${host.escapeHtml(host.t('msgr.channelText'))}</span></div>
+    ${text}
+    <button type="button" class="msgr-channel msgr-channel--add" data-channel-add><span class="msgr-channel__hash">+</span><span class="msgr-channel__name">${host.escapeHtml(host.t('msgr.channelCreate'))}</span></button>
+    <div class="msgr-channel-cat"><span>${host.escapeHtml(host.t('msgr.channelVoice'))}</span></div>
+    <button type="button" class="msgr-channel${voiceActive}" data-channel="lobby" data-channel-kind="voice"><span class="msgr-channel__hash">♫</span><span class="msgr-channel__name">${host.escapeHtml(host.t('msgr.channelVoiceName'))}</span></button>`;
+}
+
+function renderMembers(): void {
+  const el = $('msgr-members');
+  if (!el || !host) return;
+  const conv = guildId ? conversations.find((c) => c.id === guildId) || null : null;
+  if (!conv) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  el.hidden = false;
+  const members = conv.members || [];
+  const row = (user: MessengerUser) => {
+    ensureAvatar(user);
+    const off = isOnline(user) ? '' : ' is-offline';
+    return `<button type="button" class="msgr-member${off}" data-member="${host!.escapeHtml(user.id)}">
+      <span class="msgr-avatar ${presenceClass(user)}">${avatarImgHtml(user, 28, user.username.slice(0, 1))}</span>
+      <span class="msgr-member__name">${host!.escapeHtml(user.username)}</span>
+    </button>`;
+  };
+  const online = members.filter((u) => isOnline(u));
+  const offline = members.filter((u) => !isOnline(u));
+  el.innerHTML = `
+    <div class="msgr-members__label">${host.escapeHtml(host.t('msgr.membersOnline', { n: online.length }))}</div>
+    ${online.map(row).join('')}
+    <div class="msgr-members__label">${host.escapeHtml(host.t('msgr.membersOffline', { n: offline.length }))}</div>
+    ${offline.map(row).join('')}`;
+}
+
+function paintDiscordChrome(): void {
+  const active = conversations.find((c) => c.id === activeId);
+  if (active?.type === 'group') guildId = active.id;
+  else if (active) guildId = null;
+  if (guildId && !conversations.some((c) => c.id === guildId)) guildId = null;
+  renderGuildRail();
+  paintServerHead();
+  renderMembers();
+}
+
+function openHome(): void {
+  const conv = conversations.find((c) => c.id === activeId);
+  guildId = null;
+  activeChannelSlug = 'general';
+  callScope = null;
+  if (conv?.type === 'group') collapseActiveChat();
+  else {
+    renderConversationList();
+    renderPeerHeader();
+  }
+  setRailTab('chats');
+}
+
+async function loadServerChannels(convId: string): Promise<void> {
+  const res = await req(`/conversations/${encodeURIComponent(convId)}/channels`);
+  if (!res?.ok || !Array.isArray(res.data?.channels)) return;
+  const list = res.data.channels as ServerChannel[];
+  serverChannels.set(convId, list);
+  if (guildId === convId) {
+    const current = list.find((ch) => ch.id === activeChannelId && ch.kind === 'text');
+    if (!current) {
+      const general = list.find((ch) => ch.kind === 'text' && ch.slug === 'general') || list.find((ch) => ch.kind === 'text');
+      activeChannelId = general?.id || null;
+      activeChannelSlug = general?.slug || 'general';
+    }
+    renderConversationList();
+    renderPeerHeader();
+  }
+}
+
+async function createTextChannel(): Promise<void> {
+  if (!guildId || !host) return;
+  const name = await askPromptText({
+    title: host.t('msgr.channelCreateTitle'),
+    placeholder: host.t('msgr.channelNamePh'),
+    okLabel: host.t('msgr.channelCreate'),
+    maxLength: 40,
+  });
+  const clean = String(name || '').trim();
+  if (!clean) return;
+  const res = await req(`/conversations/${encodeURIComponent(guildId)}/channels`, {
+    method: 'POST',
+    body: { name: clean.slice(0, 40), kind: 'text' },
+  });
+  if (res?.ok && res.data?.channel?.id) {
+    await loadServerChannels(guildId);
+    activeChannelId = String(res.data.channel.id);
+    activeChannelSlug = String(res.data.channel.slug || activeChannelSlug);
+    callScope = null;
+    if (activeId !== guildId) await openConversation(guildId);
+    else {
+      messages = [];
+      await loadMessages(guildId, { forceScrollBottom: true });
+    }
+    renderConversationList();
+    renderPeerHeader();
+    renderMessages({ forceScrollBottom: true });
+    return;
+  }
+  const slug = Math.random().toString(36).slice(2, 8);
+  const list = loadExtraChannels(guildId);
+  list.push({ slug, name: clean.slice(0, 40) });
+  saveExtraChannels(guildId, list);
+  activeChannelSlug = slug;
+  activeChannelId = null;
+  callScope = null;
+  if (activeId !== guildId) await openConversation(guildId);
+  renderConversationList();
+  renderPeerHeader();
+  renderMessages({ forceScrollBottom: true });
+}
+
+function paintCallStatus(): void {
+  const status = $('msgr-call-status');
+  const title = $('msgr-call-title');
+  const accept = $('msgr-call-accept');
+  const decline = $('msgr-call-decline');
+  const mute = $('msgr-call-mute');
+  if (!host || !status) return;
+  const state = getCallState();
+  callScope = state.phase === 'idle' ? null : state.phase === 'voice' ? 'voice' : 'dm';
+  callMuted = state.muted;
+  if (title) {
+    title.textContent = state.phase === 'voice' ? host.t('msgr.callTitleVoice') : host.t('msgr.callTitleDm');
+  }
+  const names = state.voiceMembers.map((m) => m.username).filter(Boolean).join(', ');
+  const text =
+    state.phase === 'incoming'
+      ? host.t('msgr.callIncoming', { name: state.peerName || '…' })
+      : state.phase === 'outgoing'
+        ? host.t('msgr.callOutgoing')
+        : state.phase === 'connecting'
+          ? host.t('msgr.callConnecting')
+          : state.phase === 'active'
+            ? host.t('msgr.callActive', { name: state.peerName || '' })
+            : state.phase === 'voice'
+              ? names
+                ? `${host.t('msgr.callVoice')}: ${names}`
+                : host.t('msgr.callVoice')
+              : '';
+  status.textContent = text;
+  if (accept) accept.hidden = state.phase !== 'incoming';
+  if (decline) decline.hidden = state.phase !== 'incoming';
+  if (mute) {
+    mute.hidden = state.phase === 'incoming' || state.phase === 'idle';
+    mute.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
+  }
+  if (state.phase === 'idle') closeOverlay('modal-msgr-call');
+  else openOverlay('modal-msgr-call');
+}
+
+function openCallModal(scope: 'dm' | 'voice'): void {
+  if (scope === 'dm') {
+    const conv = conversations.find((c) => c.id === activeId);
+    const peer = conv?.peer;
+    if (!conv || conv.type !== 'dm' || !peer?.id) return;
+    void startDmCall(conv.id, peer.id, peer.username || conv.title || '');
+    return;
+  }
+  const voice = guildId ? serverChannelList(guildId)?.find((ch) => ch.kind === 'voice' && (ch.id === scope || true)) : null;
+  if (!guildId || !voice) {
+    toast(host?.t('msgr.callFailed') || '');
+    return;
+  }
+  void joinVoiceChannel(guildId, voice.id);
+}
+
+async function openVoiceChannel(channelId: string): Promise<void> {
+  if (!guildId) return;
+  await joinVoiceChannel(guildId, channelId);
+}
+
+function closeCallModal(): void {
+  void hangupCall();
+}
+
+async function showServerInvite(convId: string): Promise<void> {
+  if (!host) return;
+  try {
+    const res = await req(`/conversations/${encodeURIComponent(convId)}/invites`, {
+      method: 'POST',
+      body: {},
+    });
+    if (!res?.ok || !res.data?.invite?.token) {
+      toast(host.t('msgr.inviteCreateFailed', { msg: res?.error || res?.code || 'error' }));
+      return;
+    }
+    const pageUrl = `${getApiBase()}/groupInvite/${encodeURIComponent(String(res.data.invite.token))}`;
+    const confirmed = await askPromptText({
+      title: host.t('msgr.actionInviteLink'),
+      sub: host.t('msgr.inviteLinkHint'),
+      value: pageUrl,
+      okLabel: host.t('msgr.inviteCopy'),
+      maxLength: 400,
+      selectAll: true,
+    });
+    if (!confirmed) return;
+    try {
+      await navigator.clipboard.writeText(pageUrl);
+      toast(host.t('msgr.inviteCopied'));
+    } catch {
+      toast(host.t('msgr.copyFailed'));
+    }
+  } catch (e: any) {
+    toast(host.t('msgr.inviteCreateFailed', { msg: e?.message || 'error' }));
+  }
+}
+
 function renderConversationList(): void {
+  paintDiscordChrome();
   const list = $('msgr-chat-list');
   if (!list || !host) return;
+  if (guildId) {
+    updateMessengerTabBadge();
+    list.innerHTML = renderChannelListHtml(guildId);
+    return;
+  }
   updateMessengerTabBadge();
+  if (!chatsKnown && !conversations.length) {
+    list.innerHTML = railSkeletonHtml();
+    return;
+  }
   if (!conversations.length) {
     list.innerHTML = `<div class="msgr-empty-list">${host.escapeHtml(host.t('msgr.emptyChats'))}</div>`;
     return;
   }
   const prefs = pruneExpiredMutes(loadMsgrPrefs());
-  const ordered = [...conversations].sort((a, b) => {
+  const ordered = conversations.filter((c) => c.type !== 'group').sort((a, b) => {
     const aBot = a.isBotDm ? 0 : 1;
     const bBot = b.isBotDm ? 0 : 1;
     if (aBot !== bBot) return aBot - bBot;
@@ -2134,6 +3032,10 @@ function renderConversationList(): void {
     if (ap !== bp) return ap - bp;
     return (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0);
   });
+  if (!ordered.length) {
+    list.innerHTML = `<div class="msgr-empty-list">${host.escapeHtml(host.t('msgr.emptyChats'))}</div>`;
+    return;
+  }
   list.innerHTML = ordered
     .map((c) => {
       const user = c.type === 'dm' ? c.peer : null;
@@ -2141,7 +3043,7 @@ function renderConversationList(): void {
       const title = host!.escapeHtml(
         c.isProject ? host!.t('msgr.projectChat') : c.title || 'Chat',
       );
-      const preview = host!.escapeHtml(previewText(c));
+      const preview = previewHtml(c);
       const badge = c.isProject
         ? `<span class="msgr-badge msgr-badge--project">${host!.escapeHtml(host!.t('msgr.projectChatBadge'))}</span>`
         : user
@@ -2203,6 +3105,14 @@ function friendRowHtml(user: MessengerUser, kind: 'friend' | 'incoming' | 'outgo
 function renderFriendsList(): void {
   const list = $('msgr-friends-list');
   if (!list || !host) return;
+  if (!friendsKnown && railTab !== 'blocked') {
+    list.innerHTML = railSkeletonHtml(5);
+    return;
+  }
+  if (railTab === 'blocked' && !blockedKnown) {
+    list.innerHTML = railSkeletonHtml(4);
+    return;
+  }
   if (railTab === 'blocked') {
     list.innerHTML = `
       <div class="msgr-friends-head">
@@ -2260,7 +3170,10 @@ function renderUsersDirectory(opts?: { failed?: boolean }): void {
 }
 
 async function refreshUsersDirectory(): Promise<void> {
+  const list = $('msgr-users-list');
+  if (!usersKnown && list) list.innerHTML = railSkeletonHtml(6);
   const res = await req('/users/directory', { query: { limit: 200, offset: 0 } });
+  usersKnown = true;
   if (!res?.ok) {
     directoryUsers = [];
     directoryTotal = 0;
@@ -2331,6 +3244,10 @@ function setRailTab(tab: 'chats' | 'friends' | 'worlds' | 'blocked' | 'users'): 
 }
 
 async function refreshWorldsRail(): Promise<void> {
+  if (!friendsKnown) {
+    const list = $('msgr-worlds-list');
+    if (list) list.innerHTML = railSkeletonHtml(4);
+  }
   const res = await req('/friends');
   if (res?.ok) {
     friendsBundle = {
@@ -2339,6 +3256,7 @@ async function refreshWorldsRail(): Promise<void> {
       outgoing: Array.isArray(res.data?.outgoing) ? res.data.outgoing : [],
     };
   }
+  friendsKnown = true;
   renderWorldsList();
 }
 
@@ -2401,7 +3319,7 @@ function renderPinBar(): void {
   if (text) {
     text.textContent = pin.attachment
       ? pin.attachment.name
-      : String(pin.body || '').slice(0, 120) || '…';
+      : splitCardMarkers(messageBodyVisible(String(pin.body || ''))).text.slice(0, 120) || '…';
   }
   const canMod = conv.myRole === 'owner' || conv.myRole === 'admin';
   if (unpin) unpin.hidden = !canMod;
@@ -2512,11 +3430,13 @@ function setProfilePanelTab(tab: ProfilePanelTab, animate = true): void {
 async function loadProfileMedia(): Promise<void> {
   const grid = $('msgr-profile-media-grid');
   if (!grid || !host || !activeId) return;
-  grid.innerHTML = '';
+  profileMediaItems = [];
+  grid.innerHTML = `<div class="uc-skel-grid" aria-hidden="true">${'<div class="uc-skel-tile"></div>'.repeat(6)}</div>`;
   const res = await req(`/conversations/${encodeURIComponent(activeId)}/media`, {
     query: { limit: 60 },
   });
   const items: MessengerMessage[] = Array.isArray(res?.data?.items) ? res.data.items : [];
+  profileMediaItems = items;
   if (!items.length) {
     grid.innerHTML = `<div class="msgr-profile__media-empty">${host.escapeHtml(host.t('msgr.mediaEmpty'))}</div>`;
     return;
@@ -2527,11 +3447,11 @@ async function loadProfileMedia(): Promise<void> {
       const kind = isVideoAttachment(m.attachment) ? 'video' : 'image';
       const url = attachmentMediaUrl(m.id);
       if (kind === 'video') {
-        return `<button type="button" class="msgr-profile__media-item" data-msgr-media="video" data-msg-id="${host!.escapeHtml(m.id)}">
+        return `<button type="button" class="msgr-profile__media-item uc-frame" data-msgr-media="video" data-msg-id="${host!.escapeHtml(m.id)}">
           <video src="${host!.escapeHtml(url)}" muted preload="metadata" playsinline></video>
         </button>`;
       }
-      return `<button type="button" class="msgr-profile__media-item" data-msgr-media="image" data-msg-id="${host!.escapeHtml(m.id)}">
+      return `<button type="button" class="msgr-profile__media-item uc-frame" data-msgr-media="image" data-msg-id="${host!.escapeHtml(m.id)}">
         <img src="${host!.escapeHtml(url)}" alt="" loading="lazy">
       </button>`;
     })
@@ -2547,10 +3467,19 @@ function setProfileTabsVisible(visible: boolean): void {
 
 async function refreshFriendsRail(): Promise<void> {
   if (railTab === 'blocked') {
+    if (!blockedKnown) {
+      const list = $('msgr-friends-list');
+      if (list) list.innerHTML = railSkeletonHtml(4);
+    }
     const res = await req('/users/blocked');
     blockedUsers = res?.ok && Array.isArray(res.data?.users) ? res.data.users : [];
+    blockedKnown = true;
     renderFriendsList();
     return;
+  }
+  if (!friendsKnown) {
+    const list = $('msgr-friends-list');
+    if (list) list.innerHTML = railSkeletonHtml(5);
   }
   const res = await req('/friends');
   if (res?.ok) {
@@ -2560,11 +3489,38 @@ async function refreshFriendsRail(): Promise<void> {
       outgoing: Array.isArray(res.data?.outgoing) ? res.data.outgoing : [],
     };
   }
+  friendsKnown = true;
   renderFriendsList();
 }
 
-async function openProfileByUserId(userId: string): Promise<void> {
+export async function openProfileByUserId(userId: string): Promise<void> {
   await openProfileModal({ userId });
+}
+
+export async function openProfileByUsername(username: string): Promise<void> {
+  const name = String(username || '').trim().replace(/^@/, '');
+  if (!name || !host) return;
+  // Поиск исключает текущего пользователя, поэтому свой ник открывал чужой аккаунт с тем же именем.
+  if (me?.id && String(me.username || '').toLowerCase() === name.toLowerCase()) {
+    await openProfileModal({ userId: me.id });
+    return;
+  }
+  const res = await req('/users/search', { query: { q: name, limit: 8 } });
+  const users = res?.ok ? res.data?.users || [] : [];
+  const exact = users.find(
+    (u: any) => String(u.username || '').toLowerCase() === name.toLowerCase(),
+  );
+  if (exact?.id) {
+    await openProfileModal({ userId: String(exact.id) });
+    return;
+  }
+  const card = await req('/social/users/lookup', { query: { username: name } });
+  const id = card?.ok ? card.data?.user?.id : null;
+  if (id) {
+    await openProfileModal({ userId: String(id) });
+    return;
+  }
+  toast(host.t('msgr.profileLoadFailed') || 'Пользователь не найден');
 }
 
 function renderPeerHeader(): void {
@@ -2592,6 +3548,8 @@ function renderPeerHeader(): void {
     if (head) head.classList.remove('is-clickable');
     if (headRow) headRow.hidden = true;
     if (moreBtn) moreBtn.hidden = true;
+    const callBtn = $('msgr-call-btn') as HTMLButtonElement | null;
+    if (callBtn) callBtn.hidden = true;
     applyComposerMuteState();
     renderPinBar();
     return;
@@ -2605,10 +3563,19 @@ function renderPeerHeader(): void {
     moreBtn.hidden = false;
     moreBtn.title = host.t('msgr.moreActions');
   }
-  if (nameEl) nameEl.textContent = conv.isProject ? host.t('msgr.projectChat') : conv.title;
+  const inServer = conv.type === 'group' && guildId === conv.id;
+  if (nameEl) {
+    nameEl.textContent = inServer
+      ? `# ${activeChannelLabel()}`
+      : conv.isProject
+        ? host.t('msgr.projectChat')
+        : conv.title;
+  }
   const peer = conv.peer;
   if (metaEl) {
-    if (conv.type === 'group') {
+    if (inServer) {
+      metaEl.innerHTML = `<span class="msgr-peer-status">${host.escapeHtml(conv.isProject ? host.t('msgr.projectChat') : conv.title)} · ${host.escapeHtml(groupOnlineMembersLabel(conv))}</span>`;
+    } else if (conv.type === 'group') {
       const groupBadge = conv.isProject
         ? `<span class="msgr-badge msgr-badge--project">${host.escapeHtml(host.t('msgr.projectChatBadge'))}</span>`
         : `<span class="msgr-badge msgr-badge--group">${host.escapeHtml(host.t('msgr.group'))}</span>`;
@@ -2635,11 +3602,14 @@ function renderPeerHeader(): void {
   if (avEl) {
     const online = peer ? presenceClass(peer) : '';
     avEl.className = `msgr-avatar ${online}`;
-    avEl.innerHTML =
-      conv.type === 'group'
+    avEl.innerHTML = inServer
+      ? `<span class="msgr-channel-hash">#</span>`
+      : conv.type === 'group'
         ? groupAvatarHtml(conv, 36)
         : avatarImgHtml(peer || undefined, 36, (conv.title || '?').slice(0, 1));
   }
+  const callBtn = $('msgr-call-btn') as HTMLButtonElement | null;
+  if (callBtn) callBtn.hidden = conv.type !== 'dm';
   applyComposerMuteState();
   renderPinBar();
 }
@@ -2695,8 +3665,8 @@ function readReceiptHtml(m: MessengerMessage, conv: MessengerConversation | unde
   const peerRead = peerLastReadAt(conv);
   const seen = peerRead != null && m.createdAt <= peerRead;
   const label = seen ? host.t('msgr.read') : host.t('msgr.sent');
-  const cls = seen ? 'msgr-bubble__read is-read' : 'msgr-bubble__read is-sent';
-  return `<span class="${cls}" title="${host.escapeHtml(label)}">${seen ? '✓✓' : '✓'}</span>`;
+  const icon = seen ? '../../assets/messenger/read.svg' : '../../assets/messenger/send.svg';
+    return `<img class="msgr-bubble__read-icon" src="${icon}" title="${host.escapeHtml(label)}" width="18" height="18" alt="">`;
 }
 
 function clearTypingState(): void {
@@ -2765,8 +3735,11 @@ async function loadOlderMessages(): Promise<void> {
   const prevHeight = thread?.scrollHeight || 0;
   const prevTop = thread?.scrollTop || 0;
   try {
+    const olderQuery: Record<string, string | number | undefined> = { limit: 50, before: String(before) };
+    const olderChannel = currentTextChannelId();
+    if (olderChannel) olderQuery.channelId = olderChannel;
     const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
-      query: { limit: 50, before: String(before) },
+      query: olderQuery,
     });
     if (!res?.ok) return;
     const older: MessengerMessage[] = Array.isArray(res.data?.messages) ? res.data.messages : [];
@@ -2792,10 +3765,20 @@ function renderMessages(opts?: { forceScrollBottom?: boolean }): void {
   const thread = $('msgr-messages');
   // me может ещё не быть (восстановление кеша до messengerSession) — всё равно рисуем ленту
   if (!thread || !host) return;
+  if (threadLoading && !messages.length) {
+    thread.innerHTML = threadSkeletonHtml();
+    return;
+  }
+  const view = messagesForView();
+  if (!view.length) {
+    const emptyKey = guildId && activeId === guildId ? 'msgr.channelEmpty' : 'msgr.noMessages';
+    thread.innerHTML = `<div class="msgr-channel-empty">${host.escapeHtml(host.t(emptyKey))}</div>`;
+    return;
+  }
   const conv = conversations.find((c) => c.id === activeId);
   const stickBottom = Boolean(opts?.forceScrollBottom) || isMessagesNearBottom(thread);
   const savedScrollTop = thread.scrollTop;
-  thread.innerHTML = messages
+  thread.innerHTML = view
     .map((m) => {
       const mine = Boolean(me?.id && m.senderId === me.id);
       const senderUser = conv?.members?.find((u) => u.id === m.senderId) || null;
@@ -2839,9 +3822,7 @@ function renderMessages(opts?: { forceScrollBottom?: boolean }): void {
           ? `<div class="msgr-bubble__text is-deleted">${host!.escapeHtml(host!.t('msgr.messageDeleted'))}</div>`
           : invite
             ? ''
-            : m.body && (!m.attachment || m.body !== m.attachment.name)
-              ? `<div class="msgr-bubble__text">${host!.escapeHtml(m.body)}</div>`
-              : '';
+            : formatMessageBodyHtml(m);
       const reactions = renderReactionsHtml(m);
       return `
         <div class="msgr-bubble-row ${mine ? 'is-mine' : 'is-theirs'}" data-msg-id="${host!.escapeHtml(m.id)}">
@@ -2863,7 +3844,276 @@ function renderMessages(opts?: { forceScrollBottom?: boolean }): void {
     .join('');
   if (stickBottom) thread.scrollTop = thread.scrollHeight;
   else thread.scrollTop = savedScrollTop;
+  void enrichShareTiles(thread);
+  void enrichRepostTiles(thread);
+  void enrichModCards(thread);
+  void enrichServerCards(thread);
 }
+
+type ShareTileInfo = { name: string; icon: string; sub: string };
+
+/** Кэш манифестов шаринга, чтобы не дёргать IPC при каждой перерисовке ленты. */
+const _shareCache = new Map<string, ShareTileInfo>();
+
+function shareTileErrorText(code?: string): string {
+  if (code === 'not_found' || code === 'bad_id') return 'Сборка не найдена';
+  return 'Не удалось загрузить сборку';
+}
+
+function paintShareTile(tile: HTMLElement, info: ShareTileInfo): void {
+  tile.classList.remove('is-error');
+  const titleEl = tile.querySelector('.msgr-share-tile-title');
+  if (titleEl) titleEl.textContent = info.name || 'Сборка';
+  const iconEl = tile.querySelector('.msgr-share-tile-icon');
+  if (iconEl && info.icon) {
+    const escaped = host?.escapeHtml(info.icon) || info.icon;
+    iconEl.innerHTML = `<img src="${escaped}" width="32" height="32" alt="">`;
+  }
+  const infoEl = tile.querySelector('.msgr-share-tile-info');
+  if (infoEl && info.sub && !infoEl.querySelector('.msgr-share-tile-sub')) {
+    const sub = document.createElement('div');
+    sub.className = 'msgr-share-tile-sub';
+    sub.textContent = info.sub;
+    const btn = infoEl.querySelector('button');
+    if (btn) infoEl.insertBefore(sub, btn);
+    else infoEl.appendChild(sub);
+  }
+}
+
+function paintShareTileError(tile: HTMLElement, code?: string): void {
+  tile.classList.add('is-error');
+  const titleEl = tile.querySelector('.msgr-share-tile-title');
+  if (titleEl) titleEl.textContent = shareTileErrorText(code);
+}
+
+/** Подставляет название, версию и иконку в [data-enrich-share]. */
+async function enrichShareTiles(container: HTMLElement): Promise<void> {
+  const tiles = Array.from(container.querySelectorAll<HTMLElement>('[data-enrich-share]'));
+  if (!tiles.length) return;
+  for (const tile of tiles) {
+    const shareId = tile.getAttribute('data-enrich-share') || '';
+    tile.removeAttribute('data-enrich-share');
+    if (!shareId) continue;
+    try {
+      let info = _shareCache.get(shareId);
+      if (!info) {
+        // Прямой fetch на getApiBase()+"/client/api/..." давал двойной /client и 404.
+        // Импорт сборки уже ходит в main через instance-share:get.
+        const res = await host?.api?.getInstanceShare?.(shareId);
+        if (!res?.ok || !res.manifest) {
+          if (tile.isConnected) paintShareTileError(tile, res?.error);
+          continue;
+        }
+        const m = res.manifest;
+        const loader = [m.loader, m.loaderVersion].filter(Boolean).join(' ');
+        info = {
+          name: String(m.name || 'Сборка'),
+          icon: m.iconUrl ? catalogImageUrl(m.iconUrl) : '',
+          sub: [m.gameVersion, loader].filter(Boolean).join(' · '),
+        };
+        _shareCache.set(shareId, info);
+      }
+      if (tile.isConnected) paintShareTile(tile, info);
+    } catch {
+      if (tile.isConnected) paintShareTileError(tile);
+    }
+  }
+}
+
+type RepostAuthorBits = { name: string; avatar: string; clan: boolean };
+
+function repostAuthorBits(post: any): RepostAuthorBits {
+  const author = post?.author || {};
+  if (author.type === 'clan' && author.clan) {
+    const icon = String(author.clan.iconUrl || '').trim();
+    return {
+      name: String(author.clan.name || 'Клан'),
+      avatar: icon ? catalogImageUrl(icon) : '',
+      clan: true,
+    };
+  }
+  if (author.type === 'launcher') {
+    return { name: String(author.name || 'Undefined Client'), avatar: '', clan: false };
+  }
+  const user = author.user || {};
+  const name = String(user.username || author.name || 'Игрок');
+  let avatar = '';
+  return { name, avatar: '', clan: false };
+}
+
+function repostTimeLabel(raw: unknown): string {
+  let n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    const parsed = Date.parse(String(raw || ''));
+    n = Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (!n) return '';
+  if (n < 1e12) n *= 1000;
+  return formatMsgTime(n);
+}
+
+/** Превью текста поста без сырого markdown (#, **, ссылки). */
+function plainPostPreview(md: string, limit = 160): string {
+  const text = String(md || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)]\([^)]*\)/g, '$1')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/(\*\*|__)([\s\S]*?)\1/g, '$2')
+    .replace(/(\*|_)([^\s*][\s\S]*?)\1/g, '$2')
+    .replace(/~~([\s\S]*?)~~/g, '$1')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-+]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trimEnd()}…`;
+}
+
+const _repostCache = new Map<string, any>();
+
+function paintRepostTile(tile: HTMLElement, post: any): void {
+  if (!host) return;
+  const who = repostAuthorBits(post);
+  const time = repostTimeLabel(post?.createdAt);
+  const text = plainPostPreview(String(post?.bodyMd || post?.body || ''));
+  const openLabel = host.t('news.openPost') || 'Открыть пост';
+  const letter = host.escapeHtml((who.name || '?').slice(0, 1));
+  const avatar = who.avatar
+    ? `<img class="sf-repost-tile__avatar${who.clan ? ' is-clan' : ''}" src="${host.escapeHtml(who.avatar)}" alt="" width="32" height="32">`
+    : `<span class="sf-repost-tile__avatar is-fallback" aria-hidden="true">${letter}</span>`;
+  tile.classList.remove('is-loading', 'is-error');
+  tile.innerHTML = `
+    <div class="sf-repost-tile__head">
+      ${avatar}
+      <div class="sf-repost-tile__who">
+        <div class="sf-repost-tile__name">${host.escapeHtml(who.name)}</div>
+        ${time ? `<div class="sf-repost-tile__time">${host.escapeHtml(time)}</div>` : ''}
+      </div>
+    </div>
+    ${text ? `<div class="sf-repost-tile__snippet">${host.escapeHtml(text)}</div>` : ''}
+    <button type="button" class="stngs-btn primary sf-repost-tile__open">${host.escapeHtml(openLabel)}</button>`;
+  const author = post?.author;
+  const user = author?.type === 'user' ? author.user : null;
+  if (!user) return;
+  void resolveWornSkinUrl(user, skinLookup()).then(async (texture) => {
+    if (!texture || !tile.isConnected) return;
+    const cropped = await cropSkinHead(wornSkinProxyUrl(texture));
+    if (!cropped || !tile.isConnected) return;
+    const slot = tile.querySelector('.sf-repost-tile__avatar');
+    if (!slot) return;
+    if (slot instanceof HTMLImageElement) {
+      slot.src = cropped;
+      return;
+    }
+    const img = document.createElement('img');
+    img.className = 'sf-repost-tile__avatar';
+    img.src = cropped;
+    img.alt = '';
+    img.width = 32;
+    img.height = 32;
+    slot.replaceWith(img);
+  });
+}
+
+function paintRepostTileError(tile: HTMLElement): void {
+  if (!host) return;
+  const author = tile.getAttribute('data-repost-author') || 'Пост';
+  const letter = host.escapeHtml(author.slice(0, 1) || '?');
+  const openLabel = host.t('news.openPost') || 'Открыть пост';
+  tile.classList.remove('is-loading');
+  tile.classList.add('is-error');
+  tile.innerHTML = `
+    <div class="sf-repost-tile__head">
+      <span class="sf-repost-tile__avatar is-fallback" aria-hidden="true">${letter}</span>
+      <div class="sf-repost-tile__who">
+        <div class="sf-repost-tile__name">${host.escapeHtml(author)}</div>
+        <div class="sf-repost-tile__time">Не удалось загрузить пост</div>
+      </div>
+    </div>
+    <button type="button" class="stngs-btn primary sf-repost-tile__open">${host.escapeHtml(openLabel)}</button>`;
+}
+
+/** Подгружает автора, аватар и время поста для плитки репоста в чате. */
+async function enrichRepostTiles(container: HTMLElement): Promise<void> {
+  const tiles = Array.from(container.querySelectorAll<HTMLElement>('[data-enrich-repost]'));
+  if (!tiles.length) return;
+  for (const tile of tiles) {
+    const postId = tile.getAttribute('data-enrich-repost') || tile.getAttribute('data-sf-open-post') || '';
+    tile.removeAttribute('data-enrich-repost');
+    if (!postId) continue;
+    try {
+      let post = _repostCache.get(postId);
+      if (!post) {
+        const res = await req(`/social/posts/${encodeURIComponent(postId)}`);
+        post = res?.data?.post || res?.data;
+        if (!res?.ok || !post?.id) {
+          if (tile.isConnected) paintRepostTileError(tile);
+          continue;
+        }
+        _repostCache.set(postId, post);
+      }
+      if (tile.isConnected) paintRepostTile(tile, post);
+    } catch {
+      if (tile.isConnected) paintRepostTileError(tile);
+    }
+  }
+}
+
+function paintModCard(card: HTMLElement, project: any): void {
+  if (!host) return;
+  const title = String(project?.title || project?.slug || host.t('msgr.cardMod'));
+  const desc = String(project?.description || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const icon = project?.icon_url ? catalogImageUrl(String(project.icon_url)) : '';
+  const titleEl = card.querySelector('.msgr-card__title');
+  const subEl = card.querySelector('.msgr-card__sub');
+  if (titleEl) titleEl.textContent = title;
+  if (subEl) subEl.textContent = desc;
+  const iconEl = card.querySelector('.msgr-card__icon') as HTMLElement | null;
+  if (iconEl && icon) iconEl.style.backgroundImage = `url("${icon.replace(/"/g, '%22')}")`;
+}
+
+async function enrichModCards(container: HTMLElement): Promise<void> {
+  const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-enrich-mod]'));
+  for (const card of cards) {
+    const id = card.getAttribute('data-enrich-mod') || '';
+    card.removeAttribute('data-enrich-mod');
+    if (!id || !host?.api.getModrinthProject) continue;
+    try {
+      const project = await host.api.getModrinthProject(id);
+      if (project && card.isConnected) paintModCard(card, project);
+    } catch {
+      /* карточка остаётся с идентификатором */
+    }
+  }
+}
+
+function paintServerCard(card: HTMLElement, info: { name: string; icon?: string; meta?: string }): void {
+  const titleEl = card.querySelector('.msgr-card__title');
+  const subEl = card.querySelector('.msgr-card__sub');
+  if (titleEl) titleEl.textContent = info.name;
+  if (subEl) subEl.textContent = info.meta || '';
+  const iconEl = card.querySelector('.msgr-card__icon') as HTMLElement | null;
+  if (iconEl && info.icon) iconEl.style.backgroundImage = `url("${info.icon.replace(/"/g, '%22')}")`;
+}
+
+async function enrichServerCards(container: HTMLElement): Promise<void> {
+  const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-enrich-server]'));
+  if (!cards.length) return;
+  try {
+    await host?.ensureServerCatalog?.();
+  } catch {
+    /* каталог необязателен для подписи */
+  }
+  for (const card of cards) {
+    const address = card.getAttribute('data-enrich-server') || '';
+    card.removeAttribute('data-enrich-server');
+    const info = address ? host?.lookupCatalogServer?.(address) : null;
+    if (info && card.isConnected) paintServerCard(card, info);
+  }
+}
+
 
 /** Сообщение бота: без пузыря — аватар, имя, бейдж БОТ, Markdown */
 function renderBotPostHtml(
@@ -3149,12 +4399,31 @@ function syncOpenProfilePresence(): void {
   }
 
   applyProfilePresenceMood(online);
+  queueOpenProfileSkin();
+}
+
+let profileSkinCheckedAt = 0;
+
+/** Пока карточка открыта, подхватываем смену скина, но не чаще раза в 15 секунд. */
+function queueOpenProfileSkin(): void {
+  const profile = openProfileUser;
+  if (!profile || isProjectBotUser(profile)) return;
+  const now = Date.now();
+  if (now - profileSkinCheckedAt < 15000) return;
+  profileSkinCheckedAt = now;
+  void (async () => {
+    const url = await loadProfileSkin(profile, true);
+    if (openProfileUser?.id !== profile.id) return;
+    await ensureProfileViewer(url, isOnline(profile), profile.uuid);
+  })();
 }
 
 async function loadConversations(): Promise<void> {
   const res = await req('/conversations');
-  if (!res?.ok) return;
-  conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
+  if (res?.ok) {
+    conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
+  }
+  chatsKnown = true;
   renderConversationList();
   renderPeerHeader();
   applyComposerMuteState();
@@ -3163,8 +4432,11 @@ async function loadConversations(): Promise<void> {
 }
 
 async function loadMessages(conversationId: string, opts?: { forceScrollBottom?: boolean }): Promise<void> {
+  const query: Record<string, string | number | undefined> = { limit: 80 };
+  const channelForLoad = conversationId === guildId ? currentTextChannelId() : undefined;
+  if (channelForLoad) query.channelId = channelForLoad;
   const res = await req(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
-    query: { limit: 80 },
+    query,
   });
   if (!res?.ok) return;
   const next: MessengerMessage[] = Array.isArray(res.data?.messages) ? res.data.messages : [];
@@ -3195,6 +4467,20 @@ async function loadMessages(conversationId: string, opts?: { forceScrollBottom?:
 }
 
 async function openConversation(id: string): Promise<void> {
+  const known = conversations.find((c) => c.id === id);
+    if (known?.type === 'group') {
+    if (guildId !== id) {
+      activeChannelSlug = 'general';
+      activeChannelId = null;
+    }
+    guildId = id;
+    setRailTab('chats');
+    void loadServerChannels(id);
+  } else if (known) {
+    guildId = null;
+    activeChannelSlug = 'general';
+    activeChannelId = null;
+  }
   activeId = id;
   setReplyTo(null);
   clearTypingState();
@@ -3207,8 +4493,15 @@ async function openConversation(id: string): Promise<void> {
   applyComposerMuteState();
   renderPinBar();
   messages = [];
+  threadLoading = true;
   renderMessages({ forceScrollBottom: true });
-  await loadMessages(id, { forceScrollBottom: true });
+  try {
+    await loadMessages(id, { forceScrollBottom: true });
+  } finally {
+    const stillSkeleton = Boolean($('msgr-messages')?.querySelector('.uc-skel-thread'));
+    threadLoading = false;
+    if (stillSkeleton) renderMessages({ forceScrollBottom: true });
+  }
   const res = await req('/conversations');
   if (res?.ok) {
     conversations = Array.isArray(res.data?.conversations) ? res.data.conversations : [];
@@ -3232,12 +4525,13 @@ async function sendMessage(text: string): Promise<void> {
     if (files.length) {
       for (const file of files) {
         const payload: Record<string, unknown> = {
-          body: body && files.indexOf(file) === 0 ? body : '',
+          body: files.indexOf(file) === 0 ? outgoingBody(body) : '',
           attachment: {
             name: file.name,
             mime: file.mime,
             dataBase64: file.dataBase64,
           },
+          channelId: currentTextChannelId(),
         };
         if (replyTo?.id && files.indexOf(file) === 0) payload.replyToId = replyTo.id;
         const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
@@ -3258,7 +4552,7 @@ async function sendMessage(text: string): Promise<void> {
       if (sentOk) playMsgrSound('send');
       return;
     }
-    const payload: Record<string, unknown> = { body };
+    const payload: Record<string, unknown> = { body: outgoingBody(body), channelId: currentTextChannelId() };
     if (replyTo?.id) payload.replyToId = replyTo.id;
     const res = await req(`/conversations/${encodeURIComponent(activeId)}/messages`, {
       method: 'POST',
@@ -3632,12 +4926,7 @@ async function ensureProfileViewer(
   const canvas = $('msgr-profile-canvas') as HTMLCanvasElement | null;
   const fallback = $('msgr-profile-skin-fallback');
   if (!canvas) return;
-  if (!skinUrl) {
-    disposeProfileViewer();
-    canvas.hidden = true;
-    if (fallback) fallback.hidden = false;
-    return;
-  }
+  if (!skinUrl) skinUrl = PROFILE_STEVE_SKIN;
   canvas.hidden = false;
   if (fallback) fallback.hidden = true;
   try {
@@ -3677,12 +4966,18 @@ async function ensureProfileViewer(
       profileViewer?.start();
     });
   } catch (e) {
+    if (skinUrl !== PROFILE_STEVE_SKIN) {
+      console.warn('[msgr] profile skin failed, Steve', e);
+      profileSkinLoaded = null;
+      await ensureProfileViewer(PROFILE_STEVE_SKIN, online, locatorUuid);
+      return;
+    }
     console.warn('[msgr] profile skin failed', e);
     disposeProfileViewer();
     canvas.hidden = true;
     if (fallback) {
       fallback.hidden = false;
-      fallback.innerHTML = '';
+      fallback.textContent = '';
     }
   }
 }
@@ -3735,14 +5030,19 @@ function profileCardHtml(
     iconColor?: string | null;
     clickAct?: string;
     cardKey?: string;
+    /** Только значение и иконка, без подписи сверху. */
+    bare?: boolean;
   },
 ): string {
   const click = opts?.clickAct
     ? ` data-card-act="${host!.escapeHtml(opts.clickAct)}" role="button" tabindex="0"`
     : '';
   const clickClass = opts?.clickAct ? ' is-clickable' : '';
+  const bare = Boolean(opts?.bare);
   const key = opts?.cardKey ? ` data-profile-card="${host!.escapeHtml(opts.cardKey)}"` : '';
-  return `<div class="msgr-profile-card${clickClass}"${click}${key}>
+  const value = sub ? `${title} · ${sub}` : title;
+  const tip = host!.escapeHtml(bare ? `${label}: ${title}` : value);
+  return `<div class="msgr-profile-card${clickClass}${bare ? ' is-stat' : ''}"${click}${key}>
     ${profileCardIconHtml({
       iconUrl: opts?.iconUrl,
       iconText: opts?.iconText,
@@ -3751,9 +5051,8 @@ function profileCardHtml(
       iconColor: opts?.iconColor,
     })}
     <div class="msgr-profile-card__meta">
-      <div class="msgr-profile-card__label">${host!.escapeHtml(label)}</div>
-      <div class="msgr-profile-card__title">${host!.escapeHtml(title)}</div>
-      ${sub ? `<div class="msgr-profile-card__sub">${host!.escapeHtml(sub)}</div>` : ''}
+      ${bare ? '' : `<div class="msgr-profile-card__label">${host!.escapeHtml(label)}</div>`}
+      <div class="msgr-profile-card__title" title="${tip}">${host!.escapeHtml(bare ? title : value)}</div>
     </div>
   </div>`;
 }
@@ -4031,10 +5330,60 @@ function askPromptText(opts: {
 function closeProfileModal(): void {
   setProfileMoreMenuOpen(false);
   openProfileUser = null;
+  document.querySelector('.msgr-profile-window')?.classList.remove('is-user-feed', 'is-bot');
   disposeProfileViewer();
   closeOverlay('modal-msgr-profile');
   const overlay = $('modal-msgr-profile');
   overlay?.setAttribute('aria-hidden', 'true');
+}
+
+function renderProfileStats(stats: {
+  postCount?: number;
+  followerCount?: number;
+  friendCount?: number;
+  followingCount?: number;
+  likeCount?: number;
+}): void {
+  const box = $('msgr-profile-stats');
+  if (!box) return;
+  const cells: Array<[string, number, string]> = [
+    ['Посты', Number(stats.postCount || 0), '../../assets/tabsIcons/news.svg'],
+    ['Подписчики', Number(stats.followerCount || 0), '../../assets/newchatV2/showUserOrChatUsers.svg'],
+    ['Друзья', Number(stats.friendCount || 0), '../../assets/newchatV2/friend.svg'],
+    ['Подписки', Number(stats.followingCount || 0), '../../assets/newchatV2/addUserToGroup.svg'],
+    ['Лайки', Number(stats.likeCount || 0), '../../assets/newchatV2/reaction.svg'],
+  ];
+  box.hidden = false;
+  box.innerHTML = cells
+    .map(([label, n, icon]) => profileCardHtml(label, String(n), undefined, { iconUrl: icon, iconSize: 16, bare: true }))
+    .join('');
+}
+
+function upsertFollowButton(actionsEl: HTMLElement, following: boolean, friends: boolean): void {
+  const existing = actionsEl.querySelector('[data-act="follow"], [data-act="unfollow"]');
+  if (friends) {
+    existing?.remove();
+    return;
+  }
+  let btn = existing as HTMLButtonElement | null;
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'stngs-btn ghost';
+    actionsEl.insertBefore(btn, actionsEl.firstChild);
+  }
+  btn.setAttribute('data-act', following ? 'unfollow' : 'follow');
+  btn.textContent = following ? 'Вы подписаны' : 'Подписаться';
+}
+
+async function paintProfileSocial(profileId: string, actionsEl: HTMLElement, self: boolean): Promise<void> {
+  const res = await req(`/social/users/${encodeURIComponent(profileId)}/stats`);
+  const stats = res?.ok ? res.data?.stats : null;
+  if (!stats || openProfileUser?.id !== profileId) return;
+  renderProfileStats(stats);
+  if (!self) {
+    upsertFollowButton(actionsEl, Boolean(stats.followedByMe), stats.friendship === 'friends');
+  }
 }
 
 async function fillDmProfile(
@@ -4055,9 +5404,23 @@ async function fillDmProfile(
   openProfileUser = profile;
   const { titleEl, badgesEl, statusEl, avatarEl, rowsEl, membersEl, actionsEl, fallback } = els;
   const isBot = isProjectBotUser(profile);
+  const profileWin = document.querySelector('.msgr-profile-window');
+  profileWin?.classList.toggle('is-user-feed', !isBot);
+  profileWin?.classList.toggle('is-bot', isBot);
+  const statsEl = $('msgr-profile-stats');
+  if (isBot && statsEl) {
+    statsEl.hidden = true;
+    statsEl.innerHTML = '';
+  }
   const badgeProvider = isBot ? 'bot' : profile.provider;
   titleEl.textContent = profile.username;
-  badgesEl.innerHTML = `<span class="msgr-badge ${providerClass(badgeProvider)}">${host.escapeHtml(providerLabel(badgeProvider))}</span>`;
+  badgesEl.innerHTML =
+    (isBot
+      ? `<img class="cv2-bot" src="../../assets/newchatV2/Bot.svg" width="18" height="18" alt="" title="Бот" draggable="false">`
+      : `<span class="msgr-badge ${providerClass(badgeProvider)}">${host.escapeHtml(providerLabel(badgeProvider))}</span>`) +
+    (profile.verified
+      ? `<img class="msgr-verified" src="../../assets/icons/verify.svg" width="18" height="18" alt="" title="Verified">`
+      : '');
   avatarEl.innerHTML = avatarImgHtml(profile, 44, profile.username.slice(0, 1));
   const online = isBot ? true : isOnline(profile);
   const p = isBot ? 'online' : resolvePresence(profile);
@@ -4092,7 +5455,6 @@ async function fillDmProfile(
         cardKey: 'lastSeen',
       }) +
       locatorCard +
-      `<div class="msgr-profile__cards-row">` +
       profileCardHtml(host.t('msgr.profileAccountType'), host.t('msgr.botAccountType'), PROJECT_BOT_UACC_ID, {
         iconUrl: ICON_UACC,
         iconSize: 24,
@@ -4104,8 +5466,7 @@ async function fillDmProfile(
           ? host.t('msgr.profileShared', { n: String(profile.sharedChats) })
           : undefined,
         { iconUrl: ICON_JOINED, iconSize: 30 },
-      ) +
-      `</div>`;
+      );
 
     rowsEl.onclick = async (e) => {
       const card = (e.target as HTMLElement).closest('[data-card-act]') as HTMLElement | null;
@@ -4124,8 +5485,8 @@ async function fillDmProfile(
     membersEl.innerHTML = '';
     setProfileTabsVisible(false);
     setProfileSkinPanel('dm');
-    if (fallback) fallback.textContent = profile.username.slice(0, 1).toUpperCase();
-    await ensureProfileViewer(fullSkinTextureUrl(profile), true, profile.uuid);
+    if (fallback) fallback.textContent = '';
+    await ensureProfileViewer(await resolveProfileSkinUrl(profile), true, profile.uuid);
 
     actionsEl.innerHTML = '';
     actionsEl.hidden = true;
@@ -4183,7 +5544,6 @@ async function fillDmProfile(
       iconText: fav,
     }) +
     locatorCard +
-    `<div class="msgr-profile__cards-row">` +
     profileCardHtml(host.t('msgr.profileAccountType'), accountTitle, accountSub, {
       iconUrl: providerIconUrl(profile.provider),
       iconSize: 24,
@@ -4195,8 +5555,15 @@ async function fillDmProfile(
         ? host.t('msgr.profileShared', { n: String(profile.sharedChats) })
         : undefined,
       { iconUrl: ICON_JOINED, iconSize: 30 },
-    ) +
-    `</div>`;
+    );
+
+  const postsBox = document.getElementById('msgr-profile-posts');
+  if (postsBox) postsBox.innerHTML = `<div class="sf-empty">Загрузка…</div>`;
+  void fetchUserSocialPosts(profile.id).then((posts) => {
+    const box = document.getElementById('msgr-profile-posts');
+    if (!box || openProfileUser?.id !== profile.id) return;
+    box.innerHTML = renderUserPostsHtml(posts);
+  });
 
   rowsEl.onclick = async (e) => {
     const card = (e.target as HTMLElement).closest('[data-card-act]') as HTMLElement | null;
@@ -4215,15 +5582,16 @@ async function fillDmProfile(
   membersEl.innerHTML = '';
   setProfileTabsVisible(false);
   setProfileSkinPanel('dm');
-  if (fallback) fallback.textContent = profile.username.slice(0, 1).toUpperCase();
-  await ensureProfileViewer(fullSkinTextureUrl(profile), online, profile.uuid);
+  if (fallback) fallback.textContent = '';
+  profileSkinCheckedAt = Date.now();
+  await ensureProfileViewer(await loadProfileSkin(profile, true), online, profile.uuid);
 
   const blocked = Boolean(profile.blockedByMe);
   const fs = String(profile.friendship || 'none');
   const canJoin =
     fs === 'friends' &&
     Boolean(
-      (profile.activity?.playing && profile.activity?.hosting && profile.activity?.serverHost) ||
+      (profile.activity?.playing && profile.activity?.hosting && profile.activity?.worldShare !== false && profile.activity?.serverHost) ||
         (lastGameInvite && lastGameInvite.from.id === profile.id),
     );
   const menuItems: ProfileMenuItem[] = [];
@@ -4299,6 +5667,13 @@ async function fillDmProfile(
     if (act === 'write') {
       closeProfileModal();
       await startDm(profile.id);
+      return;
+    }
+    if (act === 'follow' || act === 'unfollow') {
+      await req(`/social/users/${encodeURIComponent(profile.id)}/follow`, {
+        method: act === 'follow' ? 'POST' : 'DELETE',
+      });
+      await paintProfileSocial(profile.id, actionsEl, false);
       return;
     }
     if (act === 'copy-name') {
@@ -4403,6 +5778,7 @@ async function fillDmProfile(
       renderMessages();
     }
   });
+  void paintProfileSocial(profile.id, actionsEl, Boolean(me?.id && me.id === profile.id));
 }
 
 async function openProfileModal(opts?: { userId?: string }): Promise<void> {
@@ -4467,6 +5843,14 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
 
   // Группа
   openProfileUser = null;
+  document.querySelector('.msgr-profile-window')?.classList.remove('is-user-feed', 'is-bot');
+  const statsEl = $('msgr-profile-stats');
+  if (statsEl) {
+    statsEl.hidden = true;
+    statsEl.innerHTML = '';
+  }
+  const postsEl = $('msgr-profile-posts');
+  if (postsEl) postsEl.innerHTML = '';
   const projectTitle = conv.isProject ? host.t('msgr.projectChat') : conv.title;
   titleEl.textContent = projectTitle;
   badgesEl.innerHTML = conv.isProject
@@ -5073,36 +6457,7 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
       return;
     }
     if (act === 'invite-link') {
-      try {
-        const res = await req(`/conversations/${encodeURIComponent(conv.id)}/invites`, {
-          method: 'POST',
-          body: {},
-        });
-        if (!res?.ok || !res.data?.invite?.token) {
-          toast(host!.t('msgr.inviteCreateFailed', { msg: res?.error || res?.code || 'error' }));
-          return;
-        }
-        const pageUrl = `${getApiBase()}/groupInvite/${encodeURIComponent(String(res.data.invite.token))}`;
-        // После await жест пользователя теряется — clipboard часто молча падает.
-        // Показываем ссылку в модалке; копирование по кнопке OK (новый жест).
-        const confirmed = await askPromptText({
-          title: host!.t('msgr.actionInviteLink'),
-          sub: host!.t('msgr.inviteLinkHint'),
-          value: pageUrl,
-          okLabel: host!.t('msgr.inviteCopy'),
-          maxLength: 400,
-          selectAll: true,
-        });
-        if (!confirmed) return;
-        try {
-          await navigator.clipboard.writeText(pageUrl);
-          toast(host!.t('msgr.inviteCopied'));
-        } catch {
-          toast(host!.t('msgr.copyFailed'));
-        }
-      } catch (e: any) {
-        toast(host!.t('msgr.inviteCreateFailed', { msg: e?.message || 'error' }));
-      }
+      void showServerInvite(conv.id);
       return;
     }
     if (act === 'mute-info') return;
@@ -5155,10 +6510,19 @@ async function openProfileModal(opts?: { userId?: string }): Promise<void> {
 }
 
 function onRealtimePayload(eventName: string, data: any): void {
+  feedMessengerEvent(eventName, data);
+  if (eventName === 'signal' || eventName === 'voice') return;
+  if (eventName === 'voice-unused') {
+    return;
+  }
+  if (eventName === 'channels' && data?.conversationId) {
+    void loadServerChannels(String(data.conversationId));
+    return;
+  }
   if (eventName === 'message' && data?.message) {
     const msg = data.message as MessengerMessage;
     const mine = Boolean(me?.id && msg.senderId === me.id);
-    if (!mine && myPresenceStatus !== 'dnd' && !isConvMuted(String(msg.conversationId || ''))) {
+    if (!mine && myPresenceStatus !== 'dnd' && !isConvMuted(String(msg.conversationId || '')) && shouldPlayMessageSound(String(msg.conversationId || ''), String(msg.channelId || ''), String(msg.body || ''))) {
       playMsgrSound('message');
     }
     if (msg.conversationId === activeId) {
@@ -5375,6 +6739,9 @@ function connectStream(token: string): void {
   stream.addEventListener('game_invite', handle('game_invite'));
   stream.addEventListener('game_invite_ended', handle('game_invite_ended'));
   stream.addEventListener('typing', handle('typing'));
+  stream.addEventListener('signal', handle('signal'));
+  stream.addEventListener('voice', handle('voice'));
+  stream.addEventListener('channels', handle('channels'));
   stream.onerror = () => {
     /* EventSource переподключится сам */
   };
@@ -5383,6 +6750,47 @@ function connectStream(token: string): void {
 function bindUi(): void {
   const list = $('msgr-chat-list');
   list?.addEventListener('click', (e) => {
+    const add = (e.target as HTMLElement).closest('[data-channel-add]');
+    if (add) {
+      void createTextChannel();
+      return;
+    }
+    const channelBtn = (e.target as HTMLElement).closest('[data-channel]') as HTMLElement | null;
+    if (channelBtn && guildId) {
+      const gid = guildId;
+      const kind = channelBtn.getAttribute('data-channel-kind') || 'text';
+      const slug = channelBtn.getAttribute('data-channel') || 'general';
+      if (kind === 'voice') {
+        void openVoiceChannel(slug);
+        return;
+      }
+      const remote = serverChannelList(gid);
+      const picked = remote?.find((ch) => ch.id === slug);
+      if (picked) {
+        activeChannelId = picked.id;
+        activeChannelSlug = picked.slug;
+      } else {
+        activeChannelId = null;
+        activeChannelSlug = slug;
+      }
+      callScope = null;
+      closeOverlay('modal-msgr-call');
+      if (activeId !== gid) {
+        void openConversation(gid).then(() => {
+          if (picked) {
+            activeChannelId = picked.id;
+            activeChannelSlug = picked.slug;
+          }
+          void loadMessages(gid, { forceScrollBottom: true });
+        });
+        return;
+      }
+      renderConversationList();
+      renderPeerHeader();
+      if (picked) void loadMessages(guildId, { forceScrollBottom: true });
+      else renderMessages({ forceScrollBottom: true });
+      return;
+    }
     const btn = (e.target as HTMLElement).closest('.msgr-chat-item') as HTMLElement | null;
     const id = btn?.getAttribute('data-id');
     if (id) void openConversation(id);
@@ -5435,6 +6843,56 @@ function bindUi(): void {
     if (messagesEl.scrollTop <= 48) void loadOlderMessages();
   });
   messagesEl?.addEventListener('click', (e) => {
+
+    const target = e.target as HTMLElement;
+    const shareBtn = target.closest('.msgr-share-btn') as HTMLElement | null;
+    if (shareBtn) {
+      e.preventDefault();
+      const shareId = shareBtn.getAttribute('data-share-id');
+      if (shareId && host?.openInstanceShare) {
+        void host.openInstanceShare(shareId);
+      }
+      return;
+    }
+    const joinBtn = target.closest('.msgr-join-chat-btn') as HTMLElement | null;
+    if (joinBtn) {
+      e.preventDefault();
+      const token = joinBtn.getAttribute('data-invite-id');
+      if (token) {
+        joinBtn.setAttribute('disabled', 'true');
+        req('/invites/' + encodeURIComponent(token) + '/join', { method: 'POST' }).then(res => {
+          joinBtn.removeAttribute('disabled');
+          if (res.ok) {
+            void loadConversations();
+          } else {
+            toast(host?.t('msgr.error') || 'Error');
+          }
+        });
+      }
+      return;
+    }
+    const modCard = target.closest('[data-msgr-open-mod]') as HTMLElement | null;
+    if (modCard) {
+      e.preventDefault();
+      const modId = modCard.getAttribute('data-msgr-open-mod') || '';
+      if (modId) host?.openModProject?.(modId);
+      return;
+    }
+    const serverCard = target.closest('[data-msgr-open-server]') as HTMLElement | null;
+    if (serverCard) {
+      e.preventDefault();
+      const address = serverCard.getAttribute('data-msgr-open-server') || '';
+      if (address) host?.openCatalogServer?.(address);
+      return;
+    }
+    const repostTile = target.closest('.sf-repost-tile') as HTMLElement | null;
+    if (repostTile) {
+      e.preventDefault();
+      const postId = repostTile.getAttribute('data-sf-open-post') || '';
+      if (postId) void openSocialPost(postId);
+      return;
+    }
+
     if ((e.target as HTMLElement).closest('[data-msgr-open-updates]')) {
       e.preventDefault();
       host?.openSettingsTab?.('updates');
@@ -5561,6 +7019,32 @@ function bindUi(): void {
       form?.requestSubmit();
     }
   });
+  
+  input?.addEventListener('paste', (e) => {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      for (let i = 0; i < e.clipboardData.files.length; i++) {
+        if (pendingFiles.length >= 5) break;
+        const file = e.clipboardData.files[i];
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          const b64 = typeof result === 'string' ? result.split(',')[1] : null;
+          if (b64) {
+            pendingFiles.push({
+              name: file.name || 'clipboard.png',
+              mime: file.type || 'application/octet-stream',
+              dataBase64: b64,
+              size: file.size,
+            });
+            renderPendingFiles();
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  });
+
   input?.addEventListener('input', () => {
     if (!input) return;
     input.style.height = 'auto';
@@ -5569,6 +7053,48 @@ function bindUi(): void {
   });
 
   $('msgr-new-group')?.addEventListener('click', () => void createGroup());
+  $('msgr-guilds')?.addEventListener('click', (e) => {
+    const add = (e.target as HTMLElement).closest('[data-guild-add]');
+    if (add) {
+      void createGroup();
+      return;
+    }
+    const btn = (e.target as HTMLElement).closest('[data-guild]') as HTMLElement | null;
+    const id = btn?.getAttribute('data-guild') || '';
+    if (!id) return;
+    if (id === 'home') {
+      openHome();
+      return;
+    }
+    void openConversation(id);
+  });
+  $('msgr-members')?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('[data-member]') as HTMLElement | null;
+    const userId = btn?.getAttribute('data-member') || '';
+    if (userId) void openProfileByUserId(userId);
+  });
+  $('msgr-server-settings')?.addEventListener('click', () => {
+    if (guildId) void openProfileModal();
+  });
+  $('msgr-server-invite')?.addEventListener('click', () => {
+    if (guildId) void showServerInvite(guildId);
+  });
+  $('msgr-call-btn')?.addEventListener('click', () => openCallModal('dm'));
+  const closeCall = () => closeCallModal();
+  $('msgr-call-close')?.addEventListener('click', closeCall);
+  $('msgr-call-leave')?.addEventListener('click', closeCall);
+  $('modal-msgr-call')?.addEventListener('click', (e) => {
+    if (e.target === $('modal-msgr-call')) closeCall();
+  });
+  $('msgr-call-mute')?.addEventListener('click', () => {
+    void toggleCallMute();
+  });
+  $('msgr-call-accept')?.addEventListener('click', () => {
+    void acceptIncoming();
+  });
+  $('msgr-call-decline')?.addEventListener('click', () => {
+    void declineIncoming();
+  });
   $('msgr-browse-users')?.addEventListener('click', () => setRailTab('users'));
   $('msgr-retry')?.addEventListener('click', () => void ensureMessengerTab(true));
 
@@ -5587,7 +7113,7 @@ function bindUi(): void {
     const mediaMsgId = mediaBtn?.getAttribute('data-msg-id');
     if (mediaMsgId && (mediaKind === 'image' || mediaKind === 'video')) {
       e.preventDefault();
-      openMediaViewer(mediaMsgId, mediaKind);
+      openMediaViewer(mediaMsgId, mediaKind, 'profile');
     }
   });
   // Начальное положение pill у «Чаты»
@@ -5761,6 +7287,10 @@ function bindUi(): void {
       setAttachMenuOpen(false);
       void shareWorldFromChat();
     }
+    if (kind === 'post' || kind === 'mod' || kind === 'server') {
+      setAttachMenuOpen(false);
+      void shareCatalogCard(kind);
+    }
   });
   $('msgr-attach-chips')?.addEventListener('click', (e) => {
     const chip = (e.target as HTMLElement).closest('[data-pending-idx]') as HTMLElement | null;
@@ -5866,6 +7396,9 @@ function bindUi(): void {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (!isMessengerTabActive()) return;
+    // Пост поверх чата закрывает общий Esc-обработчик модалок. Не сворачивать диалог.
+    const postModal = $('modal-sf-post');
+    if (postModal && !postModal.classList.contains('hidden')) return;
 
     // Слоями: медиа → профиль → инвайт → контекст/меню → ответ → свернуть чат
     if (isMsgrOverlayVisible('modal-msgr-media')) {
@@ -6145,6 +7678,18 @@ export async function ensureMessengerTab(force = false): Promise<void> {
   if (me?.presenceStatus) myPresenceStatus = normalizePresenceStatus(me.presenceStatus);
   sessionToken = String(session.token || '');
   boundAccountKey = accountCacheKey(fresh) || nextKey;
+  syncChatsScreen({
+    req,
+    token: sessionToken,
+    me: { id: me.id, username: me.username || '', uuid: me.uuid, skinUrl: me.skinUrl },
+    openProfile: (userId) => {
+      void openProfileByUserId(userId);
+    },
+    openExternal: (url) => {
+      const api = host?.api as { openExternal?: (u: string) => void };
+      api?.openExternal?.(url);
+    },
+  });
   setGate('ready');
   renderPresence(myPresenceStatus === 'offline' ? 'offline' : 'online');
   // Синхронизируем ручной статус на сервер (после кеша / смены аккаунта)
@@ -6165,15 +7710,25 @@ export async function ensureMessengerTab(force = false): Promise<void> {
   startPolling();
 }
 
-/** Вызывать при смене аккаунта лаунчера — переключает сессию и кеш чатов */
+/** Вызывать при смене аккаунта лаунчера — поднимает/переключает сессию и кеш чатов */
 export async function notifyMessengerAccountChanged(): Promise<void> {
   if (!host) return;
-  if (!inited) {
-    // Ещё не открывали мессенджер — всё равно сбросим IPC-сессию под новый аккаунт
-    await host.api.messengerLogout?.();
-    return;
-  }
+  // Сессию поднимаем всегда (UAgent и соц. API зависят от JWT), даже если вкладку чатов не открывали
   await ensureMessengerTab(true);
+}
+
+/**
+ * Прогрев сессии Messenger без открытия вкладки.
+ * Нужен для UAgent / соцленты сразу после запуска лаунчера.
+ */
+export async function warmMessengerSession(force = false): Promise<boolean> {
+  if (!host) return false;
+  try {
+    await ensureMessengerTab(force);
+    return Boolean(sessionToken && me);
+  } catch {
+    return false;
+  }
 }
 
 async function syncLauncherStats(): Promise<void> {

@@ -1,0 +1,228 @@
+/* Единый просмотр изображений.
+   Размеры панели — из шаблона NewImageViewerPanel (406×48, кнопки 36, отступ 6, радиус 16/40/12).
+   Рамка 1px входит в 48px, поэтому внутренний padding 5px даёт те же 6px от внешнего края.
+   В шаблоне и счётчик, и «100%» — Nekst 400. */
+
+.iv-overlay {
+  position: fixed;
+  top: var(--titlebar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(22, 22, 22, 0.88);
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+.iv-overlay.is-shown {
+  opacity: 1;
+}
+
+.iv-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.iv-overlay.is-shown .iv-stage {
+  opacity: 1;
+  transform: none;
+}
+
+.iv-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 24px 88px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.iv-frame.is-current {
+  z-index: 2;
+  pointer-events: auto;
+}
+
+/* Пролистывание: только пока кадр едет. Иначе парковка за экраном тоже анимируется. */
+.iv-frame.is-slide {
+  transition: transform 240ms ease-out;
+}
+
+.iv-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: zoom-in;
+  /* Кнопки и сброс. Колёсико перебивает длительность классом is-wheel. */
+  transition: transform 180ms ease-out;
+}
+
+/* Пачка событий колеса не копится: короткий переход, каждый тик заменяет цель. */
+.iv-img.is-wheel {
+  transition-duration: 80ms;
+  transition-timing-function: ease-out;
+}
+
+.iv-img.is-instant {
+  transition: none;
+}
+
+.iv-img.is-loading {
+  opacity: 0.35;
+}
+
+.iv-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  font-family: 'Nekst', Arial, sans-serif;
+  font-weight: 400;
+  font-synthesis: none;
+  opacity: 0;
+  transform: translateX(-50%) scale(0.97);
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.iv-overlay.is-shown .iv-panel {
+  opacity: 1;
+  transform: translateX(-50%);
+}
+
+.iv-panel__btn,
+.iv-panel__pct {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 40px;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: 'Nekst', Arial, sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+  font-size: 16px;
+  line-height: 19px;
+}
+
+.iv-panel__pct {
+  flex: 0 0 56px;
+  width: 56px;
+  border-radius: 12px;
+}
+
+.iv-panel__btn img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}
+
+/* Только крестик: при наведении поворот на 90°. */
+.iv-panel__btn[data-iv="close"] img {
+  transition: transform 200ms ease-out;
+  transform-origin: center;
+}
+
+.iv-panel__btn[data-iv="close"]:hover img {
+  transform: rotate(90deg);
+}
+
+.iv-panel__btn:hover:not(:disabled),
+.iv-panel__pct:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.iv-panel__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.iv-panel__btn:focus-visible,
+.iv-panel__pct:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.iv-panel__count,
+.iv-panel__count-cur,
+.iv-panel__count-rest,
+.iv-panel__pct {
+  font-family: 'Nekst', Arial, sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+  font-size: 16px;
+  line-height: 19px;
+}
+
+.iv-panel__count {
+  flex: 0 0 auto;
+  min-width: 56px;
+  height: 36px;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.iv-panel__count-cur {
+  color: #fff;
+}
+
+.iv-panel__count-rest {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.iv-panel__sep {
+  flex: 0 0 2px;
+  width: 2px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+}
+
+.iv-panel__btn[hidden],
+.iv-panel__sep[hidden] {
+  display: none !important;
+}
+
+img[data-sf-zoom],
+.iv-zoomable {
+  cursor: zoom-in;
+}

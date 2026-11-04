@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { downloadModrinthFile, runWithConcurrency, PROXY_MAX_CONCURRENT_DOWNLOADS } from './modrinthDownload';
+import { downloadModrinthFile, runWithConcurrency, PROXY_MAX_CONCURRENT_DOWNLOADS, armDownloads, isDownloadCancelled } from './modrinthDownload';
 import {
   catalogProjectUrl,
   catalogVersionsUrl,
@@ -77,6 +77,7 @@ export type ModInstallProgress =
   | { type: 'file-done'; filename: string; filePath: string; index: number; total: number }
   | { type: 'batch'; i: number; n: number; file: string }
   | { type: 'done' }
+  | { type: 'cancelled' }
   | { type: 'error'; message: string };
 
 export type ModInstallResult =
@@ -678,6 +679,7 @@ export async function downloadModInstallPlan(
     isDependency: boolean;
   }> = [];
 
+  armDownloads();
   const total = plan.toInstall.length;
   let doneCount = 0;
 
@@ -755,6 +757,10 @@ export async function downloadModInstallPlan(
       unresolved: plan.unresolved,
     };
   } catch (err) {
+    if (isDownloadCancelled(err)) {
+      onProgress?.({ type: 'cancelled' });
+      return { success: false, error: 'cancelled' };
+    }
     const message = err instanceof Error ? err.message : String(err);
     onProgress?.({ type: 'error', message });
     return { success: false, error: `Download failed: ${message}` };
