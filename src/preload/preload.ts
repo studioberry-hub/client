@@ -1,14 +1,25 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { setApiBase, getApiBase } from '../shared/apiBase';
 
-// Рендерер до process.env не дотягивается, поэтому базовый адрес нашего API
-// вычисляется здесь и передаётся в него готовой строкой.
-setApiBase(process.env.UC_API_BASE || process.env.UC_NEWS_API_BASE);
+// Главный процесс уже выбрал край и передал его аргументом окна.
+function apiBaseFromArgv(): string {
+  const hit = process.argv.find((arg) => arg.startsWith('--uc-api-base='));
+  return hit ? hit.slice('--uc-api-base='.length).trim() : '';
+}
+
+setApiBase(apiBaseFromArgv() || process.env.UC_API_BASE || process.env.UC_NEWS_API_BASE);
 
 const { platform, versions } = process;
 contextBridge.exposeInMainWorld('electronAPI', {
   getPlatformInfo: () => ({ platform: platform, nodeVersion: versions.node }),
   apiBase: getApiBase(),
+  edgePinned: process.argv.includes('--uc-edge-pinned=1'),
+  onEdgeChanged: (callback: (base: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, base: string) => callback(base);
+    ipcRenderer.on('edge:changed', handler);
+    return () => ipcRenderer.removeListener('edge:changed', handler);
+  },
+  adoptEdge: (base: string) => ipcRenderer.send('edge:adopt', base),
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowMaximize: () => ipcRenderer.send('window:maximize'),
   windowClose: () => ipcRenderer.send('window:close'),
@@ -51,6 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadServers: () => ipcRenderer.invoke('launcher:server:load'),
   removeServer: (id: string) => ipcRenderer.invoke('launcher:server:remove', id),
   serverStatus: (ip: string) => ipcRenderer.invoke('servers:status', ip),
+  voiceRelayRtt: (host: string) => ipcRenderer.invoke('voice:rtt', host) as Promise<number | null>,
   fetchServerCatalog: (force?: boolean) => ipcRenderer.invoke('servers:catalog', force === true),
   fetchServerDetail: (source: string, id: string) => ipcRenderer.invoke('servers:detail', source, id),
   fetchServerHistory: (projectId: string, serverId: string, period: string) =>
@@ -261,6 +273,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // AI-агент: чат через сайт, доступ по JWT мессенджера
   aiStatus: () => ipcRenderer.invoke('ai:status'),
+  aiApply: (reason: string) => ipcRenderer.invoke('ai:apply', reason),
   aiProviderGet: () => ipcRenderer.invoke('ai:provider:get'),
   aiProviderSet: (patch: { kind?: string; baseUrl?: string; apiKey?: string; model?: string }) =>
     ipcRenderer.invoke('ai:provider:set', patch),
@@ -269,8 +282,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     messages: Array<Record<string, unknown>>;
     tools?: boolean;
     model?: string;
+    turn?: string;
     context?: { buildId?: string; buildName?: string } | null;
   }) => ipcRenderer.invoke('ai:chat', payload),
+  onAiDelta: (cb: (packet: { turn?: string; text?: string; reasoning?: string }) => void) => {
+    const handler = (_event: unknown, packet: { turn?: string; text?: string; reasoning?: string }) => cb(packet || {});
+    ipcRenderer.on('ai:chat-delta', handler);
+    return () => ipcRenderer.removeListener('ai:chat-delta', handler);
+  },
+  aiChatStop: (turn: string) => ipcRenderer.invoke('ai:chat:stop', turn),
+  speechModel: () => ipcRenderer.invoke('speech:model') as Promise<{ url?: string; error?: string }>,
+  onSpeechProgress: (cb: (percent: number) => void) => {
+    const handler = (_event: unknown, percent: number) => cb(Number(percent) || 0);
+    ipcRenderer.on('speech:progress', handler);
+    return () => ipcRenderer.removeListener('speech:progress', handler);
+  },
   aiToolsList: () => ipcRenderer.invoke('ai:tools:list'),
   aiToolsRun: (
     name: string,
@@ -290,6 +316,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ссылки, пришедшие в уже запущенный лаунчер (install / import-instance).
   consumeDeepLink: () => ipcRenderer.invoke('deeplink:consume'),
   resolveDeepLink: (payload: any) => ipcRenderer.invoke('deeplink:resolve', payload),
+  bugsAuthPreview: (id: string) => ipcRenderer.invoke('bugs:authPreview', id),
+  bugsAuthDecide: (payload: { id: string; accept: boolean }) => ipcRenderer.invoke('bugs:authDecide', payload),
+  bugsCreate: (payload: {
+    title: string;
+    body: string;
+    kind: string;
+    steps?: string;
+    expected?: string;
+    actual?: string;
+    imageBase64?: string;
+    tags?: string[];
+  }) => ipcRenderer.invoke('bugs:create', payload),
+  bugsListTags: () => ipcRenderer.invoke('bugs:tags'),
   onDeepLink: (callback: (payload: any) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
     ipcRenderer.on('deeplink:open', handler);

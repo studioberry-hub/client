@@ -165,7 +165,20 @@ export function noteServerPing(ms: number): void {
   V.pingMs = Math.round(ms);
 }
 
-/** Пинг голосового канала: RTT медиа, иначе ping/pong до мастера. */
+function voiceRelayHost(): string {
+  const servers = ice.iceServers || [];
+  for (const server of servers) {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    for (const url of urls) {
+      const match = String(url || '').match(/^(?:stun|turn):([^:?/]+)/i);
+      const host = match?.[1] || '';
+      if (host && host !== 'stun.l.google.com') return host;
+    }
+  }
+  return '';
+}
+
+/** Пинг голосового канала: RTT медиа, иначе время до голосового реле. */
 export async function sampleVoicePing(): Promise<void> {
   const inVoice = Boolean(V.channelId) || C.phase === 'active' || C.phase === 'connecting';
   if (!inVoice) {
@@ -187,6 +200,22 @@ export async function sampleVoicePing(): Promise<void> {
     lastRtcAt = Date.now();
     V.pingMs = best;
     return;
+  }
+  if (!iceLoaded) await loadIce();
+  const host = voiceRelayHost();
+  const probe = (window as unknown as {
+    electronAPI?: { voiceRelayRtt?: (host: string) => Promise<number | null> };
+  }).electronAPI?.voiceRelayRtt;
+  if (host && probe) {
+    try {
+      const ms = await probe(host);
+      if (ms && ms > 0) {
+        noteServerPing(ms);
+        return;
+      }
+    } catch {
+      /* остаётся запасной запрос ниже */
+    }
   }
   const now = performance.now();
   if (now - lastProbeAt < 3000) return;

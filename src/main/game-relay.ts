@@ -4,7 +4,8 @@ import { ipcMain, BrowserWindow, app } from 'electron';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
-import { getApiBase } from '../shared/apiBase';
+import { getApiBase, otherApiBase } from '../shared/apiBase';
+import { apiBaseForRelayHost, EDGE_EU, EDGE_MSK } from './edge-route';
 import { getInstanceRoot } from './launcher';
 
 const LAN_PORT_RE =
@@ -33,6 +34,8 @@ type ShareMeta = {
   serverName?: string;
   /** Свой сервер: сессия садится на заранее выданный порт и поддомен */
   serverId?: string;
+  /** Уже выданный адрес: сессию поднимаем на том же краю, где бронь. */
+  relayHost?: string;
 };
 
 type PersistedShare = RelaySessionInfo &
@@ -56,6 +59,9 @@ let activeTunnel: ActiveTunnel | null = null;
 let activeMeta: ShareMeta | null = null;
 /** Неожиданный обрыв control-сокета. Свой сервер поднимает реле заново. */
 let onRelayDropped: ((buildId: string) => void) | null = null;
+let shareRetry: ReturnType<typeof setTimeout> | null = null;
+let shareGen = 0;
+let shareAttempt = 0;
 
 export function setRelayDropHandler(fn: ((buildId: string) => void) | null): void {
   onRelayDropped = fn;
@@ -365,28 +371,72 @@ function startLogWatch(buildId: string): { ok: boolean; error?: string } {
 
 async function relayFetch(
   relPath: string,
-  opts: { method?: string; body?: unknown; token: string },
+  opts: { method?: string; body?: unknown; token: string; base?: string },
 ): Promise<{ ok: boolean; status: number; data: any }> {
   const headers: Record<string, string> = {
     'User-Agent': 'Undefined-Client',
     Accept: 'application/json',
     Authorization: `Bearer ${opts.token}`,
+    'x-uc-no-failover': '1',
   };
   let body: string | undefined;
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(opts.body);
   }
-  const res = await fetch(`${getApiBase()}/api/relay${relPath}`, {
-    method: opts.method || 'GET',
-    headers,
-    body,
+  const base = (opts.base || getApiBase()).replace(/\/+$/, '');
+  // Явная база — это уже выданный адрес. Его нельзя молча создать на другом краю.
+  const pinned = Boolean(opts.base);
+  const once = async (target: string) => {
+    const res = await fetch(`${target}/api/relay${relPath}`, {
+      method: opts.method || 'GET',
+      headers,
+      body,
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  };
+  const failed = (err: unknown) => ({
+    ok: false,
+    status: 0,
+    data: {
+      error: err instanceof Error ? err.message : 'relay_unreachable',
+      code: 'relay_unreachable',
+    },
   });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data };
+  try {
+    return await once(base);
+  } catch (err) {
+    if (pinned) {
+      try {
+        return await once(base);
+      } catch (again) {
+        return failed(again);
+      }
+    }
+    const alt = otherApiBase(base);
+    if (!alt) return failed(err);
+    try {
+      return await once(alt);
+    } catch (again) {
+      return failed(again);
+    }
+  }
 }
 
-function readSocketLine(socket: net.Socket, timeoutMs = 10000): Promise<string> {
+/** Сессия лежит на том краю, где её создали. Если там 404, пробуем второй. */
+async function relayFetchOwned(
+  relPath: string,
+  opts: { method?: string; body?: unknown; token: string; host?: string | null },
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const first = opts.host ? apiBaseForRelayHost(opts.host) : getApiBase();
+  const second = first === EDGE_EU ? EDGE_MSK : EDGE_EU;
+  const primary = await relayFetch(relPath, opts.host ? { ...opts, base: first } : opts);
+  if (primary.ok || primary.status !== 404 || first === second) return primary;
+  return relayFetch(relPath, { ...opts, base: second });
+}
+
+function readSocketLine(socket: net.Socket, timeoutMs = 10000, hold = false): Promise<string> {
   return new Promise((resolve, reject) => {
     let buf = Buffer.alloc(0);
     const timer = setTimeout(() => {
@@ -397,10 +447,12 @@ function readSocketLine(socket: net.Socket, timeoutMs = 10000): Promise<string> 
       buf = Buffer.concat([buf, chunk]);
       const idx = buf.indexOf(0x0a);
       if (idx < 0) return;
+      // Пауза только у канала игрока: иначе управляющий сокет тоже замирает
+      // и команда «подключился игрок» больше не читается.
+      if (hold) socket.pause();
       cleanup();
       const line = buf.slice(0, idx).toString('utf8').replace(/\r$/, '');
       const rest = buf.slice(idx + 1);
-      // В том же пакете, что и OK DATA, уже могут быть байты игры. Их нельзя терять.
       if (rest.length) socket.unshift(rest);
       resolve(line);
     };
@@ -437,26 +489,45 @@ function attachControlLines(socket: net.Socket, onLine: (line: string) => void):
   });
 }
 
+/** Apex uprojects.site — это сайт в Германии. Московский туннель открываем напрямую. */
+function tunnelConnectHost(host: string): string {
+  return String(host || '').trim().toLowerCase() === 'uprojects.site' ? 'relay.uprojects.site' : host;
+}
+
+function tuneGameSocket(socket: net.Socket): void {
+  socket.setNoDelay(true);
+  socket.setKeepAlive(true, 15000);
+  const handle = (socket as net.Socket & { _handle?: { setTypeOfService?: (tos: number) => void } })._handle;
+  try {
+    // IPTOS_LOWDELAY. Имеет смысл только там, где сеть смотрит на тип пакета.
+    handle?.setTypeOfService?.(0x10);
+  } catch {
+    /* в собранном Electron этого метода может не быть */
+  }
+}
+
 function openDataChannel(session: RelaySessionInfo, connId: string): void {
   const dataSock = net.connect({
-    host: session.tunnelHost,
+    host: tunnelConnectHost(session.tunnelHost),
     port: session.tunnelPort,
   });
+  tuneGameSocket(dataSock);
   dataSock.once('connect', async () => {
-    dataSock.setNoDelay(true);
-    dataSock.setKeepAlive(true, 30000);
+    tuneGameSocket(dataSock);
     try {
       dataSock.write(`DATA ${session.sessionId} ${session.tunnelToken} ${connId}\n`);
-      const line = await readSocketLine(dataSock, 10000);
+      const line = await readSocketLine(dataSock, 10000, true);
       if (!/^OK\s+DATA/i.test(line)) {
         dataSock.destroy();
         return;
       }
       const local = net.connect({ host: '127.0.0.1', port: session.localPort });
+      tuneGameSocket(local);
       local.once('connect', () => {
-        local.setNoDelay(true);
+        tuneGameSocket(local);
         dataSock.pipe(local);
         local.pipe(dataSock);
+        dataSock.resume();
       });
       const hang = () => {
         try {
@@ -483,9 +554,39 @@ function openDataChannel(session: RelaySessionInfo, connId: string): void {
   });
 }
 
+function scheduleShareReconnect(session: RelaySessionInfo, meta: ShareMeta): void {
+  if (shareRetry) return;
+  const gen = shareGen;
+  shareAttempt += 1;
+  const delay = Math.min(30000, 1500 * 2 ** Math.min(shareAttempt - 1, 4));
+  shareRetry = setTimeout(() => {
+    shareRetry = null;
+    if (gen !== shareGen || activeTunnel) return;
+    void attachHostControl(session, meta, true).then((again) => {
+      if (gen !== shareGen) return;
+      if (again.ok) {
+        shareAttempt = 0;
+        return;
+      }
+      // Сессии на реле уже нет — новый адрес сам не появится, пока пользователь не поделится снова.
+      if (again.code === 'tunnel_handshake_failed') {
+        shareAttempt = 0;
+        return;
+      }
+      scheduleShareReconnect(session, meta);
+    });
+  }, delay);
+}
+
 export async function stopTunnel(opts?: { destroyRemote?: boolean; clearPersist?: boolean }): Promise<void> {
   const destroyRemote = opts?.destroyRemote !== false;
   const clearPersist = opts?.clearPersist !== false;
+  if (destroyRemote) {
+    shareGen += 1;
+    shareAttempt = 0;
+    if (shareRetry) clearTimeout(shareRetry);
+    shareRetry = null;
+  }
   const current = activeTunnel;
   activeTunnel = null;
   activeMeta = null;
@@ -504,9 +605,10 @@ export async function stopTunnel(opts?: { destroyRemote?: boolean; clearPersist?
     const token = messengerTokenProvider?.();
     if (token && current.session.sessionId) {
       try {
-        await relayFetch(`/sessions/${encodeURIComponent(current.session.sessionId)}`, {
+        await relayFetchOwned(`/sessions/${encodeURIComponent(current.session.sessionId)}`, {
           method: 'DELETE',
           token,
+          host: current.session.publicHost,
         });
       } catch {
         /* ignore */
@@ -539,7 +641,7 @@ async function attachHostControl(
   meta: ShareMeta | null,
   restored = false,
 ): Promise<{ ok: boolean; error?: string; code?: string; session?: RelaySessionInfo }> {
-  const control = net.connect({ host: session.tunnelHost, port: session.tunnelPort });
+  const control = net.connect({ host: tunnelConnectHost(session.tunnelHost), port: session.tunnelPort });
   try {
     await new Promise<void>((resolve, reject) => {
       control.once('connect', () => {
@@ -581,8 +683,12 @@ async function attachHostControl(
     const m = text.match(/^CONNECT\s+(\S+)/i);
     if (m) openDataChannel(session, m[1]);
   });
+  // После строки OK HOST слушатель снимается, и сокет замирает: CONNECT игрока
+  // уже лежит в буфере, но data больше не приходит, пока сокет явно не разбудить.
+  control.resume();
   const beat = () => {
     if (tunnel.closed || activeTunnel !== tunnel) return;
+    control.resume();
     if (pongSeen && Date.now() - lastPong > 60000) {
       control.destroy();
       return;
@@ -621,6 +727,10 @@ async function attachHostControl(
       });
       repostMessengerActivity();
       if (unexpected && buildId) onRelayDropped?.(buildId);
+      // Раздача мира держится за ту же сессию. Свой сервер поднимает hostedServers.
+      if (unexpected && tunnel.meta && !tunnel.meta.serverId) {
+        scheduleShareReconnect(tunnel.session, tunnel.meta);
+      }
     }
   });
   control.on('error', () => {
@@ -642,6 +752,8 @@ export async function reserveHostedAddress(
   const created = await relayFetch('/reservations', {
     method: 'POST',
     token,
+    // Публичный порт своего сервера всегда на московском реле, даже если сайт открыт через Европу.
+    base: EDGE_MSK,
     body: { serverId, nickname },
   });
   if (!created.ok) return { ok: false, error: created.data?.error || 'reservation_failed' };
@@ -658,16 +770,16 @@ export async function reserveHostedAddress(
   };
 }
 
-export async function releaseHostedAddress(serverId: string): Promise<void> {
+export async function releaseHostedAddress(serverId: string, base?: string): Promise<void> {
   const token = messengerTokenProvider?.();
   if (!token || !serverId) return;
-  try {
-    await relayFetch(`/reservations/${encodeURIComponent(serverId)}`, {
-      method: 'DELETE',
-      token,
-    });
-  } catch {
-    /* адрес освободится при следующем удалении, если реле было недоступно */
+  const path = `/reservations/${encodeURIComponent(serverId)}`;
+  for (const edge of base ? [base] : [EDGE_MSK, EDGE_EU]) {
+    try {
+      await relayFetch(path, { method: 'DELETE', token, base: edge });
+    } catch {
+      /* адрес освободится при следующем удалении, если реле было недоступно */
+    }
   }
 }
 
@@ -703,7 +815,12 @@ export async function startTunnel(
     const persisted = live
       ? { ...live, buildId: meta.buildId }
       : loadPersistedShare();
-    if (persisted && persisted.buildId === meta.buildId && Date.now() < Number(persisted.expiresAt || 0)) {
+    if (
+      persisted &&
+      persisted.buildId === meta.buildId &&
+      Date.now() < Number(persisted.expiresAt || 0) &&
+      (!meta.relayHost || String(persisted.publicHost || '').toLowerCase() === String(meta.relayHost).toLowerCase())
+    ) {
       const kept: RelaySessionInfo = {
         sessionId: persisted.sessionId,
         tunnelToken: persisted.tunnelToken,
@@ -725,6 +842,7 @@ export async function startTunnel(
   const created = await relayFetch('/sessions', {
     method: 'POST',
     token,
+    ...(meta?.serverId && meta.relayHost ? { base: apiBaseForRelayHost(meta.relayHost) } : {}),
     body: meta?.serverId ? { localPort: port, serverId: meta.serverId } : { localPort: port },
   });
   if (!created.ok) {
@@ -763,6 +881,7 @@ export async function startTunnel(
       await relayFetch(`/sessions/${encodeURIComponent(session.sessionId)}`, {
         method: 'DELETE',
         token,
+        base: apiBaseForRelayHost(session.publicHost),
       });
     } catch {
       /* ignore */
@@ -906,7 +1025,7 @@ export function registerGameRelayIpc(): void {
     async (_e, sessionId: string) => {
       const token = messengerTokenProvider?.();
       if (!token) return { ok: false, code: 'no_messenger_session' };
-      const res = await relayFetch(`/sessions/${encodeURIComponent(sessionId)}/join`, {
+      const res = await relayFetchOwned(`/sessions/${encodeURIComponent(sessionId)}/join`, {
         method: 'POST',
         token,
       });

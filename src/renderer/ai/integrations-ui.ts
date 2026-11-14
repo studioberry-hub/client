@@ -161,17 +161,57 @@ export function appendAiBuildPreview(host: AiUiHost, build: AiBuildPreview): HTM
 
 // ===== Каталог → агент =====
 
-/** Deep-link из карточки мода: вкладка AI + промпт про проект. */
+function askSubject(type: string): string {
+  switch (String(type || '').toLowerCase()) {
+    case 'resourcepack':
+    case 'resource_pack':
+      return 'этот ресурс-пак';
+    case 'shader':
+    case 'shaderpack':
+      return 'этот шейдер';
+    case 'modpack':
+      return 'эту сборку';
+    case 'datapack':
+      return 'этот датапак';
+    case 'plugin':
+      return 'этот плагин';
+    default:
+      return 'этот мод';
+  }
+}
+
+function catalogProjectUrl(id: string, type: string, source: string, slug?: string): string {
+  const kind = String(type || 'mod').toLowerCase();
+  const key = String(slug || id || '').replace(/^cf:/, '').trim();
+  const curse = source === 'curseforge' || String(id || '').startsWith('cf:');
+  if (curse) {
+    const section: Record<string, string> = {
+      mod: 'mc-mods',
+      resourcepack: 'texture-packs',
+      resource_pack: 'texture-packs',
+      shader: 'shaders',
+      shaderpack: 'shaders',
+      modpack: 'modpacks',
+      datapack: 'data-packs',
+      plugin: 'bukkit-plugins',
+    };
+    return `https://www.curseforge.com/minecraft/${section[kind] || 'mc-mods'}/${encodeURIComponent(key)}`;
+  }
+  const path = kind === 'resource_pack' ? 'resourcepack' : kind === 'shaderpack' ? 'shader' : (kind || 'mod');
+  return `https://modrinth.com/${path}/${encodeURIComponent(key)}`;
+}
+
+/** Открыть агента и сразу спросить про проект каталога, со ссылкой на страницу. */
 export function askAgentAboutMod(
   host: AiUiHost,
   projectTitle: string,
   projectId: string,
+  opts?: { type?: string; source?: string; slug?: string; url?: string },
 ): void {
   const title = String(projectTitle || '').trim() || projectId;
   const id = String(projectId || '').trim();
-  if (!id) return;
+  const url = String(opts?.url || '').trim() || (id ? catalogProjectUrl(id, opts?.type || 'mod', opts?.source || '', opts?.slug) : '');
+  if (!title && !url) return;
   host.switchToAiTab();
-  host.sendPrompt(
-    `Расскажи про мод «${title}» (Modrinth id: ${id}): совместимость, зависимости и стоит ли ставить в текущую сборку.`,
-  );
+  host.sendPrompt(`Расскажи мне про ${askSubject(opts?.type || 'mod')} «${title}». ${url}`.trim());
 }

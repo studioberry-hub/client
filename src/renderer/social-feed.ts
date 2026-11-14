@@ -2670,9 +2670,8 @@ export async function loadSocialFeed(force = false): Promise<void> {
   bindUi();
   syncAccountAvatars();
   if (!feedReady) paintLoadingBlocks();
-  await refreshClansSelect();
   if (newsView === 'official') setFeedTab('articles');
-  await loadCommunity();
+  await Promise.all([refreshClansSelect(), loadCommunity()]);
   void force;
 }
 

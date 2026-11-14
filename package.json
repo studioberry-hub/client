@@ -1,6 +1,6 @@
 {
   "name": "uclient",
-  "version": "1.0.8-beta",
+  "version": "1.0.9-beta",
   "description": "Powerfull Minecraft client with support Mods, AI, Social and more",
   "homepage": "https://uprojects.site/client",
   "license": "GPL-3.0-only",
@@ -162,6 +162,7 @@
     "minecraft-server-util": "^5.4.4",
     "prismarine-nbt": "^2.8.0",
     "skinviewengine": "file:skinviewengine",
-    "uisfx": "^0.4.0"
+    "uisfx": "^0.4.0",
+    "vosk-browser": "^0.0.8"
   }
 }

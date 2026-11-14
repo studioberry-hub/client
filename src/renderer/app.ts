@@ -10,7 +10,7 @@ import {
   type SkinDebugOptions,
 } from 'skinviewengine';
 import { marked } from 'marked';
-import { setApiBase, getApiBase, catalogImageUrl, skinImageUrl } from '../shared/apiBase';
+import { setApiBase, getApiBase, installApiTransport, catalogImageUrl, skinImageUrl } from '../shared/apiBase';
 import { classifyMcVersion, DEFAULT_VERSION_FILTERS, MC_VERSION_GROUPS, type McVersionGroup } from '../shared/mcVersionGroups';
 import { previewBadge, resolvePreviewStrategy } from '../shared/world-preview-matrix';
 import type { AiUiHost } from './ai/types';
@@ -22,6 +22,7 @@ import { initUiSfx, playStatusCue, playToastCue, setUiSfxEnabled } from './ui-sf
 import { hiddenListingAddrs, undefinedListingEntries } from './hostedServers';
 import { initGamepad, refreshGamepadLabels, setGamepadLook, syncGamepadColor, takeGamepadLaunch } from './gamepad';
 import { closeAccountStage, openAccountStage } from './account-stage';
+import { askUAgent, mountUAgent, setUAgentRemoteConfirm, setUAgentTelegram } from './uagent/mount';
 import {
   askAiConfirmBatch,
   askAiConfirmInChat,
@@ -131,7 +132,12 @@ interface DeepLinkLaunch {
   id: string;
 }
 
-type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup | DeepLinkLaunch;
+interface DeepLinkBugAuth {
+  action: 'bug-auth';
+  id: string;
+}
+
+type DeepLinkPayload = DeepLinkInstall | DeepLinkImportInstance | DeepLinkJoinGroup | DeepLinkLaunch | DeepLinkBugAuth;
 
 interface InstanceShareCounts {
   mods: number;
@@ -226,6 +232,7 @@ interface ElectronAPI {
   loadServers: () => Promise<any[]>;
   removeServer: (id: string) => Promise<any>;
   serverStatus: (ip: string) => Promise<any>;
+  voiceRelayRtt: (host: string) => Promise<number | null>;
   fetchServerCatalog: (force?: boolean) => Promise<any[]>;
   fetchServerDetail: (source: string, id: string) => Promise<any>;
   fetchServerHistory: (projectId: string, serverId: string, period: string) => Promise<any>;
@@ -367,6 +374,26 @@ interface ElectronAPI {
   onJavaProgress: (callback: (data: any) => void) => () => void;
   getCrashReport: (buildId: string) => Promise<string | null>;
   getAppVersion: () => Promise<string>;
+  bugsAuthPreview?: (id: string) => Promise<{
+    ok: boolean;
+    site?: string;
+    ip?: string;
+    place?: string;
+    device?: { name: string; os: string; version: string };
+    error?: string;
+  }>;
+  bugsAuthDecide?: (payload: { id: string; accept: boolean }) => Promise<{ ok: boolean; error?: string }>;
+  bugsCreate?: (payload: {
+    title: string;
+    body: string;
+    kind: string;
+    steps?: string;
+    expected?: string;
+    actual?: string;
+    imageBase64?: string;
+    tags?: string[];
+  }) => Promise<{ ok: boolean; error?: string; id?: number }>;
+  bugsListTags?: () => Promise<{ ok: boolean; tags?: { id: string; name: string; color: string }[] }>;
   loadLocale: (lang: string) => Promise<Record<string, string> | null>;
   setLanguage: (lang: string) => void;
   updatePresence: (data: { screen?: string; account?: { name: string; avatar: string } | null }) => void;
@@ -387,6 +414,8 @@ interface ElectronAPI {
     configured?: boolean;
     access?: boolean;
     reason?: string;
+    models?: string[];
+    application?: { status?: string };
     requiresKey?: boolean;
     tools?: boolean;
     toolNames?: string[];
@@ -558,12 +587,30 @@ interface ElectronAPI {
   debugStall: (ms: number) => void;
   /** Базовый адрес нашего API; вычисляется в preload по переменным окружения. */
   apiBase?: string;
+  edgePinned?: boolean;
+  onEdgeChanged?: (callback: (base: string) => void) => () => void;
+  adoptEdge?: (base: string) => void;
 }
 
 const api = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 
 // Синхронизируем базовый адрес до первой отрисовки: иконки строятся от него.
 setApiBase(api?.apiBase);
+
+function publishEdge(base: string): void {
+  const prev = getApiBase();
+  setApiBase(base);
+  if (getApiBase() === prev) return;
+  window.dispatchEvent(new CustomEvent('uc-edge-changed'));
+}
+
+if (!api?.edgePinned) {
+  installApiTransport((base) => {
+    publishEdge(base);
+    api?.adoptEdge?.(base);
+  });
+}
+api?.onEdgeChanged?.((base) => publishEdge(base));
 
 const ELY_AUTH_SERVER = 'https://authserver.ely.by';
 
@@ -832,17 +879,19 @@ function switchTab(target: string): void {
     refreshHomeDashboard();
   }
   if (target === 'news') {
-    // JWT Messenger нужен для соцленты — прогреваем, если ещё не заходили в чаты
+    // Официальные новости не ждут вход в чаты. Соцлента догоняет своим JWT.
+    void loadNewsOfficialOnly(false).then(() => {
+      renderHomeNews();
+      if (presenceTab === 'news' && document.getElementById('sf-official-news')) renderNews();
+    });
     void warmMessengerSession().finally(() => {
-      void loadNews(false);
+      if (presenceTab === 'news') void loadSocialFeed(false);
     });
   }
   if (target === 'ai') {
     ensureAiTab();
     void warmMessengerSession().finally(() => {
-      void refreshAiAccessStatus().then(() => {
-        if (aiAccessOk === false) showAiAccessDeniedModal();
-      });
+      void refreshAiAccessStatus();
     });
   }
   if (target === 'messenger') {
@@ -2160,39 +2209,177 @@ document.getElementById('tb-tasks-clear')?.addEventListener('click', (e) => {
   clearAllLauncherTasks();
 });
 
-/* ── Crash Modal ── */
+/* ── Краш сборки ── */
 
 let lastCrashLogs: string[] = [];
 let lastCrashBuild: Build | null = null;
+let lastCrashCode: number | null = null;
+let preparedCrashReport: { title: string; body: string; steps: string; expected: string; actual: string } | null = null;
+let crashReportSent = false;
 
 function joinInstancePath(root: string, ...parts: string[]): string {
   const sep = root.includes('/') && !root.includes('\\') ? '/' : '\\';
   return [root.replace(/[\\/]+$/, ''), ...parts].join(sep);
 }
 
-async function showCrashModal(logs: string[], build?: Build | null): Promise<void> {
+function crashLogHint(log: string): string {
+  const lines = log.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 8);
+  const score = (line: string) => {
+    const text = line.toLowerCase();
+    if (text.includes('caused by:')) return 5;
+    if (/exception|error:|crash report|failed to/.test(text)) return 4;
+    if (text.includes('error')) return 2;
+    return 0;
+  };
+  let best = '';
+  let bestScore = 0;
+  for (const line of lines.slice(-80)) {
+    const value = score(line);
+    if (value >= bestScore && value > 0) {
+      bestScore = value;
+      best = line;
+    }
+  }
+  return best.replace(/^\[[^\]]{1,48}\]\s*/, '').slice(0, 180);
+}
+
+function crashRamLabel(build: Build | null): string {
+  const max = Number(build?.memory?.max || 0);
+  const min = Number(build?.memory?.min || 0);
+  if (!max) return '';
+  if (min && min !== max) return `${min}–${max} ${t('crash.mb')}`;
+  return `${max} ${t('crash.mb')}`;
+}
+
+function setCrashRow(id: string, text: string): void {
+  const value = document.getElementById(id);
+  const label = document.getElementById(`${id}-label`);
+  const show = Boolean(text);
+  if (value) {
+    value.textContent = text || '—';
+    value.hidden = !show;
+  }
+  if (label) label.hidden = !show;
+}
+
+function crashCodeLabel(code: number | null): string {
+  if (code == null || Number.isNaN(code)) return '—';
+  if (code >= 0 && code < 256) return String(code);
+  const hex = (code >>> 0).toString(16).toUpperCase().padStart(8, '0');
+  return `${code} · 0x${hex}`;
+}
+
+// Коды Windows NTSTATUS и сигналы POSIX. Код 1 слишком общий, поэтому хвост лога уточняет причину.
+function crashCauseKey(code: number | null, log: string): string {
+  const known = code != null && !Number.isNaN(code);
+  const u = known ? code >>> 0 : null;
+  if (u === 0xc0000005) return 'crash.cause.access';
+  if (code === 139 || code === 11) return 'crash.cause.segfault';
+  if (u === 0xc00000fd) return 'crash.cause.stack';
+  if (u === 0xc0000409) return 'crash.cause.buffer';
+  if (u === 0xc0000135) return 'crash.cause.dll';
+  if (u === 0xc0000142) return 'crash.cause.dllinit';
+  if (u === 0xc0000374) return 'crash.cause.heap';
+  if (code === 134 || code === 6) return 'crash.cause.abort';
+  if (code === 143 || code === 15 || code === 130) return 'crash.cause.term';
+  if (code === 137 || code === 9) return 'crash.cause.memory';
+  const text = log.toLowerCase();
+  if (/outofmemoryerror|java heap space|gc overhead limit|could not reserve enough space|insufficient memory/.test(text)) return 'crash.cause.memory';
+  if (/unsupportedclassversionerror|more recent version of the java runtime/.test(text)) return 'crash.cause.java';
+  if (/modresolutionexception|missing or unsupported mandatory|incompatible mods found|mixin apply failed|failed to apply mixin/.test(text)) return 'crash.cause.mods';
+  if (/accessdeniedexception|access is denied/.test(text)) return 'crash.cause.permission';
+  if (/pixel format not accelerated|no opengl|glfw error|failed to create the glfw/.test(text)) return 'crash.cause.gpu';
+  if (code === 1) return 'crash.cause.exception';
+  if (code === -1 || code === 255) return 'crash.cause.killed';
+  if (!known) return 'crash.cause.generic';
+  return 'crash.cause.unknown';
+}
+
+function setCrashText(id: string, text: string): void {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+async function crashLogText(build: Build | null, buffer: string[]): Promise<string> {
+  const live = buffer.join('\n').trim();
+  let file = '';
+  if (build?.id && api?.getCrashReport) {
+    try {
+      file = String((await api.getCrashReport(build.id)) || '').trim();
+    } catch {
+      file = '';
+    }
+  }
+  return [file, live].filter(Boolean).join('\n\n---\n\n').slice(-12000);
+}
+
+function prepareCrashReport(build: Build | null, code: number | null, log: string, cause: string): void {
+  const name = build?.name || t('crash.unknownBuild');
+  const version = [
+    build?.gameVersion,
+    [build?.loader, build?.loaderVersion].filter(Boolean).join(' '),
+  ].filter(Boolean).join(' · ') || '—';
+  const codeLabel = crashCodeLabel(code);
+  const lines = [
+    t('crash.reportBuild', { name }),
+    t('crash.reportVersion', { version }),
+  ];
+  if (build?.id) lines.push(`id: ${build.id}`);
+  const ram = crashRamLabel(build);
+  const hint = crashLogHint(log);
+  lines.push(
+    t('crash.reportCode', { code: codeLabel }),
+    t('crash.reportCause', { cause }),
+  );
+  if (ram) lines.push(t('crash.reportRam', { ram }));
+  if (hint) lines.push(t('crash.reportHint', { hint }));
+  lines.push(
+    '',
+    t('crash.reportLog'),
+    '```',
+    log.trim().slice(-7000) || t('crash.logEmpty'),
+    '```',
+  );
+  preparedCrashReport = {
+    title: t('crash.reportTitle', { name, code: codeLabel }).slice(0, 140),
+    body: lines.join('\n').slice(0, 12000),
+    steps: t('crash.reportSteps', { name }),
+    expected: t('crash.reportExpected'),
+    actual: cause,
+  };
+  crashReportSent = false;
+}
+
+async function showCrashModal(logs: string[], build?: Build | null, code?: number | null): Promise<void> {
   lastCrashLogs = Array.isArray(logs) ? logs.slice() : [];
-  // Важно: к моменту close/crash runningBuild уже может быть сброшен
   lastCrashBuild = build || runningBuild || lastCrashBuild;
-
-  const sub = document.getElementById('modal-crash-sub');
-  if (sub) {
-    sub.textContent = lastCrashBuild
-      ? t('crash.subBuild', { name: lastCrashBuild.name })
-      : t('crash.sub');
+  lastCrashCode = code == null || Number.isNaN(Number(code)) ? null : Number(code);
+  const log = await crashLogText(lastCrashBuild, lastCrashLogs);
+  lastCrashLogs = log ? log.split('\n') : lastCrashLogs;
+  const codeLabel = crashCodeLabel(lastCrashCode);
+  const key = crashCauseKey(lastCrashCode, log);
+  const cause = key === 'crash.cause.unknown' ? t(key, { code: codeLabel }) : t(key);
+  const version = [
+    lastCrashBuild?.gameVersion,
+    [lastCrashBuild?.loader, lastCrashBuild?.loaderVersion].filter(Boolean).join(' '),
+  ].filter(Boolean).join(' · ') || '—';
+  setCrashText('modal-crash-title', lastCrashBuild?.name || t('crash.title'));
+  setCrashText('modal-crash-cause', cause);
+  setCrashText('modal-crash-build', lastCrashBuild?.name || '—');
+  setCrashText('modal-crash-version', version);
+  setCrashText('modal-crash-code', codeLabel);
+  setCrashText('modal-crash-time', new Date().toLocaleString());
+  setCrashRow('modal-crash-ram', crashRamLabel(lastCrashBuild));
+  setCrashRow('modal-crash-hint', crashLogHint(log));
+  prepareCrashReport(lastCrashBuild, lastCrashCode, log, cause);
+  setCrashText('modal-crash-note', t('crash.noteReady'));
+  const agentBtn = document.getElementById('modal-crash-agent');
+  if (agentBtn) agentBtn.hidden = !isAiFeatureEnabled();
+  const sendBtn = document.getElementById('modal-crash-send') as HTMLButtonElement | null;
+  if (sendBtn) {
+    sendBtn.disabled = false;
+    sendBtn.textContent = t('crash.sendReport');
   }
-
-  const logWrap = document.getElementById('modal-crash-log-wrap');
-  const logPre = document.getElementById('modal-crash-log-preview');
-  const excerpt = lastCrashLogs.join('\n').trim().slice(-2400);
-  if (logPre) {
-    logPre.textContent = excerpt || t('crash.logEmpty');
-    requestAnimationFrame(() => {
-      logPre.scrollTop = logPre.scrollHeight;
-    });
-  }
-  if (logWrap) logWrap.hidden = false;
-
   openModal('modal-crash');
 }
 
@@ -2234,70 +2421,77 @@ async function openCrashLaunchLog(): Promise<void> {
 }
 
 async function openCrashWithAgent(): Promise<void> {
+  if (!isAiFeatureEnabled()) return;
   const build = lastCrashBuild || runningBuild;
-  const logs = lastCrashLogs;
+  const excerpt = lastCrashLogs.join('\n').slice(-8000);
+  const cause = document.getElementById('modal-crash-cause')?.textContent || '';
   closeModal('modal-crash');
-
   switchTab('ai');
-  ensureAiTab();
-  const session = createAiSession(true, {
-    buildId: build?.id || null,
-    title: t('crash.agentChatTitle'),
-  });
-  renderAiSessionList();
-  renderAiConversation();
-  updateAiBuildChip(session);
-
-  const host = getAiUiHost();
-  const excerpt = logs.join('\n').slice(-8000);
-  appendAiCrashQuote(host, {
-    buildName: build?.name || build?.id || 'build',
-    logExcerpt: excerpt || '(лог пуст — вызови get_crash_report / get_latest_log)',
-  });
-  if (build?.id) {
-    showAiCrashBanner(host, {
-      buildId: build.id,
-      buildName: build.name || build.id,
-    });
-  }
-
   const prompt = [
     t('crash.agentPrompt', { name: build?.name || build?.id || 'build' }),
+    lastCrashCode != null ? t('crash.reportCode', { code: crashCodeLabel(lastCrashCode) }) : '',
+    cause ? t('crash.reportCause', { cause }) : '',
+    build?.id ? `buildId: ${build.id}` : '',
+    build?.gameVersion ? `gameVersion: ${build.gameVersion}` : '',
+    build?.loader ? `loader: ${build.loader}` : '',
     '',
     '```',
-    excerpt || '(лог пуст — вызови get_crash_report / get_latest_log)',
+    excerpt || t('crash.logEmpty'),
     '```',
-  ].join('\n');
-  await sendAiMessage(prompt);
+  ].filter((line) => line !== '').join('\n');
+  await askUAgent(prompt);
+}
+
+async function crashReportTags(): Promise<string[]> {
+  const names = ['Сборки', 'Краш'];
+  const wanted = new Set(names.map((name) => name.toLowerCase()));
+  const res = await api?.bugsListTags?.().catch(() => null);
+  const tags = res?.ok && Array.isArray(res.tags) ? res.tags : [];
+  const ids = tags
+    .filter((tag) => wanted.has(String(tag.name || '').trim().toLowerCase()))
+    .map((tag) => tag.id)
+    .filter(Boolean);
+  return ids.length ? ids : names;
+}
+
+async function sendCrashReport(): Promise<void> {
+  const report = preparedCrashReport;
+  const button = document.getElementById('modal-crash-send') as HTMLButtonElement | null;
+  if (!report || !button || crashReportSent) return;
+  const ready = await ensureLauncherAccount();
+  if (!ready) {
+    setCrashText('modal-crash-note', t('crash.noteNeedAccount'));
+    return;
+  }
+  button.disabled = true;
+  button.textContent = t('crash.sending');
+  const tags = await crashReportTags();
+  const result = await api?.bugsCreate?.({
+    title: report.title,
+    body: report.body,
+    kind: 'bug',
+    steps: report.steps,
+    expected: report.expected,
+    actual: report.actual,
+    tags,
+  });
+  if (!result?.ok) {
+    button.disabled = false;
+    button.textContent = t('crash.sendReport');
+    setCrashText('modal-crash-note', t('crash.noteFail'));
+    return;
+  }
+  crashReportSent = true;
+  button.textContent = t('crash.sent');
+  bugReportUrl = result.id
+    ? `https://uprojects.site/client/bugs/${result.id}`
+    : 'https://uprojects.site/client/bugs';
+  setCrashText('modal-crash-note', t('crash.noteSent'));
 }
 
 document.getElementById('modal-crash-close')?.addEventListener('click', () => closeModal('modal-crash'));
 document.getElementById('modal-crash')?.addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeModal('modal-crash');
-});
-
-document.getElementById('modal-crash-folder')?.addEventListener('click', async () => {
-  const build = lastCrashBuild || runningBuild;
-  if (!build?.id) {
-    updateStatus(t('crash.noBuild'));
-    return;
-  }
-  if (!api?.getInstancePath || !api?.openPath) {
-    updateStatus(t('crash.openFailed'));
-    return;
-  }
-  try {
-    const instanceDir = await api.getInstancePath(build.id);
-    if (!instanceDir) {
-      updateStatus(t('crash.openFailed'));
-      return;
-    }
-    const err = await api.openPath(instanceDir);
-    if (err) updateStatus(t('crash.openFailed'));
-    else closeModal('modal-crash');
-  } catch {
-    updateStatus(t('crash.openFailed'));
-  }
 });
 
 document.getElementById('modal-crash-log')?.addEventListener('click', () => {
@@ -2306,6 +2500,10 @@ document.getElementById('modal-crash-log')?.addEventListener('click', () => {
 
 document.getElementById('modal-crash-agent')?.addEventListener('click', () => {
   void openCrashWithAgent();
+});
+
+document.getElementById('modal-crash-send')?.addEventListener('click', () => {
+  void sendCrashReport();
 });
 
 function formatSpeedGlobal(bytesPerSec: number): string {
@@ -2852,8 +3050,92 @@ function requestCloseSplash(): void {
   closeSplash();
 }
 
+/** Аккаунт прошлого сеанса. Ошибка сети или IPC не должна оставлять лаунчер без выбора. */
+async function restoreStartupAccount(): Promise<void> {
+  if (!api?.loadAccounts) {
+    showNoAccountState();
+    void refreshAiAccessStatus();
+    return;
+  }
+  const saved = await api.loadAccounts();
+  if (!Array.isArray(saved) || saved.length === 0) {
+    showNoAccountState();
+    void refreshAiAccessStatus();
+    return;
+  }
+  let activeUuid: string | null = null;
+  try {
+    activeUuid = api.getActiveAccount ? await api.getActiveAccount() : null;
+  } catch (err) {
+    console.error('[launcher] активный аккаунт', err);
+  }
+  const preferred =
+    (activeUuid && saved.find((a: any) => a.uuid === activeUuid)) || saved[saved.length - 1];
+  applyAccount(preferred);
+  void renderSavedAccounts();
+  if (preferred.uuid) {
+    try {
+      await api.setActiveAccount?.(preferred.uuid);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (preferred.meta?.type === 'msa' || preferred.meta?.type === 'yggdrasil') {
+    accountRefreshPromise = refreshAccountInBackground(preferred);
+    void warmMessengerSession(true).finally(() => {
+      void refreshAiAccessStatus();
+      startAgentTelegramBridge();
+      if (presenceTab === 'news') void loadSocialFeed(true);
+    });
+  } else {
+    void refreshAiAccessStatus();
+  }
+}
+
+function applyAboutInfo(): void {
+  if (!api?.getPlatformInfo) return;
+  const info = api.getPlatformInfo();
+  if (info.platform === 'linux') document.body.classList.add('platform-linux');
+  if (info.platform === 'win32') document.body.classList.add('platform-win32');
+  const aboutPlat = document.getElementById('about-platform');
+  if (aboutPlat) aboutPlat.textContent = info.platform || '—';
+  const nodeVer = document.getElementById('about-node');
+  if (nodeVer) nodeVer.textContent = info.nodeVersion || '--';
+  const aboutVer = document.getElementById('about-version');
+  if (aboutVer && api?.getAppVersion) {
+    api.getAppVersion().then((ver) => {
+      appVersion = ver;
+      aboutVer.textContent = `${t('about.version')} ${ver}`;
+    }).catch(() => {});
+  }
+}
+
 async function init(): Promise<void> {
   await setLang(localStorage.getItem('Undefined Client-language') || 'ru');
+  // Библиотека читается до экрана агента: ошибка чата не должна оставлять сборки пустыми.
+  try {
+    await loadBuilds();
+    await loadServers();
+  } catch (err) {
+    console.error('[launcher] библиотека', err);
+  }
+  // Тема, аккаунт и «О программе» не зависят от агента и фона.
+  try {
+    loadTheme();
+  } catch (err) {
+    console.error('[launcher] тема', err);
+  }
+  try {
+    await restoreStartupAccount();
+  } catch (err) {
+    console.error('[launcher] аккаунт', err);
+  }
+  try {
+    applyAboutInfo();
+  } catch (err) {
+    console.error('[launcher] окно', err);
+  }
+  try {
   initCustomCarets();
   applyAiTabVisibility();
   initMessenger({
@@ -3015,10 +3297,18 @@ async function init(): Promise<void> {
       if (currentAccount?.uuid) await refreshAccountInBackground(currentAccount);
     },
   });
+  } catch (err) {
+    console.error('[launcher] интерфейс', err);
+  }
 
   // UAgent / соц. API: JWT Messenger поднимаем сразу, не дожидаясь вкладки чатов
-  initAiAssistant();
-  initSocialFeed({
+  try {
+    initAiAssistant();
+  } catch (err) {
+    console.error('[launcher] агент', err);
+  }
+  try {
+    initSocialFeed({
     t,
     escapeHtml,
     renderMarkdown: (md: string) => renderSocialMarkdown(md || ''),
@@ -3101,10 +3391,14 @@ async function init(): Promise<void> {
       renderOfficialNewsInto(root);
     },
   });
+  } catch (err) {
+    console.error('[launcher] лента', err);
+  }
 
   initStartedAt = performance.now();
   setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
 
+  try {
   // Фон главной: выбранный ролик или свой файл, без случайной смены
   const videoEl = document.getElementById('home-video-bg') as HTMLVideoElement;
   if (videoEl) {
@@ -3129,8 +3423,14 @@ async function init(): Promise<void> {
       if (!glowCtx || !source || !wallpaperRunning) return;
       if (source instanceof HTMLVideoElement && source.readyState < 2) return;
       if (source instanceof HTMLImageElement && !source.complete) return;
-      try { glowCtx.drawImage(source, 0, 0, 8, 4); } catch { return; }
-      const d = glowCtx.getImageData(0, 0, 8, 4).data;
+      // Свой файл обоев (wall://) помечает canvas чужим источником, getImageData бросает.
+      let d: Uint8ClampedArray;
+      try {
+        glowCtx.drawImage(source, 0, 0, 8, 4);
+        d = glowCtx.getImageData(0, 0, 8, 4).data;
+      } catch {
+        return;
+      }
       let r = 0, g = 0, b = 0, c = 0;
       for (let i = 0; i < d.length; i += 4) {
         const br = (d[i] + d[i+1] + d[i+2]) / 3;
@@ -3210,7 +3510,7 @@ async function init(): Promise<void> {
             notifyMessengerGameStopped();
             updateBanner();
             if (data.code && data.code !== 0) {
-              void showCrashModal(crashLogs, crashedBuild);
+              void showCrashModal(crashLogs, crashedBuild, Number(data.code));
             }
           }
           break;
@@ -3220,7 +3520,8 @@ async function init(): Promise<void> {
             stopRunningTimer();
             notifyMessengerGameStopped();
             updateBanner();
-            void showCrashModal(crashLogs, crashedBuild);
+            const crashCode = data?.params?.code ?? data?.data?.code ?? data?.code;
+            void showCrashModal(crashLogs, crashedBuild, crashCode == null ? null : Number(crashCode));
           }
           break;
         case 'error':
@@ -3232,43 +3533,10 @@ async function init(): Promise<void> {
   if (api?.onLauncherLog) {
     api.onLauncherLog((data) => console.log('[Launcher]', data));
   }
-
-  if (api?.loadAccounts) {
-    const saved = await api.loadAccounts();
-    if (saved.length > 0) {
-      const activeUuid = api.getActiveAccount ? await api.getActiveAccount() : null;
-      const preferred =
-        (activeUuid && saved.find((a: any) => a.uuid === activeUuid)) || saved[saved.length - 1];
-      // Аккаунт из кэша показываем сразу: обновление токена — это сетевая цепочка
-      // (для MSA — несколько запросов подряд, порядка 3 с), держать на ней весь
-      // старт UI нельзя. Обновление уходит в фон, запуск игры его дожидается.
-      applyAccount(preferred);
-      if (preferred.uuid) {
-        try {
-          await api.setActiveAccount?.(preferred.uuid);
-        } catch {
-          /* ignore */
-        }
-      }
-      if (preferred.meta?.type === 'msa' || preferred.meta?.type === 'yggdrasil') {
-        accountRefreshPromise = refreshAccountInBackground(preferred);
-        // Прогрев JWT после аккаунта: UAgent и лента постов не зависят от открытия чатов
-        void warmMessengerSession(true).finally(() => {
-          void refreshAiAccessStatus();
-          startAgentTelegramBridge();
-          if (presenceTab === 'news') void loadSocialFeed(true);
-        });
-      } else {
-        void refreshAiAccessStatus();
-      }
-    } else {
-      showNoAccountState();
-      void refreshAiAccessStatus();
-    }
-  } else {
-    showNoAccountState();
-    void refreshAiAccessStatus();
+  } catch (err) {
+    console.error('[launcher] фон', err);
   }
+
   pushPresence('home');
 
   await loadBuilds();
@@ -3278,29 +3546,12 @@ async function init(): Promise<void> {
   void adoptRunningGameFromMain();
   await loadServers();
   renderSavedAccounts();
-  loadTheme();
   // Проверка обновлений всегда (бейдж в titlebar); автозапуск updater — по настройке
   {
     const autoLaunch = localStorage.getItem('Undefined Client-check-updates-start') !== 'false';
     void checkForUpdatesUI({ autoLaunch });
   }
   setupDownloadProgress();
-  if (api?.getPlatformInfo) {
-    const info = api.getPlatformInfo();
-    if (info.platform === 'linux') document.body.classList.add('platform-linux');
-    if (info.platform === 'win32') document.body.classList.add('platform-win32');
-    const aboutPlat = document.getElementById('about-platform');
-    if (aboutPlat) aboutPlat.textContent = info.platform || '—';
-    const nodeVer = document.getElementById('about-node');
-    if (nodeVer) nodeVer.textContent = info.nodeVersion || '--';
-    const aboutVer = document.getElementById('about-version');
-    if (aboutVer && api?.getAppVersion) {
-      api.getAppVersion().then(ver => {
-        appVersion = ver;
-        aboutVer.textContent = `${t('about.version')} ${ver}`;
-      });
-    }
-  }
 
   // Список версий Minecraft для модалки сборки
   renderVersionFilterSettings();
@@ -3334,9 +3585,15 @@ async function init(): Promise<void> {
 const GROUP_FOLDER_SVG = `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M6 12C6 9.79086 7.79086 8 10 8H16.1716C16.9672 8 17.7303 8.31607 18.2929 8.87868L19.7071 10.2929C20.2697 10.8555 21.0328 11.1716 21.8284 11.1716H30C32.2091 11.1716 34 12.9625 34 15.1716V28C34 30.2091 32.2091 32 30 32H10C7.79086 32 6 30.2091 6 28V12Z" fill="currentColor" fill-opacity="0.35"/><path d="M6 16H34V28C34 30.2091 32.2091 32 30 32H10C7.79086 32 6 30.2091 6 28V16Z" fill="currentColor" fill-opacity="0.55"/></svg>`;
 
 async function loadBuilds(): Promise<void> {
-  if (api?.loadBuilds) {
-    savedBuilds = await api.loadBuilds();
+  try {
+    if (api?.loadBuilds) {
+      const loaded = await api.loadBuilds();
+      if (Array.isArray(loaded)) savedBuilds = loaded;
+    }
+  } catch (err) {
+    console.error('[launcher] сборки', err);
   }
+  if (!Array.isArray(savedBuilds)) savedBuilds = [];
   if (api?.loadBuildGroups) {
     try {
       const groups = await api.loadBuildGroups();
@@ -3345,11 +3602,16 @@ async function loadBuilds(): Promise<void> {
       savedBuildGroups = [];
     }
   }
+  if (!Array.isArray(savedBuildGroups)) savedBuildGroups = [];
   for (const id of [...expandedBuildGroupIds]) {
     if (!savedBuildGroups.some((g) => g.id === id)) expandedBuildGroupIds.delete(id);
   }
-  renderBuilds();
-  renderHomeBuilds();
+  try {
+    renderBuilds();
+    renderHomeBuilds();
+  } catch (err) {
+    console.error('[launcher] список сборок', err);
+  }
   updateStats();
   updateSidebarCards();
   updateBanner();
@@ -4171,11 +4433,21 @@ document.getElementById('be-java-browse')?.addEventListener('click', async () =>
 /* ===== SERVERS ===== */
 
 async function loadServers(): Promise<void> {
-  if (api?.loadServers) {
-    savedServers = await api.loadServers();
+  try {
+    if (api?.loadServers) {
+      const loaded = await api.loadServers();
+      if (Array.isArray(loaded)) savedServers = loaded;
+    }
+  } catch (err) {
+    console.error('[launcher] серверы', err);
   }
-  renderServers();
-  renderHomeServers();
+  if (!Array.isArray(savedServers)) savedServers = [];
+  try {
+    renderServers();
+    renderHomeServers();
+  } catch (err) {
+    console.error('[launcher] список серверов', err);
+  }
   updateStats();
   updateSidebarCards();
 }
@@ -7966,7 +8238,177 @@ settingsTabs.forEach(tab => {
       p.classList.toggle('active', p.getAttribute('data-settings-panel') === target);
     });
     if (target === 'launch') void refreshJavaManager();
+    if (target === 'bug') void loadBugTags();
   });
+});
+
+/* ===== Отчёт о баге и вход в трекер с сайта ===== */
+
+async function ensureLauncherAccount(): Promise<boolean> {
+  if (!api?.loadAccounts || !api.messengerSession) return false;
+  const accounts = await api.loadAccounts();
+  const active = api.getActiveAccount ? await api.getActiveAccount() : null;
+  const account = (accounts || []).find((row) => row?.uuid === active) || (accounts || [])[0];
+  if (!account) return false;
+  const session = await api.messengerSession(account);
+  return Boolean(session?.ok);
+}
+
+let bugAuthId = '';
+
+function setBugAuthText(id: string, text: string): void {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+async function openBugAuth(id: string): Promise<void> {
+  bugAuthId = id;
+  setBugAuthText('bug-auth-err', '');
+  const preview = await api?.bugsAuthPreview?.(id);
+  const device = preview?.device;
+  const line = device ? `${device.name} (${device.os})` : '—';
+  setBugAuthText('bug-auth-device', line);
+  setBugAuthText('bug-auth-version', device ? `Undefined Client ${device.version}` : '—');
+  setBugAuthText('bug-auth-ip', preview?.ip || '—');
+  setBugAuthText('bug-auth-place', preview?.place || '');
+  setBugAuthText('bug-auth-from', line);
+  if (!preview?.ok) setBugAuthText('bug-auth-err', 'Запрос входа устарел. Откройте сайт и запросите вход ещё раз.');
+  openModal('modal-bug-auth');
+}
+
+async function closeBugAuth(accept: boolean): Promise<void> {
+  const id = bugAuthId;
+  if (!id) {
+    closeModal('modal-bug-auth');
+    return;
+  }
+  if (accept) {
+    const ready = await ensureLauncherAccount();
+    if (!ready) {
+      setBugAuthText('bug-auth-err', 'Сначала войдите в аккаунт Microsoft или Ely.by в лаунчере.');
+      return;
+    }
+    const decided = await api?.bugsAuthDecide?.({ id, accept: true });
+    if (!decided?.ok) {
+      setBugAuthText('bug-auth-err', 'Не удалось подтвердить вход.');
+      return;
+    }
+  } else {
+    await api?.bugsAuthDecide?.({ id, accept: false });
+  }
+  bugAuthId = '';
+  closeModal('modal-bug-auth');
+}
+
+document.getElementById('bug-auth-close')?.addEventListener('click', () => void closeBugAuth(false));
+document.getElementById('bug-auth-no')?.addEventListener('click', () => void closeBugAuth(false));
+document.getElementById('bug-auth-yes')?.addEventListener('click', () => void closeBugAuth(true));
+document.getElementById('bug-open-site')?.addEventListener('click', () => {
+  void api?.openExternal?.('https://uprojects.site/client/bugs');
+});
+
+const bugTagIds = new Set<string>();
+
+function bugEscape(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] || ch));
+}
+
+async function loadBugTags(): Promise<void> {
+  const box = document.getElementById('bug-tags');
+  const field = document.getElementById('bug-tags-field');
+  const res = await api?.bugsListTags?.();
+  const tags = res?.ok && Array.isArray(res.tags) ? res.tags : [];
+  if (field) field.hidden = tags.length === 0;
+  if (!box) return;
+  box.innerHTML = tags.map((tag) => {
+    const color = /^#[0-9a-f]{6}$/i.test(tag.color) ? tag.color : '#3d4a5c';
+    const on = bugTagIds.has(tag.id) ? ' is-on' : '';
+    return `<button type="button" class="bug-tag${on}" data-tag="${bugEscape(tag.id)}" style="--tag:${color}">${bugEscape(tag.name)}</button>`;
+  }).join('');
+  box.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-tag') || '';
+      if (bugTagIds.has(id)) bugTagIds.delete(id);
+      else bugTagIds.add(id);
+      btn.classList.toggle('is-on');
+    });
+  });
+}
+
+document.getElementById('bug-shot')?.addEventListener('change', (event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  const name = document.getElementById('bug-shot-name');
+  if (name) name.textContent = file?.name || 'Файл не выбран';
+});
+
+let bugReportUrl = 'https://uprojects.site/client/bugs';
+document.getElementById('bug-sent-open')?.addEventListener('click', () => {
+  void api?.openExternal?.(bugReportUrl);
+  closeModal('modal-bug-sent');
+});
+document.getElementById('bug-sent-close')?.addEventListener('click', () => closeModal('modal-bug-sent'));
+document.getElementById('modal-bug-sent')?.addEventListener('click', (event) => {
+  if (event.target === event.currentTarget) closeModal('modal-bug-sent');
+});
+
+document.getElementById('bug-report-form')?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const note = document.getElementById('bug-note');
+  const say = (text: string) => {
+    if (note) note.textContent = text;
+  };
+  const title = (document.getElementById('bug-title') as HTMLInputElement | null)?.value.trim() || '';
+  const body = (document.getElementById('bug-body') as HTMLTextAreaElement | null)?.value.trim() || '';
+  if (title.length < 4 || body.length < 8) {
+    say('Нужны заголовок и описание подлиннее.');
+    return;
+  }
+  void (async () => {
+    const ready = await ensureLauncherAccount();
+    if (!ready) {
+      say('Войдите в аккаунт Microsoft или Ely.by — отчёт пишется от его имени.');
+      return;
+    }
+    const file = (document.getElementById('bug-shot') as HTMLInputElement | null)?.files?.[0];
+    let imageBase64 = '';
+    if (file) {
+      if (file.size > 1_400_000) {
+        say('Скриншот больше 1.4 МБ.');
+        return;
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      imageBase64 = btoa(binary);
+    }
+    say('Отправляем…');
+    const result = await api?.bugsCreate?.({
+      title,
+      body,
+      kind: (document.getElementById('bug-kind') as HTMLSelectElement | null)?.value || 'bug',
+      steps: (document.getElementById('bug-steps') as HTMLTextAreaElement | null)?.value || '',
+      expected: (document.getElementById('bug-expected') as HTMLTextAreaElement | null)?.value || '',
+      actual: (document.getElementById('bug-actual') as HTMLTextAreaElement | null)?.value || '',
+      imageBase64,
+      tags: [...bugTagIds],
+    });
+    if (!result?.ok) {
+      say('Не удалось отправить отчёт.');
+      return;
+    }
+    bugReportUrl = result.id
+      ? `https://uprojects.site/client/bugs/${result.id}`
+      : 'https://uprojects.site/client/bugs';
+    (document.getElementById('bug-report-form') as HTMLFormElement | null)?.reset();
+    document.getElementById('bug-kind')?.dispatchEvent(new Event('change'));
+    bugTagIds.clear();
+    const shotName = document.getElementById('bug-shot-name');
+    if (shotName) shotName.textContent = 'Файл не выбран';
+    say('');
+    closeModal('modal-settings');
+    openModal('modal-bug-sent');
+    void loadBugTags();
+  })();
 });
 
 /* ===== SETTINGS ABOUT PANEL ===== */
@@ -8895,19 +9337,19 @@ if (uiScaleSegments && uiScaleLabel) {
 
 function loadTheme(): void {
   const theme = localStorage.getItem('Undefined Client-theme') || 'ocean';
-  const accent = localStorage.getItem('Undefined Client-accent') || '#70ADDF';
-  if (theme !== 'custom') {
-    const themeAccents: Record<string,string> = { ocean:'#70ADDF', midnight:'#5b8ed4', purple:'#a78bfa', forest:'#4ade80' };
-    const defAccent = themeAccents[theme] || '#70ADDF';
-    localStorage.setItem('Undefined Client-accent', defAccent);
-    applyAccent(defAccent);
-    api?.notifyThemeChanged?.(defAccent);
-  } else {
-    applyAccent(accent);
-    api?.notifyThemeChanged?.(accent);
+  const themeAccents: Record<string, string> = { ocean: '#70ADDF', midnight: '#5b8ed4', purple: '#a78bfa', forest: '#4ade80' };
+  const stored = localStorage.getItem('Undefined Client-accent') || '';
+  const storedOk = /^#[0-9a-fA-F]{6}$/.test(stored);
+  const defAccent = themeAccents[theme] || '#70ADDF';
+  // Сохранённый цвет не затираем пресетом темы: иначе каждый запуск возвращает синий.
+  const accent = storedOk ? stored : defAccent;
+  if (!storedOk) localStorage.setItem('Undefined Client-accent', accent);
+  if (storedOk && accent.toLowerCase() !== defAccent.toLowerCase() && theme !== 'custom') {
+    localStorage.setItem('Undefined Client-theme', 'custom');
   }
-  const currentAccent = localStorage.getItem('Undefined Client-accent') || '#70ADDF';
-  updateAccentUI(currentAccent);
+  applyAccent(accent);
+  api?.notifyThemeChanged?.(accent);
+  updateAccentUI(accent);
   // Load all settings
   settingLoad('setting-close-after-launch', 'close-after-launch', false);
   settingLoad('setting-show-console', 'show-console', false);
@@ -9608,7 +10050,7 @@ function renderModListRow(p: any): string {
   const icon = p.icon_url
     ? `<img src="${escapeHtml(catalogImageUrl(p.icon_url))}" alt="">`
     : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
-  return `<div class="mod-card" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || 'mod'))}" data-mod-source="${escapeHtml(source)}">
+  return `<div class="mod-card" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || 'mod'))}" data-mod-source="${escapeHtml(source)}" data-mod-slug="${escapeHtml(String(p.slug || ''))}">
       <div class="mod-card-icon" style="background:${accent}">${icon}</div>
       <div class="mod-card-info">
         <div class="mod-card-name">${title} ${sourceBadge}</div>
@@ -9641,7 +10083,7 @@ function renderModTile(p: any): string {
   const downloads = formatAiDownloads(p.downloads);
   const follows = formatAiDownloads(p.follows);
   const updated = formatModsRelativeDate(p.date_modified);
-  return `<article class="mod-tile" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || 'mod'))}" data-mod-source="${escapeHtml(source)}">
+  return `<article class="mod-tile" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || 'mod'))}" data-mod-source="${escapeHtml(source)}" data-mod-slug="${escapeHtml(String(p.slug || ''))}">
       <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
       <div class="mod-tile__body">
         <div class="mod-tile__head">
@@ -9751,7 +10193,7 @@ function renderMods(append: boolean = false): void {
   }
 
   // Details button
-  grid.querySelectorAll<HTMLElement>('.details-btn').forEach(btn => {
+  grid.querySelectorAll<HTMLElement>('.details-btn:not(.ai-ask-mod-btn)').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btn.getAttribute('data-modrinth-id');
@@ -9762,9 +10204,15 @@ function renderMods(append: boolean = false): void {
   grid.querySelectorAll<HTMLElement>('.ai-ask-mod-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
+      e.preventDefault();
       const id = btn.getAttribute('data-modrinth-id') || '';
       const title = btn.getAttribute('data-modrinth-title') || id;
-      askAgentAboutMod(getAiUiHost(), title, id);
+      const card = btn.closest<HTMLElement>('.mod-tile, .mod-card');
+      askAgentAboutMod(getAiUiHost(), title, id, {
+        type: card?.getAttribute('data-modrinth-type') || 'mod',
+        source: card?.getAttribute('data-mod-source') || '',
+        slug: card?.getAttribute('data-mod-slug') || '',
+      });
     });
   });
 
@@ -10402,7 +10850,12 @@ window.addEventListener('uclient-host-catalog', (event) => {
   const projectId = String(detail.projectId || '');
   if (!projectId) return;
   if (detail.mode === 'ask') {
-    askAgentAboutMod(getAiUiHost(), String(detail.title || projectId), projectId);
+    askAgentAboutMod(getAiUiHost(), String(detail.title || projectId), projectId, {
+      type: String(detail.type || 'plugin'),
+      source: String(detail.source || ''),
+      slug: String(detail.slug || ''),
+      url: String(detail.url || ''),
+    });
     return;
   }
   hostCatalogInstall = typeof detail.install === 'function' ? detail.install : null;
@@ -11051,6 +11504,10 @@ async function handleDeepLinkPayload(payload: DeepLinkPayload | null): Promise<v
   }
   if (payload.action === 'launch') {
     await handleDeepLinkLaunch(payload.id);
+    return;
+  }
+  if (payload.action === 'bug-auth') {
+    await openBugAuth(payload.id);
     return;
   }
   await handleDeepLinkInstall(payload);
@@ -13206,8 +13663,13 @@ let pendingTargetProjectId: string = '';
 // Адреса новостей строятся от общей базы API, а не от вшитого домена:
 // иначе при отладке против локального сервера картинки и ссылки на посты
 // продолжали бы вести на прод.
-const NEWS_SITE_CLIENT = getApiBase();
-const NEWS_SITE_ORIGIN = new URL(NEWS_SITE_CLIENT).origin;
+function newsSiteClient(): string {
+  return getApiBase();
+}
+
+function newsSiteOrigin(): string {
+  return new URL(newsSiteClient()).origin;
+}
 
 let newsPosts: NewsPostSummary[] = [];
 let newsLoading = false;
@@ -13226,8 +13688,8 @@ function newsApiLang(): 'ru' | 'en' {
 function resolveNewsAssetUrl(url: string | null | undefined): string {
   if (!url) return '';
   if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith('/')) return `${NEWS_SITE_ORIGIN}${url}`;
-  return `${NEWS_SITE_CLIENT}/${url.replace(/^\//, '')}`;
+  if (url.startsWith('/')) return `${newsSiteOrigin()}${url}`;
+  return `${newsSiteClient()}/${url.replace(/^\//, '')}`;
 }
 
 function formatNewsDate(iso: string): string {
@@ -13515,7 +13977,7 @@ async function openModalNews(postId: string): Promise<void> {
   bindNewsContentLinks(desc);
 
   if (openBtn) {
-    openBtn.onclick = () => void api?.openExternal(`${NEWS_SITE_CLIENT}/news/${encodeURIComponent(post.id)}`);
+    openBtn.onclick = () => void api?.openExternal(`${newsSiteClient()}/news/${encodeURIComponent(post.id)}`);
   }
 }
 
@@ -13524,6 +13986,9 @@ document.getElementById('news-refresh-btn')?.addEventListener('click', () => voi
 
 /* ── Modal: Mod Details ── */
 let detailsProjectId: string = '';
+let detailsProjectType = 'mod';
+let detailsProjectSource = '';
+let detailsProjectUrl = '';
 let modDetailsTab: 'desc' | 'shots' = 'desc';
 
 type ModGalleryItem = { url: string; thumb?: string; title?: string };
@@ -13664,6 +14129,9 @@ function setupModDetailsTabs(hasShots: boolean): void {
 
 async function openModalDetails(projectId: string): Promise<void> {
   detailsProjectId = projectId;
+  detailsProjectType = 'mod';
+  detailsProjectSource = '';
+  detailsProjectUrl = '';
   const icon = document.getElementById('modal-mod-icon') as HTMLImageElement;
   const title = document.getElementById('modal-mod-title');
   const typeEl = document.getElementById('modal-mod-type');
@@ -13718,6 +14186,9 @@ async function openModalDetails(projectId: string): Promise<void> {
     const label = urlBtn.querySelector('span');
     if (label) label.textContent = isCf ? t('btn.openInCurseforge') : t('btn.openInModrinth');
     urlBtn.onclick = () => api?.openExternal(projUrl);
+    detailsProjectType = String(project.project_type || 'mod');
+    detailsProjectSource = isCf ? 'curseforge' : 'modrinth';
+    detailsProjectUrl = projUrl;
   }
   if (dlBtn) {
     dlBtn.onclick = () => {
@@ -15724,7 +16195,11 @@ document.getElementById('modal-mod-ask-agent')?.addEventListener('click', () => 
   const title = document.getElementById('modal-mod-title')?.textContent?.trim() || detailsProjectId || '';
   if (!detailsProjectId) return;
   closeModal('modal-mod-details');
-  askAgentAboutMod(getAiUiHost(), title, detailsProjectId);
+  askAgentAboutMod(getAiUiHost(), title, detailsProjectId, {
+    type: detailsProjectType,
+    source: detailsProjectSource,
+    url: detailsProjectUrl,
+  });
 });
 
 // Import
@@ -15882,6 +16357,10 @@ const AI_TOOL_LABELS: Record<string, string> = {
   get_launcher_info: 'Сводка лаунчера',
   web_search: 'Инструмент поиска',
   fetch_url: 'Чтение страницы',
+  lookup_plugin: 'Документация плагина',
+  play_command: 'Команда в игре',
+  scan_configs: 'Ключи конфигов',
+  ask_user_form: 'Форма вопроса',
   list_hosted_servers: 'Свои серверы',
   create_hosted_server: 'Создание сервера',
   update_hosted_server: 'Настройки сервера',
@@ -16027,7 +16506,7 @@ function formatAiChatError(result: { error?: any; code?: string; reason?: string
 
 function handleAiAccessDenied(): void {
   aiAccessOk = false;
-  showAiAccessDeniedModal();
+  window.dispatchEvent(new CustomEvent('uagent-access'));
 }
 
 async function refreshAiAccessStatus(): Promise<void> {
@@ -16039,10 +16518,15 @@ async function refreshAiAccessStatus(): Promise<void> {
   try {
     const status = await api?.aiStatus?.();
     aiConfigured = status?.configured !== false;
-    aiAccessOk = Boolean(status?.access);
+    const reason = String(status?.reason || '');
+    if (status?.access) aiAccessOk = true;
+    else if (reason === 'access_denied') aiAccessOk = false;
+    else if (aiAccessOk == null && !status?.error && reason !== 'missing_auth' && reason !== 'auth_unavailable') {
+      aiAccessOk = false;
+    }
+    window.dispatchEvent(new CustomEvent('uagent-access', { detail: status || null }));
   } catch {
-    aiConfigured = false;
-    aiAccessOk = false;
+    if (aiAccessOk == null) aiAccessOk = false;
   }
 }
 
@@ -16719,7 +17203,12 @@ function getAiUiHost(): AiUiHost {
       if (b) void openModalBuild(b);
     },
     sendPrompt: (text) => {
-      void sendAiMessage(text);
+      if (!isAiFeatureEnabled()) {
+        showAiAccessDeniedModal();
+        return;
+      }
+      switchTab('ai');
+      void askUAgent(text);
     },
     switchToAiTab: () => {
       switchTab('ai');
@@ -17410,6 +17899,22 @@ function extractModsFromToolResult(result: unknown): AiModCard[] {
     }));
 }
 
+function aiSessionPreview(session: AiSession): string {
+  const last = [...session.messages].reverse().find((m) => m.role === 'user' || m.role === 'assistant');
+  const text = String(last?.content || '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'Только что создан';
+  return text.length > 42 ? `${text.slice(0, 42)}…` : text;
+}
+
+function syncUagAbout(session: AiSession | null): void {
+  const name = document.getElementById('uag-about-name');
+  if (name && document.activeElement !== name) name.textContent = session?.title || 'UAgent';
+  const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
+  if (input && document.activeElement !== input) {
+    input.placeholder = `Сообщение для ${session?.title || 'UAgent'}`;
+  }
+}
+
 function renderAiSessionList(): void {
   const list = document.getElementById('ai-chat-list');
   if (!list) return;
@@ -17433,6 +17938,7 @@ function renderAiSessionList(): void {
     if (group.id && aiFolderCollapsed.has(group.id) && !q) folder.classList.add('is-collapsed');
     const head = document.createElement('div');
     head.className = 'ai-folder__head';
+    if (!group.id) head.hidden = true;
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'ai-folder__name';
@@ -17481,14 +17987,25 @@ function renderAiSessionList(): void {
       row.className = `ai-session${session.id === aiActiveId ? ' active' : ''}`;
       row.dataset.id = session.id;
       const busy = session.id === aiBusySessionId;
+      const preview = aiSessionPreview(session);
       row.innerHTML = `
-        ${busy
-          ? '<span class="ai-pixel is-running" aria-hidden="true"></span>'
-          : `<img class="ai-session__ico" src="../../assets/icons/aiPanel/chat.svg" width="14" height="14" alt="" aria-hidden="true">`}
-        <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
-        <span class="ai-session__time">${escapeAiHtml(formatAiRelative(session.updatedAt))}</span>
+        <span class="uag-face" aria-hidden="true"></span>
+        <span class="ai-session__main">
+          <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
+          <span class="ai-session__time">${escapeAiHtml(busy ? 'Работает' : preview)}</span>
+        </span>
+        <span class="uag-row__x" role="button" aria-label="Закрыть">
+          <img src="../../assets/icons/uagent/closeAgentTab.svg" width="12" height="12" alt="">
+        </span>
       `;
-      row.addEventListener('click', () => selectAiSession(session.id));
+      row.addEventListener('click', (event) => {
+        if ((event.target as HTMLElement).closest('.uag-row__x')) {
+          event.stopPropagation();
+          deleteAiSession(session.id);
+          return;
+        }
+        selectAiSession(session.id);
+      });
       chats.appendChild(row);
     }
     folder.appendChild(chats);
@@ -17790,6 +18307,7 @@ function renderAiConversation(): void {
   }
   updateAiBuildChip(session);
   updateAiContextRing(session);
+  syncUagAbout(session);
   refreshAiShellUi(session);
   renderAiUndoChip(getAiUiHost());
 
@@ -18976,23 +19494,11 @@ async function runPixiOp(op: Record<string, unknown>): Promise<string> {
       })),
     });
   }
-  if (kind === 'launch') {
-    const session = ensureTelegramAiSession();
-    const build = savedBuilds.find((item) => item.id === String(op.buildId || ''));
-    if (!build) return 'Сборка не найдена в клиенте.';
-    return performLaunch(session, build, {
-      viaTelegram: true,
-      skipConfirm: op.confirmed === true,
-      showLine: visibleUserText(String(op.show || `Запустить сборку ${formatBuildChoice(build)}`)),
-    });
-  }
-  if (kind === 'agent') {
-    ensureTelegramAiSession();
-    const show = visibleUserText(String(op.show || ''));
-    const hint = String(op.hint || '');
-    await sendAiMessage(show, hint);
-    const session = aiSessions.find((item) => item.source === 'telegram') || activeAiSession();
-    return collectTelegramReply(session);
+  if (kind === 'launch' || kind === 'agent') {
+    const show = kind === 'launch'
+      ? String(op.show || op.buildId || '').trim() || 'Запусти сборку'
+      : visibleUserText(String(op.show || ''));
+    return askUAgent(show);
   }
   return 'Неизвестная команда клиента.';
 }
@@ -19167,6 +19673,75 @@ function bindAiActionBridge(): void {
           result = { ok: true };
         } else if (action === 'launch_updater') {
           result = api.launchUpdater ? await api.launchUpdater() : { success: false, error: 'unavailable' };
+        } else if (action === 'client_overview') {
+          result = {
+            ok: true,
+            version: appVersion || null,
+            account: currentAccount
+              ? {
+                  name: (currentAccount as { name?: string; username?: string }).name
+                    || (currentAccount as { username?: string }).username
+                    || null,
+                  uuid: (currentAccount as { uuid?: string }).uuid || null,
+                }
+              : null,
+            game: {
+              running: Boolean(runningBuild),
+              buildId: runningBuild?.id || null,
+              name: runningBuild?.name || null,
+              gameVersion: runningBuild?.gameVersion || null,
+              loader: runningBuild?.loader || null,
+            },
+            builds: savedBuilds.slice(0, 40).map((build) => ({
+              id: build.id,
+              name: build.name,
+              gameVersion: build.gameVersion,
+              loader: build.loader,
+            })),
+            servers: savedServers.slice(0, 30).map((server) => ({
+              name: server.name,
+              address: (server as { address?: string; ip?: string }).address
+                || (server as { ip?: string }).ip
+                || '',
+            })),
+          };
+        } else if (action === 'open_launcher_section') {
+          const section = String(payload.section || '');
+          const allowed = new Set(['home', 'news', 'builds', 'mods', 'servers', 'host', 'skins', 'messenger', 'ai']);
+          if (!allowed.has(section)) result = { ok: false, error: 'unknown_section' };
+          else {
+            switchTab(section);
+            result = { ok: true, section };
+          }
+        } else if (action === 'open_settings') {
+          const tab = String(payload.tab || 'appearance');
+          const allowed = new Set(['appearance', 'launch', 'mods', 'interface', 'gamepad', 'agent', 'updates', 'debug', 'bug', 'about']);
+          if (!allowed.has(tab)) result = { ok: false, error: 'unknown_tab' };
+          else {
+            openModal('modal-settings');
+            queueMicrotask(() => {
+              document.querySelector<HTMLElement>(`[data-settings-tab="${tab}"]`)?.click();
+            });
+            result = { ok: true, tab };
+          }
+        } else if (action === 'list_bug_tags') {
+          result = api.bugsListTags ? await api.bugsListTags() : { ok: false, error: 'unavailable' };
+        } else if (action === 'create_bug_report') {
+          const title = String(payload.title || '').trim();
+          const body = String(payload.body || '').trim();
+          if (!title || !body) result = { ok: false, error: 'title_and_body_required' };
+          else if (!api.bugsCreate) result = { ok: false, error: 'unavailable' };
+          else {
+            result = await api.bugsCreate({
+              title,
+              body,
+              kind: String(payload.kind || 'bug'),
+              steps: typeof payload.steps === 'string' ? payload.steps : '',
+              expected: typeof payload.expected === 'string' ? payload.expected : '',
+              actual: typeof payload.actual === 'string' ? payload.actual : '',
+              tags: Array.isArray(payload.tags) ? payload.tags.map((tag) => String(tag)) : [],
+            });
+          }
         } else if (action === 'switch_account') {
           const uuid = String(payload.uuid || '').trim();
           const username = String(payload.username || '').trim();
@@ -19262,62 +19837,22 @@ function ensureTelegramAiSession(): AiSession {
   return session;
 }
 
+function telegramUserText(raw: string): string {
+  const text = String(raw || '').trim();
+  if (!text.startsWith('@@pixi ')) return text;
+  try {
+    const op = JSON.parse(text.slice('@@pixi '.length)) as Record<string, unknown>;
+    return String(op.show || op.label || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 async function runTelegramAgentJob(job: { id: string; text: string }): Promise<void> {
   showTgAgentToast(5000);
-  const text = String(job.text || '').trim();
-  if (text.startsWith('@@pixi ')) {
-    let op: Record<string, unknown> = {};
-    try {
-      op = JSON.parse(text.slice('@@pixi '.length));
-    } catch {
-      await agentBridgeRequest('/result', 'POST', { id: job.id, reply: 'Не понял команду клиента.' });
-      return;
-    }
-    if (aiBusy) {
-      await agentBridgeRequest('/result', 'POST', {
-        id: job.id,
-        reply: 'Агент клиента сейчас занят другим запросом. Повтори чуть позже.',
-      });
-      return;
-    }
-    const kind = String(op.op || '');
-    if (kind === 'agent') {
-      if (aiAccessOk == null) await refreshAiAccessStatus();
-      if (!usingCustomAi() && aiAccessOk === false) {
-        await agentBridgeRequest('/result', 'POST', {
-          id: job.id,
-          reply: 'У этого аккаунта нет доступа к агенту в клиенте.',
-        });
-        return;
-      }
-    }
-    tgActiveJobId = String(job.id || '');
-    if (kind === 'launch') {
-      aiBusy = true;
-      setAiBusySession(ensureTelegramAiSession().id);
-    }
-    try {
-      const reply = await runPixiOp(op);
-      await agentBridgeRequest('/result', 'POST', { id: job.id, reply });
-    } finally {
-      tgActiveJobId = '';
-      if (kind === 'launch') {
-        aiBusy = false;
-        setAiBusySession(null);
-        setAiAgentStatus('idle');
-      }
-    }
-    return;
-  }
+  const text = telegramUserText(job.text);
   if (!text) {
     await agentBridgeRequest('/result', 'POST', { id: job.id, reply: 'Пустой запрос.' });
-    return;
-  }
-  if (aiBusy) {
-    await agentBridgeRequest('/result', 'POST', {
-      id: job.id,
-      reply: 'Агент клиента сейчас занят другим запросом. Повтори чуть позже.',
-    });
     return;
   }
   if (aiAccessOk == null) await refreshAiAccessStatus();
@@ -19328,29 +19863,16 @@ async function runTelegramAgentJob(job: { id: string; text: string }): Promise<v
     });
     return;
   }
-  showTgAgentToast(1800);
-  ensureTelegramAiSession();
   tgActiveJobId = String(job.id || '');
   try {
-    await sendAiMessage(text);
+    const reply = await askUAgent(text, { remote: true });
+    await agentBridgeRequest('/result', 'POST', {
+      id: job.id,
+      reply: String(reply || '').trim() || 'Агент завершил шаг без текста.',
+    });
   } finally {
     tgActiveJobId = '';
   }
-  const session = aiSessions.find((s) => s.source === 'telegram') || activeAiSession();
-  const msgs = session?.messages || [];
-  let lastUser = -1;
-  for (let i = msgs.length - 1; i >= 0; i -= 1) {
-    if (msgs[i].role === 'user') {
-      lastUser = i;
-      break;
-    }
-  }
-  const parts = msgs
-    .slice(lastUser + 1)
-    .filter((m) => m.role === 'assistant' && m.content)
-    .map((m) => String(m.content));
-  const reply = parts.join('\n\n').trim() || 'Агент завершил шаг без текста.';
-  await agentBridgeRequest('/result', 'POST', { id: job.id, reply });
 }
 
 async function pollAgentBridge(): Promise<void> {
@@ -19380,6 +19902,7 @@ function armTelegramFootTimer(ms: number): void {
 function startAgentTelegramBridge(): void {
   if (agentBridgeStarted) return;
   agentBridgeStarted = true;
+  setUAgentRemoteConfirm((text) => askTelegramConfirm(text));
   window.setInterval(() => {
     void agentBridgeRequest('/heartbeat', 'POST', {});
   }, 8000);
@@ -19769,15 +20292,22 @@ async function runAiSuggest(id: string): Promise<void> {
 
 function initAiAssistant(): void {
   if (aiInited) return;
+  aiInited = true;
+  bindAiActionBridge();
+  bindTelegramLinkModal();
+  startAgentTelegramBridge();
+  setUAgentTelegram(() => {
+    void openTelegramLinkModal();
+  });
+  try {
+    mountUAgent();
+  } catch (err) {
+    console.error('[launcher] агент', err);
+  }
   const form = document.getElementById('ai-form') as HTMLFormElement | null;
   const input = document.getElementById('ai-input') as HTMLTextAreaElement | null;
   const newBtn = document.getElementById('ai-new-chat');
   if (!form || !input) return;
-  aiInited = true;
-
-  bindAiActionBridge();
-  bindTelegramLinkModal();
-  startAgentTelegramBridge();
 
   loadAiSessions();
   renderAiEmptyScenarios(getAiUiHost());
@@ -20083,6 +20613,53 @@ function initAiAssistant(): void {
     closeAiPopovers();
   });
 
+  document.getElementById('uag-about-delete')?.addEventListener('click', () => {
+    document.getElementById('ai-menu-delete')?.click();
+  });
+  document.getElementById('uag-about-copy')?.addEventListener('click', async () => {
+    const session = activeAiSession();
+    if (!session) return;
+    try {
+      await navigator.clipboard.writeText(session.id);
+    } catch {
+      /* буфер может быть недоступен */
+    }
+  });
+  document.getElementById('uag-about-close')?.addEventListener('click', () => {
+    document.querySelector('.ai-shell')?.classList.toggle('is-about-closed');
+  });
+  document.getElementById('uag-about-edit')?.addEventListener('click', () => {
+    const session = activeAiSession();
+    const name = document.getElementById('uag-about-name');
+    if (!session || !name || name.querySelector('input')) return;
+    const input = document.createElement('input');
+    input.className = 'uag-about__input';
+    input.value = session.title;
+    name.replaceChildren(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = () => {
+      if (done) return;
+      done = true;
+      const next = input.value.replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (next) session.title = next;
+      saveAiSessions();
+      renderAiSessionList();
+      renderAiConversation();
+    };
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commit();
+      } else if (event.key === 'Escape') {
+        done = true;
+        syncUagAbout(session);
+      }
+    });
+    input.addEventListener('blur', commit);
+  });
+
   document.getElementById('ai-menu-clear')?.addEventListener('click', () => {
     const session = activeAiSession();
     if (!session) return;
@@ -20190,11 +20767,7 @@ function bindAiAccessSettingsUi(): void {
       const on = toggle.checked;
       localStorage.setItem(AI_ENABLED_LS_KEY, String(on));
       applyAiTabVisibility();
-      if (on) {
-        void refreshAiAccessStatus().then(() => {
-          if (!aiAccessOk) showAiAccessDeniedModal();
-        });
-      }
+      if (on) void refreshAiAccessStatus();
     });
   }
 
@@ -20242,4 +20815,6 @@ function bindAiAccessSettingsUi(): void {
 /* ===== START ===== */
 
 // AI инициализируем после локалей (см. init → setLang), иначе empty-сценарии получают сырые ключи
-void init();
+void init().catch((err) => {
+  console.error('[launcher] старт', err);
+});

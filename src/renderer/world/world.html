@@ -66,13 +66,17 @@
     #embed-close {
       pointer-events: auto;
       width: 32px; height: 32px;
-      border: 0; border-radius: 8px;
+      padding: 0;
+      border: 0; border-radius: 50%;
       background: rgba(255,255,255,0.08);
       color: rgba(255,255,255,0.85);
       cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
+      display: grid;
+      place-items: center;
       flex-shrink: 0;
+      line-height: 0;
     }
+    #embed-close svg { display: block; width: 12px; height: 12px; }
     #embed-close:hover { background: rgba(255,255,255,0.16); color: #fff; }
 
     #viewer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
@@ -112,7 +116,8 @@
     </div>
     <button type="button" id="embed-close" aria-label="Закрыть" title="Закрыть">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-        <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/>
+        <path d="M1.06066 12C0.474874 12 0 11.5251 0 10.9393C0 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 0 10.9393 0C11.5251 0 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/>
       </svg>
     </button>
   </div>

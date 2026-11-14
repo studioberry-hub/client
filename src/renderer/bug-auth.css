@@ -1,0 +1,255 @@
+/* Модалка входа в баг-трекер и форма отчёта в настройках. Цвета — с макета AuthRequest. */
+
+#modal-bug-auth {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+#modal-bug-auth.hidden { display: none; }
+
+.bug-auth {
+  box-sizing: border-box;
+  width: 400px;
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  background: #202020;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  color: #fff;
+  font-family: Nekst, Arial, sans-serif;
+}
+
+.bug-auth__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+}
+
+.bug-auth__logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background:
+    linear-gradient(#fff09c, #fff09c) 4px 4px / 11px 11px no-repeat,
+    linear-gradient(#fff09c, #fff09c) 15px 15px / 5px 5px no-repeat;
+}
+
+.bug-auth__name { flex: 1; font-size: 16px; }
+
+.bug-auth .modal-close {
+  position: static;
+}
+
+.bug-auth h2 {
+  margin: 10px 0 0;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.bug-auth h2 b { color: #398aff; font-weight: 400; }
+
+.bug-auth__lead {
+  margin: 8px 0 6px;
+  font-size: 14px;
+}
+
+.bug-auth__card {
+  display: flex;
+  gap: 10px;
+  min-height: 84px;
+  margin-top: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.bug-auth__card--ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bug-auth__ico {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  padding-top: 2px;
+}
+
+.bug-auth__ico svg { display: block; }
+
+.bug-auth__card b,
+.bug-auth__card span {
+  display: block;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.bug-auth__card span { color: rgba(255, 255, 255, 0.95); }
+.bug-auth__card span.is-ok { color: #7bd4b7; }
+
+.bug-auth__err:empty { display: none; }
+
+.bug-auth__err:not(:empty) {
+  min-height: 18px;
+  margin: 6px 0 0;
+  color: #ff8d8d;
+  font-size: 13px;
+}
+
+.bug-auth__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.bug-form { padding-bottom: 12px; }
+
+.bug-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+}
+
+.bug-field input,
+.bug-field textarea,
+.bug-field select {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-content) 86%, #fff);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  resize: vertical;
+  color-scheme: dark;
+  transition: outline-color 0.12s;
+}
+
+.bug-select-wrap {
+  width: 100%;
+}
+
+.bug-select-wrap .stngs-select-btn {
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+.bug-select-wrap .stngs-select-menu {
+  left: 0;
+  right: 0;
+  min-width: 0;
+  max-width: none;
+  z-index: 40;
+}
+.bug-field input:focus,
+.bug-field textarea:focus,
+.bug-field select:focus {
+  outline-color: var(--accent);
+}
+
+.bug-field input::placeholder,
+.bug-field textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.bug-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-content) 86%, #fff);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  cursor: pointer;
+}
+
+.bug-file:focus-within { outline-color: var(--accent); }
+
+.bug-file input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.bug-file__btn {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 13px;
+}
+
+.bug-file__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+}
+
+.bug-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bug-tag {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--tag, var(--bg-content));
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.45;
+}
+
+.bug-tag.is-on { opacity: 1; }
+
+.bug-form-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.bug-note {
+  min-height: 18px;
+  padding: 6px 0 2px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.bug-sent__lead {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+  line-height: 1.4;
+}

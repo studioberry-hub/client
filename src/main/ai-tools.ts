@@ -5,7 +5,9 @@ import { BrowserWindow, ipcMain, shell } from 'electron';
 import { getInstanceRoot, getInstancesDir } from './launcher';
 import { deleteBuildInstance, getLauncherDataDir } from './paths';
 import { getExtendedAiTools } from './ai-tools-extended';
+import { getUAgentMcpTools } from './uagent-mcp';
 import { agentHostedAction } from './hostedServers';
+import { aroundText, applyTextReplace, fragmentDiff, fsProblem, listEntries, searchFiles, viewText } from './file-view';
 import { callRendererAiAction } from './ai-action-bridge';
 import {
   collectInstalledProjectIds,
@@ -491,14 +493,252 @@ async function duckDuckGoInstant(query: string): Promise<{
   };
 }
 
-async function duckDuckGoHtmlSearch(query: string, limit: number): Promise<WebHit[]> {
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+function parseDdgLite(html: string, limit: number): WebHit[] {
+  const hits: WebHit[] = [];
+  const seen = new Set<string>();
+  const re = /<a[^>]*class=['"]result-link['"][^>]*href=['"]([^'"]+)['"][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) && hits.length < limit) {
+    const url = unwrapDdgRedirect(decodeHtmlEntities(match[1] || ''));
+    if (!isHttpUrl(url) || /duckduckgo\.com/i.test(url) || seen.has(url)) continue;
+    const title = stripHtmlToText(match[2] || '').slice(0, 180);
+    if (!title) continue;
+    seen.add(url);
+    hits.push({ title, url, snippet: '' });
+  }
+  return hits;
+}
+
+function parseLooseLinks(html: string, limit: number, skip: RegExp): WebHit[] {
+  const hits: WebHit[] = [];
+  const seen = new Set<string>();
+  const re = /<a[^>]+href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) && hits.length < limit) {
+    const url = unwrapDdgRedirect(decodeHtmlEntities(match[1] || ''));
+    if (!isHttpUrl(url) || skip.test(url) || seen.has(url)) continue;
+    const title = stripHtmlToText(match[2] || '').slice(0, 180);
+    if (title.length < 3) continue;
+    seen.add(url);
+    hits.push({ title, url, snippet: '' });
+  }
+  return hits;
+}
+
+async function searchPage(url: string, limit: number, skip: RegExp): Promise<WebHit[]> {
   const res = await fetchTextLimited(url, {
     accept: 'text/html',
     headers: { 'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8' },
   });
   if (!res.ok) throw new Error(`search HTTP ${res.status}`);
-  return parseDdgHtmlResults(res.text, limit);
+  const hits = parseDdgHtmlResults(res.text, limit);
+  if (hits.length) return hits;
+  const lite = parseDdgLite(res.text, limit);
+  if (lite.length) return lite;
+  return parseLooseLinks(res.text, limit, skip);
+}
+
+async function duckDuckGoHtmlSearch(query: string, limit: number): Promise<WebHit[]> {
+  const pages = [
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`,
+    `https://www.mojeek.com/search?q=${encodeURIComponent(query)}`,
+  ];
+  const settled = await Promise.all(pages.map((url) => searchPage(url, limit, /duckduckgo\.com|mojeek\.com/i).catch(() => [] as WebHit[])));
+  const hits = settled.find((rows) => rows.length);
+  if (hits?.length) return hits;
+  throw new Error('поиск не открылся');
+}
+
+async function wikiHits(query: string, limit: number): Promise<WebHit[]> {
+  const url = `https://ru.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=${limit}&namespace=0&format=json`;
+  const res = await fetchTextLimited(url, { accept: 'application/json' });
+  if (!res.ok) return [];
+  const data = JSON.parse(res.text);
+  const titles: string[] = Array.isArray(data?.[1]) ? data[1] : [];
+  const snippets: string[] = Array.isArray(data?.[2]) ? data[2] : [];
+  const urls: string[] = Array.isArray(data?.[3]) ? data[3] : [];
+  return titles.slice(0, limit).map((title, index) => ({
+    title: String(title),
+    url: String(urls[index] || ''),
+    snippet: String(snippets[index] || '').slice(0, 320),
+  })).filter((hit) => isHttpUrl(hit.url));
+}
+
+async function catalogHits(query: string, limit: number): Promise<WebHit[]> {
+  const hits: WebHit[] = [];
+  const pushModrinth = async (type: string) => {
+    const rows = await modrinthSearch({ query, type, limit });
+    for (const row of rows) {
+      const card = mapModCard(row);
+      if (!card.slug) continue;
+      hits.push({
+        title: String(card.title || card.slug),
+        url: `https://modrinth.com/${type === 'plugin' ? 'plugin' : 'mod'}/${card.slug}`,
+        snippet: [card.description, card.loaders?.slice?.(0, 4)?.join?.(', '), card.versions?.slice?.(-3)?.join?.(', ')].filter(Boolean).join(' · ').slice(0, 320),
+      });
+    }
+  };
+  await Promise.all([
+    pushModrinth('plugin').catch(() => undefined),
+    pushModrinth('mod').catch(() => undefined),
+  ]);
+  try {
+    const res = await fetchTextLimited(`https://hangar.papermc.io/api/v1/projects?q=${encodeURIComponent(query)}&limit=${limit}`, { accept: 'application/json' });
+    if (res.ok) {
+      const data = JSON.parse(res.text);
+      const rows = Array.isArray(data?.result) ? data.result : [];
+      for (const row of rows) {
+        const owner = row?.namespace?.owner || row?.owner;
+        const slug = row?.namespace?.slug || row?.slug;
+        if (!owner || !slug) continue;
+        hits.push({
+          title: String(row?.name || slug),
+          url: `https://hangar.papermc.io/${owner}/${slug}`,
+          snippet: String(row?.description || '').slice(0, 320),
+        });
+      }
+    }
+  } catch {
+    /* Hangar необязателен, если ответили другие каталоги */
+  }
+  try {
+    const res = await fetchTextLimited(`https://api.spiget.org/v2/search/resources/${encodeURIComponent(query)}?size=${limit}&field=name&sort=-downloads`, { accept: 'application/json' });
+    if (res.ok) {
+      const rows = JSON.parse(res.text);
+      if (Array.isArray(rows)) {
+        for (const row of rows) {
+          if (!row?.id || !row?.name) continue;
+          hits.push({
+            title: String(row.name),
+            url: `https://www.spigotmc.org/resources/${row.id}`,
+            snippet: String(row.tag || '').replace(/<[^>]+>/g, ' ').slice(0, 320),
+          });
+        }
+      }
+    }
+  } catch {
+    /* Spigot необязателен */
+  }
+  return hits.slice(0, limit);
+}
+
+async function collectWebHits(query: string, limit: number): Promise<{ results: WebHit[]; notes: string[] }> {
+  const notes: string[] = [];
+  const results: WebHit[] = [];
+  const push = (hits: WebHit[]) => {
+    for (const hit of hits) {
+      if (results.length >= limit || !hit.url || results.some((row) => row.url === hit.url)) continue;
+      results.push(hit);
+    }
+  };
+  await Promise.all([
+    duckDuckGoHtmlSearch(query, limit).then(push).catch((err: any) => notes.push(String(err?.message || 'поиск не открылся'))),
+    wikiHits(query, Math.min(3, limit)).then(push).catch(() => undefined),
+    catalogHits(query, limit).then(push).catch(() => undefined),
+  ]);
+  return { results: results.slice(0, limit), notes };
+}
+
+const PLUGIN_GUIDES: Array<{ test: RegExp; file: string; note: string }> = [
+  { test: /essentials/i, file: 'plugins/Essentials/config.yml', note: 'EssentialsX. Сначала прочитай config.yml. Меняй только нужные ключи уже существующего файла: chat, homes, tpa, spawn, kits. После правки перезапусти сервер или выполни ess reload, если команда есть. Версия плагина должна поддерживать gameVersion.' },
+  { test: /luckperms/i, file: 'plugins/LuckPerms/config.yml', note: 'LuckPerms настраивается командами, не правкой yaml: lp user <ник> permission set <право> true, lp group <группа> parent add <родитель>, lp editor. В config.yml трогай только storage-method, если об этом прямо попросили.' },
+  { test: /worldedit/i, file: 'plugins/WorldEdit/config.yml', note: 'WorldEdit. Лимиты блоков лежат в config.yml. Права worldedit.* выдаются через LuckPerms командой lp, а не записью в файл.' },
+  { test: /worldguard/i, file: 'plugins/WorldGuard/config.yml', note: 'WorldGuard. Регионы создаются командами /rg define, /rg addmember и /rg flag, пока сервер запущен. regions.yml руками не переписывай.' },
+  { test: /coreprotect/i, file: 'plugins/CoreProtect/config.yml', note: 'CoreProtect. В config.yml выбирается sqlite или mysql. Откат делается командой /co rollback, не правкой базы.' },
+  { test: /viaversion|viabackwards|viarewind/i, file: 'plugins/ViaVersion/config.yml', note: 'ViaVersion ставится на сервер новее клиента. Обычно конфиг не нужен. Бери сборку, в чьих версиях есть gameVersion сервера.' },
+  { test: /geyser/i, file: 'plugins/Geyser-Spigot/config.yml', note: 'Geyser. После первого запуска проверь bedrock.port и auth-type. Порт Bedrock не должен совпадать с Java-портом. Вход без Microsoft-аккаунта требует Floodgate той же линейки.' },
+  { test: /floodgate/i, file: 'plugins/floodgate/config.yml', note: 'Floodgate. username-prefix по умолчанию точка. Файл key.pem не перезаписывай.' },
+  { test: /placeholderapi|\bpapi\b/i, file: 'plugins/PlaceholderAPI/config.yml', note: 'PlaceholderAPI почти без конфига. Расширения ставятся командами /papi ecloud download <имя> и /papi reload.' },
+  { test: /\bspark\b/i, file: 'plugins/spark/config.json', note: 'spark настраивать файлом обычно не нужно. Профиль снимается командами /spark profiler, /spark tps и /spark health.' },
+  { test: /voicechat|voice chat/i, file: 'plugins/voicechat/voicechat-server.properties', note: 'Simple Voice Chat. port должен быть свободен. voice_host — публичный адрес для игроков не из локальной сети. Версия мода у игрока должна совпадать с плагином.' },
+  { test: /\btab\b|tablist/i, file: 'plugins/TAB/config.yml', note: 'TAB. Шапка и подвал — header и footer в plugins/TAB/config.yml. Найди файл, прочитай его и замени строки через edit_hosted_file. После записи выполни /tab reload, иначе в игре останется старый текст.' },
+  { test: /skript/i, file: 'plugins/Skript/scripts', note: 'Skript. Новый скрипт — write_hosted_file в plugins/Skript/scripts/*.sk, правку существующего — edit_hosted_file. Включай командой /sk reload. Не клади .sk прямо в plugins.' },
+  { test: /motd|serverlist|miniemotd|advancedserverlist/i, file: 'plugins', note: 'MOTD на Paper ставят Custom MOTD, MiniMOTD или AdvancedServerList. Текст правь в их config.yml после первого запуска, когда файл уже появился.' },
+];
+
+function readableDocument(raw: string, contentType: string): string {
+  let text = raw;
+  const ct = contentType.toLowerCase();
+  if (ct.includes('html') || /<html[\s>]/i.test(text) || /<body[\s>]/i.test(text)) {
+    text = text.replace(/<(script|style|noscript|svg|nav|footer|header|aside)[\s\S]*?<\/\1>/gi, ' ');
+    text = stripHtmlToText(text);
+  } else if (ct.includes('json')) {
+    try {
+      text = JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+      text = text.replace(/\r\n/g, '\n').trim();
+    }
+  } else text = text.replace(/\r\n/g, '\n').trim();
+  return text;
+}
+
+function readableUrls(url: string): string[] {
+  const out: string[] = [];
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parsed.hostname === 'github.com' && parts.length >= 4 && parts[2] === 'wiki') {
+      const page = decodeURIComponent(parts.slice(3).join('/')) || 'Home';
+      out.push(`https://raw.githubusercontent.com/wiki/${parts[0]}/${parts[1]}/${page}.md`);
+    }
+    if (parsed.hostname === 'github.com' && parts.length >= 5 && parts[2] === 'blob') {
+      out.push(`https://raw.githubusercontent.com/${parts[0]}/${parts[1]}/${parts[3]}/${parts.slice(4).join('/')}`);
+    }
+  } catch {
+    /* остаётся исходный адрес */
+  }
+  out.push(url);
+  return out;
+}
+
+function pageWindow(text: string, query: string, offset: number, limit: number): { text: string; truncated: boolean; note: string; offset?: number; nextOffset?: number; total?: number; matches?: number } {
+  const norm = text.replace(/\r\n/g, '\n').trim();
+  const needle = query.trim().toLowerCase();
+  if (needle) {
+    const windows: string[] = [];
+    let from = 0;
+    let count = 0;
+    while (windows.length < 6) {
+      const at = norm.toLowerCase().indexOf(needle, from);
+      if (at < 0) break;
+      count += 1;
+      const start = Math.max(0, at - 320);
+      const end = Math.min(norm.length, at + needle.length + 900);
+      windows.push(norm.slice(start, end).trim());
+      from = at + Math.max(1, needle.length);
+    }
+    if (!windows.length) {
+      return {
+        text: '',
+        truncated: false,
+        matches: 0,
+        total: norm.length,
+        note: 'Этой строки на странице нет. Смени query или читай документ с offset 0.',
+      };
+    }
+    return {
+      text: windows.join('\n\n---\n\n'),
+      truncated: false,
+      matches: count,
+      total: norm.length,
+      note: 'Куски страницы вокруг query, не её начало. Если факта нет, уточни query.',
+    };
+  }
+  const start = Math.max(0, Math.min(offset, norm.length));
+  const slice = norm.slice(start, start + limit);
+  const next = start + slice.length;
+  const more = next < norm.length;
+  return {
+    text: slice,
+    truncated: more,
+    offset: start,
+    nextOffset: more ? next : undefined,
+    total: norm.length,
+    note: more
+      ? `Показаны символы ${start}–${next} из ${norm.length}. Продолжение: тот же url и offset ${next}. Точную строку быстрее найти через query.`
+      : 'Страница прочитана до конца.',
+  };
 }
 
 function listDirFiles(dir: string, exts: string[]): { name: string; size: number; enabled: boolean }[] {
@@ -617,7 +857,7 @@ const TOOLS: Record<string, ToolEntry> = {
       function: {
         name: 'create_build',
         description:
-          'Создать новую сборку в лаунчере. Обязательны name и gameVersion; loader: vanilla|fabric|forge|quilt|neoforge.',
+          'Создать сборку в лаунчере. Достаточно name, gameVersion и loader. Версию загрузчика инструмент подберёт сам.',
         parameters: {
           type: 'object',
           properties: {
@@ -638,9 +878,13 @@ const TOOLS: Record<string, ToolEntry> = {
       const gameVersion = asString(args.gameVersion);
       if (!name || !gameVersion) return { error: 'name_and_gameVersion_required' };
       const loader = asString(args.loader, 'vanilla').toLowerCase() || 'vanilla';
-      const loaderVersion = asString(args.loaderVersion);
+      const known = new Set(['vanilla', 'fabric', 'forge', 'quilt', 'neoforge']);
+      if (!known.has(loader)) return { ok: false, error: 'unknown_loader' };
+      let loaderVersion = asString(args.loaderVersion);
       if (loader !== 'vanilla' && !loaderVersion) {
-        return { error: 'loaderVersion_required_for_modded' };
+        const listed = await listLoaderVersions(loader, gameVersion);
+        loaderVersion = listed.versions?.[0] || '';
+        if (!loaderVersion) return { ok: false, error: listed.error || 'Нет версии загрузчика для этой Minecraft' };
       }
       const id = makeBuildId(name);
       const build: any = {
@@ -957,7 +1201,7 @@ const TOOLS: Record<string, ToolEntry> = {
       type: 'function',
       function: {
         name: 'search_mods',
-        description: 'Поиск модов на Modrinth. Возвращает карточки для UI.',
+        description: 'Поиск модов Modrinth строго под version и loader сборки или сервера. Без них выдача чужая.',
         parameters: {
           type: 'object',
           properties: {
@@ -1699,7 +1943,7 @@ const TOOLS: Record<string, ToolEntry> = {
       type: 'function',
       function: {
         name: 'list_configs',
-        description: 'Конфиги. Если buildId начинается с hs, это файлы своего сервера в plugins/ и config/.',
+        description: 'Текстовые файлы. Если buildId начинается с hs, это файлы своего сервера, включая скрипты. Иначе только config/ сборки; всё дерево — list_instance_files.',
         parameters: {
           type: 'object',
           properties: { buildId: { type: 'string' } },
@@ -1807,7 +2051,7 @@ const TOOLS: Record<string, ToolEntry> = {
       function: {
         name: 'web_search',
         description:
-          'Поиск в интернете (DuckDuckGo). Используй для актуальных фактов, новостей, гайдов и внешних ссылок. ' +
+          'Поиск в интернете. Дальше читай страницу через fetch_url: url из results и query со словами, которые ищешь. ' +
           'Не выдумывай URL — бери их из results. Для модов Modrinth по-прежнему предпочтительны search_mods/get_mod.',
         parameters: {
           type: 'object',
@@ -1824,52 +2068,29 @@ const TOOLS: Record<string, ToolEntry> = {
       const query = asString(args.query);
       if (!query) return { error: 'query_required', results: [] };
       const limit = Math.min(8, Math.max(1, asNumber(args.limit, 5)));
+      const found = await collectWebHits(query, limit);
       const instant = await duckDuckGoInstant(query).catch(() => ({
         abstract: '',
         abstractUrl: '',
         answer: '',
         related: [] as WebHit[],
       }));
-      let results: WebHit[] = [];
-      let source = 'instant';
-      try {
-        results = await duckDuckGoHtmlSearch(query, limit);
-        source = results.length ? 'html+instant' : 'instant';
-      } catch (e: any) {
-        source = 'instant';
-        if (!instant.abstract && !instant.related.length) {
-          return {
-            error: e?.message || 'search_failed',
-            query,
-            results: [],
-          };
-        }
+      let results = found.results;
+      if (!results.length && instant.related.length) results = instant.related.slice(0, limit);
+      if (instant.abstractUrl && instant.abstract && !results.some((row) => row.url === instant.abstractUrl)) {
+        results = [{ title: instant.abstract.slice(0, 100), url: instant.abstractUrl, snippet: instant.abstract }, ...results].slice(0, limit);
       }
-      if (!results.length && instant.related.length) {
-        results = instant.related.slice(0, limit);
-      }
-      if (instant.abstractUrl && instant.abstract && !results.some((r) => r.url === instant.abstractUrl)) {
-        results = [
-          {
-            title: instant.abstract.slice(0, 100) || instant.abstractUrl,
-            url: instant.abstractUrl,
-            snippet: instant.abstract,
-          },
-          ...results,
-        ].slice(0, limit);
+      if (!results.length && !instant.abstract) {
+        return { error: found.notes[0] || 'Поиск ничего не вернул. Переформулируй запрос.', query, results: [] };
       }
       return {
         query,
-        source,
         answer: instant.answer || null,
         abstract: instant.abstract || null,
         abstractUrl: instant.abstractUrl || null,
         results,
         count: results.length,
-        note:
-          results.length || instant.abstract
-            ? 'Опирайся на results/abstract; ссылки только отсюда. Для полного текста страницы — fetch_url.'
-            : 'Пусто. Уточни query или попробуй другой формулировкой.',
+        note: 'Ссылки только из results. Страницу открывай fetch_url с query: слова, которые ищешь. Без query вернётся начало и nextOffset. Не пиши пользователю сырое fetch failed.',
       };
     },
   },
@@ -1881,68 +2102,166 @@ const TOOLS: Record<string, ToolEntry> = {
       function: {
         name: 'fetch_url',
         description:
-          'Скачать и прочитать текстовое содержимое HTTP(S)-страницы (HTML → текст). ' +
-          'Используй после web_search, когда нужен текст конкретной ссылки. Не для бинарников.',
+          'Прочитать страницу по http(s). query — слова со страницы, вернётся кусок вокруг них. offset листает дальше, если есть nextOffset.',
         parameters: {
           type: 'object',
           properties: {
             url: { type: 'string', description: 'Полный http(s) URL' },
-            maxChars: {
-              type: 'number',
-              description: 'Максимум символов текста (500–12000), по умолчанию 6000',
-            },
+            query: { type: 'string', description: 'Слова, которые нужно найти на странице' },
+            offset: { type: 'number', description: 'С какого символа читать, если query пустой' },
           },
           required: ['url'],
           additionalProperties: false,
         },
       },
     },
+    run: async (args) => readPublicPage(asString(args.url), {
+      query: asString(args.query),
+      offset: asNumber(args.offset, 0),
+    }),
+  },
+
+  lookup_plugin: {
+    risk: 'read',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'lookup_plugin',
+        description:
+          'Найти плагин под версию сервера в Paper, Hangar и Spigot и сказать, как его настраивать. Ключи конфига не выдумывай.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            gameVersion: { type: 'string' },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
+      },
+    },
     run: async (args) => {
-      const url = asString(args.url);
-      if (!url) return { error: 'url_required' };
-      if (!isHttpUrl(url)) return { error: 'only_http_https' };
-      const maxChars = Math.min(12_000, Math.max(500, asNumber(args.maxChars, 6000)));
-      try {
-        const res = await fetchTextLimited(url);
-        if (!res.ok) return { error: `HTTP ${res.status}`, url: res.finalUrl };
-        const ct = res.contentType.toLowerCase();
-        if (
-          ct.includes('application/octet-stream') ||
-          ct.includes('image/') ||
-          ct.includes('audio/') ||
-          ct.includes('video/') ||
-          ct.includes('application/zip') ||
-          ct.includes('application/pdf')
-        ) {
-          return { error: 'unsupported_content_type', contentType: res.contentType, url: res.finalUrl };
-        }
-        let text = res.text;
-        if (ct.includes('html') || /<html[\s>]/i.test(text) || /<body[\s>]/i.test(text)) {
-          text = stripHtmlToText(text);
-        } else if (ct.includes('json')) {
-          try {
-            text = JSON.stringify(JSON.parse(text), null, 2);
-          } catch {
-            /* raw */
-          }
-        } else {
-          text = text.replace(/\r\n/g, '\n').trim();
-        }
-        const truncated = text.length > maxChars;
-        return {
-          url: res.finalUrl,
-          contentType: res.contentType || null,
-          truncated,
-          text: text.slice(0, maxChars),
-          chars: Math.min(text.length, maxChars),
-        };
-      } catch (e: any) {
-        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || 'fetch_failed';
-        return { error: msg, url };
-      }
+      const query = asString(args.query);
+      if (!query) return { error: 'Нужно имя плагина' };
+      const gameVersion = asString(args.gameVersion);
+      const found = await collectWebHits(`${query} ${gameVersion}`.trim(), 6);
+      const guides = PLUGIN_GUIDES.filter((guide) => guide.test.test(query) || found.results.some((hit) => guide.test.test(hit.title))).map((guide) => ({
+        file: guide.file,
+        note: guide.note,
+      }));
+      return {
+        query,
+        gameVersion: gameVersion || null,
+        guides,
+        results: found.results,
+        note: 'Ставь плагин через install_matching_plugin, если versions проекта содержат gameVersion. Потом scan_configs и read_hosted_file. Меняй только ключи, которые уже есть в файле. Если конфига ещё нет, сначала запусти сервер. LuckPerms и регионы WorldGuard настраиваются командами.',
+      };
     },
   },
+
+  ask_user_form: {
+    risk: 'read',
+    schema: {
+      type: 'function',
+      function: {
+        name: 'ask_user_form',
+        description:
+          'Показать форму, если ник, материал или выбор нельзя узнать инструментом. Версию и файлы так не спрашивай.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            submitLabel: { type: 'string' },
+            fields: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  label: { type: 'string' },
+                  type: { type: 'string' },
+                  options: { type: 'array', items: { type: 'string' } },
+                  placeholder: { type: 'string' },
+                  required: { type: 'boolean' },
+                },
+                required: ['id', 'label'],
+              },
+            },
+          },
+          required: ['title', 'fields'],
+          additionalProperties: false,
+        },
+      },
+    },
+    run: async (args) => ({
+      ok: false,
+      error: 'Форму показывает чат агента. Повтори вызов из интерфейса.',
+      title: asString(args.title),
+    }),
+  },
 };
+
+async function readPublicPage(url: string, focus: { query?: string; offset?: number } = {}): Promise<Record<string, unknown>> {
+  if (!url) return { error: 'url_required' };
+  if (!isHttpUrl(url)) return { error: 'only_http_https' };
+  const query = String(focus.query || '').slice(0, 120);
+  const offset = Math.max(0, Number(focus.offset) || 0);
+  const limit = query ? 7000 : 4500;
+  let lastError: any = null;
+  for (const candidate of readableUrls(url)) {
+    const direct = await fetchTextLimited(candidate).catch((err: any) => err);
+    if (!direct?.ok) {
+      lastError = lastError || direct;
+      continue;
+    }
+    const ct = String(direct.contentType || '');
+    if (/octet-stream|image\/|audio\/|video\/|application\/zip|application\/pdf/i.test(ct)) {
+      return { error: 'Это не текстовая страница', contentType: ct, url: direct.finalUrl || candidate };
+    }
+    const text = readableDocument(direct.text, ct);
+    if (text.trim().length < 40) continue;
+    const page = pageWindow(text, query, offset, limit);
+    return { url: direct.finalUrl || candidate, via: candidate === url ? 'direct' : 'raw', contentType: ct || null, query: query || null, ...page };
+  }
+  const modrinth = url.match(/modrinth\.com\/(?:plugin|mod|modpack|resourcepack|shader|datapack)\/([^/?#]+)/i);
+  if (modrinth) {
+    const api = await fetchTextLimited(`https://api.modrinth.com/v2/project/${encodeURIComponent(modrinth[1])}`, { accept: 'application/json' }).catch(() => null);
+    if (api?.ok) {
+      try {
+        const data = JSON.parse(api.text);
+        const text = [data?.title, data?.description, data?.body].filter(Boolean).join('\n\n');
+        const page = pageWindow(text, query, offset, limit);
+        return { url, via: 'modrinth', query: query || null, ...page };
+      } catch {
+        /* страница каталога без JSON */
+      }
+    }
+  }
+  const hangar = url.match(/hangar\.papermc\.io\/([^/]+)\/([^/?#]+)/i);
+  if (hangar) {
+    const api = await fetchTextLimited(`https://hangar.papermc.io/api/v1/projects/${encodeURIComponent(hangar[1])}/${encodeURIComponent(hangar[2])}`, { accept: 'application/json' }).catch(() => null);
+    if (api?.ok) {
+      try {
+        const data = JSON.parse(api.text);
+        const text = [data?.name, data?.description].filter(Boolean).join('\n\n');
+        const page = pageWindow(text, query, offset, limit);
+        return { url, via: 'hangar', query: query || null, ...page };
+      } catch {
+        /* страница Hangar без JSON */
+      }
+    }
+  }
+  const mirror = await fetchTextLimited(`https://r.jina.ai/${url}`, { accept: 'text/plain' }).catch(() => null);
+  if (mirror?.ok && mirror.text.trim()) {
+    const page = pageWindow(readableDocument(mirror.text, 'text/plain'), query, offset, limit);
+    return { url, via: 'mirror', query: query || null, ...page };
+  }
+  const reason = lastError?.name === 'AbortError' ? 'timeout' : lastError?.message || `HTTP ${lastError?.status || 0}`;
+  return {
+    error: /fetch failed/i.test(String(reason)) ? 'Страница не открылась. Возьми другую ссылку из web_search или lookup_plugin.' : reason,
+    url,
+  };
+}
 
 Object.assign(
   TOOLS,
@@ -1967,6 +2286,8 @@ Object.assign(
     callRendererAiAction,
   }),
 );
+
+Object.assign(TOOLS, getUAgentMcpTools(), getMatchTools());
 
 /** Убирает description у properties — модели хватает имён полей и required. */
 function stripParamDescriptions(value: unknown): unknown {
@@ -2155,33 +2476,601 @@ async function runHostedConfigTool(name: string, id: string, args: Record<string
   }
   const rel = String(args.relativePath || args.path || '').replace(/\\/g, '/').replace(/^\/+/, '');
   if (name === 'read_config') {
-    const direct = (await agentHostedAction('read-file', { id, path: rel })) as { ok?: boolean; text?: string; error?: string };
-    if (direct.ok) return { ok: true, hostedServerId: id, relativePath: rel, content: direct.text };
+    const direct = (await agentHostedAction('read-file', { id, path: rel, offset: args.offset, limit: args.limit })) as { ok?: boolean; body?: string; dir?: boolean; error?: string };
+    if (direct.ok && !direct.dir) return { ok: true, hostedServerId: id, relativePath: rel, content: direct.body, ...direct };
+    if (direct.dir) return { ...direct, hostedServerId: id };
     const found = (await agentHostedAction('find-files', { id, query: hostedQueryFromPath(rel) })) as { files?: string[] };
     const files = found.files || [];
     if (files.length === 1) {
-      const file = (await agentHostedAction('read-file', { id, path: files[0] })) as { ok?: boolean; text?: string };
-      if (file.ok) {
-        return { ok: true, hostedServerId: id, relativePath: files[0], content: file.text, note: `Файл найден как ${files[0]}` };
+      const file = (await agentHostedAction('read-file', { id, path: files[0], offset: args.offset, limit: args.limit })) as { ok?: boolean; body?: string; dir?: boolean };
+      if (file.ok && !file.dir) {
+        return { ok: true, hostedServerId: id, relativePath: files[0], content: file.body, ...file, note: `Файл найден как ${files[0]}` };
       }
     }
-    return { ok: false, error: 'file_not_found', tried: rel, files, hostedServerId: id };
+    return { ok: false, error: direct.error || 'file_not_found', tried: rel, files, hostedServerId: id };
   }
   const text = String(args.content ?? args.text ?? '');
   let target = rel;
-  const existing = (await agentHostedAction('read-file', { id, path: rel })) as { ok?: boolean };
-  if (!existing.ok) {
-    const found = (await agentHostedAction('find-files', { id, query: hostedQueryFromPath(rel) })) as { files?: string[] };
-    const files = found.files || [];
-    if (files.length !== 1) {
-      return { ok: false, error: 'file_not_found', tried: rel, files, hostedServerId: id };
-    }
-    target = files[0];
+  const existing = (await agentHostedAction('read-file', { id, path: rel })) as { ok?: boolean; error?: string };
+  if (existing.error && /не текстовый/i.test(existing.error)) {
+    return { ok: false, error: existing.error, hostedServerId: id };
   }
-  const written = (await agentHostedAction('write-file', { id, path: target, text })) as { ok?: boolean; error?: string };
+  if (!existing.ok) {
+    const concrete = rel.includes('/') || /\.[a-z0-9]{1,16}$/i.test(path.basename(rel));
+    if (!concrete) {
+      const found = (await agentHostedAction('find-files', { id, query: hostedQueryFromPath(rel) })) as { files?: string[] };
+      const files = found.files || [];
+      if (files.length !== 1) {
+        return { ok: false, error: 'file_not_found', tried: rel, files, hostedServerId: id };
+      }
+      target = files[0];
+    }
+  }
+  const written = (await agentHostedAction('write-file', { id, path: target, text })) as { ok?: boolean; error?: string; entries?: string[] };
   return written.ok
     ? { ok: true, hostedServerId: id, relativePath: target }
-    : { ok: false, error: written.error || 'write_failed', hostedServerId: id };
+    : { ok: false, error: written.error || 'write_failed', entries: written.entries, hostedServerId: id };
+}
+
+function toolResultError(result: unknown): string {
+  if (!result || typeof result !== 'object') return '';
+  const rec = result as { ok?: boolean; success?: boolean; error?: unknown; build?: unknown; mods?: unknown; versions?: unknown };
+  if (rec.ok === false || rec.success === false) return String(rec.error || 'ошибка');
+  const err = typeof rec.error === 'string' ? rec.error.trim() : '';
+  if (err && rec.ok !== true && rec.success !== true && !rec.build && !rec.mods && !rec.versions) return err;
+  return '';
+}
+
+async function searchCatalog(
+  query: string,
+  type: string,
+  version: string,
+  loaders: string[],
+  limit: number,
+): Promise<any[]> {
+  const params = new URLSearchParams();
+  params.set('query', query);
+  const facets: string[][] = [[`project_type:${type}`]];
+  if (loaders.length) facets.push(loaders.map((loader) => `categories:${loader}`));
+  if (version) facets.push([`versions:${version}`]);
+  params.set('facets', JSON.stringify(facets));
+  params.set('limit', String(limit));
+  const res = await fetch(`https://api.modrinth.com/v2/search?${params.toString()}`, {
+    headers: { 'User-Agent': 'Undefined-Client-AI', Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Modrinth HTTP ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data?.hits) ? data.hits : [];
+}
+
+const PAPER_PLUGIN_LOADERS = ['paper', 'purpur', 'spigot', 'bukkit', 'folia'];
+const PROXY_LOADERS = new Set(['velocity', 'bungeecord', 'waterfall']);
+
+function catalogForSoftware(software: string): { type: string; loaders: string[]; via: string } {
+  const kind = software.toLowerCase();
+  if (kind === 'fabric' || kind === 'quilt' || kind === 'forge' || kind === 'neoforge') return { type: 'mod', loaders: [kind], via: kind };
+  if (kind === 'vanilla') return { type: 'datapack', loaders: [], via: 'датапаки' };
+  if (['sponge', 'canvas', 'arclight', 'youer', 'banner', 'divinemc'].includes(kind)) return { type: 'mod', loaders: ['fabric', 'forge'], via: 'Fabric и Forge' };
+  if (PROXY_LOADERS.has(kind)) return { type: 'plugin', loaders: [kind], via: kind };
+  // Leaf, Leaves, Purpur, Pufferfish, Folia и Spigot своего каталога не имеют: ставятся Paper-плагины.
+  return { type: 'plugin', loaders: PAPER_PLUGIN_LOADERS, via: 'Paper' };
+}
+
+function compactPluginName(value: string): string {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function pluginQueryVariants(query: string): string[] {
+  const raw = query.trim();
+  const spaced = raw
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const out = [raw];
+  if (spaced && spaced.toLowerCase() !== raw.toLowerCase()) out.push(spaced);
+  const words = spaced.split(' ').filter((word) => word.length > 2);
+  if (words.length >= 3) out.push(words.slice(0, -1).join(' '));
+  return out;
+}
+
+function pluginNameScore(query: string, hit: { title?: string; slug?: string }): number {
+  const wanted = compactPluginName(query);
+  const title = compactPluginName(hit.title || '');
+  const slug = compactPluginName(hit.slug || '');
+  if (!wanted || !title && !slug) return 0;
+  if (title === wanted || slug === wanted) return 100;
+  if (title.startsWith(wanted) || slug.startsWith(wanted) || title.includes(wanted)) return 85;
+  return 0;
+}
+
+async function modrinthJar(projectId: string, gameVersion: string, loaders: string[]): Promise<{ url: string; filename: string } | null> {
+  const params = new URLSearchParams();
+  if (gameVersion) params.set('game_versions', JSON.stringify([gameVersion]));
+  if (loaders.length) params.set('loaders', JSON.stringify(loaders));
+  const res = await fetch(`https://api.modrinth.com/v2/project/${encodeURIComponent(projectId)}/version?${params.toString()}`, {
+    headers: { 'User-Agent': 'Undefined-Client-AI', Accept: 'application/json' },
+  });
+  if (!res.ok) return null;
+  const versions = await res.json();
+  const list = Array.isArray(versions) ? versions : [];
+  const wanted = loaders.map((item) => item.toLowerCase());
+  const ranked = list
+    .map((version) => {
+      const got = (Array.isArray(version?.loaders) ? version.loaders : []).map((item: string) => String(item).toLowerCase());
+      return { version, got };
+    })
+    .filter(({ got }) => {
+      if (!got.length) return false;
+      if (wanted.length && !got.some((item: string) => wanted.includes(item))) return false;
+      if (!wanted.some((item: string) => PROXY_LOADERS.has(item)) && got.every((item: string) => PROXY_LOADERS.has(item))) return false;
+      return true;
+    })
+    .sort((a, b) => Number(b.got.includes('paper')) - Number(a.got.includes('paper')));
+  for (const row of ranked) {
+    const files = Array.isArray(row.version?.files) ? row.version.files : [];
+    const file = files.find((item: { primary?: boolean; url?: string }) => item?.primary && item.url) || files.find((item: { url?: string }) => item?.url);
+    if (file?.url) return { url: String(file.url), filename: String(file.filename || '') };
+  }
+  return null;
+}
+
+const INSTANCE_TEXT_BYTES = 1_000_000;
+const INSTANCE_BINARY_RE = /\.(jar|zip|gz|tgz|7z|rar|tar|png|jpe?g|gif|webp|bmp|ico|exe|dll|so|dylib|class|nbt|mca|dat|db|sqlite3?|lock|ogg|mp3|wav|flac|bin|pak|litemod|schem|schematic)$/i;
+
+function instanceFilePath(buildId: string, rel: string): string | null {
+  if (!findBuild(buildId)) return null;
+  const root = path.resolve(getInstanceRoot(buildId));
+  const clean = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (clean.split('/').some((part) => part === '..')) return null;
+  const target = path.resolve(root, clean || '.');
+  if (target !== root && !target.startsWith(root + path.sep)) return null;
+  return target;
+}
+
+function listInstanceDir(buildId: string, rel: string): unknown {
+  const dir = instanceFilePath(buildId, rel);
+  if (!dir) return { ok: false, error: 'Сборка не найдена' };
+  try {
+    const listed = listEntries(dir);
+    return {
+      ok: true,
+      path: rel || '',
+      entries: listed.entries,
+      truncated: listed.truncated,
+      note: listed.truncated ? 'Показана только часть папки. Ищи файл через find_instance_files.' : undefined,
+    };
+  } catch (err) {
+    return { ok: false, error: fsProblem(err), entries: [] };
+  }
+}
+
+function readInstanceText(buildId: string, rel: string, offset = 1, limit = 160): unknown {
+  const target = instanceFilePath(buildId, rel);
+  if (!target) return { ok: false, error: 'Сборка не найдена' };
+  try {
+    const stat = fs.statSync(target);
+    if (stat.isDirectory()) {
+      const listed = listInstanceDir(buildId, rel) as { entries?: unknown; truncated?: boolean };
+      return { ok: true, dir: true, path: rel, entries: listed.entries, truncated: listed.truncated, note: 'Это папка. Читай файл по имени из entries.' };
+    }
+    if (!stat.isFile()) return { ok: false, error: 'Это не файл' };
+    if (INSTANCE_BINARY_RE.test(path.basename(target))) return { ok: false, error: 'Это не текстовый файл' };
+    if (stat.size > INSTANCE_TEXT_BYTES) return { ok: false, error: 'Файл слишком большой' };
+    const buf = fs.readFileSync(target);
+    if (buf.includes(0)) return { ok: false, error: 'Это не текстовый файл' };
+    return { ok: true, path: rel, ...viewText(buf.toString('utf8'), offset, limit) };
+  } catch (err) {
+    return { ok: false, error: fsProblem(err) };
+  }
+}
+
+function writeInstanceText(buildId: string, rel: string, text: string): unknown {
+  const target = instanceFilePath(buildId, rel);
+  if (!target || !rel || /[\\/]$/.test(rel)) return { ok: false, error: 'Нужен путь к файлу внутри сборки' };
+  if (INSTANCE_BINARY_RE.test(path.basename(rel))) return { ok: false, error: 'Это не текстовый файл' };
+  if (text.includes('\0') || Buffer.byteLength(text, 'utf8') > INSTANCE_TEXT_BYTES) return { ok: false, error: 'Текст слишком большой' };
+  try {
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+      const listed = listEntries(target);
+      return { ok: false, error: 'Это папка. Нужен путь к файлу внутри неё.', entries: listed.entries.map((entry) => entry.name) };
+    }
+    if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+      return {
+        ok: false,
+        path: rel,
+        error: `Файл ${rel} уже есть. Прочитай его и замени фрагмент через edit_instance_file. Целиком существующий файл не переписывается.`,
+      };
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, text, 'utf8');
+    const diff = fragmentDiff('', text);
+    return { ok: true, path: rel, created: true, added: diff.added, diff: diff.lines, note: 'Создан новый файл. Уже лежащий конфиг этим вызовом не меняется.' };
+  } catch (err) {
+    return { ok: false, error: fsProblem(err) };
+  }
+}
+
+function editInstanceText(buildId: string, rel: string, old: string, next: string): unknown {
+  const target = instanceFilePath(buildId, rel);
+  if (!target || !rel) return { ok: false, error: 'Нужен путь к файлу внутри сборки' };
+  try {
+    const stat = fs.statSync(target);
+    if (!stat.isFile()) return { ok: false, error: 'Это папка. Нужен путь к файлу.' };
+    if (INSTANCE_BINARY_RE.test(path.basename(target))) return { ok: false, error: 'Это не текстовый файл' };
+    if (stat.size > INSTANCE_TEXT_BYTES) return { ok: false, error: 'Файл слишком большой' };
+    const prev = fs.readFileSync(target, 'utf8');
+    const replaced = applyTextReplace(prev, old, next);
+    if (!replaced.ok) return { ...replaced, path: rel };
+    fs.writeFileSync(target, replaced.text, 'utf8');
+    const diff = fragmentDiff(old, next);
+    return { ok: true, path: rel, added: diff.added, removed: diff.removed, diff: diff.lines, ...aroundText(replaced.text, next), note: `Записано в ${rel}.` };
+  } catch (err) {
+    return { ok: false, error: fsProblem(err) };
+  }
+}
+
+function searchInstance(buildId: string, rel: string, query: string, kind: 'grep' | 'find'): unknown {
+  const root = instanceFilePath(buildId, '');
+  if (!root) return { ok: false, error: 'Сборка не найдена', matches: [] };
+  const start = instanceFilePath(buildId, rel);
+  if (!start) return { ok: false, error: 'Неверный путь', matches: [] };
+  return searchFiles(root, rel, query, kind);
+}
+
+function transferInstanceFile(buildId: string, from: string, to: string, move: boolean): unknown {
+  const src = instanceFilePath(buildId, from);
+  const dest = instanceFilePath(buildId, to);
+  const root = path.resolve(getInstanceRoot(buildId));
+  if (!src || !dest || !from || !to || path.resolve(src) === root || path.resolve(dest) === root) {
+    return { ok: false, error: 'Нужны путь и назначение внутри сборки' };
+  }
+  try {
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    if (move) fs.renameSync(src, dest);
+    else fs.cpSync(src, dest, { recursive: true });
+    return { ok: true, path: from, dest: to };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function getMatchTools(): Record<string, ToolEntry> {
+  return {
+    install_matching_mod: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'install_matching_mod',
+          description: 'Найти в каталоге и поставить мод, ресурс-пак, шейдер или датапак под версию и загрузчик сборки.',
+          parameters: {
+            type: 'object',
+            properties: {
+              buildId: { type: 'string' },
+              query: { type: 'string' },
+              contentType: { type: 'string' },
+            },
+            required: ['buildId', 'query'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => {
+        const buildId = asString(args.buildId);
+        const query = asString(args.query);
+        const build = findBuild(buildId);
+        if (!build) return { ok: false, error: 'Сборка не найдена' };
+        const gameVersion = String(build.gameVersion || build.version || '');
+        const loader = String(build.loader || 'vanilla').toLowerCase();
+        const contentType = asString(args.contentType, 'mod') || 'mod';
+        const type = contentType === 'shader' ? 'shader' : contentType === 'resourcepack' ? 'resourcepack' : contentType === 'datapack' ? 'datapack' : 'mod';
+        if (type === 'mod' && (!loader || loader === 'vanilla')) return { ok: false, error: 'У ванильной сборки нет модов. Нужен fabric, forge, quilt или neoforge.' };
+        const hits = await searchCatalog(query, type, gameVersion, type === 'mod' ? [loader] : [], 6);
+        if (!hits.length) return { ok: false, error: `В каталоге нет «${query}» для ${gameVersion} ${loader}` };
+        const errors: string[] = [];
+        for (const hit of hits.slice(0, 4)) {
+          const projectId = String(hit.project_id || hit.slug || '');
+          if (!projectId) continue;
+          const installed = await installContentDirect(buildId, projectId, undefined, contentType, gameVersion, loader) as { success?: boolean; error?: string; filename?: string; alreadyInstalled?: boolean };
+          if (installed?.success !== false) {
+            return { ok: true, title: hit.title, projectId, gameVersion, loader, filename: installed?.filename || null, alreadyInstalled: Boolean(installed?.alreadyInstalled) };
+          }
+          errors.push(String(installed?.error || hit.title));
+        }
+        return { ok: false, error: errors[0] || 'Нет совместимого файла', gameVersion, loader };
+      },
+    },
+    install_matching_plugin: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'install_matching_plugin',
+          description: 'Найти плагин в каталоге Modrinth и поставить его. Leaf, Purpur, Pufferfish, Folia и Spigot ставят Paper-плагины: своего каталога у этих ядер нет. Слитное имя вроде CustomMOTD находится как Custom MOTD.',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              query: { type: 'string' },
+            },
+            required: ['id', 'query'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => {
+        const id = asString(args.id);
+        const query = asString(args.query);
+        const listed = await agentHostedAction('list') as { servers?: Array<{ id?: string; software?: string; gameVersion?: string; name?: string }> };
+        const server = (listed?.servers || []).find((row) => row.id === id);
+        if (!server) return { ok: false, error: 'Сервер не найден' };
+        const software = String(server.software || '');
+        const gameVersion = String(server.gameVersion || '');
+        const catalog = catalogForSoftware(software);
+        const variants = pluginQueryVariants(query);
+        let hits: any[] = [];
+        for (const variant of variants) {
+          hits = await searchCatalog(variant, catalog.type, gameVersion, catalog.loaders, 8);
+          if (hits.length) break;
+        }
+        if (!hits.length) {
+          for (const variant of variants) {
+            const wider = await searchCatalog(variant, catalog.type, '', catalog.loaders, 8);
+            const matched = wider.filter((hit) => !gameVersion || (Array.isArray(hit.versions) && hit.versions.includes(gameVersion)));
+            if (matched.length) {
+              hits = matched;
+              break;
+            }
+            if (!hits.length) hits = wider;
+          }
+        }
+        const ranked = hits
+          .map((hit) => ({ hit, score: Math.max(pluginNameScore(query, hit), pluginNameScore(variants[1] || query, hit)) }))
+          .sort((a, b) => b.score - a.score);
+        const best = ranked.filter((row) => row.score >= 85);
+        const compatible = best.filter((row) => !gameVersion || (Array.isArray(row.hit.versions) && row.hit.versions.includes(gameVersion)));
+        const note = software.toLowerCase() === catalog.via.toLowerCase()
+          ? ''
+          : `${software} не имеет своего каталога и запускает плагины ${catalog.via}.`;
+        if (!compatible.length) {
+          const suggestions = ranked.slice(0, 4).map((row) => String(row.hit.title || row.hit.slug || '')).filter(Boolean);
+          const hint = suggestions.length ? ` Ближайшие в каталоге ${catalog.via}: ${suggestions.join(', ')}. Поставь один из них этим же инструментом, файл вручную не проси.` : '';
+          return { ok: false, error: `В каталоге ${catalog.via} нет «${query}» под Minecraft ${gameVersion}. ${note}${hint}`.trim(), suggestions };
+        }
+        for (const row of compatible.slice(0, 3)) {
+          const hit = row.hit;
+          const projectId = String(hit.project_id || hit.slug || '');
+          const file = await modrinthJar(projectId, gameVersion, catalog.loaders);
+          if (!file) continue;
+          const installed = await agentHostedAction('install-url', { id, url: file.url, filename: file.filename }) as { ok?: boolean; error?: string; already?: boolean };
+          if (installed?.ok !== false) {
+            return { ok: true, title: hit.title, projectId, software, gameVersion, filename: file.filename, already: Boolean(installed?.already), catalog: catalog.via, note: note || undefined };
+          }
+        }
+        return { ok: false, error: `У «${query}» нет файла ${catalog.via} под Minecraft ${gameVersion}. ${note}`.trim() };
+      },
+    },
+    list_instance_files: {
+      risk: 'read',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'list_instance_files',
+          description: 'Одна папка сборки. path пустой — корень. Чтобы найти файл по имени, вызови find_instance_files.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, path: { type: 'string' } },
+            required: ['buildId'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => listInstanceDir(asString(args.buildId), asString(args.path)),
+    },
+    read_instance_file: {
+      risk: 'read',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'read_instance_file',
+          description: 'Окно файла сборки с номерами строк. offset листает дальше. Папка вернёт список.',
+          parameters: {
+            type: 'object',
+            properties: {
+              buildId: { type: 'string' },
+              path: { type: 'string' },
+              offset: { type: 'number' },
+              limit: { type: 'number' },
+            },
+            required: ['buildId', 'path'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => readInstanceText(asString(args.buildId), asString(args.path), Number(args.offset) || 1, Number(args.limit) || 160),
+    },
+    edit_instance_file: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'edit_instance_file',
+          description: 'Заменить в файле сборки уникальный фрагмент old на new. Номер строки в old не копируй.',
+          parameters: {
+            type: 'object',
+            properties: {
+              buildId: { type: 'string' },
+              path: { type: 'string' },
+              old: { type: 'string' },
+              new: { type: 'string' },
+            },
+            required: ['buildId', 'path', 'old', 'new'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => editInstanceText(asString(args.buildId), asString(args.path), String(args.old ?? ''), String(args.new ?? '')),
+    },
+    grep_instance_files: {
+      risk: 'read',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'grep_instance_files',
+          description: 'Найти строку в текстовых файлах сборки: путь, номер строки и текст.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, query: { type: 'string' }, path: { type: 'string' } },
+            required: ['buildId', 'query'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => searchInstance(asString(args.buildId), asString(args.path), asString(args.query), 'grep'),
+    },
+    find_instance_files: {
+      risk: 'read',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'find_instance_files',
+          description: 'Найти файл сборки по части имени или пути, не обходя папки по одной.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, query: { type: 'string' }, path: { type: 'string' } },
+            required: ['buildId', 'query'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => searchInstance(asString(args.buildId), asString(args.path), asString(args.query), 'find'),
+    },
+    write_instance_file: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'write_instance_file',
+          description: 'Создать новый текстовый файл сборки. Существующий меняй через edit_instance_file.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, path: { type: 'string' }, text: { type: 'string' } },
+            required: ['buildId', 'path', 'text'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => writeInstanceText(asString(args.buildId), asString(args.path), String(args.text ?? '')),
+    },
+    mkdir_instance: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'mkdir_instance',
+          description: 'Создать папку внутри сборки.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, path: { type: 'string' } },
+            required: ['buildId', 'path'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => {
+        const rel = asString(args.path);
+        const dir = instanceFilePath(asString(args.buildId), rel);
+        if (!dir || !rel) return { ok: false, error: 'Нужен путь внутри сборки' };
+        fs.mkdirSync(dir, { recursive: true });
+        return { ok: true, path: rel };
+      },
+    },
+    copy_instance_file: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'copy_instance_file',
+          description: 'Скопировать файл или папку внутри сборки.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, path: { type: 'string' }, dest: { type: 'string' } },
+            required: ['buildId', 'path', 'dest'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => transferInstanceFile(asString(args.buildId), asString(args.path), asString(args.dest), false),
+    },
+    move_instance_file: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'move_instance_file',
+          description: 'Перенести или переименовать файл или папку внутри сборки.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, path: { type: 'string' }, dest: { type: 'string' } },
+            required: ['buildId', 'path', 'dest'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => transferInstanceFile(asString(args.buildId), asString(args.path), asString(args.dest), true),
+    },
+    delete_instance_file: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'delete_instance_file',
+          description: 'Удалить файл или папку внутри сборки. Корень сборки удалять нельзя.',
+          parameters: {
+            type: 'object',
+            properties: { buildId: { type: 'string' }, path: { type: 'string' } },
+            required: ['buildId', 'path'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => {
+        const buildId = asString(args.buildId);
+        const rel = asString(args.path);
+        const target = instanceFilePath(buildId, rel);
+        const root = path.resolve(getInstanceRoot(buildId));
+        if (!target || !rel || path.resolve(target) === root) return { ok: false, error: 'Нельзя удалить корень сборки' };
+        try {
+          fs.rmSync(target, { recursive: true, force: false });
+          return { ok: true, path: rel };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+    },
+    delete_hosted_file: {
+      risk: 'write',
+      schema: {
+        type: 'function',
+        function: {
+          name: 'delete_hosted_file',
+          description: 'Удалить файл или папку внутри своего сервера. Корень сервера удалять нельзя.',
+          parameters: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              path: { type: 'string' },
+            },
+            required: ['id', 'path'],
+            additionalProperties: false,
+          },
+        },
+      },
+      run: async (args) => agentHostedAction('delete-file', { id: asString(args.id), path: asString(args.path) }),
+    },
+  };
 }
 
 export async function runAiTool(
@@ -2228,6 +3117,8 @@ export async function runAiTool(
       }
     }
 
+    const failed = toolResultError(result);
+    if (failed) return { ok: false, risk: tool.risk, error: failed, result };
     return { ok: true, risk: tool.risk, result };
   } catch (e: any) {
     return { ok: false, risk: tool.risk, error: e?.message || 'tool_failed' };
