@@ -6,8 +6,17 @@ import * as esbuild from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { patchVoskWorker } from './patch-vosk-worker.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const voskSrc = path.join(root, 'node_modules', 'vosk-browser', 'dist', 'vosk.js');
+const voskOut = path.join(root, 'src', 'renderer', 'vendor', 'vosk.js');
+if (fs.existsSync(voskSrc)) {
+  fs.mkdirSync(path.dirname(voskOut), { recursive: true });
+  fs.copyFileSync(voskSrc, voskOut);
+}
+if (fs.existsSync(voskOut)) patchVoskWorker(voskOut);
 
 const jobs = [
   { entry: 'dist/renderer/app.js', out: 'src/renderer/app.js', globalName: 'app' },

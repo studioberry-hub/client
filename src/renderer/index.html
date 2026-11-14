@@ -1,11 +1,12 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- unsafe-eval нужен распознаванию речи: его сборка запускает свой код через eval. -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: wall: https://uprojects.site https://mc-heads.net https://ely.by https://skinsystem.ely.by https://cdn.modrinth.com http: https:; font-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://uprojects.site wss://uprojects.site https://mc-heads.net https://ely.by https://skinsystem.ely.by https://cdn.modrinth.com https: http:; media-src 'self' blob: data: wall: https://uprojects.site https://live.lofiradio.ru https://air.radioart.com https: http:">
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: wall: https://uprojects.site https://mc-heads.net https://ely.by https://skinsystem.ely.by https://cdn.modrinth.com http: https:; font-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' https://uprojects.site wss://uprojects.site https://mc-heads.net https://ely.by https://skinsystem.ely.by https://cdn.modrinth.com https: http:; media-src 'self' blob: data: wall: https://uprojects.site https://live.lofiradio.ru https://air.radioart.com https: http:">
   <title>Undefined Client</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="servers-catalog.css">
@@ -18,6 +19,8 @@
   <link rel="stylesheet" href="image-viewer.css">
   <link rel="stylesheet" href="video-player.css">
   <link rel="stylesheet" href="account-stage.css">
+  <link rel="stylesheet" href="bug-auth.css">
+  <link rel="stylesheet" href="uagent.css">
 </head>
 
 <body>
@@ -182,10 +185,8 @@
             <div class="sidebar-card-content">
               <div class="sidebar-card-icon" id="running-indicator-icon">
                 <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                  <rect width="28" height="28" rx="6" fill="var(--accent)" />
-                  <path
-                    d="M6 7.61803C6 6.72442 6.72442 6 7.61803 6C7.86923 6 8.11697 6.05848 8.34164 6.17082L21.1056 12.5528C21.6537 12.8269 22 13.3871 22 14C22 14.6129 21.6537 15.1731 21.1056 15.4472L8.34164 21.8292C8.11697 21.9415 7.86923 22 7.61803 22C6.72442 22 6 21.2756 6 20.382V7.61803Z"
-                    fill="var(--on-accent)" />
+                  <path d="M0 12.8C0 8.31958 0 6.07937 0.871948 4.36808C1.63893 2.86278 2.86278 1.63893 4.36808 0.871948C6.07937 0 8.31958 0 12.8 0H19.2C23.6804 0 25.9206 0 27.6319 0.871948C29.1372 1.63893 30.3611 2.86278 31.1281 4.36808C32 6.07937 32 8.31958 32 12.8V19.2C32 23.6804 32 25.9206 31.1281 27.6319C30.3611 29.1372 29.1372 30.3611 27.6319 31.1281C25.9206 32 23.6804 32 19.2 32H12.8C8.31958 32 6.07937 32 4.36808 31.1281C2.86278 30.3611 1.63893 29.1372 0.871948 27.6319C0 25.9206 0 23.6804 0 19.2V12.8Z" fill="var(--accent)"/>
+                  <path d="M8 9.61806C8 8.72443 8.72443 8 9.61806 8C9.86924 8 10.117 8.05847 10.3416 8.17079L23.1055 14.5521C23.6537 14.8261 24 15.3864 24 15.9993C24 16.6122 23.6538 17.1724 23.1056 17.4465L10.3417 23.8292C10.117 23.9415 9.86922 24 9.61801 24C8.72441 24 8 23.2756 8 22.382V9.61806Z" fill="var(--on-accent)"/>
                 </svg>
               </div>
               <div class="sidebar-card-titles">
@@ -970,210 +971,7 @@
 
           <!-- AI Agent Tab ? UI ?? AgentChatUI (Cursor-like) -->
           <div class="tab-view" id="tab-ai">
-            <div class="ai-shell">
-              <aside class="ai-rail" aria-label="Chats">
-                <div class="ai-rail__brand">
-                  <span class="ai-rail__mark" aria-hidden="true">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                      <path d="M0 12C0 10.8954 0.895431 10 2 10V10V16V16C0.895431 16 0 15.1046 0 14V12Z"
-                        fill="currentColor" />
-                      <path d="M18 10V10C19.1046 10 20 10.8954 20 12V14C20 15.1046 19.1046 16 18 16V16V10Z"
-                        fill="currentColor" />
-                      <rect x="3" y="7" width="14" height="12" rx="2" stroke="currentColor" stroke-width="2" />
-                      <rect x="6" y="10" width="2" height="4" rx="1" fill="currentColor" />
-                      <rect x="12" y="10" width="2" height="4" rx="1" fill="currentColor" />
-                      <rect x="9" y="4" width="2" height="2" fill="currentColor" />
-                      <rect x="8" width="4" height="4" rx="1" fill="currentColor" />
-                      <rect x="8" y="15" width="4" height="1" rx="0.5" fill="currentColor" />
-                    </svg>
-                  </span>
-                  <span class="ai-rail__name" data-i18n="ai.brand">UAgent</span>
-                </div>
-
-                <div class="ai-rail__section-title" data-i18n="ai.sectionMain">???????? ???????</div>
-                <button type="button" class="ai-rail-btn" id="ai-new-folder">
-                  <span class="ai-rail-btn__icon ai-rail-btn__icon--plus" aria-hidden="true"></span>
-                  <span data-i18n="ai.folder.new">Новая папка</span>
-                </button>
-                <button type="button" class="ai-rail-btn" id="ai-new-chat">
-                  <img class="ai-rail-btn__icon" src="../../assets/icons/aiPanel/newChat.svg" width="14" height="14"
-                    alt="" aria-hidden="true">
-                  <span data-i18n="ai.newChat">??????? ????? ???</span>
-                </button>
-                <button type="button" class="ai-rail-btn" id="ai-search-toggle">
-                  <img class="ai-rail-btn__icon" src="../../assets/icons/aiPanel/search.svg" width="14" height="14"
-                    alt="" aria-hidden="true">
-                  <span data-i18n="ai.searchChats">????? ?? ?????</span>
-                </button>
-                <input type="search" id="ai-search" class="ai-rail-search hidden" data-i18n-ph="ai.searchPlaceholder"
-                  placeholder="?????" autocomplete="off">
-
-                <div class="ai-rail__section-title" data-i18n="ai.sectionChats">?????? ?????</div>
-                <div class="ai-rail__list" id="ai-chat-list"></div>
-                <div class="ai-rail__tg" id="ai-tg-foot">
-                  <button type="button" class="ai-rail__tg-bind" id="ai-tg-bind">
-                    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path d="M14.2 2.4 1.8 7.1c-.8.3-.8 1.4.1 1.6l3.1.9 1.2 3.7c.2.7 1.1.9 1.6.3l1.7-1.8 3.2 2.4c.6.4 1.4.1 1.6-.6l2.1-9.8c.2-.9-.6-1.6-1.4-1.4Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-                    </svg>
-                    <span data-i18n="ai.tg.bind">Привязать Telegram</span>
-                  </button>
-                  <div class="ai-rail__tg-user hidden" id="ai-tg-user">
-                    <span class="ai-rail__tg-avatar" id="ai-tg-avatar" aria-hidden="true"></span>
-                    <span class="ai-rail__tg-meta">
-                      <span class="ai-rail__tg-display" id="ai-tg-display"></span>
-                      <span class="ai-rail__tg-handle" id="ai-tg-handle"></span>
-                    </span>
-                    <button type="button" class="ai-rail__tg-unlink" id="ai-tg-unlink" title="Отвязать Telegram" aria-label="Отвязать Telegram">
-                      <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                        <path d="M6.6 9.4a2.8 2.8 0 0 0 4 .2l1.3-1.3a2.8 2.8 0 0 0-4-4L6.8 5.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M9.4 6.6a2.8 2.8 0 0 0-4-.2L4.1 7.7a2.8 2.8 0 0 0 4 4l1.1-1.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </aside>
-
-              <section class="ai-stage cv2" aria-label="Agent chat">
-                <div class="ai-chat-title" id="ai-chat-title">
-                  <button type="button" class="ai-rail-toggle" id="ai-rail-toggle" aria-label="Чаты" title="Чаты">
-                    <span></span><span></span><span></span>
-                  </button>
-                  <span class="ai-pixel hidden" id="ai-title-pixel" aria-hidden="true"></span>
-                  <span class="ai-chat-title__text" id="ai-stage-title" data-i18n="ai.title">?????</span>
-                  <span class="ai-stage-status" id="ai-stage-status" hidden></span>
-                  <button type="button" class="ai-stop hidden" id="ai-stop" hidden data-i18n="ai.stop"
-                    data-i18n-title="ai.stop" title="????" aria-label="Stop">????</button>
-                  <button type="button" class="ai-chat-title__menu" id="ai-chat-menu" data-i18n-title="ai.chatOptions"
-                    title="?????" aria-label="Options" aria-haspopup="dialog" aria-expanded="false">
-                    <span></span><span></span><span></span>
-                  </button>
-                  <div class="ai-chat-menu hidden" id="ai-chat-menu-pop" role="dialog" aria-label="Chat options">
-                    <div class="ai-chat-menu__panel">
-                      <button type="button" class="ai-chat-menu__row" id="ai-menu-clear">
-                        <span class="ai-chat-menu__ico" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path
-                              d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21" />
-                            <path d="m5.082 11.09 8.828 8.828" />
-                          </svg>
-                        </span>
-                        <span class="ai-chat-menu__row-title" data-i18n="ai.clearChat">???????? ???????</span>
-                      </button>
-                      <button type="button" class="ai-chat-menu__row ai-chat-menu__row--danger" id="ai-menu-delete">
-                        <span class="ai-chat-menu__ico" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                            <path d="M3 6h18" />
-                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </span>
-                        <span class="ai-chat-menu__row-title" data-i18n="ai.deleteChat">??????? ???</span>
-                      </button>
-                      <div class="ai-chat-menu__label" data-i18n="ai.folder.move">Переместить</div>
-                      <div class="ai-chat-menu__move" id="ai-menu-move"></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="ai-context-bar" id="ai-context-bar" aria-live="polite"></div>
-                <div class="ai-crash-banner hidden" id="ai-crash-banner"></div>
-
-                <div class="ai-stage__body" id="ai-messages">
-                  <div class="ai-empty" id="ai-empty">
-                    <img class="ai-empty__logo" src="../../assets/images/UAgentLogo.png" width="300" height="300" alt=""
-                      draggable="false">
-                    <div class="ai-empty__title" data-i18n="ai.emptyTitle">??? ???????</div>
-                    <div class="ai-empty__hint" data-i18n="ai.emptyHint">???????? ??? ??????, Fabric/Forge, ???? ???
-                      Java</div>
-                    <div class="ai-empty__scenarios">
-                      <button type="button" class="ai-scenario" data-scenario="crash"
-                        data-prompt-key="ai.prompt.scenario.crash" data-i18n="ai.scenario.crash">?????? ?????</button>
-                      <button type="button" class="ai-scenario" data-scenario="newBuild"
-                        data-prompt-key="ai.prompt.scenario.newBuild" data-i18n="ai.scenario.newBuild">?????
-                        ??????</button>
-                      <button type="button" class="ai-scenario" data-scenario="optimize"
-                        data-prompt-key="ai.prompt.scenario.optimize"
-                        data-i18n="ai.scenario.optimize">???????????</button>
-                      <button type="button" class="ai-scenario" data-scenario="findMod"
-                        data-prompt-key="ai.prompt.scenario.findMod" data-i18n="ai.scenario.findMod">????? ???</button>
-                    </div>
-                    <div class="ai-empty__prompts" id="ai-empty-prompts">
-                      <button type="button" class="ai-prompt" data-prompt-key="ai.prompt.builds"
-                        data-i18n="ai.prompt.builds">????? ? ???? ???????</button>
-                      <button type="button" class="ai-prompt" data-prompt-key="ai.prompt.java"
-                        data-i18n="ai.prompt.java">??????? Java</button>
-                      <button type="button" class="ai-prompt" data-prompt-key="ai.prompt.mods"
-                        data-i18n="ai.prompt.mods">????? Sodium ??? 1.21</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="ai-composer-bar">
-                  <form class="ai-composer" id="ai-form">
-                    <div class="ai-attach-chips" id="ai-attach-chips" hidden></div>
-                    <div class="ai-composer__box">
-                      <textarea id="ai-input" class="ai-composer__input" rows="1" data-i18n-ph="ai.placeholder"
-                        placeholder="Написать UAgent"></textarea>
-                      <div class="ai-composer__tools ai-composer__toolbar-left ai-composer-meta">
-                        <div class="ai-attach-wrap">
-                          <button type="button" class="ai-composer__attach" id="ai-attach" data-i18n-title="ai.attach"
-                            title="Вложение" aria-label="Attach" aria-haspopup="dialog" aria-expanded="false">
-                            <img src="../../assets/newchatV2/addFile.svg" width="14" height="14" alt="" draggable="false">
-                          </button>
-                          <div class="ai-attach-menu hidden" id="ai-attach-menu" role="dialog" aria-label="Attach"></div>
-                        </div>
-                        <div class="ai-build-chip-wrap">
-                          <button type="button" class="ai-build-chip" id="ai-build-btn"
-                            data-i18n-title="ai.contextBuild" title="Контекст сборки" aria-haspopup="listbox"
-                            aria-expanded="false">
-                            <span class="ai-build-chip__icon" aria-hidden="true"></span>
-                            <span class="ai-build-chip__name" id="ai-build-name" data-i18n="ai.noBuild">Сборка</span>
-                            <svg class="ai-build-chip__chev" width="10" height="10" viewBox="0 0 12 12" fill="none"
-                              aria-hidden="true">
-                              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.6"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                          </button>
-                          <div class="ai-build-menu hidden" id="ai-build-menu" role="listbox"></div>
-                        </div>
-                        <div class="ai-rail__ver-wrap">
-                          <button type="button" class="ai-rail__ver" id="ai-agent-ver" data-i18n="ai.model.pill"
-                            data-i18n-title="ai.model.title" title="Pixi 1.0" aria-haspopup="dialog"
-                            aria-expanded="false">Pixi 1.0</button>
-                          <div class="ai-model-menu hidden" id="ai-model-menu" role="dialog" aria-label="Model info"></div>
-                        </div>
-                        <button type="button" class="ai-undo-chip hidden" id="ai-undo-chip"></button>
-                        <div class="ai-context-ring-wrap">
-                          <button type="button" class="ai-context-ring" id="ai-context-ring"
-                            data-i18n-title="ai.contextUsage" title="Контекст" aria-haspopup="dialog"
-                            aria-expanded="false">
-                            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
-                              <circle class="ai-context-ring__track" cx="8" cy="8" r="6" />
-                              <circle class="ai-context-ring__value" id="ai-context-ring-value" cx="8" cy="8" r="6" />
-                            </svg>
-                          </button>
-                          <div class="ai-context-menu hidden" id="ai-context-menu" role="dialog"
-                            aria-label="Context usage"></div>
-                        </div>
-                        <button type="submit" class="ai-composer__send" id="ai-send" data-i18n-title="ai.send"
-                          title="Отправить" aria-label="Send">
-                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                            <path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-                <div class="ai-empty-dock hidden" id="ai-empty-dock">
-                  <div class="ai-empty__scenarios" id="ai-empty-scenarios"></div>
-                </div>
-              </section>
-            </div>
+            <div id="uagent-root"></div>
           </div>
 
           <!-- MC Messenger -->
@@ -2354,31 +2152,10 @@
             </div>
             <div class="be-tab" data-settings-tab="mods">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M7 1C7 0.447715 7.44772 0 8 0H10C10.5523 0 11 0.447715 11 1V4H7V1Z" fill="currentColor" />
-                <path d="M11 17C11 17.5523 10.5523 18 10 18H8C7.44772 18 7 17.5523 7 17V14H11V17Z"
-                  fill="currentColor" />
-                <path d="M17 7C17.5523 7 18 7.44772 18 8V10C18 10.5523 17.5523 11 17 11H14V7H17Z" fill="currentColor" />
-                <path
-                  d="M1 11C0.447715 11 -7.24234e-08 10.5523 0 10L2.62269e-07 8C3.34693e-07 7.44772 0.447716 7 1 7L4 7L4 11L1 11Z"
-                  fill="currentColor" />
-                <path
-                  d="M16.0702 13.2421C16.4608 13.6326 16.4608 14.2658 16.0702 14.6563L14.656 16.0705C14.2655 16.4611 13.6323 16.4611 13.2418 16.0705L11.1205 13.9492L13.9489 11.1208L16.0702 13.2421Z"
-                  fill="currentColor" />
-                <path
-                  d="M1.92976 4.75789C1.53924 4.36736 1.53924 3.7342 1.92976 3.34367L3.34398 1.92946C3.7345 1.53894 4.36767 1.53894 4.75819 1.92946L6.87951 4.05078L4.05108 6.87921L1.92976 4.75789Z"
-                  fill="currentColor" />
-                <path
-                  d="M4.75789 16.0702C4.36736 16.4608 3.7342 16.4608 3.34367 16.0702L1.92946 14.656C1.53894 14.2655 1.53894 13.6323 1.92946 13.2418L4.05078 11.1205L6.87921 13.9489L4.75789 16.0702Z"
-                  fill="currentColor" />
-                <path
-                  d="M13.2421 1.92976C13.6326 1.53924 14.2658 1.53924 14.6563 1.92976L16.0705 3.34398C16.4611 3.7345 16.4611 4.36767 16.0705 4.75819L13.9492 6.87951L11.1208 4.05108L13.2421 1.92976Z"
-                  fill="currentColor" />
-                <path
-                  d="M13 9C13 6.79086 11.2091 5 9 5C6.79086 5 5 6.79086 5 9C5 11.2091 6.79086 13 9 13V15C5.68629 15 3 12.3137 3 9C3 5.68629 5.68629 3 9 3C12.3137 3 15 5.68629 15 9C15 12.3137 12.3137 15 9 15V13C11.2091 13 13 11.2091 13 9Z"
-                  fill="currentColor" />
-                <path
-                  d="M11 9C11 10.1046 10.1046 11 9 11C7.89543 11 7 10.1046 7 9C7 7.89543 7.89543 7 9 7C10.1046 7 11 7.89543 11 9Z"
-                  fill="currentColor" />
+                <path d="M4 16V18H3V16H4ZM5 15V14C5 13.4477 4.55228 13 4 13H3C2.44772 13 2 13.4477 2 14V15C2 15.5523 2.44772 16 3 16V18L2.8457 17.9961C1.31166 17.9184 0.0816253 16.6883 0.00390625 15.1543L0 15V14C0 12.3431 1.34315 11 3 11H4C5.65685 11 7 12.3431 7 14V15C7 16.6051 5.73945 17.9158 4.1543 17.9961L4 18V16C4.55228 16 5 15.5523 5 15Z" fill="currentColor"/>
+                <path d="M4 7V9H3V7H4ZM5 6V5C5 4.44771 4.55228 4 4 4H3C2.44772 4 2 4.44772 2 5V6C2 6.55228 2.44772 7 3 7V9L2.8457 8.99609C1.31166 8.91838 0.0816253 7.68834 0.00390625 6.1543L0 6V5C0 3.34315 1.34315 2 3 2H4C5.65685 2 7 3.34315 7 5V6C7 7.60511 5.73945 8.91579 4.1543 8.99609L4 9V7C4.55228 7 5 6.55228 5 6Z" fill="currentColor"/>
+                <path d="M13 16V18H12V16H13ZM14 15V14C14 13.4477 13.5523 13 13 13H12C11.4477 13 11 13.4477 11 14V15C11 15.5523 11.4477 16 12 16V18L11.8457 17.9961C10.3117 17.9184 9.08162 16.6883 9.00391 15.1543L9 15V14C9 12.3431 10.3431 11 12 11H13C14.6569 11 16 12.3431 16 14V15C16 16.6051 14.7394 17.9158 13.1543 17.9961L13 18V16C13.5523 16 14 15.5523 14 15Z" fill="currentColor"/>
+                <path d="M9 3C9 1.34315 10.3431 0 12 0H15C16.6569 0 18 1.34315 18 3V6C18 7.65685 16.6569 9 15 9H12C10.3431 9 9 7.65685 9 6V3Z" fill="currentColor"/>
               </svg>
               <span data-i18n="stngs.mods">????</span>
             </div>
@@ -2443,6 +2220,13 @@
                   fill="currentColor" />
               </svg>
               <span data-i18n="stngs.debug">???????</span>
+            </div>
+            <div class="be-tab" data-settings-tab="bug">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M3 5H15C15.5523 5 16 4.55228 16 4V3C16 2.44772 16.4477 2 17 2C17.5523 2 18 2.44772 18 3V4C18 5.65685 16.6569 7 15 7V9H17C17.5523 9 18 9.44772 18 10C18 10.5523 17.5523 11 17 11H15V13C16.6569 13 18 14.3431 18 16V17C18 17.5523 17.5523 18 17 18C16.4477 18 16 17.5523 16 17V16C16 15.4477 15.5523 15 15 15C15 15.5523 14.5523 16 14 16H10.6667C10.2985 16 10 15.7015 10 15.3333V12C10 11.4477 9.55228 11 9 11C8.44772 11 8 11.4477 8 12V15.3333C8 15.7015 7.70152 16 7.33333 16H4C3.44772 16 3 15.5523 3 15C2.44772 15 2 15.4477 2 16V17C2 17.5523 1.55228 18 1 18C0.447715 18 0 17.5523 0 17V16C0 14.3431 1.34315 13 3 13V11H1C0.447715 11 0 10.5523 0 10C0 9.44772 0.447715 9 1 9H3V7C1.34315 7 0 5.65685 0 4V3C0 2.44772 0.447715 2 1 2C1.55228 2 2 2.44772 2 3V4C2 4.55228 2.44772 5 3 5Z" fill="currentColor"/>
+                <path d="M6 2C6 0.895431 6.89543 0 8 0H10C11.1046 0 12 0.895431 12 2V3C12 3.55228 11.5523 4 11 4H7C6.44772 4 6 3.55228 6 3V2Z" fill="currentColor"/>
+              </svg>
+              <span>Отчёт о баге</span>
             </div>
             <div class="be-tab" data-settings-tab="about">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -3033,6 +2817,73 @@
               <div id="skin-debug-options-root"></div>
             </div>
 
+            <div class="stngs-panel" data-settings-panel="bug">
+              <div class="stngs-panel-header">
+                <div class="stngs-panel-texts">
+                  <div class="stngs-panel-title">Отчёт о баге</div>
+                  <div class="stngs-panel-sub">Карточка появится в баг-трекере на сайте. Голоса и обсуждение — там же.</div>
+                </div>
+              </div>
+              <form class="stngs-group bug-form" id="bug-report-form">
+                <div class="bug-field">
+                  <span>Тип</span>
+                  <div class="stngs-select-wrap mods-select-wrap be-select-wrap bug-select-wrap">
+                    <select class="stngs-select-hidden" id="bug-kind">
+                      <option value="bug" selected>Баг</option>
+                      <option value="suggestion">Предложение</option>
+                    </select>
+                    <button type="button" class="stngs-select-btn">
+                      <span class="stngs-select-value">Баг</span>
+                      <svg class="stngs-select-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </button>
+                    <div class="stngs-select-menu">
+                      <div class="stngs-select-opt selected" data-value="bug">Баг</div>
+                      <div class="stngs-select-opt" data-value="suggestion">Предложение</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="bug-field" id="bug-tags-field" hidden>
+                  <span>Теги</span>
+                  <div class="bug-tags" id="bug-tags"></div>
+                </div>
+                <label class="bug-field">
+                  <span>Заголовок</span>
+                  <input id="bug-title" maxlength="140" placeholder="Коротко, что случилось">
+                </label>
+                <label class="bug-field">
+                  <span>Описание</span>
+                  <textarea id="bug-body" rows="4" maxlength="8000" placeholder="Что вы делали и что увидели"></textarea>
+                </label>
+                <label class="bug-field">
+                  <span>Шаги</span>
+                  <textarea id="bug-steps" rows="3" maxlength="8000" placeholder="1. Открыл…&#10;2. Нажал…"></textarea>
+                </label>
+                <label class="bug-field">
+                  <span>Как должно быть</span>
+                  <textarea id="bug-expected" rows="2" maxlength="8000"></textarea>
+                </label>
+                <label class="bug-field">
+                  <span>Как сейчас</span>
+                  <textarea id="bug-actual" rows="2" maxlength="8000"></textarea>
+                </label>
+                <div class="bug-field">
+                  <span>Скриншот</span>
+                  <label class="bug-file">
+                    <input id="bug-shot" type="file" accept="image/png,image/jpeg,image/webp">
+                    <span class="bug-file__btn">Выбрать файл</span>
+                    <span class="bug-file__name" id="bug-shot-name">Файл не выбран</span>
+                  </label>
+                </div>
+                <div class="bug-form-actions">
+                  <button type="submit" class="stngs-btn primary" id="bug-send">Отправить</button>
+                  <button type="button" class="stngs-btn" id="bug-open-site">Открыть баг-трекер</button>
+                </div>
+                <div class="bug-note" id="bug-note"></div>
+              </form>
+            </div>
+
             <!-- ? ???????? -->
             <div class="stngs-panel" data-settings-panel="about">
               <div class="stngs-panel-header">
@@ -3079,6 +2930,74 @@
             </div>
 
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="modal-bug-auth" class="modal-overlay hidden">
+      <div class="bug-auth" role="dialog" aria-labelledby="bug-auth-title">
+        <header class="bug-auth__bar">
+          <span class="bug-auth__logo" aria-hidden="true"></span>
+          <span class="bug-auth__name">Undefined Auth</span>
+          <button type="button" class="modal-close" id="bug-auth-close" aria-label="Закрыть">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+          </button>
+        </header>
+        <h2 id="bug-auth-title">Авторизация на <b>uprojects.site</b></h2>
+        <p class="bug-auth__lead">Сайт получит следующие разрешения</p>
+        <section class="bug-auth__card">
+          <span class="bug-auth__ico" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect y="16" width="20" height="2" rx="1" fill="white"/><rect x="3" y="3" width="14" height="10" rx="1" stroke-width="2" stroke="white"/></svg>
+          </span>
+          <div>
+            <b>Устройство и версия клиента</b>
+            <span id="bug-auth-device">—</span>
+            <span id="bug-auth-version">—</span>
+          </div>
+        </section>
+        <section class="bug-auth__card">
+          <span class="bug-auth__ico" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="6" fill="white"/><circle cx="10" cy="7" r="4" fill="#363636"/><circle cx="10" cy="7" r="2" fill="white"/><path d="M9 12H11V18C11 18.5523 10.5523 19 10 19V19C9.44772 19 9 18.5523 9 18V12Z" fill="white"/></svg>
+          </span>
+          <div>
+            <b>Информация об IP адресе</b>
+            <span id="bug-auth-ip">—</span>
+            <span id="bug-auth-place">—</span>
+          </div>
+        </section>
+        <section class="bug-auth__card bug-auth__card--ghost">
+          <span class="bug-auth__ico" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect y="16" width="20" height="2" rx="1" fill="white"/><rect x="3" y="3" width="14" height="10" rx="1" stroke-width="2" stroke="white"/></svg>
+          </span>
+          <div>
+            <b>Попытка входа с устройства</b>
+            <span id="bug-auth-from">—</span>
+            <span class="is-ok">Текущее устройство</span>
+          </div>
+        </section>
+        <p class="bug-auth__err" id="bug-auth-err"></p>
+        <footer class="bug-auth__actions">
+          <button type="button" class="stngs-btn ghost" id="bug-auth-no">Отклонить</button>
+          <button type="button" class="stngs-btn primary" id="bug-auth-yes">Авторизоваться</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="modal-bug-sent" class="modal-overlay hidden">
+      <div class="modal-window sm" role="dialog" aria-labelledby="bug-sent-title">
+        <div class="modal-header">
+          <div class="modal-header-text">
+            <div class="modal-header-title" id="bug-sent-title">Ваш отчёт отправлен</div>
+          </div>
+          <button type="button" class="modal-close" id="bug-sent-close" aria-label="Закрыть">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>
+          </button>
+        </div>
+        <div class="modal-body compact">
+          <p class="bug-sent__lead">Вы можете следить за отчётом в Баг-трекере Undefined</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="stngs-btn primary" id="bug-sent-open">Открыть отчёт</button>
         </div>
       </div>
     </div>
@@ -4533,76 +4452,45 @@
     </div>
   </div>
 
-  <!-- Crash Modal -->
+  <!-- Краш сборки: код, причина и готовый отчёт. Лог в окне не показываем. -->
   <div id="modal-crash" class="modal-overlay hidden">
-    <div class="modal-window md crash-modal-window" role="dialog" aria-modal="true" aria-labelledby="modal-crash-title">
-      <div class="modal-header">
-        <div class="modal-header-icon crash-modal-icon">
-          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-            <rect width="36" height="36" rx="9" fill="#E5484D" />
-            <path
-              d="M8 26.382C8 26.1308 8.05848 25.883 8.17082 25.6584L16.5528 8.89443C16.8269 8.34626 17.3871 8 18 8C18.6129 8 19.1731 8.34626 19.4472 8.89443L27.8292 25.6584C27.9415 25.883 28 26.1308 28 26.382C28 27.2756 27.2756 28 26.382 28H9.61803C8.72442 28 8 27.2756 8 26.382Z"
-              fill="white" />
-            <path
-              d="M16.5926 14.4971C16.5419 13.6858 17.1862 13 17.9991 13C18.8119 13 19.4562 13.6858 19.4055 14.4971L19.0615 20.0019C19.0264 20.563 18.5612 21 17.9991 21C17.437 21 16.9718 20.563 16.9367 20.0019L16.5926 14.4971Z"
-              fill="#E5484D" />
-            <path
-              d="M17 24C17 23.4477 17.4477 23 18 23C18.5523 23 19 23.4477 19 24C19 24.5523 18.5523 25 18 25C17.4477 25 17 24.5523 17 24Z"
-              fill="#E5484D" />
-          </svg>
-        </div>
-        <div class="modal-header-text">
-          <div class="modal-header-title" id="modal-crash-title" data-i18n="crash.title">Проблема при запуске</div>
-          <div class="modal-header-sub" id="modal-crash-sub" data-i18n="crash.sub">Сборка завершилась с ошибкой</div>
-        </div>
-        <button class="modal-close" id="modal-crash-close" type="button" aria-label="Close">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z"
-              fill="currentColor" />
-            <path
-              d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z"
-              fill="currentColor" />
-          </svg>
-        </button>
-      </div>
-      <div class="modal-body crash-modal-body">
-        <div class="crash-log-preview" id="modal-crash-log-wrap" hidden>
-          <div class="crash-log-preview__head">
-            <span data-i18n="crash.logPreview">Фрагмент лога</span>
-          </div>
-          <pre class="crash-log-preview__body" id="modal-crash-log-preview"></pre>
-        </div>
-        <div class="crash-actions" role="group">
-          <button type="button" class="crash-action-row" id="modal-crash-folder">
-            <span class="crash-action-row__icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path
-                  d="M2 4.5C2 3.67157 2.67157 3 3.5 3H6L7.5 4.5H12.5C13.3284 4.5 14 5.17157 14 6V11.5C14 12.3284 13.3284 13 12.5 13H3.5C2.67157 13 2 12.3284 2 11.5V4.5Z" />
-              </svg>
-            </span>
-            <span class="crash-action-row__title" data-i18n="btn.openFolder">Открыть папку сборки</span>
-          </button>
-          <button type="button" class="crash-action-row" id="modal-crash-log">
-            <span class="crash-action-row__icon" aria-hidden="true">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path
-                  d="M12 1H4C2.89543 1 2 1.89543 2 3V13C2 14.1046 2.89543 15 4 15H12C13.1046 15 14 14.1046 14 13V3C14 1.89543 13.1046 1 12 1Z" />
-                <path d="M5 5H11M5 8H11M5 11H8" />
-              </svg>
-            </span>
-            <span class="crash-action-row__title" data-i18n="crash.openLaunchLog">Открыть лог запуска</span>
+    <div class="modal-window crash-modal-window" role="dialog" aria-modal="true" aria-labelledby="modal-crash-title">
+      <div class="crash-sheet">
+        <div class="crash-top">
+          <div class="crash-kicker" data-i18n="crash.kicker">Краш сборки</div>
+          <button class="modal-close" id="modal-crash-close" type="button" aria-label="Close">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z"
+                fill="currentColor" />
+              <path
+                d="M1.06066 12C0.474874 12 5.66382e-09 11.5251 1.26493e-08 10.9393C1.60038e-08 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 1.27096e-07 10.9393 1.30451e-07C11.5251 1.37436e-07 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z"
+                fill="currentColor" />
+            </svg>
           </button>
         </div>
-      </div>
-      <div class="modal-footer crash-modal-footer">
-        <button type="button" class="stngs-btn primary crash-agent-btn" id="modal-crash-agent">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8 1.5L9.2 5.2L13 6L9.2 6.8L8 10.5L6.8 6.8L3 6L6.8 5.2L8 1.5Z" stroke="currentColor"
-              stroke-width="1.4" stroke-linejoin="round" />
-          </svg>
-          <span data-i18n="crash.fixWithAgent">Решить проблему с агентом</span>
-        </button>
+        <h2 class="crash-title" id="modal-crash-title">Сборка упала</h2>
+        <p class="crash-cause" id="modal-crash-cause"></p>
+        <dl class="crash-facts">
+          <dt data-i18n="crash.factBuild">Сборка</dt>
+          <dd id="modal-crash-build">—</dd>
+          <dt data-i18n="crash.factVersion">Версия</dt>
+          <dd id="modal-crash-version">—</dd>
+          <dt data-i18n="crash.factCode">Код</dt>
+          <dd class="crash-code" id="modal-crash-code">—</dd>
+          <dt data-i18n="crash.factTime">Время</dt>
+          <dd id="modal-crash-time">—</dd>
+          <dt id="modal-crash-ram-label" data-i18n="crash.factRam" hidden>Память</dt>
+          <dd id="modal-crash-ram" hidden>—</dd>
+          <dt id="modal-crash-hint-label" data-i18n="crash.factHint" hidden>В логе</dt>
+          <dd id="modal-crash-hint" hidden>—</dd>
+        </dl>
+        <p class="crash-note" id="modal-crash-note"></p>
+        <div class="crash-actions">
+          <button type="button" class="stngs-btn" id="modal-crash-agent" data-i18n="crash.askAgent">Спросить агента</button>
+          <button type="button" class="stngs-btn" id="modal-crash-log" data-i18n="crash.openLog">Открыть лог</button>
+          <button type="button" class="stngs-btn primary" id="modal-crash-send" data-i18n="crash.sendReport">Отправить отчёт</button>
+        </div>
       </div>
     </div>
   </div>

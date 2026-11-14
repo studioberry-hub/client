@@ -2079,94 +2079,95 @@ html.splash-first-run:not(.splash-announce-done) .tb-btn:hover {
   color: #ffd479;
 }
 
-/* ── Crash modal ── */
+/* ── Краш сборки: карточка без лога ── */
 .crash-modal-window {
-  width: min(480px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - 32px));
 }
-.crash-modal-body {
-  padding: 14px 20px 6px;
+.crash-sheet {
+  padding: 18px 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
-.crash-log-preview {
-  border-radius: 10px;
-  background: var(--bg-deep);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-  min-height: 0;
-}
-.crash-log-preview__head {
+.crash-top {
   display: flex;
   align-items: center;
-  padding: 7px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.38);
+  justify-content: space-between;
+  gap: 12px;
 }
-.crash-log-preview__body {
+.crash-kicker {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+.crash-title {
   margin: 0;
-  padding: 10px 12px 12px;
-  max-height: 132px;
-  overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: #fff;
+}
+.crash-cause {
+  margin: 0;
+  font-size: 13.5px;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.72);
-  white-space: pre-wrap;
-  word-break: break-word;
+}
+.crash-facts {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 7px 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.crash-facts dt[hidden],
+.crash-facts dd[hidden] {
+  display: none;
+}
+.crash-facts dt {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.4);
+}
+.crash-facts dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.92);
+  overflow-wrap: anywhere;
+}
+.crash-facts dd.crash-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  color: #ffb4a8;
+}
+.crash-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.46);
 }
 .crash-actions {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.crash-action-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border: none;
-  border-radius: 10px;
-  background: var(--bg-content);
-  color: #fff;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.12s, color 0.12s;
-}
-.crash-action-row:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-content));
-}
-.crash-action-row__icon {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  background: var(--bg-deep);
-  color: rgba(255, 255, 255, 0.5);
-}
-.crash-action-row:hover .crash-action-row__icon {
-  color: var(--accent);
-}
-.crash-action-row__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-}
-.crash-modal-footer {
-  justify-content: stretch;
-}
-.crash-agent-btn {
-  width: 100%;
-  justify-content: center;
   gap: 8px;
+}
+.crash-actions .stngs-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 8px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.crash-actions .stngs-btn[hidden] {
+  display: none;
 }
 
 /* ===== ACCOUNT SELECTOR ===== */
@@ -14460,10 +14461,48 @@ button:not(.stngs-scale-seg),
 }
 
 .msgr-profile__stats {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 8px;
   margin-top: 6px;
+}
+
+.msgr-stat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 2px;
+  border-radius: 8px;
+  background: var(--bg-content);
+}
+
+.msgr-stat__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 6px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.msgr-stat__item img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.msgr-stat__sep {
+  width: 1px;
+  height: 12px;
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .msgr-profile__stats[hidden] {

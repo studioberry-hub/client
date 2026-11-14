@@ -10,10 +10,12 @@ import * as path from 'path';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
 import { catalogFileUrl, getApiBase, isCatalogCdnUrl } from '../shared/apiBase';
+import { EDGE_EU } from './edge-route';
 import { armDownloads, downloadModrinthFile } from './modrinthDownload';
 import { getLauncherDataDir } from './paths';
 import { relayOwnerBuildId, releaseHostedAddress, reserveHostedAddress, setRelayDropHandler, startTunnel, stopTunnel } from './game-relay';
 import { mapTcpPort, unmapTcpPort } from './portMap';
+import { aroundText, applyTextReplace, fragmentDiff, fsProblem, listEntries, searchFiles, viewText } from './file-view';
 
 type Software = string;
 type RunStatus = 'stopped' | 'installing' | 'starting' | 'running' | 'stopping' | 'error';
@@ -547,9 +549,12 @@ function accountNickname(): string {
 }
 
 async function ensurePublicAddress(server: HostedServer): Promise<HostedServer> {
-  if (server.publicHost && server.publicPort > 0) return server;
+  const host = String(server.publicHost || '').trim().toLowerCase();
+  const onEu = host === 'eu.uprojects.site' || host.endsWith('.eu.uprojects.site');
+  if (server.publicHost && server.publicPort > 0 && !onEu) return server;
   const reserved = await reserveHostedAddress(server.id, accountNickname() || server.name);
   if (!reserved.ok || !reserved.publicHost || !reserved.publicPort) return server;
+  if (onEu) await releaseHostedAddress(server.id, EDGE_EU);
   const list = loadAll();
   const index = list.findIndex((row) => row.id === server.id);
   if (index < 0) return server;
@@ -1194,6 +1199,7 @@ async function openRelay(server: HostedServer): Promise<void> {
         loader: ready.software,
         serverName: ready.name,
         serverId: ready.id,
+        relayHost: ready.publicHost,
       });
       if (!res.ok || !res.session) {
         const message = res.code === 'no_messenger_session'
@@ -1398,7 +1404,13 @@ function pluginFileName(filename: string, href: string): string {
   return base.slice(0, 120);
 }
 
-const HOSTED_TEXT_RE = /\.(txt|cfg|conf|config|properties|json|json5|toml|ya?ml|ini|snbt|xml)$/i;
+const HOSTED_TEXT_BYTES = 1_000_000;
+// Бинарные файлы не читаем как текст. Скрипты (.sk и остальные) — обычный текст.
+const HOSTED_BINARY_RE = /\.(jar|zip|gz|tgz|7z|rar|tar|png|jpe?g|gif|webp|bmp|ico|exe|dll|so|dylib|class|nbt|mca|dat|db|sqlite3?|lock|ogg|mp3|wav|flac|bin|pak|litemod|schem|schematic)$/i;
+
+function isHostedTextName(name: string): boolean {
+  return !HOSTED_BINARY_RE.test(path.basename(name));
+}
 
 function assertPluginArchive(dest: string): void {
   const size = fs.statSync(dest).size;
@@ -1539,12 +1551,8 @@ export function registerHostedServersIpc(): void {
     const next: HostedServer[] = [];
     let changed = false;
     for (const row of list) {
-      if (row.publicHost && row.publicPort > 0) {
-        next.push(row);
-        continue;
-      }
       const reserved = await ensurePublicAddress(row);
-      changed = changed || reserved.publicHost !== row.publicHost;
+      changed = changed || reserved.publicHost !== row.publicHost || reserved.publicPort !== row.publicPort;
       next.push(reserved.publicHost ? reserved : row);
     }
     if (changed) saveAll(next);
@@ -1810,12 +1818,27 @@ async function installPluginFromUrl(id: string, url: string, filename: string): 
   }
 }
 
+function configKeysOf(text: string): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const line of text.split(/\r?\n/).slice(0, 180)) {
+    const trimmed = line.trim();
+    if (!trimmed || /^[#;/]/.test(trimmed)) continue;
+    const match = trimmed.match(/^["']?([A-Za-z0-9_.:-]{2,64})["']?\s*[:=]/);
+    if (!match || seen.has(match[1])) continue;
+    seen.add(match[1]);
+    keys.push(match[1]);
+    if (keys.length >= 20) break;
+  }
+  return keys;
+}
+
 function findHostedConfigs(id: string, query: string): string[] {
   const needle = query.toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const skip = new Set(['libraries', 'versions', 'cache', 'logs', '.cache', 'crash-reports']);
+  const skip = new Set(['libraries', 'versions', 'cache', 'logs', '.cache', 'crash-reports', 'region', 'poi', 'entities', 'playerdata']);
   const found: string[] = [];
   const walk = (dir: string, rel: string, depth: number) => {
-    if (depth > 5 || found.length >= 60) return;
+    if (depth > 7 || found.length >= 160) return;
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -1823,18 +1846,18 @@ function findHostedConfigs(id: string, query: string): string[] {
       return;
     }
     for (const entry of entries) {
-      if (found.length >= 60 || skip.has(entry.name)) continue;
+      if (found.length >= 160 || skip.has(entry.name)) continue;
       const child = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         walk(path.join(dir, entry.name), child, depth + 1);
         continue;
       }
-      if (!HOSTED_TEXT_RE.test(entry.name)) continue;
+      if (!isHostedTextName(entry.name)) continue;
       const flat = child.toLowerCase().replace(/[^a-z0-9]+/g, '');
       if (!needle || flat.includes(needle)) found.push(child);
     }
   };
-  for (const rel of ['plugins', 'config', 'mods']) walk(path.join(serverDir(id), rel), rel, 0);
+  walk(serverDir(id), '', 0);
   return found;
 }
 
@@ -1867,24 +1890,101 @@ function readHostedText(id: string, rel: string): { ok: boolean; text?: string; 
     const target = safeChild(id, rel);
     const stat = fs.statSync(target);
     if (!stat.isFile()) return { ok: false, error: 'Это папка' };
-    if (!HOSTED_TEXT_RE.test(target)) return { ok: false, error: 'Можно читать только текстовые конфиги' };
-    if (stat.size > 256_000) return { ok: false, error: 'Файл слишком большой' };
-    return { ok: true, text: fs.readFileSync(target, 'utf8') };
+    if (!isHostedTextName(target)) return { ok: false, error: 'Это не текстовый файл' };
+    if (stat.size > HOSTED_TEXT_BYTES) return { ok: false, error: 'Файл слишком большой' };
+    const buf = fs.readFileSync(target);
+    if (buf.includes(0)) return { ok: false, error: 'Это не текстовый файл' };
+    return { ok: true, text: buf.toString('utf8') };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-function writeHostedText(id: string, rel: string, text: string): { ok: boolean; error?: string } {
+function writeHostedText(id: string, rel: string, text: string): unknown {
   try {
-    if (!HOSTED_TEXT_RE.test(rel)) return { ok: false, error: 'Можно писать только текстовые конфиги' };
-    if (text.length > 256_000) return { ok: false, error: 'Текст слишком большой' };
+    if (!rel || /[\\/]$/.test(rel)) return { ok: false, error: 'Это папка. Нужен путь к файлу.' };
+    if (!isHostedTextName(rel)) return { ok: false, error: 'Это не текстовый файл' };
+    if (text.includes('\0') || Buffer.byteLength(text, 'utf8') > HOSTED_TEXT_BYTES) return { ok: false, error: 'Текст слишком большой' };
     const target = safeChild(id, rel);
+    if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+      const listed = listEntries(target);
+      return { ok: false, error: 'Это папка. Нужен путь к файлу внутри неё.', entries: listed.entries.map((entry) => entry.name) };
+    }
+    if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+      return {
+        ok: false,
+        path: rel,
+        error: `Файл ${rel} уже есть. Прочитай его и замени фрагмент через edit_hosted_file. Целиком существующий файл не переписывается.`,
+      };
+    }
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, text, 'utf8');
-    return { ok: true };
+    const diff = fragmentDiff('', text);
+    return {
+      ok: true,
+      path: rel,
+      created: true,
+      added: diff.added,
+      diff: diff.lines,
+      note: 'Создан новый файл. Уже лежащий конфиг этим вызовом не меняется.',
+    };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: fsProblem(err) };
+  }
+}
+
+function readHostedView(id: string, rel: string, offset: number, limit: number): unknown {
+  try {
+    const target = safeChild(id, rel);
+    const stat = fs.statSync(target);
+    if (stat.isDirectory()) {
+      const listed = listEntries(target);
+      return {
+        ok: true,
+        dir: true,
+        path: rel,
+        entries: listed.entries,
+        truncated: listed.truncated,
+        note: listed.truncated ? 'В папке больше файлов. Сузь path или вызови find_hosted_files.' : 'Это папка. Читай файл по имени из entries.',
+      };
+    }
+    if (!stat.isFile()) return { ok: false, error: 'Это не файл' };
+    if (!isHostedTextName(target)) return { ok: false, error: 'Это не текстовый файл' };
+    if (stat.size > HOSTED_TEXT_BYTES) return { ok: false, error: 'Файл слишком большой' };
+    const buf = fs.readFileSync(target);
+    if (buf.includes(0)) return { ok: false, error: 'Это не текстовый файл' };
+    return { ok: true, path: rel, ...viewText(buf.toString('utf8'), offset, limit) };
+  } catch (err) {
+    return { ok: false, error: fsProblem(err) };
+  }
+}
+
+function editHostedText(id: string, rel: string, old: string, next: string): unknown {
+  try {
+    const target = safeChild(id, rel);
+    const stat = fs.statSync(target);
+    if (!stat.isFile()) return { ok: false, error: 'Это папка. Нужен путь к файлу.' };
+    if (!isHostedTextName(target)) return { ok: false, error: 'Это не текстовый файл' };
+    if (stat.size > HOSTED_TEXT_BYTES) return { ok: false, error: 'Файл слишком большой' };
+    const prev = fs.readFileSync(target, 'utf8');
+    const replaced = applyTextReplace(prev, old, next);
+    if (!replaced.ok) return { ...replaced, path: rel };
+    fs.writeFileSync(target, replaced.text, 'utf8');
+    const diff = fragmentDiff(old, next);
+    const reload = /plugins\//i.test(rel)
+      ? ' Если сервер запущен, перезагрузи плагин его командой: без этого в игре останется старый текст.'
+      : '';
+    return {
+      ok: true,
+      path: rel,
+      added: diff.added,
+      removed: diff.removed,
+      diff: diff.lines,
+      ...aroundText(replaced.text, next),
+      note: `Записано в ${rel}.${reload}`,
+    };
+  } catch (err) {
+    return { ok: false, error: fsProblem(err) };
   }
 }
 
@@ -2000,22 +2100,87 @@ export async function agentHostedAction(action: string, payload: Record<string, 
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
+  if (action === 'scan-configs') {
+    const query = String(payload.query || '').toLowerCase();
+    const configs = findHostedConfigs(id, query).slice(0, 30).map((rel) => {
+      const file = readHostedText(id, rel);
+      return { path: rel, keys: file.ok ? configKeysOf(file.text || '') : [], error: file.ok ? undefined : file.error };
+    });
+    return {
+      ok: true,
+      plugins: listPlugins(id).map((row) => ({ name: row.name, enabled: row.enabled })),
+      configs,
+      note: 'Дальше read_hosted_file и edit_hosted_file по уникальному фрагменту. Файл целиком не переписывай и не добавляй ключи, которых нет в keys.',
+    };
+  }
   if (action === 'files') {
     try {
-      const dir = safeChild(id, String(payload.path || ''));
-      const entries = fs.readdirSync(dir, { withFileTypes: true }).map((entry) => ({
-        name: entry.name,
-        dir: entry.isDirectory(),
-        size: entry.isDirectory() ? 0 : fs.statSync(path.join(dir, entry.name)).size,
-      }));
-      entries.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
-      return { ok: true, entries };
+      const rel = String(payload.path || '');
+      const dir = safeChild(id, rel);
+      const listed = listEntries(dir);
+      return {
+        ok: true,
+        path: rel,
+        entries: listed.entries,
+        truncated: listed.truncated,
+        note: listed.truncated ? 'Показана только часть папки. Ищи файл через find_hosted_files.' : undefined,
+      };
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), entries: [] };
+      return { ok: false, error: fsProblem(err), entries: [] };
     }
   }
   if (action === 'find-files') return { ok: true, files: findHostedConfigs(id, String(payload.query || '')) };
-  if (action === 'read-file') return readHostedText(id, String(payload.path || ''));
+  if (action === 'search') {
+    try {
+      return searchFiles(serverDir(id), String(payload.path || ''), String(payload.query || ''), payload.kind === 'grep' ? 'grep' : 'find');
+    } catch (err) {
+      return { ok: false, error: fsProblem(err), matches: [] };
+    }
+  }
+  if (action === 'read-file') {
+    const offset = Number(payload.offset);
+    const limit = Number(payload.limit);
+    return readHostedView(id, String(payload.path || ''), Number.isFinite(offset) ? offset : 1, Number.isFinite(limit) ? limit : 160);
+  }
+  if (action === 'edit-file') return editHostedText(id, String(payload.path || ''), String(payload.old ?? ''), String(payload.new ?? ''));
   if (action === 'write-file') return writeHostedText(id, String(payload.path || ''), String(payload.text ?? ''));
+  if (action === 'mkdir') {
+    try {
+      const dir = safeChild(id, String(payload.path || ''));
+      fs.mkdirSync(dir, { recursive: true });
+      return { ok: true, path: String(payload.path || '') };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (action === 'copy-file' || action === 'move-file') {
+    try {
+      const from = String(payload.path || '');
+      const to = String(payload.dest || '');
+      const src = safeChild(id, from);
+      const dest = safeChild(id, to);
+      const root = path.resolve(serverDir(id));
+      if (!from || !to || path.resolve(src) === root || path.resolve(dest) === root) {
+        return { ok: false, error: 'Нужны путь и назначение внутри сервера' };
+      }
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      if (action === 'move-file') fs.renameSync(src, dest);
+      else fs.cpSync(src, dest, { recursive: true });
+      return { ok: true, path: from, dest: to };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (action === 'delete-file') {
+    try {
+      const target = safeChild(id, String(payload.path || ''));
+      const root = path.resolve(serverDir(id));
+      if (!payload.path || target === root) return { ok: false, error: 'Нельзя удалить корень сервера' };
+      fs.rmSync(target, { recursive: true, force: false });
+      return { ok: true, path: String(payload.path) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
   return { ok: false, error: 'unknown_action' };
 }

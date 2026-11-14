@@ -63,11 +63,18 @@ export interface DeepLinkLaunch {
   id: string;
 }
 
+/** Сайт просит подтвердить вход в баг-трекер. */
+export interface DeepLinkBugAuth {
+  action: 'bug-auth';
+  id: string;
+}
+
 export type DeepLinkPayload =
   | DeepLinkInstall
   | DeepLinkImportInstance
   | DeepLinkJoinGroup
-  | DeepLinkLaunch;
+  | DeepLinkLaunch
+  | DeepLinkBugAuth;
 
 /** Причина отказа — только для лога: пользователю о чужих ссылках сообщать нечего. */
 export type DeepLinkRejectReason =
@@ -82,7 +89,8 @@ export type DeepLinkRejectReason =
   | 'bad_version'
   | 'bad_share_id'
   | 'bad_invite_token'
-  | 'bad_build_id';
+  | 'bad_build_id'
+  | 'bad_auth_id';
 
 export type DeepLinkParseResult =
   | { ok: true; payload: DeepLinkPayload }
@@ -179,6 +187,14 @@ function validateLaunchParams(get: (key: string) => unknown): DeepLinkParseResul
   return { ok: true, payload: { action: 'launch', id } };
 }
 
+const AUTH_ID_RE = /^[a-f0-9]{32}$/;
+
+function validateBugAuthParams(get: (key: string) => unknown): DeepLinkParseResult {
+  const id = readStr(get('id'), 32).toLowerCase();
+  if (!AUTH_ID_RE.test(id)) return { ok: false, reason: 'bad_auth_id' };
+  return { ok: true, payload: { action: 'bug-auth', id } };
+}
+
 /** Разбор ссылки вида `uclient://install?...` или `uclient://import-instance?id=...`. */
 export function parseDeepLink(raw: unknown): DeepLinkParseResult {
   if (typeof raw !== 'string') return { ok: false, reason: 'empty' };
@@ -212,6 +228,9 @@ export function parseDeepLink(raw: unknown): DeepLinkParseResult {
   }
   if (action === 'launch') {
     return validateLaunchParams((key) => url.searchParams.get(key));
+  }
+  if (action === 'bug-auth') {
+    return validateBugAuthParams((key) => url.searchParams.get(key));
   }
   return { ok: false, reason: 'unknown_action' };
 }

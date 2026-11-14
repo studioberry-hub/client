@@ -311,6 +311,7 @@ let groupSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let stream: EventSource | null = null;
 /** Токен, с которым открыт текущий SSE — чтобы не рвать коннект при смене вкладки. */
 let streamToken: string | null = null;
+let streamRetries = 0;
 let busy = false;
 let profileViewer: SkinViewEngine | null = null;
 let profileSkinLoaded: string | null = null;
@@ -4463,7 +4464,7 @@ async function loadMessages(conversationId: string, opts?: { forceScrollBottom?:
     });
   }
   persistAccountCache();
-  await req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST', body: {} });
+  void req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: 'POST', body: {} });
 }
 
 async function openConversation(id: string): Promise<void> {
@@ -5337,6 +5338,16 @@ function closeProfileModal(): void {
   overlay?.setAttribute('aria-hidden', 'true');
 }
 
+function profileStatItem(label: string, count: number, icon: string): string {
+  const n = String(Number(count) || 0);
+  return `<span class="msgr-stat__item" title="${host!.escapeHtml(label)}"><img src="${host!.escapeHtml(icon)}" alt="" width="16" height="16"><b>${host!.escapeHtml(n)}</b></span>`;
+}
+
+function profileStatCard(items: string[]): string {
+  return `<div class="msgr-stat">${items.join('<i class="msgr-stat__sep" aria-hidden="true"></i>')}</div>`;
+}
+
+// Две короткие карточки вместо списка: слева посты и подписки, справа друзья и лайки.
 function renderProfileStats(stats: {
   postCount?: number;
   followerCount?: number;
@@ -5346,17 +5357,13 @@ function renderProfileStats(stats: {
 }): void {
   const box = $('msgr-profile-stats');
   if (!box) return;
-  const cells: Array<[string, number, string]> = [
-    ['Посты', Number(stats.postCount || 0), '../../assets/tabsIcons/news.svg'],
-    ['Подписчики', Number(stats.followerCount || 0), '../../assets/newchatV2/showUserOrChatUsers.svg'],
-    ['Друзья', Number(stats.friendCount || 0), '../../assets/newchatV2/friend.svg'],
-    ['Подписки', Number(stats.followingCount || 0), '../../assets/newchatV2/addUserToGroup.svg'],
-    ['Лайки', Number(stats.likeCount || 0), '../../assets/newchatV2/reaction.svg'],
-  ];
+  const posts = profileStatItem('Посты', Number(stats.postCount || 0), '../../assets/tabsIcons/news.svg');
+  const followers = profileStatItem('Подписчики', Number(stats.followerCount || 0), '../../assets/newchatV2/showUserOrChatUsers.svg');
+  const following = profileStatItem('Подписки', Number(stats.followingCount || 0), '../../assets/newchatV2/addUserToGroup.svg');
+  const friends = profileStatItem('Друзья', Number(stats.friendCount || 0), '../../assets/newchatV2/friend.svg');
+  const likes = profileStatItem('Лайки', Number(stats.likeCount || 0), '../../assets/newchatV2/reaction.svg');
   box.hidden = false;
-  box.innerHTML = cells
-    .map(([label, n, icon]) => profileCardHtml(label, String(n), undefined, { iconUrl: icon, iconSize: 16, bare: true }))
-    .join('');
+  box.innerHTML = `${profileStatCard([posts, followers, following])}${profileStatCard([friends, likes])}`;
 }
 
 function upsertFollowButton(actionsEl: HTMLElement, following: boolean, friends: boolean): void {
@@ -6742,10 +6749,30 @@ function connectStream(token: string): void {
   stream.addEventListener('signal', handle('signal'));
   stream.addEventListener('voice', handle('voice'));
   stream.addEventListener('channels', handle('channels'));
-  stream.onerror = () => {
-    /* EventSource переподключится сам */
+  const source = stream;
+  source.onopen = () => {
+    streamRetries = 0;
+  };
+  source.onerror = () => {
+    if (stream !== source || source.readyState !== EventSource.CLOSED) return;
+    const token = streamToken;
+    if (!token) return;
+    const wait = Math.min(15000, 1000 * 2 ** streamRetries);
+    streamRetries += 1;
+    window.setTimeout(() => {
+      if (stream !== source || streamToken !== token) return;
+      disconnectStream();
+      connectStream(token);
+    }, wait);
   };
 }
+
+window.addEventListener('uc-edge-changed', () => {
+  const token = streamToken;
+  if (!token) return;
+  disconnectStream();
+  connectStream(token);
+});
 
 function bindUi(): void {
   const list = $('msgr-chat-list');
@@ -7654,14 +7681,16 @@ export async function ensureMessengerTab(force = false): Promise<void> {
 
   setGate('loading');
   renderPresence('connecting');
-  if (host.refreshAccount) {
+  // Обновление MSA — несколько запросов и секунды. Если токен уже есть, вход не ждёт его.
+  let fresh = host.getAccount();
+  if (!String(fresh?.accessToken || '').trim() && host.refreshAccount) {
     try {
       await host.refreshAccount();
+      fresh = host.getAccount();
     } catch {
       /* ignore */
     }
   }
-  const fresh = host.getAccount();
   if (!host.api.messengerSession) {
     setGate('error', host.t('msgr.errorHint'));
     return;
@@ -7692,22 +7721,31 @@ export async function ensureMessengerTab(force = false): Promise<void> {
   });
   setGate('ready');
   renderPresence(myPresenceStatus === 'offline' ? 'offline' : 'online');
-  // Синхронизируем ручной статус на сервер (после кеша / смены аккаунта)
-  if (sessionToken && myPresenceStatus) {
-    void req('/presence', { method: 'POST', body: { status: myPresenceStatus } });
-  }
-  if (sessionToken) connectStream(sessionToken);
-  await syncLauncherStats();
-  await loadConversations();
-  if (activeId) {
-    // После сессии me появился — если лента ещё не в DOM, нарисовать и прокрутить вниз
-    await loadMessages(activeId, { forceScrollBottom: true });
+  // Список чатов и статистика не держат вход, ленту и агента.
+  void hydrateMessenger();
+}
+
+let messengerHydrate: Promise<void> | null = null;
+
+function hydrateMessenger(): Promise<void> {
+  if (messengerHydrate) return messengerHydrate;
+  messengerHydrate = (async () => {
+    if (sessionToken && myPresenceStatus) {
+      void req('/presence', { method: 'POST', body: { status: myPresenceStatus } });
+    }
+    if (sessionToken) connectStream(sessionToken);
+    void syncLauncherStats();
+    await loadConversations();
+    if (activeId) {
+      void loadMessages(activeId, { forceScrollBottom: !isMessagesThreadPainted() });
+    }
     renderPeerHeader();
-  } else {
-    renderPeerHeader();
-  }
-  updateSharePanel();
-  startPolling();
+    updateSharePanel();
+    startPolling();
+  })().finally(() => {
+    messengerHydrate = null;
+  });
+  return messengerHydrate;
 }
 
 /** Вызывать при смене аккаунта лаунчера — поднимает/переключает сессию и кеш чатов */

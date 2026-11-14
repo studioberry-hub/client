@@ -7,7 +7,20 @@
 /** Прод-адрес API лаунчера. Все остальные адреса строятся от него. */
 export const DEFAULT_API_BASE = 'https://uprojects.site/client';
 
+/** Два входа одного сайта: Москва и Германия. */
+export const API_EDGE_MSK = DEFAULT_API_BASE;
+export const API_EDGE_EU = 'https://eu.uprojects.site/client';
+
 let apiBase = DEFAULT_API_BASE;
+
+const API_EDGES = [API_EDGE_MSK, API_EDGE_EU];
+
+/** Второй вход того же сайта. Для локальной отладки запасного адреса нет. */
+export function otherApiBase(base = apiBase): string | null {
+  const current = String(base || '').trim().replace(/\/+$/, '');
+  if (!API_EDGES.includes(current)) return null;
+  return API_EDGES.find((item) => item !== current) || null;
+}
 
 /**
  * Задаёт базовый адрес. В main и preload значение берётся из окружения
@@ -219,4 +232,118 @@ export function skinProfileUrl(uuid: string): string {
 /** Актуальная текстура Ely.by через наш сервер (у браузера нет CORS на skinsystem). */
 export function skinElyUrl(username: string): string {
   return `${apiBase}/api/skin/ely?${new URLSearchParams({ username: String(username ?? '').trim() }).toString()}`;
+}
+
+// ===== Запасной край для обычных запросов =====
+// Если выбранный вход не ответил за короткое время, тот же GET уходит на второй.
+// Вход целиком не переключаем: иначе свой сервер то появляется, то пропадает.
+// POST не повторяем: реле и сообщения нельзя создать дважды.
+
+const RETRY_STATUSES = new Set([502, 503, 504]);
+// Второй край только если первый заметно задержался. Иначе каждый GET
+// удваивается и оба входа упираются в один и тот же API.
+const HEDGE_MS = 1600;
+let transportInstalled = false;
+let adoptHook: (base: string) => void = (base) => setApiBase(base);
+
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function requestMethod(input: RequestInfo | URL, init?: RequestInit): string {
+  if (init?.method) return init.method.toUpperCase();
+  if (typeof Request !== 'undefined' && input instanceof Request) return input.method.toUpperCase();
+  return 'GET';
+}
+
+function hasNoFailover(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const bag = new Headers(init?.headers || undefined);
+  if (bag.get('x-uc-no-failover')) return true;
+  return typeof Request !== 'undefined' && input instanceof Request && input.headers.get('x-uc-no-failover') === '1';
+}
+
+function linkAbort(outer: AbortSignal | null | undefined, controller: AbortController): void {
+  if (!outer) return;
+  if (outer.aborted) {
+    controller.abort();
+    return;
+  }
+  outer.addEventListener('abort', () => controller.abort(), { once: true });
+}
+
+/**
+ * Включает быстрый повтор GET на второй край. Повторный вызов только меняет
+ * обработчик переключения, сам fetch оборачивается один раз.
+ */
+export function installApiTransport(hook?: (base: string) => void): void {
+  if (hook) adoptHook = hook;
+  const root = globalThis as { fetch?: typeof fetch; __ucApiTransport?: boolean };
+  if (transportInstalled || root.__ucApiTransport || typeof root.fetch !== 'function') return;
+  transportInstalled = true;
+  root.__ucApiTransport = true;
+  const native = root.fetch.bind(globalThis);
+  root.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (hasNoFailover(input, init)) return native(input, init);
+    const url = requestUrl(input);
+    const method = requestMethod(input, init);
+    const current = getApiBase();
+    const alternate = method === 'GET' || method === 'HEAD' ? otherApiBase(current) : null;
+    if (!alternate || !url.startsWith(`${current}/`)) return native(input, init);
+
+    const primaryCtl = new AbortController();
+    const altCtl = new AbortController();
+    linkAbort(init?.signal, primaryCtl);
+    linkAbort(init?.signal, altCtl);
+    const altUrl = `${alternate}${url.slice(current.length)}`;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    return await new Promise<Response>((resolve, reject) => {
+      let failures = 0;
+      let fallback: Response | null = null;
+      const fail = (err: unknown) => {
+        if (settled) return;
+        if (init?.signal?.aborted) {
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+          return;
+        }
+        if (err instanceof Response) fallback = err;
+        failures += 1;
+        if (failures < 2) return;
+        settled = true;
+        clearTimeout(timer);
+        if (fallback) resolve(fallback);
+        else reject(err);
+      };
+      const win = (res: Response, loser: AbortController) => {
+        if (settled) {
+          void res.body?.cancel();
+          return;
+        }
+        if (RETRY_STATUSES.has(res.status)) {
+          fail(res);
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        loser.abort();
+        resolve(res);
+      };
+      void native(input, { ...init, signal: primaryCtl.signal }).then(
+        (res) => win(res, altCtl),
+        fail,
+      );
+      timer = setTimeout(() => {
+        if (settled || altCtl.signal.aborted) return;
+        void native(altUrl, { ...init, signal: altCtl.signal }).then(
+          (res) => win(res, primaryCtl),
+          fail,
+        );
+      }, HEDGE_MS);
+    });
+  }) as typeof fetch;
 }

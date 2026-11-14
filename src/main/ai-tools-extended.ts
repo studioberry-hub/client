@@ -9,6 +9,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { importLocalModpack } from './importModpack';
 import { agentHostedAction } from './hostedServers';
+import { refuseShortOverwrite, viewText } from './file-view';
+import { buildVanillaCommands } from './minecraft-commands';
 import { getApiBase, releaseLatestUrl } from '../shared/apiBase';
 
 // ===== Типы =====
@@ -76,7 +78,7 @@ const UPDATE_ASSET = 'latest-windows-amd64.zip';
 const MAX_CONFIG_BYTES = 64 * 1024;
 const MAX_SEARCH_TEXT_BYTES = 128 * 1024;
 const MAX_WRITE_BYTES = 256 * 1024;
-const TEXT_FILE_RE = /\.(txt|cfg|conf|config|properties|json|json5|jsonc|toml|yaml|yml|xml|ini|log|md|snbt)$/i;
+const TEXT_FILE_RE = /\.(txt|cfg|conf|config|properties|json|json5|jsonc|toml|ya?ml|xml|ini|log|md|snbt|sk|js|mjs|cjs|ts|mcfunction|lang|csv|html?|css|kts|kt|java|mcmeta)$/i;
 const CONTENT_FILE_EXTS: Record<string, string[]> = {
   mods: ['.jar', '.litemod'],
   resourcepacks: ['.zip'],
@@ -469,6 +471,80 @@ function summarizeContent(root: string): Record<string, { count: number; enabled
   return out;
 }
 
+function configKeysOf(text: string): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const line of text.split(/\r?\n/).slice(0, 180)) {
+    const trimmed = line.trim();
+    if (!trimmed || /^[#;/]/.test(trimmed)) continue;
+    const match = trimmed.match(/^["']?([A-Za-z0-9_.:-]{2,64})["']?\s*[:=]/);
+    if (!match || seen.has(match[1])) continue;
+    seen.add(match[1]);
+    keys.push(match[1]);
+    if (keys.length >= 20) break;
+  }
+  return keys;
+}
+
+function readConfigPreviews(root: string, query: string): Array<{ path: string; keys: string[] }> {
+  const out: Array<{ path: string; keys: string[] }> = [];
+  const take = (rel: string, full: string) => {
+    if (out.length >= 30) return;
+    if (query && !rel.toLowerCase().includes(query)) return;
+    try {
+      const stat = fs.statSync(full);
+      if (!stat.isFile() || stat.size > MAX_CONFIG_BYTES || !TEXT_FILE_RE.test(full)) return;
+      const text = fs.readFileSync(full, 'utf8');
+      if (text.includes('\0')) return;
+      out.push({ path: rel.replace(/\\/g, '/'), keys: configKeysOf(text) });
+    } catch {
+      /* файл уже исчез */
+    }
+  };
+  const walk = (dir: string, rel: string, depth: number) => {
+    if (depth > 3 || out.length >= 30) return;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (out.length >= 30) return;
+      const child = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), child, depth + 1);
+      else take(child, path.join(dir, entry.name));
+    }
+  };
+  take('options.txt', path.join(root, 'options.txt'));
+  walk(path.join(root, 'config'), 'config', 0);
+  return out;
+}
+
+// Сервер команды: имя из текущей просьбы, затем явный id, затем сервер этого разговора.
+export function pickHostedServer(
+  servers: Array<Record<string, unknown>>,
+  wanted: string,
+  focusId: string,
+  request: string,
+): Record<string, unknown> | null {
+  const byId = (value: string) => (value ? servers.find((row) => String(row.id || '') === value) : undefined);
+  const needle = request.toLowerCase();
+  const named = servers.filter((row) => {
+    const name = String(row.name || '').trim().toLowerCase();
+    return name.length > 1 && needle.includes(name);
+  });
+  if (named.length === 1) return named[0];
+  const picked = byId(wanted);
+  if (picked) return picked;
+  const focused = byId(focusId);
+  if (focused) return focused;
+  if (servers.length === 1) return servers[0];
+  const running = servers.filter((row) => row.status === 'running');
+  if (running.length === 1) return running[0];
+  return null;
+}
+
 function commandTemplates(): Array<{ topic: string; title: string; prompt: string }> {
   return [
     { topic: 'diagnose', title: 'Диагностика сборки', prompt: 'Проверь сборку на проблемы с Java, логами и конфликтами модов.' },
@@ -583,10 +659,12 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     read_config: tool(
       'read_config',
       'read',
-      'Прочитать конфиг. Если buildId начинается с hs, это свой сервер: путь ищется в plugins/ и config/ сервера.',
+      'Окно конфига с номерами строк. Длинный файл правь через edit, не переписывай целиком.',
       {
         buildId: { type: 'string' },
         relativePath: { type: 'string' },
+        offset: { type: 'number' },
+        limit: { type: 'number' },
       },
       ['buildId', 'relativePath'],
       async (args) => {
@@ -594,12 +672,17 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
         ensureBuildOrThrow(deps, buildId);
         const filePath = buildConfigPath(deps, buildId, asString(args.relativePath));
         const data = readUtf8Limited(filePath, MAX_CONFIG_BYTES);
+        const view = viewText(data.text, Number(args.offset) || 1, Number(args.limit) || 160);
         return {
           buildId,
           relativePath: relativeInstancePath(path.join(deps.getInstanceRoot(buildId), 'config'), filePath),
           bytes: data.bytes,
-          truncated: data.truncated,
-          content: data.text,
+          truncated: data.truncated || view.truncated,
+          start: view.start,
+          end: view.end,
+          total: view.total,
+          content: view.body,
+          note: view.note,
         };
       },
     ),
@@ -1162,7 +1245,7 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     launch_build: tool(
       'launch_build',
       'write',
-      'Запустить сборку Minecraft. Опционально сразу на сервер. Требует подтверждения.',
+      'Запустить игру клиента, то есть сборку. Свой сервер так не запускается: для него start_hosted_server.',
       {
         buildId: { type: 'string' },
         serverIp: { type: 'string' },
@@ -1283,7 +1366,7 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     write_config: tool(
       'write_config',
       'write',
-      'Записать конфиг. Если buildId начинается с hs, файл пишется в папку своего сервера, не в сборку.',
+      'Создать новый конфиг. Существующий файл меняй через edit_instance_file или edit_hosted_file.',
       {
         buildId: { type: 'string' },
         relativePath: { type: 'string' },
@@ -1297,6 +1380,12 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
         const content = String(args.content ?? '');
         if (Buffer.byteLength(content, 'utf-8') > MAX_WRITE_BYTES) return { error: 'content_too_large' };
         const filePath = buildConfigPath(deps, buildId, asString(args.relativePath));
+        if (fs.existsSync(filePath)) {
+          const stat = fs.statSync(filePath);
+          if (stat.isDirectory()) return { ok: false, error: 'Это папка. Нужен путь к файлу.' };
+          const why = refuseShortOverwrite(fs.readFileSync(filePath, 'utf8'), content);
+          if (why) return { ok: false, error: why, bytes: stat.size };
+        }
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
         fs.writeFileSync(filePath, content, 'utf-8');
         return {
@@ -1986,7 +2075,7 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     start_hosted_server: tool(
       'start_hosted_server',
       'write',
-      'Запустить свой сервер.',
+      'Запустить свой сервер хостинга по id. Это не игра и не сборка.',
       { id: { type: 'string' } },
       ['id'],
       async (args) => agentHostedAction('start', args),
@@ -2013,10 +2102,86 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     hosted_command: tool(
       'hosted_command',
       'write',
-      'Отправить команду в консоль запущенного своего сервера, без ведущего слэша или с ним.',
+      'Отправить уже готовую команду в консоль запущенного своего сервера. Для выдачи, чар, режима, времени и погоды используй play_command.',
       { id: { type: 'string' }, command: { type: 'string' } },
       ['id', 'command'],
       async (args) => agentHostedAction('command', args),
+    ),
+
+    play_command: tool(
+      'play_command',
+      'write',
+      'Команда на сервер этого разговора: передай его id. Форму со списком серверов не открывай. Броня, чары, режим, время, погода.',
+      {
+        id: { type: 'string' },
+        request: { type: 'string' },
+        command: { type: 'string' },
+        player: { type: 'string' },
+      },
+      [],
+      async (args) => {
+        const request = asString(args.request);
+        const command = asString(args.command);
+        const listed = (await agentHostedAction('list')) as { servers?: Array<Record<string, unknown>> };
+        const servers = Array.isArray(listed?.servers) ? listed.servers : [];
+        const server = pickHostedServer(servers, asString(args.id), asString(args.focusId), request);
+        if (!server) {
+          const brief = servers.map((row) => `${row.name} (${row.id}, ${row.status || 'stopped'})`).join('; ');
+          return {
+            ok: false,
+            error: servers.length
+              ? `Сервер разговора не выбран. Повтори play_command с id из контекста, форму не открывай. Серверы: ${brief}`
+              : 'Своего сервера нет. Сначала создай его.',
+            servers: servers.map((row) => ({ id: row.id, name: row.name, gameVersion: row.gameVersion, status: row.status })),
+          };
+        }
+        const version = String(server.gameVersion || '1.21.4');
+        const plan = buildVanillaCommands(command || request, version, asString(args.player));
+        if (plan.unclear || !plan.commands.length) return { ok: false, error: plan.unclear || 'Команда не собрана', id: server.id };
+        if (server.status !== 'running') {
+          return {
+            ok: false,
+            error: 'Сервер не запущен. Вызови start_hosted_server с этим id и снова play_command.',
+            id: server.id,
+            name: server.name,
+            gameVersion: version,
+            commands: plan.commands,
+          };
+        }
+        const sent: string[] = [];
+        for (const line of plan.commands) {
+          const result = (await agentHostedAction('command', { id: server.id, command: line })) as { ok?: boolean; error?: string };
+          if (!result?.ok) return { ok: false, error: result?.error || 'Команда не ушла', id: server.id, sent, pending: plan.commands.slice(sent.length) };
+          sent.push(line);
+        }
+        return { ok: true, id: server.id, name: server.name, gameVersion: version, syntax: plan.syntax, commands: sent, note: plan.note };
+      },
+    ),
+
+    scan_configs: tool(
+      'scan_configs',
+      'read',
+      'Показать ключи конфигов сборки или своего сервера перед правкой. Меняй только эти ключи в прочитанном файле.',
+      { buildId: { type: 'string' }, id: { type: 'string' }, query: { type: 'string' } },
+      [],
+      async (args) => {
+        const buildId = asString(args.buildId);
+        const serverId = asString(args.id);
+        const query = asString(args.query).toLowerCase();
+        if (!buildId && !serverId) return { error: 'Нужен buildId сборки или id своего сервера' };
+        if (serverId) return agentHostedAction('scan-configs', { id: serverId, query });
+        const build = deps.findBuild(buildId);
+        if (!build) return { error: 'Сборка не найдена' };
+        const root = deps.getInstanceRoot(buildId);
+        return {
+          ok: true,
+          buildId,
+          gameVersion: build.gameVersion || build.version || null,
+          loader: build.loader || null,
+          configs: readConfigPreviews(root, query),
+          note: 'Дальше read_config или read_instance_file и точечная запись. Память меняет set_build_memory, Java — set_java_for_build, окно — set_build_window, настройки игры — set_options_value.',
+        };
+      },
     ),
 
     hosted_log: tool(
@@ -2062,28 +2227,82 @@ export function getExtendedAiTools(deps: ExtendedDeps): Record<string, ToolEntry
     list_hosted_files: tool(
       'list_hosted_files',
       'read',
-      'Список файлов в каталоге своего сервера. path пустой — корень.',
+      'Одна папка своего сервера. path пустой — корень. Файл по имени ищи через find_hosted_files.',
       { id: { type: 'string' }, path: { type: 'string' } },
       ['id'],
       async (args) => agentHostedAction('files', { id: args.id, path: args.path }),
     ),
 
+    find_hosted_files: tool(
+      'find_hosted_files',
+      'read',
+      'Найти файл сервера по части имени или пути, не обходя папки по одной.',
+      { id: { type: 'string' }, query: { type: 'string' }, path: { type: 'string' } },
+      ['id', 'query'],
+      async (args) => agentHostedAction('search', { id: args.id, path: args.path, query: args.query, kind: 'find' }),
+    ),
+
+    grep_hosted_files: tool(
+      'grep_hosted_files',
+      'read',
+      'Найти строку в текстовых файлах сервера: путь, номер строки и текст.',
+      { id: { type: 'string' }, query: { type: 'string' }, path: { type: 'string' } },
+      ['id', 'query'],
+      async (args) => agentHostedAction('search', { id: args.id, path: args.path, query: args.query, kind: 'grep' }),
+    ),
+
     read_hosted_file: tool(
       'read_hosted_file',
       'read',
-      'Прочитать текстовый конфиг своего сервера, например server.properties или config/paper-world-defaults.yml.',
-      { id: { type: 'string' }, path: { type: 'string' } },
+      'Окно файла сервера с номерами строк. offset листает дальше. Папка вернёт список.',
+      { id: { type: 'string' }, path: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' } },
       ['id', 'path'],
-      async (args) => agentHostedAction('read-file', { id: args.id, path: args.path }),
+      async (args) => agentHostedAction('read-file', { id: args.id, path: args.path, offset: args.offset, limit: args.limit }),
+    ),
+
+    edit_hosted_file: tool(
+      'edit_hosted_file',
+      'write',
+      'Заменить в файле сервера уникальный фрагмент old на new. Номер строки в old не копируй.',
+      { id: { type: 'string' }, path: { type: 'string' }, old: { type: 'string' }, new: { type: 'string' } },
+      ['id', 'path', 'old', 'new'],
+      async (args) => agentHostedAction('edit-file', { id: args.id, path: args.path, old: args.old, new: args.new }),
     ),
 
     write_hosted_file: tool(
       'write_hosted_file',
       'write',
-      'Перезаписать текстовый конфиг своего сервера. Сначала прочитай файл и меняй только нужные строки.',
+      'Создать новый текстовый файл сервера. Существующий меняй через edit_hosted_file.',
       { id: { type: 'string' }, path: { type: 'string' }, text: { type: 'string' } },
       ['id', 'path', 'text'],
       async (args) => agentHostedAction('write-file', { id: args.id, path: args.path, text: args.text }),
+    ),
+
+    mkdir_hosted: tool(
+      'mkdir_hosted',
+      'write',
+      'Создать папку внутри своего сервера.',
+      { id: { type: 'string' }, path: { type: 'string' } },
+      ['id', 'path'],
+      async (args) => agentHostedAction('mkdir', { id: args.id, path: args.path }),
+    ),
+
+    copy_hosted_file: tool(
+      'copy_hosted_file',
+      'write',
+      'Скопировать файл или папку внутри своего сервера.',
+      { id: { type: 'string' }, path: { type: 'string' }, dest: { type: 'string' } },
+      ['id', 'path', 'dest'],
+      async (args) => agentHostedAction('copy-file', { id: args.id, path: args.path, dest: args.dest }),
+    ),
+
+    move_hosted_file: tool(
+      'move_hosted_file',
+      'write',
+      'Перенести или переименовать файл или папку внутри своего сервера.',
+      { id: { type: 'string' }, path: { type: 'string' }, dest: { type: 'string' } },
+      ['id', 'path', 'dest'],
+      async (args) => agentHostedAction('move-file', { id: args.id, path: args.path, dest: args.dest }),
     ),
 
     list_hosted_core_versions: tool(

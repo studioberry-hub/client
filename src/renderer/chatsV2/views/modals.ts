@@ -1553,11 +1553,10 @@ export function serverSettingsModal(roomId: number, start: SettingsTab = 'overvi
             ${launcherSelect(
               'data-filter',
               [
-                { value: 'disabled', label: 'Все, у кого есть право' },
-                { value: 'members', label: 'Только участники с ролью' },
+                { value: 'disabled', label: 'Все, у кого есть право канала' },
                 { value: 'all', label: 'Только администраторы' },
               ],
-              s?.explicit_filter === 'members' || s?.explicit_filter === 'all' ? s.explicit_filter : 'disabled',
+              s?.explicit_filter === 'all' ? 'all' : 'disabled',
             )}
           </label>
           <label class="cv2-field"><span class="cv2-field__label">Уведомления по умолчанию</span>

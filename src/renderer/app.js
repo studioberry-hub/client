@@ -29273,7 +29273,8 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     "dist/shared/apiBase.js"(exports) {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
-      exports.DEFAULT_ACCOUNT_SKIN_URL = exports.DEFAULT_API_BASE = void 0;
+      exports.DEFAULT_ACCOUNT_SKIN_URL = exports.API_EDGE_EU = exports.API_EDGE_MSK = exports.DEFAULT_API_BASE = void 0;
+      exports.otherApiBase = otherApiBase;
       exports.setApiBase = setApiBase;
       exports.getApiBase = getApiBase;
       exports.releaseLatestUrl = releaseLatestUrl;
@@ -29294,8 +29295,18 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       exports.skinImageUrl = skinImageUrl;
       exports.skinProfileUrl = skinProfileUrl;
       exports.skinElyUrl = skinElyUrl;
+      exports.installApiTransport = installApiTransport;
       exports.DEFAULT_API_BASE = "https://uprojects.site/client";
+      exports.API_EDGE_MSK = exports.DEFAULT_API_BASE;
+      exports.API_EDGE_EU = "https://eu.uprojects.site/client";
       var apiBase = exports.DEFAULT_API_BASE;
+      var API_EDGES = [exports.API_EDGE_MSK, exports.API_EDGE_EU];
+      function otherApiBase(base = apiBase) {
+        const current = String(base || "").trim().replace(/\/+$/, "");
+        if (!API_EDGES.includes(current))
+          return null;
+        return API_EDGES.find((item) => item !== current) || null;
+      }
       function setApiBase(value) {
         const text = String(value ?? "").trim().replace(/\/+$/, "");
         if (!text)
@@ -29433,6 +29444,111 @@ Please report this to https://github.com/markedjs/marked.`, e) {
       }
       function skinElyUrl(username) {
         return `${apiBase}/api/skin/ely?${new URLSearchParams({ username: String(username ?? "").trim() }).toString()}`;
+      }
+      var RETRY_STATUSES = /* @__PURE__ */ new Set([502, 503, 504]);
+      var HEDGE_MS = 1600;
+      var transportInstalled = false;
+      var adoptHook = (base) => setApiBase(base);
+      function requestUrl(input) {
+        if (typeof input === "string")
+          return input;
+        if (input instanceof URL)
+          return input.toString();
+        return input.url;
+      }
+      function requestMethod(input, init) {
+        if (init?.method)
+          return init.method.toUpperCase();
+        if (typeof Request !== "undefined" && input instanceof Request)
+          return input.method.toUpperCase();
+        return "GET";
+      }
+      function hasNoFailover(input, init) {
+        const bag = new Headers(init?.headers || void 0);
+        if (bag.get("x-uc-no-failover"))
+          return true;
+        return typeof Request !== "undefined" && input instanceof Request && input.headers.get("x-uc-no-failover") === "1";
+      }
+      function linkAbort(outer, controller) {
+        if (!outer)
+          return;
+        if (outer.aborted) {
+          controller.abort();
+          return;
+        }
+        outer.addEventListener("abort", () => controller.abort(), { once: true });
+      }
+      function installApiTransport(hook) {
+        if (hook)
+          adoptHook = hook;
+        const root = globalThis;
+        if (transportInstalled || root.__ucApiTransport || typeof root.fetch !== "function")
+          return;
+        transportInstalled = true;
+        root.__ucApiTransport = true;
+        const native = root.fetch.bind(globalThis);
+        root.fetch = (async (input, init) => {
+          if (hasNoFailover(input, init))
+            return native(input, init);
+          const url = requestUrl(input);
+          const method = requestMethod(input, init);
+          const current = getApiBase();
+          const alternate = method === "GET" || method === "HEAD" ? otherApiBase(current) : null;
+          if (!alternate || !url.startsWith(`${current}/`))
+            return native(input, init);
+          const primaryCtl = new AbortController();
+          const altCtl = new AbortController();
+          linkAbort(init?.signal, primaryCtl);
+          linkAbort(init?.signal, altCtl);
+          const altUrl = `${alternate}${url.slice(current.length)}`;
+          let settled = false;
+          let timer;
+          return await new Promise((resolve, reject) => {
+            let failures = 0;
+            let fallback = null;
+            const fail = (err) => {
+              if (settled)
+                return;
+              if (init?.signal?.aborted) {
+                settled = true;
+                clearTimeout(timer);
+                reject(err);
+                return;
+              }
+              if (err instanceof Response)
+                fallback = err;
+              failures += 1;
+              if (failures < 2)
+                return;
+              settled = true;
+              clearTimeout(timer);
+              if (fallback)
+                resolve(fallback);
+              else
+                reject(err);
+            };
+            const win = (res, loser) => {
+              if (settled) {
+                void res.body?.cancel();
+                return;
+              }
+              if (RETRY_STATUSES.has(res.status)) {
+                fail(res);
+                return;
+              }
+              settled = true;
+              clearTimeout(timer);
+              loser.abort();
+              resolve(res);
+            };
+            void native(input, { ...init, signal: primaryCtl.signal }).then((res) => win(res, altCtl), fail);
+            timer = setTimeout(() => {
+              if (settled || altCtl.signal.aborted)
+                return;
+              void native(altUrl, { ...init, signal: altCtl.signal }).then((res) => win(res, primaryCtl), fail);
+            }, HEDGE_MS);
+          });
+        });
       }
     }
   });
@@ -33718,10 +33834,9 @@ ${content}`;
         syncAccountAvatars();
         if (!feedReady)
           paintLoadingBlocks();
-        await refreshClansSelect();
         if (newsView === "official")
           setFeedTab("articles");
-        await loadCommunity();
+        await Promise.all([refreshClansSelect(), loadCommunity()]);
         void force;
       }
       var framesWatching = false;
@@ -35410,6 +35525,19 @@ ${content}`;
           return;
         exports.V.pingMs = Math.round(ms);
       }
+      function voiceRelayHost() {
+        const servers = ice.iceServers || [];
+        for (const server of servers) {
+          const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+          for (const url of urls) {
+            const match = String(url || "").match(/^(?:stun|turn):([^:?/]+)/i);
+            const host = match?.[1] || "";
+            if (host && host !== "stun.l.google.com")
+              return host;
+          }
+        }
+        return "";
+      }
       async function sampleVoicePing() {
         const inVoice = Boolean(exports.V.channelId) || exports.C.phase === "active" || exports.C.phase === "connecting";
         if (!inVoice) {
@@ -35432,6 +35560,20 @@ ${content}`;
           lastRtcAt = Date.now();
           exports.V.pingMs = best;
           return;
+        }
+        if (!iceLoaded)
+          await loadIce();
+        const host = voiceRelayHost();
+        const probe = window.electronAPI?.voiceRelayRtt;
+        if (host && probe) {
+          try {
+            const ms = await probe(host);
+            if (ms && ms > 0) {
+              noteServerPing(ms);
+              return;
+            }
+          } catch {
+          }
         }
         const now2 = performance.now();
         if (now2 - lastProbeAt < 3e3)
@@ -54225,10 +54367,9 @@ ${text}`.trim();
           </label>
           <label class="cv2-field"><span class="cv2-field__label">\u0412\u043B\u043E\u0436\u0435\u043D\u0438\u044F</span>
             ${launcherSelect("data-filter", [
-                { value: "disabled", label: "\u0412\u0441\u0435, \u0443 \u043A\u043E\u0433\u043E \u0435\u0441\u0442\u044C \u043F\u0440\u0430\u0432\u043E" },
-                { value: "members", label: "\u0422\u043E\u043B\u044C\u043A\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 \u0441 \u0440\u043E\u043B\u044C\u044E" },
+                { value: "disabled", label: "\u0412\u0441\u0435, \u0443 \u043A\u043E\u0433\u043E \u0435\u0441\u0442\u044C \u043F\u0440\u0430\u0432\u043E \u043A\u0430\u043D\u0430\u043B\u0430" },
                 { value: "all", label: "\u0422\u043E\u043B\u044C\u043A\u043E \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440\u044B" }
-              ], s?.explicit_filter === "members" || s?.explicit_filter === "all" ? s.explicit_filter : "disabled")}
+              ], s?.explicit_filter === "all" ? "all" : "disabled")}
           </label>
           <label class="cv2-field"><span class="cv2-field__label">\u0423\u0432\u0435\u0434\u043E\u043C\u043B\u0435\u043D\u0438\u044F \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E</span>
             ${launcherSelect("data-notify", [
@@ -59848,6 +59989,7 @@ ${text}`.trim();
       var groupSearchTimer = null;
       var stream = null;
       var streamToken = null;
+      var streamRetries = 0;
       var busy = false;
       var profileViewer = null;
       var profileSkinLoaded = null;
@@ -63584,7 +63726,7 @@ ${body}`.trimEnd();
           });
         }
         persistAccountCache();
-        await req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: "POST", body: {} });
+        void req(`/conversations/${encodeURIComponent(conversationId)}/read`, { method: "POST", body: {} });
       }
       async function openConversation(id) {
         const known = conversations.find((c) => c.id === id);
@@ -64369,19 +64511,24 @@ ${body}`.trimEnd();
         const overlay = $3("modal-msgr-profile");
         overlay?.setAttribute("aria-hidden", "true");
       }
+      function profileStatItem(label, count, icon) {
+        const n = String(Number(count) || 0);
+        return `<span class="msgr-stat__item" title="${host.escapeHtml(label)}"><img src="${host.escapeHtml(icon)}" alt="" width="16" height="16"><b>${host.escapeHtml(n)}</b></span>`;
+      }
+      function profileStatCard(items) {
+        return `<div class="msgr-stat">${items.join('<i class="msgr-stat__sep" aria-hidden="true"></i>')}</div>`;
+      }
       function renderProfileStats(stats) {
         const box = $3("msgr-profile-stats");
         if (!box)
           return;
-        const cells = [
-          ["\u041F\u043E\u0441\u0442\u044B", Number(stats.postCount || 0), "../../assets/tabsIcons/news.svg"],
-          ["\u041F\u043E\u0434\u043F\u0438\u0441\u0447\u0438\u043A\u0438", Number(stats.followerCount || 0), "../../assets/newchatV2/showUserOrChatUsers.svg"],
-          ["\u0414\u0440\u0443\u0437\u044C\u044F", Number(stats.friendCount || 0), "../../assets/newchatV2/friend.svg"],
-          ["\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0438", Number(stats.followingCount || 0), "../../assets/newchatV2/addUserToGroup.svg"],
-          ["\u041B\u0430\u0439\u043A\u0438", Number(stats.likeCount || 0), "../../assets/newchatV2/reaction.svg"]
-        ];
+        const posts = profileStatItem("\u041F\u043E\u0441\u0442\u044B", Number(stats.postCount || 0), "../../assets/tabsIcons/news.svg");
+        const followers = profileStatItem("\u041F\u043E\u0434\u043F\u0438\u0441\u0447\u0438\u043A\u0438", Number(stats.followerCount || 0), "../../assets/newchatV2/showUserOrChatUsers.svg");
+        const following = profileStatItem("\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0438", Number(stats.followingCount || 0), "../../assets/newchatV2/addUserToGroup.svg");
+        const friends = profileStatItem("\u0414\u0440\u0443\u0437\u044C\u044F", Number(stats.friendCount || 0), "../../assets/newchatV2/friend.svg");
+        const likes = profileStatItem("\u041B\u0430\u0439\u043A\u0438", Number(stats.likeCount || 0), "../../assets/newchatV2/reaction.svg");
         box.hidden = false;
-        box.innerHTML = cells.map(([label, n, icon]) => profileCardHtml(label, String(n), void 0, { iconUrl: icon, iconSize: 16, bare: true })).join("");
+        box.innerHTML = `${profileStatCard([posts, followers, following])}${profileStatCard([friends, likes])}`;
       }
       function upsertFollowButton(actionsEl, following, friends) {
         const existing = actionsEl.querySelector('[data-act="follow"], [data-act="unfollow"]');
@@ -65650,9 +65797,33 @@ ${body}`.trimEnd();
         stream.addEventListener("signal", handle("signal"));
         stream.addEventListener("voice", handle("voice"));
         stream.addEventListener("channels", handle("channels"));
-        stream.onerror = () => {
+        const source = stream;
+        source.onopen = () => {
+          streamRetries = 0;
+        };
+        source.onerror = () => {
+          if (stream !== source || source.readyState !== EventSource.CLOSED)
+            return;
+          const token2 = streamToken;
+          if (!token2)
+            return;
+          const wait = Math.min(15e3, 1e3 * 2 ** streamRetries);
+          streamRetries += 1;
+          window.setTimeout(() => {
+            if (stream !== source || streamToken !== token2)
+              return;
+            disconnectStream();
+            connectStream(token2);
+          }, wait);
         };
       }
+      window.addEventListener("uc-edge-changed", () => {
+        const token = streamToken;
+        if (!token)
+          return;
+        disconnectStream();
+        connectStream(token);
+      });
       function bindUi() {
         const list = $3("msgr-chat-list");
         list?.addEventListener("click", (e) => {
@@ -66566,13 +66737,14 @@ ${body}`.trimEnd();
         }
         setGate("loading");
         renderPresence("connecting");
-        if (host.refreshAccount) {
+        let fresh = host.getAccount();
+        if (!String(fresh?.accessToken || "").trim() && host.refreshAccount) {
           try {
             await host.refreshAccount();
+            fresh = host.getAccount();
           } catch {
           }
         }
-        const fresh = host.getAccount();
         if (!host.api.messengerSession) {
           setGate("error", host.t("msgr.errorHint"));
           return;
@@ -66601,21 +66773,30 @@ ${body}`.trimEnd();
         });
         setGate("ready");
         renderPresence(myPresenceStatus === "offline" ? "offline" : "online");
-        if (sessionToken && myPresenceStatus) {
-          void req("/presence", { method: "POST", body: { status: myPresenceStatus } });
-        }
-        if (sessionToken)
-          connectStream(sessionToken);
-        await syncLauncherStats();
-        await loadConversations();
-        if (activeId) {
-          await loadMessages(activeId, { forceScrollBottom: true });
+        void hydrateMessenger();
+      }
+      var messengerHydrate = null;
+      function hydrateMessenger() {
+        if (messengerHydrate)
+          return messengerHydrate;
+        messengerHydrate = (async () => {
+          if (sessionToken && myPresenceStatus) {
+            void req("/presence", { method: "POST", body: { status: myPresenceStatus } });
+          }
+          if (sessionToken)
+            connectStream(sessionToken);
+          void syncLauncherStats();
+          await loadConversations();
+          if (activeId) {
+            void loadMessages(activeId, { forceScrollBottom: !isMessagesThreadPainted() });
+          }
           renderPeerHeader();
-        } else {
-          renderPeerHeader();
-        }
-        updateSharePanel();
-        startPolling();
+          updateSharePanel();
+          startPolling();
+        })().finally(() => {
+          messengerHydrate = null;
+        });
+        return messengerHydrate;
       }
       async function notifyMessengerAccountChanged() {
         if (!host)
@@ -70287,7 +70468,7 @@ ${body}`.trimEnd();
         const hero = gallery ? `<img class="mod-tile__hero-img" src="${esc((0, apiBase_1.catalogImageUrl)(gallery))}" alt="" loading="lazy">` : `<div class="mod-tile__hero-ph" aria-hidden="true"><img class="mod-tile__hero-ph-img" src="${placeholder}" alt=""></div>`;
         const author = String(hit.author || "").trim();
         const updated = relativeAge(hit.date_modified);
-        return `<article class="mod-tile" data-plugin-id="${esc(id)}">
+        return `<article class="mod-tile" data-plugin-id="${esc(id)}" data-mod-source="${source}">
     <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
     <div class="mod-tile__body">
       <div class="mod-tile__head">
@@ -70321,8 +70502,9 @@ ${body}`.trimEnd();
         if (mode === "ask") {
           const card = document.querySelector(`[data-plugin-id="${CSS.escape(projectId)}"]`);
           const title = card?.querySelector(".mod-tile__name, .mod-card-name")?.childNodes[0]?.textContent?.trim() || projectId;
+          const source = card?.getAttribute("data-mod-source") || "";
           window.dispatchEvent(new CustomEvent("uclient-host-catalog", {
-            detail: { projectId, mode: "ask", title }
+            detail: { projectId, mode: "ask", title, type: "plugin", source }
           }));
           return;
         }
@@ -72791,6 +72973,5318 @@ ${body}`.trimEnd();
     }
   });
 
+  // dist/renderer/uagent/bloub/math.js
+  var require_math = __commonJS({
+    "dist/renderer/uagent/bloub/math.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.r2 = exports.easings = exports.lerp = exports.clamp = exports.TAU = void 0;
+      exports.loopNoise = loopNoise;
+      exports.createRng = createRng;
+      exports.TAU = Math.PI * 2;
+      var clamp3 = (v2, lo = 0, hi = 1) => v2 < lo ? lo : v2 > hi ? hi : v2;
+      exports.clamp = clamp3;
+      var lerp4 = (a, b2, t) => a + (b2 - a) * t;
+      exports.lerp = lerp4;
+      exports.easings = {
+        easeOutCubic: (t) => 1 - (1 - t) ** 3,
+        easeInOutCubic: (t) => t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2,
+        easeOutQuint: (t) => 1 - (1 - t) ** 5
+      };
+      function loopNoise(t, period, seed = 0) {
+        const p = t / period * exports.TAU;
+        return 0.55 * Math.sin(p + seed) + 0.3 * Math.sin(2 * p + seed * 1.7 + 1.1) + 0.15 * Math.sin(3 * p + seed * 2.3 + 2.4);
+      }
+      function createRng(seed) {
+        let a = seed >>> 0;
+        return () => {
+          a = a + 1831565813 >>> 0;
+          let t = Math.imul(a ^ a >>> 15, 1 | a);
+          t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+          return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+      }
+      var r2 = (v2) => Math.round(v2 * 100) / 100;
+      exports.r2 = r2;
+    }
+  });
+
+  // dist/renderer/uagent/bloub/decor.js
+  var require_decor = __commonJS({
+    "dist/renderer/uagent/bloub/decor.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.NOTIF_MARGIN = exports.NOTIF_POP = exports.NOTIF_R = exports.NOTIF_DIST = exports.NOTIF_ANGLE = exports.NOTIF_BLUE = exports.COMET_DOT = exports.COMET_RIBBONS = exports.DOT_PEAK = exports.DOT_R = exports.DOT_X = exports.SWOOSH = exports.RINGS = void 0;
+      exports.arcRender = arcRender;
+      exports.particles = particles;
+      var math_1 = require_math();
+      function wheel(hue, s = 0.55, l3 = 0.62) {
+        const h = (hue % 360 + 360) % 360;
+        const c = (1 - Math.abs(2 * l3 - 1)) * s;
+        const x2 = c * (1 - Math.abs(h / 60 % 2 - 1));
+        const m2 = l3 - c / 2;
+        const [r, g2, b2] = h < 60 ? [c, x2, 0] : h < 120 ? [x2, c, 0] : h < 180 ? [0, c, x2] : h < 240 ? [0, x2, c] : h < 300 ? [x2, 0, c] : [c, 0, x2];
+        const hex = (v2) => Math.round((v2 + m2) * 255).toString(16).padStart(2, "0");
+        return `#${hex(r)}${hex(g2)}${hex(b2)}`;
+      }
+      function arcRender(seed, t, scale, id, opacity = 1) {
+        const spin = seed.phase + t * seed.speed * math_1.TAU;
+        const cu = Math.cos(seed.tilt);
+        const su = Math.sin(seed.tilt);
+        const kz = Math.sqrt(Math.max(0, 1 - seed.k * seed.k));
+        const N2 = 64;
+        const span = seed.sweep * math_1.TAU;
+        let front = "";
+        let back = "";
+        let prev = null;
+        for (let i = 0; i <= N2; i++) {
+          const th = spin + i / N2 * span;
+          const ct = Math.cos(th);
+          const st2 = Math.sin(th);
+          const x2 = seed.a * (ct * cu + st2 * -su * seed.k) + seed.cx;
+          const y2 = seed.a * (ct * su + st2 * cu * seed.k) + seed.cy;
+          const z2 = seed.a * st2 * kz;
+          const behind = z2 < 0;
+          const sx = (0, math_1.r2)(x2 * scale);
+          const sy = (0, math_1.r2)(y2 * scale);
+          const cmd = behind !== prev ? "M" : "L";
+          if (behind)
+            back += `${cmd}${sx} ${sy}`;
+          else
+            front += `${cmd}${sx} ${sy}`;
+          prev = behind;
+        }
+        const gx = Math.cos(seed.tilt) * seed.a * scale;
+        const gy = Math.sin(seed.tilt) * seed.a * scale;
+        return {
+          id,
+          front,
+          back,
+          width: seed.width * scale,
+          opacity,
+          grad: {
+            x1: (0, math_1.r2)(seed.cx * scale - gx),
+            y1: (0, math_1.r2)(seed.cy * scale - gy),
+            x2: (0, math_1.r2)(seed.cx * scale + gx),
+            y2: (0, math_1.r2)(seed.cy * scale + gy),
+            stops: [wheel(seed.hue), wheel(seed.hue + seed.hueSpan * 0.5), wheel(seed.hue + seed.hueSpan)]
+          }
+        };
+      }
+      var RING_RNG = (0, math_1.createRng)(659918);
+      exports.RINGS = Array.from({ length: 6 }, (_2, i) => ({
+        a: 1.3 + RING_RNG() * 0.1,
+        k: 0.05 + RING_RNG() * 0.4,
+        tilt: i / 6 * Math.PI + RING_RNG() * 0.5,
+        speed: 3 + RING_RNG() * 0.7,
+        phase: RING_RNG() * math_1.TAU,
+        sweep: 0.6 + RING_RNG() * 0.25,
+        hue: i * 360 / 6 + RING_RNG() * 30,
+        hueSpan: 60 + RING_RNG() * 60,
+        width: 0.05 + RING_RNG() * 0.012,
+        cx: 0,
+        cy: 0.1
+      }));
+      exports.SWOOSH = Array.from({ length: 4 }, (_2, i) => ({
+        a: 0.78 + i * 0.2,
+        k: 0.05 + i * 0.02,
+        tilt: -0.62 + i * 0.05,
+        speed: 0.3,
+        phase: 0.06 * i,
+        sweep: 0.4,
+        hue: 95 + i * 62,
+        hueSpan: 100,
+        width: 0.05,
+        cx: 0,
+        cy: -0.12
+      }));
+      exports.DOT_X = [-0.557, -0.013, 0.532];
+      exports.DOT_R = 0.165;
+      exports.DOT_PEAK = 1.25;
+      var P_RNG = (0, math_1.createRng)(48879);
+      var PARTICLES = Array.from({ length: 5 }, (_2, i) => ({
+        birth: i * 0.2,
+        angle: P_RNG() * math_1.TAU,
+        rho: 0.58 + P_RNG() * 0.18
+      }));
+      function particles(t, scale) {
+        const out = [];
+        for (const p of PARTICLES) {
+          const u = t - p.birth;
+          if (u < 0 || u > 0.62)
+            continue;
+          const rho = p.rho * Math.pow(0.75, u * 10);
+          const a = p.angle + u * 100 * Math.PI / 180;
+          out.push({
+            x: Math.cos(a) * rho * scale,
+            y: Math.sin(a) * rho * scale,
+            r: (0.04 + 0.028 * (0, math_1.clamp)(u / 0.55)) * scale,
+            depth: (0, math_1.clamp)(1 - rho / 0.8),
+            opacity: (0, math_1.clamp)(u / 0.06) * (0, math_1.clamp)((0.62 - u) / 0.08)
+          });
+        }
+        return out;
+      }
+      var COMET_RNG = (0, math_1.createRng)(49383);
+      exports.COMET_RIBBONS = Array.from({ length: 4 }, (_2, i) => {
+        const d2 = i - 1.5;
+        return {
+          a: 0.85 * (1 + d2 * 0.03),
+          // meme aplatissement a +-5 % pres : les rubans forment un faisceau serre
+          k: 0.15 / 0.85 * (1 + d2 * 0.16),
+          tilt: 34 * Math.PI / 180 + d2 * 0.035,
+          speed: 210 / 360,
+          // dephasage mesure : 10 a 20 degres entre rubans, pas davantage
+          phase: -i * 0.045 + COMET_RNG() * 0.012,
+          sweep: 0.34,
+          hue: i * 85 + COMET_RNG() * 20,
+          hueSpan: 80,
+          width: 0.095,
+          cx: 0,
+          cy: 0
+        };
+      });
+      exports.COMET_DOT = 0.129;
+      exports.NOTIF_BLUE = "#2496e8";
+      exports.NOTIF_ANGLE = -42;
+      exports.NOTIF_DIST = 1.003;
+      exports.NOTIF_R = 0.15;
+      exports.NOTIF_POP = 1.14;
+      exports.NOTIF_MARGIN = 0.054;
+    }
+  });
+
+  // dist/renderer/uagent/bloub/face.js
+  var require_face = __commonJS({
+    "dist/renderer/uagent/bloub/face.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.REST_GAZE = exports.EYE_H = exports.EYE_W = exports.EYE_SPLIT = void 0;
+      exports.eyePoses = eyePoses;
+      exports.liveliness = liveliness;
+      exports.blinkScale = blinkScale;
+      var math_1 = require_math();
+      exports.EYE_SPLIT = 15.46;
+      exports.EYE_W = 0.186;
+      exports.EYE_H = 0.412;
+      exports.REST_GAZE = { yaw: 28.49, pitch: 28.62, roll: -13 };
+      var deg = (d2) => d2 * Math.PI / 180;
+      function spin(u, v2, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        return [
+          [u[0] * c + v2[0] * s, u[1] * c + v2[1] * s, u[2] * c + v2[2] * s],
+          [v2[0] * c - u[0] * s, v2[1] * c - u[1] * s, v2[2] * c - u[2] * s]
+        ];
+      }
+      function eyePoses(gaze, scale, split = exports.EYE_SPLIT) {
+        let f = [0, 0, 1];
+        let right = [1, 0, 0];
+        let down = [0, 1, 0];
+        [f, right] = spin(f, right, deg(gaze.yaw));
+        [down, f] = spin(down, f, deg(gaze.pitch));
+        [right, down] = spin(right, down, deg(gaze.roll));
+        const build = (side) => {
+          const [ef, er] = spin(f, right, deg(split * side));
+          return {
+            x: ef[0] * scale,
+            y: ef[1] * scale,
+            a: er[0],
+            b: er[1],
+            c: down[0],
+            d: down[1],
+            depth: ef[2]
+          };
+        };
+        return [build(-1), build(1)];
+      }
+      var BLINK_RNG = (0, math_1.createRng)(24301);
+      var BLINKS = (() => {
+        const out = [];
+        let t = 1.4;
+        while (t < 900) {
+          out.push(t);
+          t += 1.9 + BLINK_RNG() * 2.7;
+          if (BLINK_RNG() < 0.18) {
+            out.push(t);
+            t += 0.24;
+          }
+        }
+        return out;
+      })();
+      var BLINK_DUR = 0.18;
+      function blinkLid(t) {
+        for (let i = 0; i < BLINKS.length; i++) {
+          const start = BLINKS[i];
+          if (t < start)
+            break;
+          const k = (t - start) / BLINK_DUR;
+          if (k >= 0 && k <= 1) {
+            return k < 0.45 ? 1 - k / 0.45 : (k - 0.45) / 0.55;
+          }
+        }
+        return 1;
+      }
+      function liveliness(t, opt = {}) {
+        const { wander = 1, blink = true, float = true } = opt;
+        return {
+          dYaw: ((0, math_1.loopNoise)(t, 11.3, 0.4) * 5.5 + (0, math_1.loopNoise)(t, 3.7, 2.1) * 1.6) * wander,
+          dPitch: ((0, math_1.loopNoise)(t, 9.1, 1.3) * 4.2 + (0, math_1.loopNoise)(t, 4.3, 0.7) * 1.3) * wander,
+          dRoll: (0, math_1.loopNoise)(t, 13.7, 3.2) * 2.2 * wander,
+          lid: blink ? blinkLid(t) : 1,
+          // Au repos la video est quasiment immobile (centre stable a +-0.003, rayon
+          // constant) : toute la vie passe par le regard et les clignements. On garde
+          // juste de quoi ne pas figer completement l'image.
+          driftX: float ? (0, math_1.loopNoise)(t, 7.9, 1.9) * 6e-3 : 0,
+          driftY: float ? (0, math_1.loopNoise)(t, 5.3, 0.3) * 7e-3 : 0,
+          // La largeur est constante, seule la hauteur respire tres legerement.
+          breath: float ? 1 + Math.sin(t / 3.4 * Math.PI * 2) * 5e-3 : 1
+        };
+      }
+      function blinkScale(lid) {
+        return 0.06 + 0.94 * (0, math_1.clamp)(lid);
+      }
+    }
+  });
+
+  // dist/renderer/uagent/bloub/expressions.js
+  var require_expressions = __commonJS({
+    "dist/renderer/uagent/bloub/expressions.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_EXPRESSION = exports.EXPRESSION_BY_ID = exports.EXPRESSIONS = void 0;
+      exports.blendExpression = blendExpression;
+      var face_1 = require_face();
+      var math_1 = require_math();
+      var eye = (w2, h, tilt = 0, open = 1) => ({ w: w2, h, tilt, open });
+      var pair = (w2, h, tilt = 0, open = 1) => [
+        eye(w2, h, tilt, open),
+        eye(w2, h, -tilt, open)
+      ];
+      exports.EXPRESSIONS = [
+        {
+          // la pose relevée image par image sur la vidéo de référence
+          id: "neutre",
+          gaze: { ...face_1.REST_GAZE },
+          split: face_1.EYE_SPLIT,
+          eyes: [eye(face_1.EYE_W, face_1.EYE_H), eye(face_1.EYE_W, face_1.EYE_H)]
+        },
+        {
+          id: "attentif",
+          gaze: { yaw: 4, pitch: 5, roll: -4 },
+          split: 16,
+          eyes: pair(0.21, 0.44)
+        },
+        {
+          id: "surpris",
+          gaze: { yaw: 3, pitch: -3, roll: 0 },
+          split: 19,
+          eyes: pair(0.45, 0.47)
+        },
+        {
+          id: "excite",
+          gaze: { yaw: 6, pitch: -14, roll: 0 },
+          split: 19.5,
+          eyes: pair(0.4, 0.56, -10)
+        },
+        {
+          // yeux plissés en arc : les hauts convergent légèrement
+          id: "heureux",
+          gaze: { yaw: 5, pitch: 9, roll: 0 },
+          split: 17,
+          eyes: pair(0.27, 0.17, 14)
+        },
+        {
+          id: "hilare",
+          gaze: { yaw: 4, pitch: 14, roll: 0 },
+          split: 18,
+          eyes: pair(0.34, 0.13, 20)
+        },
+        {
+          // hauts des yeux qui convergent fort vers le centre + yeux étrécis
+          id: "colere",
+          gaze: { yaw: 3, pitch: 7, roll: 0 },
+          split: 17,
+          eyes: pair(0.34, 0.15, 30)
+        },
+        {
+          // l'inverse : les hauts divergent, et le regard tombe
+          id: "triste",
+          gaze: { yaw: 3, pitch: -13, roll: 0 },
+          split: 16,
+          eyes: pair(0.22, 0.4, -28)
+        },
+        {
+          id: "effraye",
+          gaze: { yaw: 2, pitch: -20, roll: 0 },
+          split: 20.5,
+          eyes: pair(0.4, 0.6)
+        },
+        {
+          // un œil franchement plus fermé que l'autre
+          id: "mefiant",
+          gaze: { yaw: 12, pitch: 6, roll: -6 },
+          split: 16,
+          eyes: [eye(0.21, 0.4), eye(0.22, 0.15)]
+        },
+        {
+          // asymétrique sur les deux axes : tailles ET inclinaisons dépareillées.
+          // L'œil plissé est volontairement plat (rapport 1,6) : à un rapport proche
+          // de 1 il serait rond, et son inclinaison ne se verrait pas.
+          id: "confus",
+          gaze: { yaw: -14, pitch: 3, roll: 8 },
+          split: 16.5,
+          eyes: [eye(0.2, 0.44, -18), eye(0.28, 0.17, 14)]
+        },
+        {
+          // la tête penche : c'est le roulis qui porte la curiosité
+          id: "curieux",
+          gaze: { yaw: 16, pitch: -9, roll: -15 },
+          split: 16.5,
+          eyes: [eye(0.24, 0.46, -8), eye(0.2, 0.38, -8)]
+        },
+        {
+          id: "fier",
+          gaze: { yaw: 5, pitch: 17, roll: 0 },
+          split: 17,
+          eyes: pair(0.3, 0.15, 18)
+        },
+        {
+          id: "timide",
+          gaze: { yaw: -19, pitch: -14, roll: -7 },
+          split: 14,
+          eyes: pair(0.17, 0.3)
+        },
+        {
+          // fentes horizontales et regard qui part sur le côté
+          id: "blase",
+          gaze: { yaw: -22, pitch: 2, roll: 0 },
+          split: 16,
+          eyes: pair(0.3, 0.12)
+        },
+        {
+          // paupières à moitié tombées : on passe par `open`, donc l'écrasement
+          // vertical à l'écran, le même mécanisme que le clignement
+          id: "somnolent",
+          gaze: { yaw: 6, pitch: -9, roll: -3 },
+          split: 16,
+          eyes: pair(0.2, 0.42, 0, 0.42)
+        }
+      ];
+      exports.EXPRESSION_BY_ID = new Map(exports.EXPRESSIONS.map((e) => [e.id, e]));
+      exports.DEFAULT_EXPRESSION = "neutre";
+      var lerpEyeCfg = (a, b2, t) => ({
+        w: (0, math_1.lerp)(a.w, b2.w, t),
+        h: (0, math_1.lerp)(a.h, b2.h, t),
+        tilt: (0, math_1.lerp)(a.tilt ?? 0, b2.tilt ?? 0, t),
+        open: (0, math_1.lerp)(a.open, b2.open, t)
+      });
+      function blendExpression(a, b2, t) {
+        return {
+          id: b2.id,
+          gaze: {
+            yaw: (0, math_1.lerp)(a.gaze.yaw, b2.gaze.yaw, t),
+            pitch: (0, math_1.lerp)(a.gaze.pitch, b2.gaze.pitch, t),
+            roll: (0, math_1.lerp)(a.gaze.roll, b2.gaze.roll, t)
+          },
+          split: (0, math_1.lerp)(a.split, b2.split, t),
+          eyes: [lerpEyeCfg(a.eyes[0], b2.eyes[0], t), lerpEyeCfg(a.eyes[1], b2.eyes[1], t)]
+        };
+      }
+    }
+  });
+
+  // dist/renderer/uagent/bloub/profiles.js
+  var require_profiles = __commonJS({
+    "dist/renderer/uagent/bloub/profiles.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.PROFILES = exports.PROFILE_SAMPLES = void 0;
+      exports.PROFILE_SAMPLES = 64;
+      exports.PROFILES = {
+        // oeuf : meme hauteur que la boule, retreci en largeur
+        // image 164, empreinte mesuree 1.647 x 2.000
+        egg: [0.8369, 0.8424, 0.8497, 0.8585, 0.8674, 0.8775, 0.8878, 0.8983, 0.9089, 0.9185, 0.9288, 0.9374, 0.9445, 0.9504, 0.9543, 0.9559, 0.9555, 0.9519, 0.9466, 0.9389, 0.9302, 0.9193, 0.9085, 0.8969, 0.8852, 0.8734, 0.8625, 0.8513, 0.8411, 0.8325, 0.8243, 0.8179, 0.8137, 0.8112, 0.8102, 0.8128, 0.8178, 0.8262, 0.8374, 0.8518, 0.8702, 0.8922, 0.9169, 0.9446, 0.9741, 1.0023, 1.0267, 1.0433, 1.0481, 1.0393, 1.0216, 0.997, 0.9697, 0.9418, 0.9169, 0.8949, 0.876, 0.8604, 0.849, 0.8394, 0.8337, 0.8314, 0.8305, 0.8326],
+        // hexagone pointe en haut, coins tres arrondis
+        // image 174, empreinte mesuree 1.826 x 2.011
+        hexagon: [0.921, 0.9282, 0.9441, 0.9706, 0.9984, 1.0059, 0.9896, 0.9562, 0.929, 0.9124, 0.9047, 0.9058, 0.9157, 0.9349, 0.9642, 0.9873, 0.9882, 0.9665, 0.9336, 0.9105, 0.8968, 0.8918, 0.8955, 0.908, 0.9293, 0.9611, 0.982, 0.9812, 0.959, 0.9282, 0.9089, 0.8978, 0.8964, 0.9026, 0.9189, 0.9439, 0.9778, 0.999, 0.9964, 0.9713, 0.9439, 0.9274, 0.9196, 0.9206, 0.9308, 0.9502, 0.9799, 1.0121, 1.0226, 1.0071, 0.9752, 0.951, 0.9366, 0.9316, 0.9351, 0.9485, 0.9711, 1.0026, 1.0213, 1.0155, 0.9863, 0.9547, 0.9347, 0.9232],
+        // triangle pointe en haut, coins tres arrondis
+        // image 190, empreinte mesuree 1.995 x 1.884
+        triangle: [0.7819, 0.8211, 0.8747, 0.944, 1.0223, 1.096, 1.1401, 1.134, 1.0808, 1.0047, 0.9265, 0.8603, 0.8104, 0.773, 0.745, 0.7273, 0.7151, 0.7118, 0.7148, 0.7245, 0.7427, 0.768, 0.8037, 0.8518, 0.9148, 0.9876, 1.0583, 1.1073, 1.1109, 1.0667, 0.994, 0.9164, 0.8482, 0.7948, 0.7555, 0.7261, 0.7056, 0.6925, 0.6859, 0.6869, 0.6938, 0.7084, 0.7305, 0.7615, 0.804, 0.8595, 0.9311, 1.0092, 1.0791, 1.1171, 1.1054, 1.0501, 0.9779, 0.905, 0.845, 0.799, 0.7656, 0.7413, 0.7258, 0.716, 0.7146, 0.7204, 0.733, 0.7528]
+      };
+    }
+  });
+
+  // dist/renderer/uagent/bloub/shape.js
+  var require_shape = __commonJS({
+    "dist/renderer/uagent/bloub/shape.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.silhouette = silhouette;
+      exports.circle = circle;
+      exports.blend = blend;
+      exports.toPoints = toPoints;
+      exports.closedPath = closedPath;
+      exports.profileFromPolygon = profileFromPolygon;
+      exports.hullOfCircles = hullOfCircles;
+      exports.radiusAtAngle = radiusAtAngle;
+      exports.superellipseProfile = superellipseProfile;
+      exports.unionOfCirclesProfile = unionOfCirclesProfile;
+      exports.regularPolygonProfile = regularPolygonProfile;
+      exports.polyPath = polyPath;
+      exports.capsulePath = capsulePath;
+      var math_1 = require_math();
+      var profiles_1 = require_profiles();
+      var ANGLES = Array.from({ length: profiles_1.PROFILE_SAMPLES }, (_2, i) => i / profiles_1.PROFILE_SAMPLES * math_1.TAU);
+      var COS = ANGLES.map(Math.cos);
+      var SIN = ANGLES.map(Math.sin);
+      function silhouette(name, pose = {}) {
+        return {
+          radii: [...profiles_1.PROFILES[name]],
+          rot: 0,
+          cx: 0,
+          cy: 0,
+          sx: 1,
+          sy: 1,
+          ...pose
+        };
+      }
+      function circle(radius, pose = {}) {
+        return {
+          radii: new Array(profiles_1.PROFILE_SAMPLES).fill(radius),
+          rot: 0,
+          cx: 0,
+          cy: 0,
+          sx: 1,
+          sy: 1,
+          ...pose
+        };
+      }
+      function blend(a, b2, t, out) {
+        const dst = out ?? { radii: new Array(profiles_1.PROFILE_SAMPLES), rot: 0, cx: 0, cy: 0, sx: 1, sy: 1 };
+        for (let i = 0; i < profiles_1.PROFILE_SAMPLES; i++) {
+          dst.radii[i] = (0, math_1.lerp)(a.radii[i] ?? 1, b2.radii[i] ?? 1, t);
+        }
+        let dRot = b2.rot - a.rot;
+        while (dRot > Math.PI)
+          dRot -= math_1.TAU;
+        while (dRot < -Math.PI)
+          dRot += math_1.TAU;
+        dst.rot = a.rot + dRot * t;
+        dst.cx = (0, math_1.lerp)(a.cx, b2.cx, t);
+        dst.cy = (0, math_1.lerp)(a.cy, b2.cy, t);
+        dst.sx = (0, math_1.lerp)(a.sx, b2.sx, t);
+        dst.sy = (0, math_1.lerp)(a.sy, b2.sy, t);
+        return dst;
+      }
+      function toPoints(s, scale, out = []) {
+        const cr = Math.cos(s.rot);
+        const sr = Math.sin(s.rot);
+        for (let i = 0; i < profiles_1.PROFILE_SAMPLES; i++) {
+          const r = s.radii[i] ?? 1;
+          const x2 = r * (COS[i] ?? 0);
+          const y2 = r * (SIN[i] ?? 0);
+          const rx = x2 * cr - y2 * sr;
+          const ry = x2 * sr + y2 * cr;
+          const p = out[i] ?? { x: 0, y: 0 };
+          p.x = (rx * s.sx + s.cx) * scale;
+          p.y = (ry * s.sy + s.cy) * scale;
+          out[i] = p;
+        }
+        out.length = profiles_1.PROFILE_SAMPLES;
+        return out;
+      }
+      function closedPath(pts, tension = 1 / 6) {
+        const n = pts.length;
+        if (n < 3)
+          return "";
+        const first = pts[0];
+        let d2 = `M${(0, math_1.r2)(first.x)} ${(0, math_1.r2)(first.y)}`;
+        for (let i = 0; i < n; i++) {
+          const p0 = pts[(i - 1 + n) % n];
+          const p1 = pts[i];
+          const p2 = pts[(i + 1) % n];
+          const p3 = pts[(i + 2) % n];
+          const c1x = p1.x + (p2.x - p0.x) * tension;
+          const c1y = p1.y + (p2.y - p0.y) * tension;
+          const c2x = p2.x - (p3.x - p1.x) * tension;
+          const c2y = p2.y - (p3.y - p1.y) * tension;
+          d2 += `C${(0, math_1.r2)(c1x)} ${(0, math_1.r2)(c1y)} ${(0, math_1.r2)(c2x)} ${(0, math_1.r2)(c2y)} ${(0, math_1.r2)(p2.x)} ${(0, math_1.r2)(p2.y)}`;
+        }
+        return `${d2}Z`;
+      }
+      function profileFromPolygon(poly, cx, cy) {
+        const radii = new Array(profiles_1.PROFILE_SAMPLES).fill(0);
+        const n = poly.length;
+        for (let k = 0; k < profiles_1.PROFILE_SAMPLES; k++) {
+          const dx = COS[k] ?? 0;
+          const dy = SIN[k] ?? 0;
+          let best = 0;
+          for (let i = 0; i < n; i++) {
+            const a = poly[i];
+            const b2 = poly[(i + 1) % n];
+            const ex = b2.x - a.x;
+            const ey = b2.y - a.y;
+            const den = dx * ey - dy * ex;
+            if (Math.abs(den) < 1e-9)
+              continue;
+            const px = a.x - cx;
+            const py = a.y - cy;
+            const t = (px * ey - py * ex) / den;
+            const u = (px * dy - py * dx) / den;
+            if (t > best && u >= 0 && u <= 1)
+              best = t;
+          }
+          radii[k] = best;
+        }
+        return radii;
+      }
+      function hullOfCircles(x1, y1, r1, x2, y2, r2v, steps = 96) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const dist = Math.hypot(dx, dy) || 1e-6;
+        const base = Math.atan2(dy, dx);
+        const spread = Math.acos(Math.max(-1, Math.min(1, (r1 - r2v) / dist)));
+        const pts = [];
+        for (let i = 0; i <= steps / 2; i++) {
+          const a = base + spread + (math_1.TAU - 2 * spread) * i / (steps / 2);
+          pts.push({ x: x1 + Math.cos(a) * r1, y: y1 + Math.sin(a) * r1 });
+        }
+        for (let i = 0; i <= steps / 2; i++) {
+          const a = base - spread + 2 * spread * i / (steps / 2);
+          pts.push({ x: x2 + Math.cos(a) * r2v, y: y2 + Math.sin(a) * r2v });
+        }
+        return pts;
+      }
+      function radiusAtAngle(radii, angle) {
+        const n = radii.length;
+        const t = (angle / math_1.TAU % 1 + 1) % 1 * n;
+        const i = Math.floor(t);
+        return (0, math_1.lerp)(radii[i % n] ?? 1, radii[(i + 1) % n] ?? 1, t - i);
+      }
+      function superellipseProfile(n, sx = 1, sy = 1) {
+        return ANGLES.map((_2, i) => {
+          const c = Math.abs((COS[i] ?? 0) / sx) ** n;
+          const s = Math.abs((SIN[i] ?? 0) / sy) ** n;
+          return (c + s) ** (-1 / n);
+        });
+      }
+      function unionOfCirclesProfile(circles) {
+        const out = new Array(profiles_1.PROFILE_SAMPLES).fill(0);
+        for (let i = 0; i < profiles_1.PROFILE_SAMPLES; i++) {
+          const dx = COS[i] ?? 0;
+          const dy = SIN[i] ?? 0;
+          let best = 0;
+          for (const c of circles) {
+            const b2 = dx * c.x + dy * c.y;
+            const disc = b2 * b2 - (c.x * c.x + c.y * c.y - c.r * c.r);
+            if (disc < 0)
+              continue;
+            const t = b2 + Math.sqrt(disc);
+            if (t > best)
+              best = t;
+          }
+          out[i] = best;
+        }
+        return out;
+      }
+      function roundedPolygon(verts, rc, arcSteps = 10) {
+        const n = verts.length;
+        const out = [];
+        const normal = (a, b2) => {
+          const dx = b2.x - a.x;
+          const dy = b2.y - a.y;
+          const len = Math.hypot(dx, dy) || 1;
+          return Math.atan2(-dx / len, dy / len);
+        };
+        for (let i = 0; i < n; i++) {
+          const prev = verts[(i - 1 + n) % n];
+          const cur = verts[i];
+          const next = verts[(i + 1) % n];
+          const a0 = normal(prev, cur);
+          const a1 = normal(cur, next);
+          let d2 = a1 - a0;
+          while (d2 > Math.PI)
+            d2 -= math_1.TAU;
+          while (d2 < -Math.PI)
+            d2 += math_1.TAU;
+          for (let k = 0; k <= arcSteps; k++) {
+            const a = a0 + d2 * k / arcSteps;
+            out.push({ x: cur.x + Math.cos(a) * rc, y: cur.y + Math.sin(a) * rc });
+          }
+        }
+        return out;
+      }
+      function regularPolygonProfile(sides, radius, rc, rotationDeg = 0) {
+        const rot = rotationDeg * Math.PI / 180;
+        const verts = Array.from({ length: sides }, (_2, i) => {
+          const a = rot + i / sides * math_1.TAU;
+          return { x: Math.cos(a) * (radius - rc), y: Math.sin(a) * (radius - rc) };
+        });
+        return profileFromPolygon(roundedPolygon(verts, rc), 0, 0);
+      }
+      function polyPath(pts, scale = 1) {
+        if (pts.length < 3)
+          return "";
+        let d2 = "";
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          d2 += `${i === 0 ? "M" : "L"}${(0, math_1.r2)(p.x * scale)} ${(0, math_1.r2)(p.y * scale)}`;
+        }
+        return `${d2}Z`;
+      }
+      function capsulePath(w2, h) {
+        const hw = Math.max(w2, 0.01) / 2;
+        const hh = Math.max(h, 0.01) / 2;
+        const r = Math.min(hw, hh);
+        return `M${(0, math_1.r2)(-hw)} ${(0, math_1.r2)(-hh + r)}A${(0, math_1.r2)(r)} ${(0, math_1.r2)(r)} 0 0 1 ${(0, math_1.r2)(-hw + r)} ${(0, math_1.r2)(-hh)}L${(0, math_1.r2)(hw - r)} ${(0, math_1.r2)(-hh)}A${(0, math_1.r2)(r)} ${(0, math_1.r2)(r)} 0 0 1 ${(0, math_1.r2)(hw)} ${(0, math_1.r2)(-hh + r)}L${(0, math_1.r2)(hw)} ${(0, math_1.r2)(hh - r)}A${(0, math_1.r2)(r)} ${(0, math_1.r2)(r)} 0 0 1 ${(0, math_1.r2)(hw - r)} ${(0, math_1.r2)(hh)}L${(0, math_1.r2)(-hw + r)} ${(0, math_1.r2)(hh)}A${(0, math_1.r2)(r)} ${(0, math_1.r2)(r)} 0 0 1 ${(0, math_1.r2)(-hw)} ${(0, math_1.r2)(hh - r)}Z`;
+      }
+    }
+  });
+
+  // dist/renderer/uagent/bloub/skins.js
+  var require_skins = __commonJS({
+    "dist/renderer/uagent/bloub/skins.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEFAULT_COLOR = exports.COLOR_BY_ID = exports.COLORS = exports.DEFAULT_SHAPE = exports.SHAPE_BY_ID = exports.SHAPES = void 0;
+      exports.mixHex = mixHex;
+      var profiles_1 = require_profiles();
+      var shape_1 = require_shape();
+      function normalize2(radii, max = 1) {
+        const peak = Math.max(...radii);
+        if (peak <= 0)
+          return radii;
+        const k = max / peak;
+        return radii.map((r) => r * k);
+      }
+      var ANGLES = Array.from({ length: profiles_1.PROFILE_SAMPLES }, (_2, i) => i / profiles_1.PROFILE_SAMPLES * Math.PI * 2);
+      var pebble = normalize2(ANGLES.map((a) => 1 + 0.075 * Math.cos(2 * a + 0.5) + 0.035 * Math.cos(3 * a + 2.1)), 1.02);
+      var cloud = normalize2((0, shape_1.unionOfCirclesProfile)([
+        { x: -0.44, y: 0.2, r: 0.54 },
+        { x: 0.46, y: 0.2, r: 0.5 },
+        { x: 0.02, y: 0.3, r: 0.6 },
+        { x: -0.24, y: -0.3, r: 0.48 },
+        { x: 0.3, y: -0.24, r: 0.44 }
+      ]), 1.02);
+      var droplet = normalize2((0, shape_1.profileFromPolygon)((0, shape_1.hullOfCircles)(0, 0.28, 0.66, 0, -0.96, 0.05), 0, 0), 1.04);
+      var capsule = (0, shape_1.profileFromPolygon)((0, shape_1.hullOfCircles)(-0.42, 0, 0.62, 0.42, 0, 0.62), 0, 0);
+      exports.SHAPES = [
+        { id: "cercle", radii: new Array(profiles_1.PROFILE_SAMPLES).fill(1) },
+        { id: "galet", radii: pebble },
+        // 1.15 et pas 1.02 : sur une superellipse le rayon maximal est la diagonale,
+        // donc normaliser dessus donne une forme qui parait plus petite que le cercle.
+        { id: "squircle", radii: normalize2((0, shape_1.superellipseProfile)(4.2), 1.15) },
+        { id: "capsule", radii: capsule },
+        // -90deg : un sommet vers le haut de l'ecran (y est oriente vers le bas)
+        { id: "triangle", radii: (0, shape_1.regularPolygonProfile)(3, 1.12, 0.34, -90) },
+        // 0deg : sommets a gauche et a droite, donc aretes du haut et du bas plates
+        { id: "hexagone", radii: (0, shape_1.regularPolygonProfile)(6, 1.04, 0.26, 0) },
+        { id: "nuage", radii: cloud },
+        { id: "goutte", radii: droplet }
+      ];
+      exports.SHAPE_BY_ID = new Map(exports.SHAPES.map((s) => [s.id, s]));
+      exports.DEFAULT_SHAPE = "cercle";
+      exports.COLORS = [
+        { id: "encre", hex: "#0a0a0c" },
+        { id: "brun", hex: "#8b5e3c" },
+        { id: "rouge", hex: "#e8483f" },
+        { id: "orange", hex: "#f08a24" },
+        { id: "ambre", hex: "#f0b429" },
+        { id: "vert", hex: "#3ecf8e" },
+        { id: "turquoise", hex: "#2fbfa0" },
+        { id: "bleu", hex: "#3b93f0" },
+        { id: "violet", hex: "#8b5cf6" },
+        { id: "rose", hex: "#e152b0" },
+        { id: "gris", hex: "#a3a3a3" },
+        { id: "creme", hex: "#f1efe9" }
+      ];
+      exports.COLOR_BY_ID = new Map(exports.COLORS.map((c) => [c.id, c]));
+      exports.DEFAULT_COLOR = "encre";
+      function mixHex(from, to, t) {
+        const parse = (h) => {
+          const v2 = parseInt(h.slice(1), 16);
+          return [v2 >> 16 & 255, v2 >> 8 & 255, v2 & 255];
+        };
+        const a = parse(from);
+        const b2 = parse(to);
+        const c = a.map((x2, i) => Math.round(x2 + (b2[i] - x2) * t));
+        return `#${c.map((x2) => x2.toString(16).padStart(2, "0")).join("")}`;
+      }
+    }
+  });
+
+  // dist/renderer/uagent/bloub/states.js
+  var require_states = __commonJS({
+    "dist/renderer/uagent/bloub/states.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.SEQUENCE = exports.POSES = exports.STATE_BY_ID = exports.STATES = void 0;
+      var decor_1 = require_decor();
+      var face_1 = require_face();
+      var math_1 = require_math();
+      var shape_1 = require_shape();
+      var pair = (w2, h) => [
+        { w: w2, h, open: 1 },
+        { w: w2, h, open: 1 }
+      ];
+      function base(over = {}) {
+        return {
+          sil: (0, shape_1.circle)(1),
+          offX: 0,
+          offY: 0,
+          gaze: { ...face_1.REST_GAZE },
+          split: face_1.EYE_SPLIT,
+          eyes: pair(face_1.EYE_W, face_1.EYE_H),
+          eyeAlpha: 1,
+          bodyAlpha: 1,
+          dots: [],
+          arcs: [],
+          notif: null,
+          dotsBehind: false,
+          ...over
+        };
+      }
+      var BAR_UPRIGHT_CY = -0.1875;
+      var BAR_UPRIGHT = (0, shape_1.profileFromPolygon)((0, shape_1.hullOfCircles)(0, -0.505, 0.132, 0, 0.13, 0.075), 0, BAR_UPRIGHT_CY);
+      var BAR_ITALIC = (0, shape_1.profileFromPolygon)((0, shape_1.hullOfCircles)(0, -0.2535, 0.1345, 0, 0.2535, 0.1345), 0, 0);
+      var barUpright = (pose = {}) => ({
+        radii: [...BAR_UPRIGHT],
+        rot: 0,
+        cx: 0,
+        cy: BAR_UPRIGHT_CY,
+        sx: 1,
+        sy: 1,
+        ...pose
+      });
+      var barItalic = (pose = {}) => ({
+        radii: [...BAR_ITALIC],
+        rot: 0,
+        cx: 0,
+        cy: 0,
+        sx: 1,
+        sy: 1,
+        ...pose
+      });
+      var TEAR = (0, shape_1.polyPath)((0, shape_1.hullOfCircles)(0, 0, 0.118, 0, 0.172, 0.012));
+      var TRI_ORBIT = 0.213;
+      function spinningTriangle(rot) {
+        return (0, shape_1.silhouette)("triangle", {
+          rot,
+          cx: -TRI_ORBIT * Math.sin(rot),
+          cy: TRI_ORBIT * Math.cos(rot)
+        });
+      }
+      function dotPulse(t, index) {
+        const p = ((t - index * 0.5) / 1.5 % 1 + 1) % 1;
+        const k = p < 0.5 ? 0.5 - 0.5 * Math.cos(p * math_1.TAU) : 0;
+        return (0, math_1.clamp)(k * 2);
+      }
+      exports.STATES = [
+        {
+          id: "idle",
+          duration: 2.4,
+          morph: 0.45,
+          blinkIn: false,
+          baseFace: true,
+          baseBody: true,
+          pose: () => base()
+        },
+        {
+          id: "thinking",
+          duration: 2.6,
+          morph: 0.4,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: true,
+          pose: (t) => {
+            const mid = dotPulse(t, 1);
+            const emerge = 0.3 + 0.7 * math_1.easings.easeOutCubic((0, math_1.clamp)(t / 0.3));
+            return base({
+              // la boule DEVIENT le point du milieu : le morph reste continu
+              sil: (0, shape_1.circle)(decor_1.DOT_R * (1 + (decor_1.DOT_PEAK - 1) * mid), { cx: decor_1.DOT_X[1] }),
+              eyeAlpha: 0,
+              dots: [0, 2].map((i) => {
+                const k = dotPulse(t, i);
+                return {
+                  x: decor_1.DOT_X[i] * emerge,
+                  y: 0,
+                  r: decor_1.DOT_R * (1 + (decor_1.DOT_PEAK - 1) * k),
+                  opacity: 0.55 + 0.45 * k
+                };
+              })
+            });
+          }
+        },
+        {
+          id: "wink",
+          duration: 1.6,
+          morph: 0.3,
+          blinkIn: true,
+          baseFace: false,
+          baseBody: true,
+          pose: () => base({
+            gaze: { yaw: -5.37, pitch: 4.55, roll: 6.7 },
+            split: 16.25,
+            // L'oeil ferme n'est pas l'oeil ouvert ecrase : c'est un tiret
+            // horizontal PLUS LARGE que l'oeil ouvert (0.447 contre 0.236).
+            eyes: [
+              { w: 0.236, h: 0.464, open: 1 },
+              { w: 0.447, h: 0.089, open: 1 }
+            ]
+          })
+        },
+        {
+          id: "wide",
+          duration: 1.8,
+          morph: 0.55,
+          blinkIn: true,
+          baseFace: false,
+          baseBody: true,
+          pose: () => base({
+            gaze: { yaw: 6.92, pitch: -21.96, roll: 11.6 },
+            split: 18.43,
+            eyes: pair(0.356, 0.875)
+          })
+        },
+        {
+          id: "alert",
+          duration: 2.4,
+          // le "!" revient en place a 1.6 + 0.4
+          minDuration: 2,
+          morph: 0.45,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: false,
+          pose: (t) => {
+            const p = (0, math_1.clamp)(t / 1.5);
+            const travel = math_1.easings.easeInOutCubic(p) * 0.82 - 0.087;
+            const back = t > 1.6 ? (0, math_1.clamp)((t - 1.6) / 0.4) : 0;
+            const x2 = travel * (1 - back) + 0.1 * back;
+            const buzz = Math.sin(t * 2.5 * math_1.TAU) * 5e-3;
+            const tilt = 17.7 * Math.PI / 180;
+            return base({
+              sil: barItalic({ rot: tilt, cx: x2, cy: -0.325 - buzz }),
+              eyeAlpha: 0,
+              dots: [
+                {
+                  // le point suit l'axe du glyphe, a 0.580 du centre de la barre
+                  x: x2 - Math.sin(tilt) * 0.58,
+                  y: -0.325 + Math.cos(tilt) * 0.58 + buzz * 2.8,
+                  r: 0.118,
+                  d: TEAR,
+                  rot: tilt * 180 / Math.PI,
+                  opacity: 1
+                }
+              ]
+            });
+          }
+        },
+        {
+          id: "notify",
+          duration: 2.2,
+          morph: 0.5,
+          blinkIn: true,
+          baseFace: false,
+          baseBody: true,
+          pose: (t) => {
+            const p = (0, math_1.clamp)(t / 0.45);
+            const pop = 1 + (decor_1.NOTIF_POP - 1) * Math.sin(p * Math.PI) * (1 - p * 0.35);
+            const r = decor_1.NOTIF_R * (p < 1 ? pop : 1);
+            const a = decor_1.NOTIF_ANGLE * Math.PI / 180;
+            return base({
+              // le regard part a l'oppose de la pastille
+              gaze: { yaw: -21.94, pitch: -5.82, roll: -12.2 },
+              split: 18.89,
+              eyes: pair(0.505, 0.498),
+              notif: {
+                x: Math.cos(a) * decor_1.NOTIF_DIST,
+                y: Math.sin(a) * decor_1.NOTIF_DIST,
+                r,
+                notch: r + decor_1.NOTIF_MARGIN
+              }
+            });
+          }
+        },
+        {
+          id: "exclaim",
+          duration: 2,
+          morph: 0.45,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: false,
+          pose: () => base({
+            sil: barUpright(),
+            eyeAlpha: 0,
+            dots: [{ x: -0.012, y: 0.526, r: 0.113, opacity: 1 }]
+          })
+        },
+        {
+          id: "sleep",
+          duration: 2.4,
+          morph: 0.5,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: false,
+          pose: (t) => base({
+            // Rebond vertical mesure : +-0.19 autour de +0.11, periode 0.6 s.
+            sil: (0, shape_1.circle)(0.1585, { cy: 0.11 + Math.sin(t * (math_1.TAU / 0.6)) * 0.19 }),
+            eyeAlpha: 0
+          })
+        },
+        {
+          id: "egg",
+          duration: 1.8,
+          morph: 0.4,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: true,
+          pose: () => base({
+            sil: (0, shape_1.silhouette)("egg"),
+            gaze: { yaw: 19.97, pitch: 26.01, roll: -17.1 },
+            // les yeux se resserrent comme le corps
+            split: 11.07,
+            eyes: pair(0.164, 0.385)
+          })
+        },
+        {
+          id: "hexagon",
+          duration: 1.6,
+          morph: 0.4,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: true,
+          pose: () => base({
+            sil: (0, shape_1.silhouette)("hexagon"),
+            gaze: { yaw: 23.11, pitch: 24.42, roll: -13.3 },
+            split: 13.37,
+            eyes: pair(0.177, 0.411)
+          })
+        },
+        {
+          id: "play",
+          duration: 2,
+          morph: 0.5,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: true,
+          pose: (t) => {
+            const fade = (0, math_1.clamp)(t / 0.35) * (0, math_1.clamp)((2.2 - t) / 0.5);
+            return base({
+              sil: spinningTriangle(0),
+              gaze: { yaw: 12, pitch: -8, roll: -6 },
+              split: 15,
+              eyes: pair(0.18, 0.34),
+              // le bouquet balaie de la droite vers la gauche par-dessus le triangle
+              arcs: decor_1.SWOOSH.map((s, i) => ({
+                id: `sw${i}`,
+                seed: { ...s, cx: 0.45 - t * 0.42 },
+                t,
+                opacity: fade
+              }))
+            });
+          }
+        },
+        {
+          id: "orbit",
+          duration: 3.4,
+          // le corps a fini de se relacher du triangle vers la boule a 1.6 + 0.9
+          minDuration: 2.5,
+          morph: 0.6,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: false,
+          pose: (t) => {
+            const ramp = math_1.easings.easeInOutCubic((0, math_1.clamp)(t / 0.35));
+            const rot = -math_1.TAU * 1.25 * t * ramp;
+            const back = math_1.easings.easeInOutCubic((0, math_1.clamp)((t - 1.6) / 0.9));
+            const tri = spinningTriangle(rot);
+            const ball = (0, shape_1.circle)(1, { rot });
+            const sil = {
+              radii: tri.radii.map((r, i) => r + (ball.radii[i] - r) * back),
+              rot,
+              cx: tri.cx * (1 - back),
+              cy: tri.cy * (1 - back),
+              sx: 1,
+              sy: 1
+            };
+            const fade = (0, math_1.clamp)(t / 0.8) * (0, math_1.clamp)((3.6 - t) / 0.9);
+            return base({
+              sil,
+              // les yeux filent autour de la sphere ~3x plus vite que la silhouette
+              gaze: {
+                yaw: face_1.REST_GAZE.yaw + Math.sin(t * 6.5) * 65 * (1 - back),
+                pitch: -4 + back * 32,
+                roll: -13
+              },
+              eyes: pair(0.18, 0.34 + back * 0.07),
+              // les anneaux entrent un par un sur 0.8 s
+              arcs: decor_1.RINGS.map((s, i) => ({
+                id: `rg${i}`,
+                seed: s,
+                t,
+                opacity: fade * (0, math_1.clamp)((t - i * 0.13) / 0.3)
+              }))
+            });
+          }
+        },
+        {
+          /**
+           * Entree dans la vue des reglages.
+           *
+           * SEUL etat qui n'est pas releve sur la video : il est CHOISI, comme la
+           * couleur `--ink`. Il emprunte le vocabulaire d'`orbit` — les memes anneaux,
+           * avec leurs parametres mesures — mais coupe court : 1 s au lieu de 3,4, la
+           * moitie des anneaux, et aucun triangle.
+           *
+           * Les deux drapeaux a `true` sont tout l'interet de cet etat :
+           *
+           * - `baseBody` laisse la forme choisie remplacer le corps, donc la vue peut
+           *   imposer le cercle et le galet ou la goutte y MORPHENT au lieu de sauter ;
+           * - `baseFace` fait porter le visage de repos, donc le suivi du curseur
+           *   s'applique des cette entree. Un etat qui aurait sa propre pose de regard
+           *   (comme `orbit`) rendrait la main a l'etat suivant en pleine course, et
+           *   les yeux sauteraient d'un coup a la reprise.
+           *
+           * Il n'est volontairement PAS dans `SEQUENCE` : ce n'est pas une animation du
+           * catalogue, c'est une transition d'interface.
+           */
+          id: "swirl",
+          // un peu plus que le tour du regard (`TURN_TIME`, 1,1 s) : les yeux doivent
+          // etre poses a gauche avant que les anneaux ne s'effacent
+          duration: 1.3,
+          minDuration: 1.3,
+          morph: 0.3,
+          baseFace: true,
+          baseBody: true,
+          // le morph de forme est masque par un clignement, comme partout ailleurs
+          blinkIn: true,
+          pose: (t) => base({
+            // trois anneaux sur les six d'`orbit` : la moitie du bouquet suffit a le
+            // reconnaitre, et c'est autant d'arcs en moins a rasteriser par image
+            arcs: decor_1.RINGS.slice(0, 3).map((s, i) => ({
+              id: `sw${i}`,
+              seed: s,
+              t,
+              // ils entrent l'un apres l'autre puis s'effacent avant la fin du bloc,
+              // pour que la reprise au repos se fasse sur une image deja propre
+              opacity: (0, math_1.clamp)((t - i * 0.06) / 0.14) * (0, math_1.clamp)((1.22 - t) / 0.34)
+            }))
+          })
+        },
+        {
+          id: "burst",
+          duration: 2.6,
+          // le corps est recompose a 1.7 + 0.7
+          minDuration: 2.4,
+          morph: 0.4,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: false,
+          pose: (t) => {
+            const collapse = 1 - 0.834 * math_1.easings.easeOutQuint((0, math_1.clamp)(t / 0.7));
+            const regrow = math_1.easings.easeOutQuint((0, math_1.clamp)((t - 1.7) / 0.7));
+            return base({
+              sil: (0, shape_1.circle)(collapse + (1 - collapse) * regrow),
+              eyeAlpha: (0, math_1.clamp)((t - 1.85) / 0.4),
+              dots: (0, decor_1.particles)(t, 1),
+              dotsBehind: true
+            });
+          }
+        },
+        {
+          id: "comet",
+          duration: 2.4,
+          // le point se recompose a 1.85 + 0.6 = 2.45, soit 0.05 s apres la coupe de
+          // la video : ce reliquat se termine pendant le fondu suivant, comme dans la
+          // reference. On ne descend donc pas sous la duree mesuree.
+          minDuration: 2.4,
+          morph: 0.45,
+          baseFace: false,
+          baseBody: false,
+          blinkIn: false,
+          pose: (t) => {
+            const collapse = 1 - (1 - decor_1.COMET_DOT) * math_1.easings.easeOutQuint((0, math_1.clamp)(t / 0.55));
+            const regrow = math_1.easings.easeOutQuint((0, math_1.clamp)((t - 1.85) / 0.6));
+            const fade = (0, math_1.clamp)((t - 0.15) / 0.25) * (0, math_1.clamp)((1.95 - t) / 0.3);
+            return base({
+              // Le point derive de 0.035 vers le bas puis remonte (wobble mesure).
+              sil: (0, shape_1.circle)(collapse + (1 - collapse) * regrow, {
+                cy: Math.sin((0, math_1.clamp)(t / 1.7) * Math.PI) * 0.035
+              }),
+              eyeAlpha: (0, math_1.clamp)((t - 2) / 0.35),
+              arcs: decor_1.COMET_RIBBONS.map((s, i) => ({ id: `cm${i}`, seed: s, t, opacity: fade }))
+            });
+          }
+        }
+      ];
+      exports.STATE_BY_ID = new Map(exports.STATES.map((s) => [s.id, s]));
+      exports.POSES = {
+        idle: 1,
+        thinking: 1.1,
+        wink: 0.8,
+        wide: 0.8,
+        alert: 0.75,
+        notify: 0.9,
+        exclaim: 0.8,
+        sleep: 0.45,
+        egg: 0.8,
+        hexagon: 0.8,
+        play: 0.9,
+        orbit: 1.2,
+        swirl: 0.5,
+        burst: 0.45,
+        comet: 1.15
+      };
+      exports.SEQUENCE = [
+        "idle",
+        "thinking",
+        "wink",
+        "wide",
+        "alert",
+        "notify",
+        "exclaim",
+        "sleep",
+        "egg",
+        "hexagon",
+        "play",
+        "orbit",
+        "burst",
+        "comet"
+      ];
+    }
+  });
+
+  // dist/renderer/uagent/bloub/eyefit.js
+  var require_eyefit = __commonJS({
+    "dist/renderer/uagent/bloub/eyefit.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.POUR_TESTS = void 0;
+      exports.decalageDesYeux = decalageDesYeux;
+      var expressions_1 = require_expressions();
+      var face_1 = require_face();
+      var shape_1 = require_shape();
+      var skins_1 = require_skins();
+      var states_1 = require_states();
+      var R = 100;
+      var DERIVE_YAW = 5.5 + 1.6;
+      var DERIVE_PITCH = 4.2 + 1.3;
+      var DERIVE_X = 6e-3;
+      var DERIVE_Y = 7e-3;
+      function empreintes(visage, sil, radii) {
+        const out = [];
+        const poses = (0, face_1.eyePoses)(visage.gaze, R, visage.split);
+        for (let i = 0; i < 2; i++) {
+          const e = poses[i];
+          if (e.depth <= 0.02)
+            continue;
+          const cfg = visage.eyes[i];
+          const phi = (cfg.tilt ?? 0) * Math.PI / 180;
+          const cp = Math.cos(phi);
+          const sp = Math.sin(phi);
+          const ax = e.a * cp + e.c * sp;
+          const ay = e.b * cp + e.d * sp;
+          const cx = -e.a * sp + e.c * cp;
+          const cy = -e.b * sp + e.d * cp;
+          const hw = Math.max(cfg.w * R, 0.01) / 2;
+          const hh = Math.max(cfg.h * R, 0.01) / 2;
+          const r = Math.min(hw, hh);
+          const long = hh > hw;
+          const demi = long ? hh - r : hw - r;
+          const fit = (0, shape_1.radiusAtAngle)(radii, Math.atan2(e.y, e.x) - sil.rot);
+          out.push({
+            x: e.x * fit,
+            y: e.y * fit,
+            ax: (long ? cx : ax) * demi,
+            ay: (long ? cy : ay) * demi,
+            r,
+            m: [ax, ay, cx, cy]
+          });
+        }
+        return out;
+      }
+      function approche(pts, x0, y0, x1, y1) {
+        const sx = x1 - x0;
+        const sy = y1 - y0;
+        const len2 = sx * sx + sy * sy;
+        let best = Infinity;
+        let vx = 0;
+        let vy = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          let t = len2 > 0 ? ((p.x - x0) * sx + (p.y - y0) * sy) / len2 : 0;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const ex = x0 + t * sx - p.x;
+          const ey = y0 + t * sy - p.y;
+          const d22 = ex * ex + ey * ey;
+          if (d22 < best) {
+            best = d22;
+            vx = ex;
+            vy = ey;
+          }
+        }
+        const d2 = Math.sqrt(best);
+        return { d: d2, ux: d2 > 1e-9 ? vx / d2 : 0, uy: d2 > 1e-9 ? vy / d2 : 0 };
+      }
+      var FLOTTEMENT = Math.hypot(DERIVE_X, DERIVE_Y) * R;
+      function pire(pts, emps, tx, ty) {
+        let marge = Infinity;
+        let ux = 0;
+        let uy = 0;
+        for (const e of emps) {
+          const x2 = e.x + tx;
+          const y2 = e.y + ty;
+          const a = approche(pts, x2 - e.ax, y2 - e.ay, x2 + e.ax, y2 + e.ay);
+          const [m0, m1, m2, m3] = e.m;
+          const rayon = e.r * Math.hypot(m0 * a.ux + m1 * a.uy, m2 * a.ux + m3 * a.uy) + FLOTTEMENT;
+          if (a.d - rayon < marge) {
+            marge = a.d - rayon;
+            ux = a.ux;
+            uy = a.uy;
+          }
+        }
+        return { marge, ux, uy };
+      }
+      var DIRECTIONS = 12;
+      var DICHOTOMIE = 8;
+      function resous(epreuves) {
+        if (!epreuves.length)
+          return { x: 0, y: 0 };
+        const marge = (tx, ty) => {
+          let m2 = Infinity;
+          for (const ep of epreuves)
+            m2 = Math.min(m2, pire(ep.contour, ep.empreintes, tx, ty).marge);
+          return m2;
+        };
+        let requis = Infinity;
+        for (const ep of epreuves) {
+          requis = Math.min(requis, pire(ep.calContour, ep.reference, 0, 0).marge);
+        }
+        let mx = 0;
+        let my = 0;
+        const emps = epreuves[0].empreintes;
+        for (const e of emps) {
+          mx -= e.x / emps.length;
+          my -= e.y / emps.length;
+        }
+        const course = Math.max(0.35 * R, Math.hypot(mx, my) * 1.25);
+        requis = Math.min(requis, marge(mx, my));
+        const depart = marge(0, 0);
+        if (depart >= requis && depart >= 0)
+          return { x: 0, y: 0 };
+        const cible = Math.max(requis, 0);
+        let meilleurX = 0;
+        let meilleurY = 0;
+        let meilleureNorme = Infinity;
+        let secoursX = 0;
+        let secoursY = 0;
+        let secours = depart;
+        for (let d2 = 0; d2 < DIRECTIONS; d2++) {
+          const a = d2 / DIRECTIONS * Math.PI * 2;
+          const ux = Math.cos(a);
+          const uy = Math.sin(a);
+          if (marge(ux * course, uy * course) < cible) {
+            for (const k of [0.3, 0.6, 1]) {
+              const m2 = marge(ux * course * k, uy * course * k);
+              if (m2 > secours) {
+                secours = m2;
+                secoursX = ux * course * k;
+                secoursY = uy * course * k;
+              }
+            }
+            continue;
+          }
+          let bas = 0;
+          let haut = course;
+          for (let i = 0; i < DICHOTOMIE; i++) {
+            const mid = (bas + haut) / 2;
+            if (marge(ux * mid, uy * mid) >= cible)
+              haut = mid;
+            else
+              bas = mid;
+          }
+          if (haut < meilleureNorme) {
+            meilleureNorme = haut;
+            meilleurX = ux * haut;
+            meilleurY = uy * haut;
+          }
+        }
+        const x2 = meilleureNorme === Infinity ? secoursX : meilleurX;
+        const y2 = meilleureNorme === Infinity ? secoursY : meilleurY;
+        return { x: +(x2 / R).toFixed(6), y: +(y2 / R).toFixed(6) };
+      }
+      function visageDe(def, pose, expr) {
+        if (def.baseFace && expr)
+          return { gaze: expr.gaze, split: expr.split, eyes: expr.eyes };
+        return { gaze: pose.gaze, split: pose.split, eyes: pose.eyes };
+      }
+      function dates(def) {
+        const signature = (p) => JSON.stringify([p.gaze, p.split, p.eyes, p.sil.rot, p.sil.cx, p.sil.cy, p.sil.sx, p.sil.sy]);
+        if (signature(def.pose(0)) === signature(def.pose(def.duration)))
+          return [0];
+        const n = 3;
+        return Array.from({ length: n }, (_2, i) => i / (n - 1) * def.duration);
+      }
+      function decalagePour(def, radii, expr) {
+        const epreuves = [];
+        for (const t of dates(def)) {
+          const pose = def.pose(t);
+          const contour = (0, shape_1.toPoints)({ ...pose.sil, radii }, R);
+          const calContour = (0, shape_1.toPoints)(pose.sil, R);
+          const v2 = visageDe(def, pose, expr);
+          const coins = [];
+          for (const dy of [-DERIVE_YAW, DERIVE_YAW]) {
+            for (const dp of [-DERIVE_PITCH, DERIVE_PITCH]) {
+              coins.push({
+                ...v2,
+                gaze: { yaw: v2.gaze.yaw + dy, pitch: v2.gaze.pitch + dp, roll: v2.gaze.roll }
+              });
+            }
+          }
+          for (const c of coins) {
+            epreuves.push({
+              empreintes: empreintes(c, pose.sil, radii),
+              reference: empreintes(c, pose.sil, pose.sil.radii),
+              contour,
+              calContour
+            });
+          }
+        }
+        return resous(epreuves);
+      }
+      var NUL = { x: 0, y: 0 };
+      var clef = (state, expr) => `${state}|${expr ?? ""}`;
+      function batir() {
+        return new Map(skins_1.SHAPES.map((forme) => {
+          const par = /* @__PURE__ */ new Map();
+          for (const def of states_1.STATES) {
+            if (!def.baseBody)
+              continue;
+            const expressions = def.baseFace ? [null, ...expressions_1.EXPRESSIONS] : [null];
+            for (const expr of expressions) {
+              par.set(clef(def.id, expr?.id ?? null), decalagePour(def, forme.radii, expr));
+            }
+          }
+          return [forme.radii, par];
+        }));
+      }
+      var DECALAGES = batir();
+      function decalageDesYeux(radii, state, expr) {
+        if (!radii)
+          return NUL;
+        const par = DECALAGES.get(radii);
+        if (!par)
+          return NUL;
+        return par.get(clef(state, expr)) ?? par.get(clef(state, null)) ?? NUL;
+      }
+      exports.POUR_TESTS = { batir };
+    }
+  });
+
+  // dist/renderer/uagent/bloub/engine.js
+  var require_engine = __commonJS({
+    "dist/renderer/uagent/bloub/engine.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.BotEngine = void 0;
+      var decor_1 = require_decor();
+      var expressions_1 = require_expressions();
+      var eyefit_1 = require_eyefit();
+      var face_1 = require_face();
+      var math_1 = require_math();
+      var shape_1 = require_shape();
+      var states_1 = require_states();
+      var NO_LOOK = { yaw: 0, pitch: 0, mix: 0, spin: 0, wander: 1 };
+      var lerpLook = (a, b2, t) => ({
+        yaw: (0, math_1.lerp)(a.yaw, b2.yaw, t),
+        pitch: (0, math_1.lerp)(a.pitch, b2.pitch, t),
+        mix: (0, math_1.lerp)(a.mix, b2.mix, t),
+        spin: (0, math_1.lerp)(a.spin, b2.spin, t),
+        wander: (0, math_1.lerp)(a.wander, b2.wander, t)
+      });
+      var lerpEye = (a, b2, t) => ({
+        w: (0, math_1.lerp)(a.w, b2.w, t),
+        h: (0, math_1.lerp)(a.h, b2.h, t),
+        open: (0, math_1.lerp)(a.open, b2.open, t),
+        tilt: (0, math_1.lerp)(a.tilt ?? 0, b2.tilt ?? 0, t)
+      });
+      function blendPose(a, b2, t) {
+        const out = 1 - t;
+        return {
+          sil: (0, shape_1.blend)(a.sil, b2.sil, t),
+          offX: (0, math_1.lerp)(a.offX, b2.offX, t),
+          offY: (0, math_1.lerp)(a.offY, b2.offY, t),
+          gaze: {
+            yaw: (0, math_1.lerp)(a.gaze.yaw, b2.gaze.yaw, t),
+            pitch: (0, math_1.lerp)(a.gaze.pitch, b2.gaze.pitch, t),
+            roll: (0, math_1.lerp)(a.gaze.roll, b2.gaze.roll, t)
+          },
+          split: (0, math_1.lerp)(a.split, b2.split, t),
+          eyes: [lerpEye(a.eyes[0], b2.eyes[0], t), lerpEye(a.eyes[1], b2.eyes[1], t)],
+          eyeAlpha: (0, math_1.lerp)(a.eyeAlpha, b2.eyeAlpha, t),
+          bodyAlpha: (0, math_1.lerp)(a.bodyAlpha, b2.bodyAlpha, t),
+          dots: [
+            ...a.dots.map((d2) => ({ ...d2, opacity: d2.opacity * out })),
+            ...b2.dots.map((d2) => ({ ...d2, opacity: d2.opacity * t }))
+          ],
+          arcs: [
+            ...a.arcs.map((r) => ({ ...r, id: `a${r.id}`, opacity: r.opacity * out })),
+            ...b2.arcs.map((r) => ({ ...r, id: `b${r.id}`, opacity: r.opacity * t }))
+          ],
+          // la pastille appartient a un seul des deux etats, elle ne se melange pas
+          notif: t < 0.5 ? a.notif : b2.notif,
+          dotsBehind: t < 0.5 ? a.dotsBehind : b2.dotsBehind
+        };
+      }
+      var BotEngine = class _BotEngine {
+        constructor(scale = 100, initial = "idle", shape = null, expression = null) {
+          this.prev = null;
+          this.departFige = null;
+          this.tCur = 0;
+          this.tPrev = 0;
+          this.blinkAt = -10;
+          this.pts = [];
+          this.shape = null;
+          this.shapePrev = null;
+          this.shapeAt = -10;
+          this.expr = null;
+          this.exprPrev = null;
+          this.exprAt = -10;
+          this.look = NO_LOOK;
+          this.lookPrev = NO_LOOK;
+          this.lookAt = -10;
+          this.lookMorph = 0.24;
+          this.scale = scale;
+          this.cur = initial;
+          this.shape = shape;
+          this.expr = expression;
+        }
+        /**
+         * Expression de repos choisie dans le personnalisateur. Comme la forme, elle
+         * glisse vers la nouvelle valeur au lieu de sauter.
+         */
+        setExpression(expression, now2 = 0) {
+          if (expression === this.expr)
+            return;
+          this.exprPrev = this.expr;
+          this.expr = expression;
+          this.exprAt = now2;
+        }
+        /** Expression effective a l'instant `now`, morph en cours compris. */
+        exprAtTime(now2) {
+          const to = this.expr;
+          const from = this.exprPrev;
+          if (!to || !from)
+            return to;
+          const k = (now2 - this.exprAt) / _BotEngine.SHAPE_MORPH;
+          if (k >= 1)
+            return to;
+          return (0, expressions_1.blendExpression)(from, to, math_1.easings.easeOutQuint((0, math_1.clamp)(k)));
+        }
+        /**
+         * Forme choisie dans le personnalisateur. Elle ne remplace le corps que sur
+         * les etats au repos (`baseBody`) : sur les autres, la silhouette EST
+         * l'animation et ne doit pas etre ecrasee.
+         *
+         * Le changement se fait en morph, pas d'un coup : comme toutes les formes sont
+         * echantillonnees aux memes angles, il suffit d'interpoler les rayons.
+         */
+        setShape(radii, now2 = 0) {
+          if (radii === this.shape)
+            return;
+          this.shapePrev = this.shape;
+          this.shape = radii;
+          this.shapeAt = now2;
+        }
+        /**
+         * Forme effective a l'instant `now`, morph en cours compris.
+         *
+         * Ne remet PAS `shapePrev` a null en fin de morph : `sample` doit rester une
+         * fonction pure du temps, donc relire une date passee doit redonner l'image
+         * intermediaire. On garde juste une reference de plus.
+         */
+        shapeAtTime(now2) {
+          const to = this.shape;
+          const from = this.shapePrev;
+          if (!to || !from)
+            return to;
+          const k = (now2 - this.shapeAt) / _BotEngine.SHAPE_MORPH;
+          if (k >= 1)
+            return to;
+          const t = math_1.easings.easeOutQuint((0, math_1.clamp)(k));
+          return to.map((r, i) => (0, math_1.lerp)(from[i] ?? r, r, t));
+        }
+        /**
+         * Nouvelle cible de regard, `null` pour revenir a celui de l'etat.
+         *
+         * Elle repart de la valeur COURANTE, et non de la cible precedente comme
+         * `setShape` : cette methode est appelee a chaque mouvement de pointeur, et
+         * repartir de l'ancienne cible ferait reculer le regard d'un cran avant
+         * chaque rattrapage — le suivi tremblerait au lieu de glisser.
+         *
+         * Meme contrat que `setShape` par ailleurs : l'etat externe entre par un
+         * setter horodate, jamais par une variable lue pendant `sample`, sinon le
+         * moteur cesse d'etre une fonction pure du temps.
+         */
+        setLook(look, now2, morph = _BotEngine.LOOK_MORPH) {
+          if (look && !Number.isFinite(look.yaw + look.pitch + look.mix + look.spin + look.wander)) {
+            return;
+          }
+          this.lookPrev = this.lookAtTime(now2);
+          this.look = look ?? NO_LOOK;
+          this.lookAt = now2;
+          this.lookMorph = morph;
+        }
+        /** Regard effectif a l'instant `now`, rattrapage en cours compris. */
+        lookAtTime(now2) {
+          const k = (now2 - this.lookAt) / this.lookMorph;
+          if (k >= 1)
+            return this.look;
+          return lerpLook(this.lookPrev, this.look, math_1.easings.easeOutQuint((0, math_1.clamp)(k)));
+        }
+        posed(def, t, shape, expr) {
+          let pose = def.pose(t);
+          if (def.baseBody && shape) {
+            pose = { ...pose, sil: { ...pose.sil, radii: shape } };
+          }
+          if (def.baseFace && expr) {
+            pose = { ...pose, gaze: expr.gaze, split: expr.split, eyes: expr.eyes };
+          }
+          return pose;
+        }
+        /**
+         * Decalage des yeux a l'instant `now` pour un etat donne, en unites de rayon de boule.
+         *
+         * Il est LU dans une table et interpole, jamais recalcule : `eyefit.ts` explique
+         * pourquoi cette distinction est tout le correctif. Ici il ne reste qu'a l'interpoler
+         * sur l'axe de la forme, avec exactement la courbe et la duree du morph de silhouette
+         * — c'est la meme cause, donc ce doit etre le meme mouvement.
+         *
+         * On interroge la table sur les BORNES du morph (`shapePrev` et `shape`) et non sur le
+         * profil que rend `shapeAtTime` : celui-la est un tableau neuf alloue a chaque image,
+         * donc sans identite, et il n'existe dans aucune table.
+         */
+        decalageAtTime(now2, state) {
+          const surAxe = (debut, duree, a, b2) => {
+            if (a === b2)
+              return b2;
+            const k = (now2 - debut) / duree;
+            if (k >= 1)
+              return b2;
+            const t = math_1.easings.easeOutQuint((0, math_1.clamp)(k));
+            return { x: (0, math_1.lerp)(a.x, b2.x, t), y: (0, math_1.lerp)(a.y, b2.y, t) };
+          };
+          const parForme = (radii) => surAxe(this.exprAt, _BotEngine.SHAPE_MORPH, (0, eyefit_1.decalageDesYeux)(radii, state, this.exprPrev?.id ?? null), (0, eyefit_1.decalageDesYeux)(radii, state, this.expr?.id ?? null));
+          return surAxe(this.shapeAt, _BotEngine.SHAPE_MORPH, parForme(this.shapePrev), parForme(this.shape));
+        }
+        get state() {
+          return this.cur;
+        }
+        /**
+         * Repart sur `id` SANS etat precedent, comme un moteur neuf pose sur cet etat.
+         *
+         * C'est ce que veut dire « rembobiner » pour ce moteur. `setState` seul ne peut pas le
+         * faire : il garde l'etat quitte pour le fondre, ce qui est exactement son role en
+         * lecture, et exactement ce qu'il ne faut pas quand on revient au debut d'une sequence.
+         * Rejouer l'image 0 apres une passe complete melangeait le premier etat avec le DERNIER,
+         * et l'export GIF s'ouvrait sur une boule sans yeux — la comete a un `eyeAlpha` nul.
+         *
+         * `sample` reste une fonction pure du temps : comme `setState`, ceci est un setter DATE,
+         * appele par le pilote de la sequence, jamais pendant un echantillonnage.
+         */
+        reset(id, now2) {
+          this.cur = id;
+          this.prev = null;
+          this.departFige = null;
+          this.tCur = now2;
+          this.tPrev = now2;
+          this.blinkAt = -10;
+        }
+        /**
+         * Origine du fondu en cours : la pose figee s'il y en a une, sinon l'etat quitte evalue
+         * a son propre temps ecoule — donc encore en train de s'animer, ce qui est voulu.
+         */
+        origine(now2, shape, expr) {
+          if (this.departFige)
+            return this.departFige;
+          if (!this.prev)
+            return null;
+          const prevDef = states_1.STATE_BY_ID.get(this.prev);
+          return this.posed(prevDef, Math.max(0, now2 - this.tPrev), shape, expr);
+        }
+        /**
+         * Pose composite a l'instant `now`, fondu en cours compris : exactement ce que `sample`
+         * melange, avant la couche de vie au repos et de regard. Extraite pour que `setState`
+         * puisse la figer.
+         */
+        poseComposee(now2) {
+          const def = states_1.STATE_BY_ID.get(this.cur);
+          const shape = this.shapeAtTime(now2);
+          const expr = this.exprAtTime(now2);
+          const pose = this.posed(def, Math.max(0, now2 - this.tCur), shape, expr);
+          const since = now2 - this.tCur;
+          if (since >= def.morph)
+            return pose;
+          const origine = this.origine(now2, shape, expr);
+          if (!origine)
+            return pose;
+          return blendPose(origine, pose, math_1.easings.easeOutQuint((0, math_1.clamp)(since / def.morph)));
+        }
+        /**
+         * Changement d'etat, date.
+         *
+         * Le moteur ne garde qu'UNE case d'historique, donc un changement qui arrive pendant un
+         * fondu remplacait l'origine du melange par la pose PLEINE de l'etat qu'on quittait, au
+         * lieu de l'image partiellement melangee qui etait a l'ecran. Mesure sur
+         * `idle -> wide -> idle` a 100 ms : 35,9 px de saut contre 8,0 px de mouvement normal.
+         *
+         * On fige donc la pose composite courante et on melange depuis elle. Continu par
+         * construction, quel que soit le nombre de changements enchaines.
+         *
+         * Et SEULEMENT dans ce cas. Figer a chaque changement arreterait net l'animation de
+         * l'etat qu'on quitte pendant tout le fondu — le « ! » d'`alert` se figerait en pleine
+         * course — alors qu'il n'y a rien a corriger hors morph : l'etat quitte y est deja
+         * exactement l'image affichee. La lecture d'un montage, dont les blocs durent au moins
+         * le plus long fondu (`MIN_BLOCK`), ne fige donc jamais rien et rend au bit ce qu'elle
+         * rendait.
+         */
+        setState(id, now2) {
+          if (id === this.cur)
+            return;
+          const morph = states_1.STATE_BY_ID.get(this.cur).morph;
+          const enPleinFondu = this.prev !== null && now2 - this.tCur < morph;
+          this.departFige = enPleinFondu ? this.poseComposee(now2) : null;
+          this.prev = this.cur;
+          this.tPrev = this.tCur;
+          this.cur = id;
+          this.tCur = now2;
+          if (states_1.STATE_BY_ID.get(id)?.blinkIn)
+            this.blinkAt = now2;
+        }
+        sample(now2) {
+          const R = this.scale;
+          const def = states_1.STATE_BY_ID.get(this.cur);
+          const shape = this.shapeAtTime(now2);
+          const expr = this.exprAtTime(now2);
+          let pose = this.posed(def, Math.max(0, now2 - this.tCur), shape, expr);
+          let decalage = this.decalageAtTime(now2, this.cur);
+          const since = now2 - this.tCur;
+          const origine = since < def.morph ? this.origine(now2, shape, expr) : null;
+          if (origine) {
+            const ratio = math_1.easings.easeOutQuint((0, math_1.clamp)(since / def.morph));
+            pose = blendPose(origine, pose, ratio);
+            const quitte = this.prev;
+            if (quitte) {
+              const avant = this.decalageAtTime(now2, quitte);
+              decalage = {
+                x: (0, math_1.lerp)(avant.x, decalage.x, ratio),
+                y: (0, math_1.lerp)(avant.y, decalage.y, ratio)
+              };
+            }
+          }
+          const alive = pose.eyeAlpha > 0.01;
+          const look = this.lookAtTime(now2);
+          const life = (0, face_1.liveliness)(now2, { wander: alive ? look.wander : 0, blink: alive });
+          const gaze = {
+            // Les deux visees REMPLACENT celles de la pose au lieu de s'y ajouter (voir
+            // `Look`), et le tour se retranche en chemin. La derive s'ajoute APRES le
+            // melange, sinon la cible l'annulerait en meme temps que la pose — or elle
+            // doit survivre a une tete tournee sans pointeur.
+            yaw: (0, math_1.lerp)(pose.gaze.yaw, look.yaw, look.mix) + life.dYaw - look.spin,
+            pitch: (0, math_1.lerp)(pose.gaze.pitch, look.pitch, look.mix) + life.dPitch,
+            // le roulis, lui, ne suit rien : la tete du bot est penchee de -13deg dans
+            // la video, et la faire rouler avec le curseur casse cette signature
+            roll: pose.gaze.roll + life.dRoll
+          };
+          const forced = (0, math_1.clamp)((now2 - this.blinkAt) / 0.2);
+          const forcedLid = forced < 1 ? Math.abs(forced * 2 - 1) : 1;
+          const lid = Math.min(life.lid, forcedLid);
+          const offX = pose.offX + life.driftX;
+          const offY = pose.offY + life.driftY;
+          const sil = {
+            ...pose.sil,
+            cx: pose.sil.cx + offX,
+            cy: pose.sil.cy + offY,
+            sy: pose.sil.sy * life.breath
+          };
+          const bodyPath = (0, shape_1.closedPath)((0, shape_1.toPoints)(sil, R, this.pts));
+          const bodyRadius = (x2, y2) => (0, shape_1.radiusAtAngle)(pose.sil.radii, Math.atan2(y2, x2) - pose.sil.rot);
+          const eyes = [];
+          if (pose.eyeAlpha > 0.01) {
+            const poses = (0, face_1.eyePoses)(gaze, R, pose.split);
+            for (let i = 0; i < 2; i++) {
+              const e = poses[i];
+              if (e.depth <= 0.02)
+                continue;
+              const cfg = pose.eyes[i];
+              const fit = bodyRadius(e.x, e.y);
+              const phi = (cfg.tilt ?? 0) * Math.PI / 180;
+              const cp = Math.cos(phi);
+              const sp = Math.sin(phi);
+              const ax = e.a * cp + e.c * sp;
+              const ay = e.b * cp + e.d * sp;
+              const cx2 = -e.a * sp + e.c * cp;
+              const cy2 = -e.b * sp + e.d * cp;
+              const k = (0, face_1.blinkScale)(Math.min(lid, cfg.open));
+              eyes.push({
+                d: (0, shape_1.capsulePath)(cfg.w * R, cfg.h * R),
+                matrix: `matrix(${(0, math_1.r2)(ax)},${(0, math_1.r2)(ay * k)},${(0, math_1.r2)(cx2)},${(0, math_1.r2)(cy2 * k)},${(0, math_1.r2)(e.x * fit + (offX + decalage.x) * R)},${(0, math_1.r2)(e.y * fit + (offY + decalage.y) * R)})`,
+                alpha: pose.eyeAlpha * (0, math_1.clamp)(e.depth / 0.12)
+              });
+            }
+          }
+          const dots = pose.dots.filter((p) => p.opacity > 0.01 && p.r > 5e-4).map((p) => ({ ...p, x: (p.x + offX) * R, y: (p.y + offY) * R, r: p.r * R }));
+          const nFit = pose.notif ? bodyRadius(pose.notif.x, pose.notif.y) : 1;
+          const nx = pose.notif ? (pose.notif.x * nFit + offX) * R : 0;
+          const ny = pose.notif ? (pose.notif.y * nFit + offY) * R : 0;
+          const notif = pose.notif ? { x: nx, y: ny, r: pose.notif.r * R } : null;
+          const notch = pose.notif ? { x: nx, y: ny, r: pose.notif.notch * R } : null;
+          return {
+            bodyPath,
+            bodyAlpha: pose.bodyAlpha,
+            eyes,
+            dots,
+            dotsBehind: pose.dotsBehind,
+            // Les etats declarent des arcs en unites de rayon de boule ; le moteur
+            // est le seul a connaitre l'echelle du viewBox, donc c'est lui qui trace.
+            arcs: pose.arcs.filter((a) => a.opacity > 0.01).map((a) => (0, decor_1.arcRender)(a.seed, a.t, R, a.id, a.opacity)),
+            notif,
+            notch
+          };
+        }
+      };
+      exports.BotEngine = BotEngine;
+      BotEngine.SHAPE_MORPH = 0.45;
+      BotEngine.LOOK_MORPH = 0.24;
+    }
+  });
+
+  // dist/renderer/uagent/bloub/repere.js
+  var require_repere = __commonJS({
+    "dist/renderer/uagent/bloub/repere.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.DEMI_VIEWBOX = exports.RAYON = void 0;
+      exports.RAYON = 100;
+      exports.DEMI_VIEWBOX = 158;
+    }
+  });
+
+  // dist/renderer/uagent/bloub-face.js
+  var require_bloub_face = __commonJS({
+    "dist/renderer/uagent/bloub-face.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.expressionFor = expressionFor;
+      exports.setAgentGaze = setAgentGaze;
+      exports.syncAgentFaces = syncAgentFaces;
+      var decor_1 = require_decor();
+      var engine_1 = require_engine();
+      var expressions_1 = require_expressions();
+      var repere_1 = require_repere();
+      var skins_1 = require_skins();
+      var states_1 = require_states();
+      var PAPER = "#121212";
+      var VIEW = 118;
+      var faces = /* @__PURE__ */ new Set();
+      var frame = 0;
+      var clock = 0;
+      var serial = 0;
+      var pointer = null;
+      function expressionFor(_id = "") {
+        return "attentif";
+      }
+      function setAgentGaze(x2, y2) {
+        pointer = x2 == null || y2 == null ? null : { x: x2, y: y2 };
+      }
+      function syncAgentFaces(root) {
+        const nodes = new Set(Array.from(root.querySelectorAll("[data-bloub]")));
+        for (const face of [...faces]) {
+          if (!face.el.isConnected || !nodes.has(face.el)) {
+            faces.delete(face);
+          }
+        }
+        nodes.forEach((el) => {
+          if ([...faces].some((face) => face.el === el))
+            return;
+          faces.add(createFace(el));
+        });
+        if (faces.size && !frame)
+          frame = requestAnimationFrame(tick);
+      }
+      function createFace(el) {
+        const uid = `bloub${serial += 1}`;
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", `${-VIEW} ${-VIEW} ${VIEW * 2} ${VIEW * 2}`);
+        svg.setAttribute("width", "100%");
+        svg.setAttribute("height", "100%");
+        svg.setAttribute("aria-hidden", "true");
+        el.replaceChildren(svg);
+        const shape = el.dataset.shape || "cercle";
+        const expr = el.dataset.expr || "heureux";
+        const engine = new engine_1.BotEngine(repere_1.RAYON, "idle", skins_1.SHAPE_BY_ID.get(shape)?.radii ?? null, expressions_1.EXPRESSION_BY_ID.get(expr) ?? null);
+        const face = {
+          el,
+          engine,
+          svg,
+          uid,
+          mode: "idle",
+          shape,
+          expr,
+          winkUntil: 0,
+          aiming: false
+        };
+        applyMode(face, clock);
+        paint(face, engine.sample(clock));
+        return face;
+      }
+      function applyMode(face, now2) {
+        const raw = face.el.dataset.mode || "idle";
+        const shape = face.el.dataset.shape || "cercle";
+        const expr = face.el.dataset.expr || "heureux";
+        if (shape !== face.shape) {
+          face.engine.setShape(skins_1.SHAPE_BY_ID.get(shape)?.radii ?? null, now2);
+          face.shape = shape;
+        }
+        if (expr !== face.expr) {
+          face.engine.setExpression(expressions_1.EXPRESSION_BY_ID.get(expr) ?? null, now2);
+          face.expr = expr;
+        }
+        const next = raw === "thinking" || raw === "notify" || raw === "alert" ? raw : "idle";
+        if (next === face.mode)
+          return;
+        if (face.mode === "thinking" && next === "idle") {
+          face.engine.setState("wink", now2);
+          face.winkUntil = now2 + 0.9;
+        } else {
+          face.engine.setState(next, now2);
+          face.winkUntil = 0;
+        }
+        face.mode = next;
+      }
+      function aim(face, now2) {
+        const posed = states_1.STATE_BY_ID.get(currentState(face))?.baseFace;
+        if (face.el.dataset.follow !== "1" || !pointer || !posed) {
+          if (face.aiming) {
+            face.engine.setLook(null, now2);
+            face.aiming = false;
+          }
+          return;
+        }
+        const box = face.el.getBoundingClientRect();
+        if (!box.width || !box.height)
+          return;
+        const nx = Math.max(-1, Math.min(1, (pointer.x - (box.left + box.width / 2)) / Math.max(1, window.innerWidth / 2)));
+        const ny = Math.max(-1, Math.min(1, (pointer.y - (box.top + box.height / 2)) / Math.max(1, window.innerHeight / 2)));
+        face.engine.setLook({
+          yaw: nx * 16,
+          pitch: 10 + ny * 13,
+          mix: 1,
+          spin: 0,
+          wander: 0
+        }, now2);
+        face.aiming = true;
+      }
+      function currentState(face) {
+        if (face.winkUntil && clock < face.winkUntil)
+          return "wink";
+        if (face.mode === "thinking" || face.mode === "notify" || face.mode === "alert")
+          return face.mode;
+        return "idle";
+      }
+      function tick(nowMs) {
+        frame = 0;
+        clock = nowMs / 1e3;
+        for (const face of faces) {
+          if (!face.el.isConnected) {
+            faces.delete(face);
+            continue;
+          }
+          if (face.el.dataset.still === "1") {
+            const sign = `${face.el.dataset.shape}|${face.el.dataset.color}|${face.el.dataset.expr}|${face.el.dataset.mode}`;
+            if (face.el.dataset.drawn === sign)
+              continue;
+            applyMode(face, 0.4);
+            paint(face, face.engine.sample(0.4));
+            face.el.dataset.drawn = sign;
+            continue;
+          }
+          applyMode(face, clock);
+          if (face.mode === "idle" && face.winkUntil && clock >= face.winkUntil) {
+            face.engine.setState("idle", clock);
+            face.winkUntil = 0;
+          }
+          aim(face, clock);
+          paint(face, face.engine.sample(clock));
+        }
+        if (faces.size)
+          frame = requestAnimationFrame(tick);
+      }
+      function dotFill(dot, ink) {
+        if (dot.color)
+          return dot.color;
+        if (dot.depth == null)
+          return ink;
+        return mix(PAPER, ink, dot.depth);
+      }
+      function mix(from, to, t) {
+        const parse = (hex) => {
+          const v2 = parseInt(hex.slice(1), 16);
+          return [v2 >> 16 & 255, v2 >> 8 & 255, v2 & 255];
+        };
+        const a = parse(from);
+        const b2 = parse(to);
+        const c = a.map((channel, i) => Math.round(channel + ((b2[i] ?? channel) - channel) * t));
+        return `#${c.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+      }
+      function dotMarkup(dot, ink) {
+        const fill = dotFill(dot, ink);
+        if (dot.d) {
+          return `<path d="${dot.d}" fill="${fill}" opacity="${dot.opacity}" transform="translate(${dot.x} ${dot.y}) rotate(${dot.rot ?? 0}) scale(${repere_1.RAYON})"/>`;
+        }
+        return `<circle cx="${dot.x}" cy="${dot.y}" r="${dot.r}" fill="${fill}" opacity="${dot.opacity}"/>`;
+      }
+      function inkOf(el) {
+        const raw = (el.dataset.color || "").trim();
+        if (!raw || raw === "accent") {
+          const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+          return /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : "#70ADDF";
+        }
+        return raw;
+      }
+      function paint(face, picture) {
+        const ink = inkOf(face.el);
+        const uid = face.uid;
+        const eyes = picture.eyes.map((eye) => `<path d="${eye.d}" transform="${eye.matrix}" opacity="${eye.alpha}" fill="#000"/>`).join("");
+        const notch = picture.notch ? `<circle cx="${picture.notch.x}" cy="${picture.notch.y}" r="${picture.notch.r}" fill="#000"/>` : "";
+        const grads = picture.arcs.map((arc2) => {
+          const stops = arc2.grad.stops.map((color, i) => {
+            const offset = arc2.grad.stops.length <= 1 ? 0 : i / (arc2.grad.stops.length - 1);
+            return `<stop offset="${offset}" stop-color="${color}"/>`;
+          }).join("");
+          return `<linearGradient id="${uid}-${arc2.id}" gradientUnits="userSpaceOnUse" x1="${arc2.grad.x1}" y1="${arc2.grad.y1}" x2="${arc2.grad.x2}" y2="${arc2.grad.y2}">${stops}</linearGradient>`;
+        }).join("");
+        const arc = (part) => picture.arcs.map((item) => `<path d="${item[part]}" stroke="url(#${uid}-${item.id})" stroke-width="${item.width}" opacity="${item.opacity}"/>`).join("");
+        const dots = picture.dots.map((dot) => dotMarkup(dot, ink)).join("");
+        const notif = picture.notif ? `<circle cx="${picture.notif.x}" cy="${picture.notif.y}" r="${picture.notif.r}" fill="${decor_1.NOTIF_BLUE}"/>` : "";
+        face.svg.innerHTML = `<defs><mask id="${uid}" maskUnits="userSpaceOnUse" x="${-VIEW}" y="${-VIEW}" width="${VIEW * 2}" height="${VIEW * 2}"><path d="${picture.bodyPath}" fill="#fff"/>${eyes}${notch}</mask>${grads}</defs><g fill="none" stroke-linecap="round">${arc("back")}</g>${picture.dotsBehind ? dots : ""}<g opacity="${picture.bodyAlpha}"><path d="${picture.bodyPath}" fill="${PAPER}"/><g mask="url(#${uid})"><rect x="${-VIEW}" y="${-VIEW}" width="${VIEW * 2}" height="${VIEW * 2}" fill="${ink}"/></g></g>${picture.dotsBehind ? "" : dots}${notif}<g fill="none" stroke-linecap="round">${arc("front")}</g>`;
+      }
+    }
+  });
+
+  // dist/renderer/uagent/mount.js
+  var require_mount = __commonJS({
+    "dist/renderer/uagent/mount.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.setUAgentRemoteConfirm = setUAgentRemoteConfirm;
+      exports.setUAgentTelegram = setUAgentTelegram;
+      exports.askUAgent = askUAgent;
+      exports.mountUAgent = mountUAgent;
+      var marked_1 = (init_marked_esm(), __toCommonJS(marked_esm_exports));
+      var image_viewer_1 = require_image_viewer();
+      var bloub_face_1 = require_bloub_face();
+      var skins_1 = require_skins();
+      var STORE = "uagent-v2";
+      var CLOSE_ICON = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M0 1.06066C0 0.474874 0.474874 0 1.06066 0C1.34196 0 1.61175 0.111748 1.81066 0.31066L11.6893 10.1893C11.8883 10.3883 12 10.658 12 10.9393C12 11.5251 11.5251 12 10.9393 12C10.658 12 10.3883 11.8883 10.1893 11.6893L0.31066 1.81066C0.111748 1.61175 0 1.34196 0 1.06066Z" fill="currentColor"/><path d="M1.06066 12C0.474874 12 0 11.5251 0 10.9393C0 10.658 0.111748 10.3883 0.31066 10.1893L10.1893 0.31066C10.3883 0.111748 10.658 0 10.9393 0C11.5251 0 12 0.474874 12 1.06066C12 1.34196 11.8883 1.61175 11.6893 1.81066L1.81066 11.6893C1.61175 11.8883 1.34196 12 1.06066 12Z" fill="currentColor"/></svg>';
+      var GREETING = "\u041F\u0440\u0438\u0432\u0435\u0442! \u0420\u0430\u0441\u0441\u043A\u0430\u0436\u0438, \u0447\u0442\u043E \u0442\u044B \u0445\u043E\u0447\u0435\u0448\u044C \u0441\u0434\u0435\u043B\u0430\u0442\u044C \u0441\u0435\u0433\u043E\u0434\u043D\u044F? \u0414\u0430\u0439 \u043C\u043D\u0435 \u0437\u0430\u0434\u0430\u0447\u0443, \u0438 \u044F \u0435\u0451 \u0441\u0434\u0435\u043B\u0430\u044E!";
+      var SHAPES = skins_1.SHAPES.map((shape) => shape.id);
+      var COLORS = skins_1.COLORS.map((color) => color.hex).filter((hex) => hex !== "#0a0a0c");
+      var LEGACY_SHAPE = {
+        blob: "galet",
+        round: "cercle",
+        hex: "hexagone",
+        square: "squircle",
+        bean: "capsule"
+      };
+      var CONTEXT_BUDGET = 65e3;
+      var RING = 2 * Math.PI * 6;
+      var ICON = "../../assets/icons/uagent";
+      var TAB_ICON = "../../assets/tabsIcons";
+      var FILE_ICON = "../../assets/selfHostedPage/filesIcons/file.svg";
+      var LABELS = {
+        list_builds: "\u0421\u043C\u043E\u0442\u0440\u044E \u0441\u0431\u043E\u0440\u043A\u0438",
+        get_build: "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        create_build: "\u0421\u043E\u0437\u0434\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        update_build: "\u041C\u0435\u043D\u044F\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        delete_build: "\u0423\u0434\u0430\u043B\u044F\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        duplicate_build: "\u0414\u0443\u0431\u043B\u0438\u0440\u0443\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        rename_build: "\u041F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u044B\u0432\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        select_build: "\u0412\u044B\u0431\u0438\u0440\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        launch_build: "\u0417\u0430\u043F\u0443\u0441\u043A\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0443",
+        compare_builds: "\u0421\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0438",
+        backup_build: "\u0414\u0435\u043B\u0430\u044E \u0440\u0435\u0437\u0435\u0440\u0432\u043D\u0443\u044E \u043A\u043E\u043F\u0438\u044E",
+        import_modpack: "\u0418\u043C\u043F\u043E\u0440\u0442\u0438\u0440\u0443\u044E \u043C\u043E\u0434\u043F\u0430\u043A",
+        search_mods: "\u0418\u0449\u0443 \u043C\u043E\u0434\u044B",
+        search_modpacks: "\u0418\u0449\u0443 \u043C\u043E\u0434\u043F\u0430\u043A\u0438",
+        search_resourcepacks: "\u0418\u0449\u0443 \u0440\u0435\u0441\u0443\u0440\u0441-\u043F\u0430\u043A\u0438",
+        search_shaders: "\u0418\u0449\u0443 \u0448\u0435\u0439\u0434\u0435\u0440\u044B",
+        get_mod: "\u0421\u043C\u043E\u0442\u0440\u044E \u043F\u0440\u043E\u0435\u043A\u0442",
+        install_mod: "\u0421\u0442\u0430\u0432\u043B\u044E \u043C\u043E\u0434",
+        install_matching_mod: "\u0421\u0442\u0430\u0432\u043B\u044E \u043C\u043E\u0434 \u0438\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430",
+        install_matching_plugin: "\u0421\u0442\u0430\u0432\u043B\u044E \u043F\u043B\u0430\u0433\u0438\u043D \u0438\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430",
+        delete_hosted_file: "\u0423\u0434\u0430\u043B\u044F\u044E \u0444\u0430\u0439\u043B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        install_mod_bulk: "\u0421\u0442\u0430\u0432\u043B\u044E \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u043C\u043E\u0434\u043E\u0432",
+        update_outdated_mods: "\u041E\u0431\u043D\u043E\u0432\u043B\u044F\u044E \u043C\u043E\u0434\u044B",
+        list_build_mods: "\u0421\u043C\u043E\u0442\u0440\u044E \u043C\u043E\u0434\u044B \u0441\u0431\u043E\u0440\u043A\u0438",
+        find_mod_in_build: "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u044E, \u0435\u0441\u0442\u044C \u043B\u0438 \u043C\u043E\u0434",
+        list_build_content: "\u0421\u043C\u043E\u0442\u0440\u044E \u0441\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 \u0441\u0431\u043E\u0440\u043A\u0438",
+        toggle_mod: "\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0430\u044E \u043C\u043E\u0434",
+        disable_all_mods: "\u0412\u044B\u043A\u043B\u044E\u0447\u0430\u044E \u0432\u0441\u0435 \u043C\u043E\u0434\u044B",
+        enable_all_mods: "\u0412\u043A\u043B\u044E\u0447\u0430\u044E \u0432\u0441\u0435 \u043C\u043E\u0434\u044B",
+        remove_build_file: "\u0423\u0431\u0438\u0440\u0430\u044E \u0444\u0430\u0439\u043B",
+        copy_mods_to_build: "\u041A\u043E\u043F\u0438\u0440\u0443\u044E \u043C\u043E\u0434\u044B",
+        read_config: "\u0427\u0438\u0442\u0430\u044E \u043A\u043E\u043D\u0444\u0438\u0433",
+        write_config: "\u041F\u0440\u0430\u0432\u043B\u044E \u043A\u043E\u043D\u0444\u0438\u0433",
+        read_options: "\u0427\u0438\u0442\u0430\u044E \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438\u0433\u0440\u044B",
+        write_options: "\u041F\u0440\u0430\u0432\u043B\u044E \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438\u0433\u0440\u044B",
+        get_options_value: "\u0421\u043C\u043E\u0442\u0440\u044E \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440",
+        set_options_value: "\u041C\u0435\u043D\u044F\u044E \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440",
+        list_configs: "\u0421\u043C\u043E\u0442\u0440\u044E \u043A\u043E\u043D\u0444\u0438\u0433\u0438",
+        diagnose_build: "\u0420\u0430\u0437\u0431\u0438\u0440\u0430\u044E \u0437\u0430\u043F\u0443\u0441\u043A",
+        get_crash_report: "\u0427\u0438\u0442\u0430\u044E \u043A\u0440\u0430\u0448",
+        get_latest_log: "\u0427\u0438\u0442\u0430\u044E \u043B\u043E\u0433",
+        clear_logs: "\u0427\u0438\u0449\u0443 \u043B\u043E\u0433\u0438",
+        get_console_tail: "\u0421\u043C\u043E\u0442\u0440\u044E \u043A\u043E\u043D\u0441\u043E\u043B\u044C",
+        open_console: "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u044E \u043A\u043E\u043D\u0441\u043E\u043B\u044C",
+        list_java: "\u0421\u043C\u043E\u0442\u0440\u044E Java",
+        install_java: "\u0421\u0442\u0430\u0432\u043B\u044E Java",
+        remove_java: "\u0423\u0434\u0430\u043B\u044F\u044E Java",
+        set_java_for_build: "\u041D\u0430\u0437\u043D\u0430\u0447\u0430\u044E Java",
+        set_build_memory: "\u041C\u0435\u043D\u044F\u044E \u043F\u0430\u043C\u044F\u0442\u044C",
+        set_jvm_args: "\u041C\u0435\u043D\u044F\u044E \u0430\u0440\u0433\u0443\u043C\u0435\u043D\u0442\u044B Java",
+        set_build_window: "\u041C\u0435\u043D\u044F\u044E \u043E\u043A\u043D\u043E \u0438\u0433\u0440\u044B",
+        recommend_java_for_build: "\u041F\u043E\u0434\u0431\u0438\u0440\u0430\u044E Java",
+        validate_java_for_build: "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u044E Java",
+        list_worlds: "\u0421\u043C\u043E\u0442\u0440\u044E \u043C\u0438\u0440\u044B",
+        delete_world: "\u0423\u0434\u0430\u043B\u044F\u044E \u043C\u0438\u0440",
+        list_screenshots: "\u0421\u043C\u043E\u0442\u0440\u044E \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442\u044B",
+        delete_screenshot: "\u0423\u0434\u0430\u043B\u044F\u044E \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442",
+        list_servers: "\u0421\u043C\u043E\u0442\u0440\u044E \u0441\u0435\u0440\u0432\u0435\u0440\u044B \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430",
+        add_server: "\u0414\u043E\u0431\u0430\u0432\u043B\u044F\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        edit_server: "\u041F\u0440\u0430\u0432\u043B\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        remove_server: "\u0423\u0434\u0430\u043B\u044F\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        server_status: "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        list_server_catalog: "\u0421\u043C\u043E\u0442\u0440\u044E \u043A\u0430\u0442\u0430\u043B\u043E\u0433 \u0441\u0435\u0440\u0432\u0435\u0440\u043E\u0432",
+        list_hosted_servers: "\u0421\u043C\u043E\u0442\u0440\u044E \u0441\u0432\u043E\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
+        create_hosted_server: "\u0421\u043E\u0437\u0434\u0430\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        update_hosted_server: "\u041C\u0435\u043D\u044F\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        install_hosted_core: "\u0421\u0442\u0430\u0432\u043B\u044E \u044F\u0434\u0440\u043E",
+        start_hosted_server: "\u0417\u0430\u043F\u0443\u0441\u043A\u0430\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        stop_hosted_server: "\u041E\u0441\u0442\u0430\u043D\u0430\u0432\u043B\u0438\u0432\u0430\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        restart_hosted_server: "\u041F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u043A\u0430\u044E \u0441\u0435\u0440\u0432\u0435\u0440",
+        hosted_command: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u044E \u043A\u043E\u043C\u0430\u043D\u0434\u0443",
+        hosted_log: "\u0427\u0438\u0442\u0430\u044E \u043B\u043E\u0433 \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        list_hosted_plugins: "\u0421\u043C\u043E\u0442\u0440\u044E \u043F\u043B\u0430\u0433\u0438\u043D\u044B",
+        install_hosted_plugin: "\u0421\u0442\u0430\u0432\u043B\u044E \u043F\u043B\u0430\u0433\u0438\u043D",
+        toggle_hosted_plugin: "\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0430\u044E \u043F\u043B\u0430\u0433\u0438\u043D",
+        list_hosted_files: "\u0421\u043C\u043E\u0442\u0440\u044E \u0444\u0430\u0439\u043B\u044B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        find_hosted_files: "\u0418\u0449\u0443 \u0444\u0430\u0439\u043B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        grep_hosted_files: "\u0418\u0449\u0443 \u0441\u0442\u0440\u043E\u043A\u0443 \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435",
+        read_hosted_file: "\u0427\u0438\u0442\u0430\u044E \u0444\u0430\u0439\u043B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        edit_hosted_file: "\u041F\u0440\u0430\u0432\u043B\u044E \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0444\u0430\u0439\u043B\u0430",
+        write_hosted_file: "\u0421\u043E\u0437\u0434\u0430\u044E \u0444\u0430\u0439\u043B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        mkdir_hosted: "\u0421\u043E\u0437\u0434\u0430\u044E \u043F\u0430\u043F\u043A\u0443 \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        copy_hosted_file: "\u041A\u043E\u043F\u0438\u0440\u0443\u044E \u0444\u0430\u0439\u043B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        move_hosted_file: "\u041F\u0435\u0440\u0435\u043D\u043E\u0448\u0443 \u0444\u0430\u0439\u043B \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
+        list_instance_files: "\u0421\u043C\u043E\u0442\u0440\u044E \u0444\u0430\u0439\u043B\u044B \u0441\u0431\u043E\u0440\u043A\u0438",
+        find_instance_files: "\u0418\u0449\u0443 \u0444\u0430\u0439\u043B \u0441\u0431\u043E\u0440\u043A\u0438",
+        grep_instance_files: "\u0418\u0449\u0443 \u0441\u0442\u0440\u043E\u043A\u0443 \u0432 \u0441\u0431\u043E\u0440\u043A\u0435",
+        read_instance_file: "\u0427\u0438\u0442\u0430\u044E \u0444\u0430\u0439\u043B \u0441\u0431\u043E\u0440\u043A\u0438",
+        edit_instance_file: "\u041F\u0440\u0430\u0432\u043B\u044E \u0444\u0440\u0430\u0433\u043C\u0435\u043D\u0442 \u0441\u0431\u043E\u0440\u043A\u0438",
+        write_instance_file: "\u0421\u043E\u0437\u0434\u0430\u044E \u0444\u0430\u0439\u043B \u0441\u0431\u043E\u0440\u043A\u0438",
+        mkdir_instance: "\u0421\u043E\u0437\u0434\u0430\u044E \u043F\u0430\u043F\u043A\u0443 \u0441\u0431\u043E\u0440\u043A\u0438",
+        copy_instance_file: "\u041A\u043E\u043F\u0438\u0440\u0443\u044E \u0444\u0430\u0439\u043B \u0441\u0431\u043E\u0440\u043A\u0438",
+        move_instance_file: "\u041F\u0435\u0440\u0435\u043D\u043E\u0448\u0443 \u0444\u0430\u0439\u043B \u0441\u0431\u043E\u0440\u043A\u0438",
+        delete_instance_file: "\u0423\u0434\u0430\u043B\u044F\u044E \u0444\u0430\u0439\u043B \u0441\u0431\u043E\u0440\u043A\u0438",
+        list_hosted_core_versions: "\u0421\u043C\u043E\u0442\u0440\u044E \u0432\u0435\u0440\u0441\u0438\u0438 \u044F\u0434\u0440\u0430",
+        web_search: "\u0418\u0449\u0443 \u0432 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442\u0435",
+        fetch_url: "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u044E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443",
+        lookup_plugin: "\u0421\u043C\u043E\u0442\u0440\u044E \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u0446\u0438\u044E \u043F\u043B\u0430\u0433\u0438\u043D\u0430",
+        play_command: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u044E \u043A\u043E\u043C\u0430\u043D\u0434\u0443 \u0432 \u0438\u0433\u0440\u0443",
+        scan_configs: "\u0421\u043C\u043E\u0442\u0440\u044E \u043A\u043B\u044E\u0447\u0438 \u043A\u043E\u043D\u0444\u0438\u0433\u043E\u0432",
+        ask_user_form: "\u0423\u0442\u043E\u0447\u043D\u044F\u044E \u0444\u043E\u0440\u043C\u043E\u0439",
+        list_news: "\u0421\u043C\u043E\u0442\u0440\u044E \u043D\u043E\u0432\u043E\u0441\u0442\u0438",
+        get_news: "\u0427\u0438\u0442\u0430\u044E \u043D\u043E\u0432\u043E\u0441\u0442\u044C",
+        list_accounts: "\u0421\u043C\u043E\u0442\u0440\u044E \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u044B",
+        switch_account: "\u041F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0430\u044E \u0430\u043A\u043A\u0430\u0443\u043D\u0442",
+        get_launcher_info: "\u0421\u043C\u043E\u0442\u0440\u044E \u043B\u0430\u0443\u043D\u0447\u0435\u0440",
+        get_system_info: "\u0421\u043C\u043E\u0442\u0440\u044E \u0441\u0438\u0441\u0442\u0435\u043C\u0443",
+        check_updates: "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u044E \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435",
+        launch_updater: "\u0417\u0430\u043F\u0443\u0441\u043A\u0430\u044E \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435",
+        client_overview: "\u0421\u043C\u043E\u0442\u0440\u044E, \u0447\u0442\u043E \u0432 \u043A\u043B\u0438\u0435\u043D\u0442\u0435",
+        open_launcher_section: "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u044E \u0440\u0430\u0437\u0434\u0435\u043B",
+        open_settings: "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u044E \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438",
+        list_bug_tags: "\u0421\u043C\u043E\u0442\u0440\u044E \u0442\u0435\u0433\u0438 \u0431\u0430\u0433\u043E\u0432",
+        create_bug_report: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u044E \u043E\u0442\u0447\u0451\u0442",
+        game_status: "\u0421\u043C\u043E\u0442\u0440\u044E, \u0437\u0430\u043F\u0443\u0449\u0435\u043D\u0430 \u043B\u0438 \u0438\u0433\u0440\u0430",
+        find_mod_conflicts: "\u0418\u0449\u0443 \u043A\u043E\u043D\u0444\u043B\u0438\u043A\u0442\u044B \u043C\u043E\u0434\u043E\u0432",
+        get_build_disk_usage: "\u0421\u0447\u0438\u0442\u0430\u044E \u043C\u0435\u0441\u0442\u043E \u0441\u0431\u043E\u0440\u043A\u0438",
+        search_local_files: "\u0418\u0449\u0443 \u0444\u0430\u0439\u043B\u044B",
+        open_build_folder: "\u041E\u0442\u043A\u0440\u044B\u0432\u0430\u044E \u043F\u0430\u043F\u043A\u0443 \u0441\u0431\u043E\u0440\u043A\u0438",
+        clear_instance_cache: "\u0427\u0438\u0449\u0443 \u043A\u044D\u0448 \u0441\u0431\u043E\u0440\u043A\u0438"
+      };
+      var api = window.electronAPI;
+      var sessions = [];
+      var activeId = "";
+      var busy = false;
+      var panel = "activity";
+      var aboutOpen = true;
+      var sideOpen = true;
+      var renaming = false;
+      var libraryToken = 0;
+      var pendingFile = null;
+      var pendingShots = [];
+      var attachKind = "";
+      var attachQuery = "";
+      var attachTimer = 0;
+      var attachToken = 0;
+      var attachRows = [];
+      var pickerOpen = false;
+      var streamOnce = false;
+      var libraryHtml = "";
+      var libraryFor = "";
+      var focusReady = /* @__PURE__ */ new Set();
+      var openTelegram = null;
+      var shellReady = false;
+      var liveForm = null;
+      var compactAnnounced = false;
+      var remoteBusy = false;
+      var quietTurn = false;
+      var remoteConfirm = null;
+      var localTurn = 0;
+      var listening = false;
+      var speechPrep = false;
+      var dangerResolve = null;
+      var speechRec = null;
+      var speechTimer = 0;
+      var speechGen = 0;
+      function setUAgentRemoteConfirm(confirm) {
+        remoteConfirm = confirm;
+      }
+      function setUAgentTelegram(open) {
+        openTelegram = open;
+      }
+      function uid() {
+        return Math.random().toString(36).slice(2, 10);
+      }
+      function asShape(value, index = 0) {
+        const raw = String(value || "");
+        if (SHAPES.includes(raw))
+          return raw;
+        return LEGACY_SHAPE[raw] || SHAPES[index % SHAPES.length];
+      }
+      function load() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(STORE) || "[]");
+          const rows = Array.isArray(raw) ? raw : [];
+          sessions = rows.filter((row) => row && row.id).map((row, index) => ({
+            id: String(row.id),
+            title: String(row.title || "UAgent Bot").slice(0, 40),
+            group: String(row.group || ""),
+            shape: asShape(row.shape, index),
+            color: /^#[0-9a-fA-F]{6}$/.test(String(row.color || "")) ? String(row.color) : COLORS[index % COLORS.length],
+            server: row.server?.id ? { id: String(row.server.id), name: String(row.server.name || row.server.id) } : null,
+            build: row.build?.name ? { id: String(row.build.id || row.build.name), name: String(row.build.name), meta: String(row.build.meta || "") } : null,
+            mod: row.mod?.name ? { id: String(row.mod.id || row.mod.name), name: String(row.mod.name), meta: String(row.mod.meta || "") } : null,
+            hold: row.hold && typeof row.hold === "object" ? {
+              server: row.hold.server ? true : void 0,
+              build: row.hold.build ? true : void 0,
+              mod: row.hold.mod ? true : void 0
+            } : void 0,
+            updated: Number(row.updated) || Date.now(),
+            channel: row.channel === "telegram" ? "telegram" : "",
+            messages: (Array.isArray(row.messages) ? row.messages : []).filter(Boolean).map((msg) => ({
+              ...msg,
+              role: msg.role === "assistant" ? "assistant" : "user",
+              text: typeof msg.text === "string" ? msg.text : "",
+              steps: Array.isArray(msg.steps) ? msg.steps : []
+            })),
+            wire: Array.isArray(row.wire) ? row.wire : [],
+            steps: Array.isArray(row.steps) ? row.steps : []
+          }));
+        } catch {
+          sessions = [];
+        }
+        if (!sessions.length)
+          sessions.push(blank("UAgent Bot"));
+        if (!sessions.some((row) => row.id === activeId))
+          activeId = sessions[0].id;
+      }
+      function save() {
+        const payload = sessions.slice(0, 40).map((session) => ({
+          ...session,
+          wire: session.wire.map((msg) => {
+            if (!msg.images?.length)
+              return msg;
+            const copy = { ...msg };
+            delete copy.images;
+            return copy;
+          })
+        }));
+        const write = (value) => localStorage.setItem(STORE, JSON.stringify(value));
+        try {
+          write(payload);
+        } catch {
+          const slim = payload.map((session) => ({
+            ...session,
+            messages: session.messages.map((msg, index, all) => {
+              if (index >= all.length - 2 || !msg.images?.length)
+                return msg;
+              const copy = { ...msg };
+              delete copy.images;
+              return copy;
+            }),
+            wire: session.wire.slice(-16).map((msg) => ({
+              ...msg,
+              content: typeof msg.content === "string" && msg.content.length > 800 ? `${msg.content.slice(0, 800)}\u2026` : msg.content
+            }))
+          }));
+          try {
+            write(slim);
+          } catch {
+            try {
+              write(slim.map((session) => ({ ...session, wire: session.wire.slice(-4) })));
+            } catch {
+            }
+          }
+        }
+      }
+      function blank(title) {
+        const index = sessions.length;
+        return {
+          id: uid(),
+          title,
+          group: "",
+          shape: SHAPES[index % SHAPES.length],
+          color: COLORS[index % COLORS.length],
+          updated: Date.now(),
+          messages: [],
+          wire: [],
+          steps: []
+        };
+      }
+      function headHtml(session, size, mode = "idle", still = false) {
+        const shape = asShape(session.shape);
+        const expr = (0, bloub_face_1.expressionFor)(session.id);
+        return `<span class="uag-turn is-${size}" data-bloub data-shape="${shape}" data-color="${esc(session.color)}" data-expr="${expr}" data-mode="${mode}" data-follow="${size === "lg" ? "1" : "0"}"${still ? ' data-still="1"' : ""}></span>`;
+      }
+      function avatarMode(session, live) {
+        if (live)
+          return "thinking";
+        if (liveForm && session.id === activeId)
+          return "notify";
+        const steps = Array.isArray(session.steps) ? session.steps : [];
+        const last = steps[steps.length - 1];
+        if (last && !last.ok)
+          return "alert";
+        return "idle";
+      }
+      function placeHead(host, session, size, live) {
+        const mode = avatarMode(session, live);
+        const node = host.querySelector(":scope > [data-bloub]");
+        if (!node) {
+          host.innerHTML = headHtml(session, size, mode);
+          return;
+        }
+        node.className = `uag-turn is-${size}`;
+        node.dataset.shape = asShape(session.shape);
+        node.dataset.color = session.color;
+        node.dataset.expr = (0, bloub_face_1.expressionFor)(session.id);
+        node.dataset.mode = mode;
+        node.dataset.follow = size === "lg" ? "1" : "0";
+        delete node.dataset.still;
+      }
+      function dotsHtml() {
+        return '<span class="uag2-dots" aria-hidden="true"><i></i><i></i><i></i></span>';
+      }
+      function current() {
+        return sessions.find((row) => row.id === activeId) || sessions[0];
+      }
+      function esc(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+      }
+      function needsConfirm(name) {
+        return /^(delete_|remove_|clear_)/.test(name) || name === "disable_all_mods" || name === "clear_instance_cache";
+      }
+      function toolLabel(name) {
+        return LABELS[name] || name.replace(/_/g, " ");
+      }
+      function changeOf(args, result) {
+        const box = result && typeof result === "object" ? result : {};
+        const inner = box.result && typeof box.result === "object" ? box.result : {};
+        const path = String(inner.path || args?.path || args?.query || args?.url || "").replace(/\\/g, "/").trim();
+        const raw = Array.isArray(inner.diff) ? inner.diff : [];
+        const diff = raw.filter((row) => row && (row.kind === "add" || row.kind === "del") && typeof row.text === "string").slice(0, 48).map((row) => ({ kind: row.kind, text: String(row.text).slice(0, 240) }));
+        return { path, diff };
+      }
+      function toolPayload(result, name) {
+        const limit = name === "fetch_url" || name === "web_search" || name === "lookup_plugin" ? 14e3 : 6e3;
+        const box = result && typeof result === "object" ? { ...result } : { value: result ?? { ok: false } };
+        const inner = box.result && typeof box.result === "object" ? { ...box.result } : null;
+        if (inner)
+          box.result = inner;
+        const target = inner || box;
+        let raw = JSON.stringify(box);
+        if (raw.length > limit && typeof target.text === "string") {
+          const overflow = raw.length - limit + 160;
+          target.text = `${String(target.text).slice(0, Math.max(400, String(target.text).length - overflow))}
+\u2026\u043E\u0431\u0440\u0435\u0437\u0430\u043D\u043E`;
+          target.truncated = true;
+          raw = JSON.stringify(box);
+        }
+        return raw.length <= limit ? raw : raw.slice(0, limit);
+      }
+      function doneStep(name, ok = true, error = "", args, result) {
+        const note = error.replace(/\s+/g, " ").trim();
+        const change = changeOf(args, result);
+        const detail = change.path && !change.diff.length ? `${toolLabel(name)} \xB7 ${change.path}` : toolLabel(name);
+        return {
+          name,
+          ok,
+          detail,
+          error: note ? note.slice(0, 160) : void 0,
+          path: change.path || void 0,
+          diff: change.diff.length ? change.diff : void 0
+        };
+      }
+      function renderMd(src) {
+        const html = marked_1.marked.parse(src || "", { async: false, gfm: true, breaks: true });
+        return html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "").replace(/\son\w+="[^"]*"/gi, "").replace(/javascript:/gi, "");
+      }
+      function choices(text) {
+        const items = [];
+        const rest = text.split("\n").filter((line) => {
+          const match = line.trim().match(/^([A-C])[).]\s+(.+)$/);
+          if (!match)
+            return true;
+          items.push({ key: match[1], label: match[2] });
+          return false;
+        });
+        let body = rest.join("\n").trim();
+        let title = "";
+        if (items.length) {
+          const parts = body.split(/\n{2,}/);
+          const last = (parts[parts.length - 1] || "").trim();
+          if (last.endsWith("?") && last.length < 140 && !last.includes("\n")) {
+            title = last;
+            parts.pop();
+            body = parts.join("\n\n").trim();
+          }
+        }
+        return { body, title, items };
+      }
+      function preview(session) {
+        const last = [...session.messages || []].reverse().find((row) => String(row?.text || "").trim());
+        if (!last)
+          return "\u0422\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u043E \u0441\u043E\u0437\u0434\u0430\u043D";
+        const text = String(last.text || "").replace(/\s+/g, " ").trim();
+        return text.length > 28 ? `${text.slice(0, 28)}\u2026` : text;
+      }
+      function dayLabel(ts) {
+        const date = new Date(ts);
+        const time = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+        const today = /* @__PURE__ */ new Date();
+        if (date.toDateString() === today.toDateString())
+          return `\u0421\u0435\u0433\u043E\u0434\u043D\u044F \u0432 ${time}`;
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        if (date.toDateString() === yesterday.toDateString())
+          return `\u0412\u0447\u0435\u0440\u0430 \u0432 ${time}`;
+        const day = date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+        return `${day} \u0432 ${time}`;
+      }
+      function rowsHtml(rows) {
+        const session = current();
+        return rows.map((row) => {
+          const on = row.id === session.id;
+          const working = on && busy;
+          const sub = working ? `${dotsHtml()}\u0420\u0430\u0431\u043E\u0442\u0430\u0435\u0442` : esc(preview(row));
+          return `<button type="button" class="uag2-row${on ? " is-on" : ""}${working ? " is-busy" : ""}" data-id="${esc(row.id)}">
+      ${headHtml(row, "sm", working ? "thinking" : row.id === activeId ? avatarMode(row, false) : "idle", !working)}
+      <span class="uag2-row__text"><b>${esc(row.title)}</b><small>${sub}</small></span>
+      ${on ? `<span class="uag2-row__x" data-close="${esc(row.id)}"><img src="${ICON}/closeAgentTab.svg" alt=""></span>` : "<span></span>"}
+    </button>`;
+        }).join("");
+      }
+      function listHtml() {
+        const loose = sessions.filter((row) => !row.group);
+        const groups = [];
+        sessions.forEach((row) => {
+          if (row.group && !groups.includes(row.group))
+            groups.push(row.group);
+        });
+        const chunks = [rowsHtml(loose)];
+        groups.forEach((title) => {
+          chunks.push(`<div class="uag2-group"><span>${esc(title)}</span><i></i><button type="button" data-ungroup="${esc(title)}" aria-label="\u0423\u0431\u0440\u0430\u0442\u044C \u0433\u0440\u0443\u043F\u043F\u0443"><img src="${ICON}/closeAgentTab.svg" alt=""></button></div>`, rowsHtml(sessions.filter((row) => row.group === title)));
+        });
+        return chunks.join("");
+      }
+      function thinkHtml(text, live = false) {
+        const full = text.trim();
+        if (!full && !live)
+          return "";
+        const hidden = full ? "" : " hidden";
+        const liveId = live ? ' id="uag2-live-reason"' : "";
+        const bodyId = live ? ' id="uag2-live-reason-body"' : "";
+        return `<button type="button" class="uag2-think"${liveId}${hidden} data-reason="${esc(full)}">\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0440\u0430\u0437\u043C\u044B\u0448\u043B\u0435\u043D\u0438\u044F \u043C\u043E\u0434\u0435\u043B\u0438</button><div class="uag2-think__body"${bodyId} hidden>${esc(full)}</div>`;
+      }
+      function messageHtml(msg) {
+        const shots = (msg.images || []).map((image) => `<button type="button" class="uag2-shot"><img src="${esc(image.url)}" alt="${esc(image.name)}"></button>`).join("");
+        const text = msg.text ? `<div>${esc(msg.text)}</div>` : "";
+        return `<article class="uag2-bubble is-user uag-in">${shots ? `<div class="uag2-shots">${shots}</div>` : ""}${text}</article>`;
+      }
+      function modelSeesImages(id = currentPixiModel()) {
+        return id === "pixi-2.0-lite" || id === "pixi-2.0-pro";
+      }
+      function openShotList(list, start) {
+        const clean = list.filter((item) => item.src);
+        if (!clean.length)
+          return;
+        const at = Math.min(Math.max(0, start), clean.length - 1);
+        (0, image_viewer_1.openImageViewer)(clean, at, "agent");
+      }
+      function compressShot(file) {
+        const blobUrl = URL.createObjectURL(file);
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxSide = 1280;
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height, 1));
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              URL.revokeObjectURL(blobUrl);
+              reject(new Error("canvas"));
+              return;
+            }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            let quality = 0.72;
+            let dataUrl = canvas.toDataURL("image/jpeg", quality);
+            while (dataUrl.length > 9e5 && quality > 0.4) {
+              quality -= 0.12;
+              dataUrl = canvas.toDataURL("image/jpeg", quality);
+            }
+            URL.revokeObjectURL(blobUrl);
+            resolve({
+              name: (file.name || "screenshot.jpg").slice(0, 80),
+              url: dataUrl,
+              mime: "image/jpeg",
+              data: dataUrl.split(",")[1] || ""
+            });
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(blobUrl);
+            reject(new Error("image"));
+          };
+          img.src = blobUrl;
+        });
+      }
+      async function addShots(files) {
+        for (const file of files) {
+          if (pendingShots.length >= 4)
+            break;
+          if (!file.type.startsWith("image/"))
+            continue;
+          try {
+            const shot = await compressShot(file);
+            if (shot.data)
+              pendingShots.push(shot);
+          } catch {
+          }
+        }
+        fill();
+      }
+      function stepView(step) {
+        const extra = (step.error || "").replace(/\s+/g, " ").trim();
+        if (extra)
+          return { label: step.detail, ok: step.ok, error: extra };
+        const cut = step.detail.indexOf(": ");
+        if (!step.ok && cut > 0)
+          return { label: step.detail.slice(0, cut), ok: false, error: step.detail.slice(cut + 2).trim() };
+        return { label: step.detail, ok: step.ok, error: "" };
+      }
+      function rowHtml(row) {
+        const times = row.count > 1 ? `<i>\xD7${row.count}</i>` : "";
+        const state = row.ok ? "" : "<em>\u041D\u0435 \u0432\u044B\u0448\u043B\u043E</em>";
+        const err = row.error ? `<small title="${esc(row.error)}">${esc(row.error)}</small>` : "";
+        return `<button type="button" class="uag2-tool${row.ok ? "" : " is-bad"}" data-activity="1"><span></span><b>${esc(row.label)}${times}</b>${state}${err}</button>`;
+      }
+      function diffHtml(step) {
+        if (!step.diff?.length)
+          return "";
+        const rows = step.diff.map((line) => {
+          const mark = line.kind === "add" ? "+" : "\u2212";
+          const cls = line.kind === "add" ? "is-add" : "is-del";
+          return `<div class="${cls}">${mark} ${esc(line.text || " ")}</div>`;
+        }).join("");
+        const title = step.path ? `<b>${esc(step.path)}</b>` : "";
+        return `<div class="uag2-diff">${title}${rows}</div>`;
+      }
+      function toolRows(steps) {
+        const blocks = [];
+        const groups = [];
+        const flush = () => {
+          if (!groups.length)
+            return;
+          const shown = groups.slice(0, 6);
+          const rest = groups.length - shown.length;
+          const more = rest > 0 ? `<button type="button" class="uag2-tool is-more" data-activity="1">\u0415\u0449\u0451 ${rest}</button>` : "";
+          blocks.push(`<div class="uag2-steps">${shown.map(rowHtml).join("")}${more}</div>`);
+          groups.length = 0;
+        };
+        steps.forEach((step) => {
+          if (step.diff?.length) {
+            flush();
+            const view2 = stepView(step);
+            blocks.push(`<div class="uag2-steps">${rowHtml({ label: view2.label, ok: view2.ok, error: view2.error, count: 1 })}</div>${diffHtml(step)}`);
+            return;
+          }
+          const view = stepView(step);
+          if (!view.label)
+            return;
+          const prev = groups[groups.length - 1];
+          if (prev && prev.label === view.label && prev.ok === view.ok && prev.error === view.error) {
+            prev.count += 1;
+            return;
+          }
+          groups.push({ label: view.label, ok: view.ok, error: view.error, count: 1 });
+        });
+        flush();
+        return blocks.join("");
+      }
+      function msgId(msg) {
+        if (!msg.id)
+          msg.id = Math.random().toString(36).slice(2, 10);
+        return msg.id;
+      }
+      function msgStamp(msg) {
+        const steps = Array.isArray(msg.steps) ? msg.steps : [];
+        const text = String(msg.text || "");
+        const diffs = steps.reduce((sum, step) => sum + (step.diff?.length || 0) + (step.path?.length || 0), 0);
+        return `${msg.role}|${msg.live ? 1 : 0}|${steps.length}|${diffs}|${text.length}|${msg.reasoning?.length || 0}|${msg.thought?.length || 0}`;
+      }
+      function assistantHtml(msg, stream) {
+        const shown = presentAnswer(String(msg.text || ""), msg.reasoning || "");
+        const text = shown.text.trim();
+        const parts = [];
+        if (msg.thought)
+          parts.push(`<details class="uag2-thought"><summary>\u0420\u0430\u0437\u043C\u044B\u0448\u043B\u0435\u043D\u0438\u0435</summary><div class="uag2-md">${renderMd(msg.thought)}</div></details>`);
+        if (msg.live || text || shown.reasoning) {
+          let body = "";
+          if (msg.live)
+            body = `<div class="uag2-md" id="uag2-live-md">${text ? renderMd(text) : '<span class="uag2-caret"></span>'}</div>`;
+          else if (text) {
+            const parsed = choices(text);
+            if (parsed.body) {
+              const plain = esc(parsed.body).replace(/\n/g, "&#10;");
+              body = `<div class="uag2-md${stream ? " is-streaming" : ""}"${stream ? ` data-stream="1" data-plain="${plain}"` : ""}>${renderMd(parsed.body)}</div>`;
+            }
+            if (parsed.items.length) {
+              parts.push(`<article class="uag2-ask">${parsed.title ? `<b>${esc(parsed.title)}</b>` : ""}${parsed.items.map((item) => `<button type="button" data-choice="${esc(item.label)}"><i>${esc(item.key)}</i><span>${esc(item.label)}</span></button>`).join("")}</article>`);
+            }
+          }
+          if (body || shown.reasoning)
+            parts.push(`<article class="uag2-bubble uag2-answer">${body}${thinkHtml(shown.reasoning, Boolean(msg.live))}</article>`);
+        }
+        const steps = Array.isArray(msg.steps) ? msg.steps : [];
+        if (steps.length)
+          parts.push(toolRows(steps));
+        return parts.join("");
+      }
+      function syncLog(session) {
+        const log = document.getElementById("uag2-log");
+        if (!log)
+          return;
+        const freshSession = log.dataset.session !== session.id;
+        if (freshSession) {
+          log.dataset.session = session.id;
+          log.replaceChildren();
+          log.insertAdjacentHTML("beforeend", `<div class="uag2-day">${esc(dayLabel(session.updated))}</div>`);
+        }
+        const greet = log.querySelector(".uag2-greet");
+        if (!session.messages.length) {
+          if (!greet)
+            log.insertAdjacentHTML("beforeend", `<article class="uag2-bubble uag2-greet${freshSession ? "" : " uag-in"}">${esc(GREETING)}</article>`);
+        } else
+          greet?.remove();
+        const stream = streamOnce;
+        streamOnce = false;
+        const last = session.messages[session.messages.length - 1];
+        const nodes = Array.from(log.querySelectorAll("[data-mid]"));
+        session.messages.forEach((msg, index) => {
+          const id = msgId(msg);
+          const stamp = msgStamp(msg);
+          const node = nodes[index];
+          const play = Boolean(stream && msg === last && msg.role === "assistant" && !msg.live);
+          if (node?.dataset.mid === id && node.dataset.stamp === stamp)
+            return;
+          if (node?.dataset.mid === id && msg.live && node.querySelector("#uag2-live-md")) {
+            const shown = presentAnswer(msg.text, msg.reasoning || "");
+            const md = node.querySelector("#uag2-live-md");
+            if (md)
+              md.innerHTML = shown.text ? renderMd(shown.text) : '<span class="uag2-caret"></span>';
+            const reason = node.querySelector(".uag2-think");
+            if (reason) {
+              const full = shown.reasoning.trim();
+              reason.hidden = !full;
+              reason.dataset.reason = full;
+            }
+            node.dataset.stamp = stamp;
+            return;
+          }
+          const fresh = document.createElement("div");
+          const appear = !freshSession && node?.dataset.mid !== id;
+          fresh.className = `uag2-msg${appear ? " uag-in" : ""}`;
+          fresh.dataset.mid = id;
+          fresh.dataset.stamp = stamp;
+          fresh.innerHTML = msg.role === "user" ? messageHtml(msg) : assistantHtml(msg, play);
+          const tail2 = log.querySelector(".uag2-tail");
+          if (node?.dataset.mid === id)
+            node.replaceWith(fresh);
+          else if (tail2)
+            log.insertBefore(fresh, tail2);
+          else
+            log.appendChild(fresh);
+        });
+        Array.from(log.querySelectorAll("[data-mid]")).slice(session.messages.length).forEach((node) => node.remove());
+        let tail = log.querySelector(".uag2-tail");
+        if (!tail) {
+          tail = document.createElement("div");
+          tail.className = "uag2-tail";
+          log.appendChild(tail);
+        }
+        const tailHtml = liveForm ? formCardHtml(liveForm) : busy && !session.messages.some((msg) => msg.live) ? `<div class="uag2-status">${dotsHtml()}<span>\u0427\u0438\u0442\u0430\u044E \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435</span></div>` : "";
+        if (tail.dataset.html !== tailHtml) {
+          tail.innerHTML = tailHtml;
+          tail.dataset.html = tailHtml;
+        }
+        stickLog(freshSession);
+        if (stream)
+          playStream();
+      }
+      var PIXI_MODELS = [
+        { id: "pixi-2.0-lite", tier: "Lite", tone: "lite", family: "Pixi 2.0" },
+        { id: "pixi-2.0-pro", tier: "Pro", tone: "pro", family: "Pixi 2.0" },
+        { id: "pixi-2.0-ultra", tier: "Ultra", tone: "ultra", family: "Pixi 2.0" },
+        { id: "pixi-2.1-flash", tier: "Flash", tone: "flash", family: "Pixi 2.1" }
+      ];
+      var LOCK_HINT = "\u042D\u0442\u0430 \u043C\u043E\u0434\u0435\u043B\u044C \u0441\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u043F\u0443\u0431\u043B\u0438\u0447\u043D\u043E. \u041E\u043D\u0430 \u043C\u043E\u0436\u0435\u0442 \u0431\u044B\u0442\u044C \u043E\u0442\u043A\u0440\u044B\u0442\u0430 \u043F\u043E\u0437\u0436\u0435";
+      var unlockedModels = /* @__PURE__ */ new Set(["pixi-2.0-lite"]);
+      var accessReady = false;
+      var gateStatus = "open";
+      var gateEpoch = 0;
+      function modelUnlocked(id) {
+        if (!accessReady)
+          return id === "pixi-2.0-lite" || unlockedModels.has(id);
+        return unlockedModels.has(id);
+      }
+      function currentPixiModel() {
+        const saved = localStorage.getItem("Undefined Client-ai-model");
+        const mapped = saved === "pixi-1.5" ? "pixi-2.0-ultra" : saved;
+        const known = PIXI_MODELS.find((row) => row.id === mapped);
+        if (known && modelUnlocked(known.id))
+          return known.id;
+        return "pixi-2.0-lite";
+      }
+      function pixiModelRow(id = currentPixiModel()) {
+        return PIXI_MODELS.find((row) => row.id === id) || PIXI_MODELS[0];
+      }
+      function modelFor(_session) {
+        return currentPixiModel();
+      }
+      function launcherMark(className) {
+        return `<svg class="${className}" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect width="11" height="11"></rect><rect x="11" y="11" width="5" height="5"></rect></svg>`;
+      }
+      function syncModelButton() {
+        const host = document.getElementById("uag2-model");
+        const button = document.getElementById("uag2-model-btn");
+        const badge = document.getElementById("uag2-model-badge");
+        const menu = document.getElementById("uag2-model-menu");
+        const picked = pixiModelRow(modelFor(current()));
+        host?.setAttribute("data-tone", picked.tone);
+        button?.setAttribute("aria-label", `\u041C\u043E\u0434\u0435\u043B\u044C ${picked.family} ${picked.tier}`);
+        if (badge)
+          badge.textContent = picked.tier;
+        if (!menu)
+          return;
+        menu.innerHTML = PIXI_MODELS.map((row) => {
+          const on = row.id === picked.id;
+          const locked = row.id !== "pixi-2.0-lite" && !modelUnlocked(row.id);
+          const lock = locked ? '<svg class="uag2-model-lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3.2" y="7" width="9.6" height="7" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.4"></rect><path d="M5.2 7V5.1a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg>' : "";
+          return `<button type="button" class="uag2-model-row${on ? " is-on" : ""}${locked ? " is-locked" : ""}" role="option" aria-selected="${on ? "true" : "false"}" aria-disabled="${locked ? "true" : "false"}" data-model="${row.id}" data-tone="${row.tone}"${locked ? ` data-locked="1" title="${LOCK_HINT}"` : ""}>${launcherMark("uag2-model-mark")}<span class="uag2-model-tier">${row.tier}</span><span class="uag2-model-name">${row.family}</span>${lock}${on && !locked ? '<span class="uag2-model-state">\u0412\u044B\u0431\u0440\u0430\u043D\u0430</span>' : ""}</button>`;
+        }).join("");
+      }
+      function popMenu(menu, open) {
+        if (!menu)
+          return;
+        if (open) {
+          menu.hidden = false;
+          menu.classList.remove("is-closing");
+          menu.classList.remove("is-open");
+          void menu.offsetWidth;
+          menu.classList.add("is-open");
+          return;
+        }
+        if (menu.hidden)
+          return;
+        menu.classList.remove("is-open");
+        menu.classList.add("is-closing");
+        window.setTimeout(() => {
+          if (!menu.classList.contains("is-closing"))
+            return;
+          menu.hidden = true;
+          menu.classList.remove("is-closing");
+        }, 180);
+      }
+      function setModelMenu(open) {
+        const menu = document.getElementById("uag2-model-menu");
+        document.getElementById("uag2-model-btn")?.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open)
+          syncModelButton();
+        popMenu(menu, open);
+      }
+      function shellHtml() {
+        return `<div class="uag2">
+    <aside class="uag2-side">
+      <div class="uag2-tools">
+        <button type="button" class="uag2-icon" id="uag2-side-toggle" aria-label="\u0421\u043F\u0438\u0441\u043E\u043A"><img src="${ICON}/sidebar.svg" alt=""></button>
+        <button type="button" class="uag2-icon" id="uag2-new" aria-label="\u041D\u043E\u0432\u044B\u0439 \u0430\u0433\u0435\u043D\u0442"><img src="${ICON}/newAgent.svg" alt=""></button>
+      </div>
+      <div class="uag2-list" id="uag2-list"></div>
+      <button type="button" class="uag2-tg" id="uag2-tg">Telegram</button>
+    </aside>
+    <section class="uag2-chat">
+      <header class="uag2-top">
+        <button type="button" class="uag2-icon uag2-top-toggle" id="uag2-side-open" aria-label="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A"><img src="${ICON}/sidebar.svg" alt=""></button>
+        <div class="uag2-top__center">
+          <button type="button" class="uag2-pill" id="uag2-pill"><span id="uag2-pill-face"></span><span id="uag2-title"></span></button>
+        </div>
+      </header>
+      <div class="uag2-stream">
+      <div class="uag2-log" id="uag2-log"></div>
+      <div class="uag2-chip" id="uag2-chip"></div>
+      <form class="uag2-form" id="uag2-form">
+        <div class="uag2-form__row">
+          <div class="uag2-plus" id="uag2-plus">
+            <button type="button" class="uag2-round" id="uag2-file" aria-label="\u041F\u0440\u0438\u043A\u0440\u0435\u043F\u0438\u0442\u044C" aria-haspopup="menu" aria-expanded="false"><img src="${ICON}/attachFile.svg" alt=""></button>
+            <div class="uag2-plus-menu" id="uag2-plus-menu" role="menu" hidden></div>
+          </div>
+          <div class="uag2-model" id="uag2-model" data-tone="lite">
+            <button type="button" id="uag2-model-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="\u041C\u043E\u0434\u0435\u043B\u044C Pixi 2.0 Lite">
+              ${launcherMark("uag2-model-logo")}
+              <span class="uag2-model-badge" id="uag2-model-badge">Lite</span>
+              <svg class="uag2-model-chevron" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1.15 5 4.85 9 1.15" fill="none" stroke="#9A9A9A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </button>
+            <div class="uag2-model-menu" id="uag2-model-menu" role="listbox" hidden></div>
+          </div>
+          <input id="uag2-input" type="text" autocomplete="off">
+          <button type="button" class="uag2-round is-send" id="uag2-act" aria-label="\u0413\u043E\u0432\u043E\u0440\u0438\u0442\u044C"><img src="${ICON}/microphone.svg" alt=""></button>
+        </div>
+        <div class="uag2-meta">
+          <span class="uag2-ctx" id="uag2-ctx"><span class="uag2-ctx__dot"></span><span id="uag2-ctx-label">\u0411\u0435\u0437 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430</span></span>
+          <button type="button" class="uag2-usage" id="uag2-usage" aria-expanded="false" title="\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle class="uag2-ring__track" cx="8" cy="8" r="6"></circle><circle class="uag2-ring__value" id="uag2-ring" cx="8" cy="8" r="6"></circle></svg>
+            <span id="uag2-usage-label">0%</span>
+          </button>
+          <div class="uag2-usage-menu" id="uag2-usage-menu" hidden></div>
+        </div>
+        <input id="uag2-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.txt,.json,.yml,.yaml,.log,.md,.properties,.sk" multiple hidden>
+      </form>
+      </div>
+    </section>
+    <aside class="uag2-about">
+      <button type="button" class="uag2-icon" id="uag2-about-x" aria-label="\u0417\u0430\u043A\u0440\u044B\u0442\u044C"><img src="${ICON}/closeAgentInfoSidebar.svg" alt=""></button>
+      <button type="button" class="uag-face-btn" id="uag2-face" aria-label="\u0412\u043D\u0435\u0448\u043D\u0438\u0439 \u0432\u0438\u0434"></button>
+      <div class="uag-picker" id="uag2-picker" hidden></div>
+      <div class="uag2-name" id="uag2-namebox"><span id="uag2-name"></span><button type="button" id="uag2-rename" aria-label="\u041F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u0442\u044C"><img src="${ICON}/editAgentName.svg" alt=""></button></div>
+      <div class="uag2-card">
+        <button type="button" class="is-danger" id="uag2-delete"><img src="../../assets/Pixi_DeleteAgent.svg" alt=""><span>\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0430\u0433\u0435\u043D\u0442\u0430</span></button>
+        <button type="button" id="uag2-copy"><img src="../../assets/Pixi_CopyAgentID.svg" alt=""><span id="uag2-copy-label">\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C ID \u0430\u0433\u0435\u043D\u0442\u0430</span></button>
+      </div>
+      <div class="uag2-tabs">
+        <button type="button" data-panel="activity">\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C</button>
+        <button type="button" data-panel="library">\u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430</button>
+      </div>
+      <div class="uag2-panel" id="uag2-panel"></div>
+    </aside>
+    <div class="uag2-gate" id="uag2-gate" hidden>
+      <div class="uag2-gate__track" id="uag2-gate-track">
+        <section class="uag2-gate__slide">
+          <div class="uag2-gate__brand">
+            <span class="uag2-gate__face" data-bloub data-shape="squircle" data-color="accent" data-expr="attentif" data-mode="idle" data-follow="1"></span>
+            <b>Pixi Agent</b>
+          </div>
+          <button type="button" class="uag2-gate__apply" id="uag2-gate-apply">\u041F\u043E\u0434\u0430\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443</button>
+          <p class="uag2-gate__chip"><i></i><span>\u0423 \u0432\u0430\u0441 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0430 \u043A Pixi Agent: \u0434\u043B\u044F \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u044F \u043D\u0443\u0436\u043D\u043E \u043F\u043E\u0434\u0430\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443</span></p>
+          <p class="uag2-gate__status" id="uag2-gate-status" hidden></p>
+        </section>
+        <section class="uag2-gate__slide">
+          <div class="uag2-gate__brand">
+            <span class="uag2-gate__face" data-bloub data-shape="squircle" data-color="accent" data-expr="curieux" data-mode="idle" data-follow="1"></span>
+            <b>Pixi Agent</b>
+          </div>
+          <p class="uag2-gate__ask">\u0414\u043B\u044F \u0447\u0435\u0433\u043E \u0432\u0430\u043C \u043D\u0443\u0436\u0435\u043D \u0434\u043E\u0441\u0442\u0443\u043F \u043A Pixi Agent?</p>
+          <textarea class="uag2-gate__text" id="uag2-gate-text" maxlength="1000" placeholder="\u041D\u0430\u0431\u0440\u0430\u043D\u043D\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u0434\u043B\u044F \u0437\u0430\u044F\u0432\u043A\u0438"></textarea>
+          <div class="uag2-gate__row">
+            <button type="button" class="uag2-gate__back" id="uag2-gate-back" aria-label="\u041D\u0430\u0437\u0430\u0434"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M7.5 2.2 3.7 6l3.8 3.8" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+            <button type="button" class="uag2-gate__apply" id="uag2-gate-submit">\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043D\u0430 \u0440\u0430\u0441\u0441\u043C\u043E\u0442\u0440\u0435\u043D\u0438\u0435</button>
+          </div>
+        </section>
+      </div>
+      <p class="uag2-gate__legal">\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044F Pixi Agent, \u0432\u044B \u0441\u043E\u0433\u043B\u0430\u0448\u0430\u0435\u0442\u0435\u0441\u044C \u0441 <button type="button" class="uag2-gate__terms" id="uag2-gate-terms">\u0443\u0441\u043B\u043E\u0432\u0438\u044F\u043C\u0438</button></p>
+    </div>
+  </div>`;
+      }
+      function activityHtml(steps, running = false) {
+        if (!steps.length)
+          return '<p class="uag2-muted">\u0417\u0434\u0435\u0441\u044C \u043F\u043E\u044F\u0432\u044F\u0442\u0441\u044F \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F: \u0441\u0431\u043E\u0440\u043A\u0438, \u043C\u043E\u0434\u044B, \u0441\u0435\u0440\u0432\u0435\u0440\u044B, \u043A\u043E\u043D\u0444\u0438\u0433\u0438, \u043F\u043E\u0438\u0441\u043A.</p>';
+        const rows = steps.map((step, index) => {
+          const run = running && index === steps.length - 1;
+          const state = run ? "\u0421\u0435\u0439\u0447\u0430\u0441" : step.ok ? "\u0413\u043E\u0442\u043E\u0432\u043E" : "\u041D\u0435 \u0432\u044B\u0448\u043B\u043E";
+          return `<div class="uag2-act${run ? " is-run" : ""}${step.ok ? "" : " is-bad"}"><span class="uag2-act__dot"></span><span class="uag2-act__body"><b>${esc(step.detail)}</b></span><em class="uag2-act__state">${state}</em></div>`;
+        }).join("");
+        return `<div class="uag2-feed">${rows}</div>`;
+      }
+      function libTone(status) {
+        if (/run|online|start|запущ|работает/i.test(status))
+          return "";
+        if (/stop|off|error|останов|ошиб/i.test(status))
+          return " is-bad";
+        return " is-idle";
+      }
+      function libRow(title, meta, tone = " is-idle") {
+        const sub = meta ? `<small>${esc(meta)}</small>` : "";
+        return `<div class="uag2-act is-lib${tone}"><span class="uag2-act__dot"></span><span class="uag2-act__body"><b>${esc(title)}</b>${sub}</span></div>`;
+      }
+      function pickerHtml(session) {
+        const shapes = SHAPES.map((shape) => `<button type="button" data-shape="${shape}" class="${session.shape === shape ? "is-on" : ""}">${headHtml({ id: session.id, shape, color: session.color }, "sm", "idle", true)}</button>`).join("");
+        const colors = COLORS.map((color) => `<button type="button" data-color="${color}" class="uag-swatch${session.color === color ? " is-on" : ""}" style="--head:${color}"></button>`).join("");
+        return `<div class="uag-shapes">${shapes}</div><div class="uag-colors">${colors}</div>`;
+      }
+      function playStream() {
+        const article = document.querySelector("[data-stream]");
+        const node = article?.querySelector(".uag2-md");
+        const plain = article?.dataset.plain || "";
+        if (!node || !plain)
+          return;
+        const rich = /[*_`#|[\]\n]/.test(plain);
+        if (!rich && plain.length < 280) {
+          const words = plain.split(/(\s+)/);
+          node.classList.remove("is-streaming");
+          node.textContent = "";
+          let index = 0;
+          const step = () => {
+            if (!node.isConnected)
+              return;
+            const chunk = document.createElement("span");
+            chunk.className = "uag-word";
+            chunk.textContent = words.slice(index, index + 3).join("");
+            node.appendChild(chunk);
+            index += 3;
+            if (index < words.length)
+              requestAnimationFrame(step);
+            else
+              stickLog();
+          };
+          requestAnimationFrame(step);
+          return;
+        }
+        const start = performance.now();
+        const dur = Math.min(2200, 480 + plain.length * 7);
+        const tick = (now2) => {
+          if (!node.isConnected)
+            return;
+          const progress = Math.min(1, (now2 - start) / dur);
+          const eased = 1 - (1 - progress) ** 3;
+          node.style.setProperty("--stream", `${Math.max(12, eased * 120)}%`);
+          if (progress < 1)
+            requestAnimationFrame(tick);
+          else {
+            node.classList.remove("is-streaming");
+            stickLog();
+          }
+        };
+        requestAnimationFrame(tick);
+      }
+      function asRows(result, key) {
+        if (Array.isArray(result))
+          return result.filter((row) => row && typeof row === "object");
+        if (result && typeof result === "object") {
+          const value = result[key];
+          if (Array.isArray(value))
+            return value.filter((row) => row && typeof row === "object");
+        }
+        return [];
+      }
+      function markTabs() {
+        document.querySelectorAll("[data-panel]").forEach((node) => {
+          node.classList.toggle("is-on", node.dataset.panel === panel);
+        });
+      }
+      async function paintPanel() {
+        const host = document.getElementById("uag2-panel");
+        if (!host)
+          return;
+        markTabs();
+        if (panel === "activity") {
+          const html = activityHtml(current().steps, busy);
+          const mark = `${busy ? 1 : 0}|${current().steps.map((step) => `${step.ok ? 1 : 0}:${step.detail}`).join("\n")}`;
+          if (host.dataset.view !== mark) {
+            host.innerHTML = html;
+            host.dataset.view = mark;
+          }
+          return;
+        }
+        const sessionId = current().id;
+        if (libraryHtml && libraryFor === sessionId) {
+          if (host.dataset.view !== `lib:${sessionId}`) {
+            host.innerHTML = libraryHtml;
+            host.dataset.view = `lib:${sessionId}`;
+          }
+          return;
+        }
+        const token = ++libraryToken;
+        host.innerHTML = '<p class="uag2-muted">\u0427\u0438\u0442\u0430\u044E \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u044B\u2026</p>';
+        const builds = await api?.aiToolsRun?.("list_builds", {}, { confirmed: true });
+        const servers = await api?.aiToolsRun?.("list_hosted_servers", {}, { confirmed: true });
+        if (token !== libraryToken || panel !== "library" || !host.isConnected)
+          return;
+        const buildRows = asRows(builds?.result, "builds");
+        const serverRows = asRows(servers?.result, "servers");
+        libraryFor = sessionId;
+        libraryHtml = `
+    <section class="uag2-lib">
+      <h4>\u0421\u0431\u043E\u0440\u043A\u0438 <em>${buildRows.length}</em></h4>
+      <div class="uag2-feed">
+        ${buildRows.slice(0, 12).map((row) => libRow(String(row.name || "\u0421\u0431\u043E\u0440\u043A\u0430"), [row.gameVersion, row.loader].filter(Boolean).join(" \xB7 "), " is-idle")).join("") || '<p class="uag2-muted">\u0421\u0431\u043E\u0440\u043E\u043A \u043D\u0435\u0442</p>'}
+      </div>
+    </section>
+    <section class="uag2-lib">
+      <h4>\u0421\u0432\u043E\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u044B <em>${serverRows.length}</em></h4>
+      <div class="uag2-feed">
+        ${serverRows.slice(0, 12).map((row) => {
+          const meta = String(row.status || row.software || "");
+          return libRow(String(row.name || "\u0421\u0435\u0440\u0432\u0435\u0440"), meta, libTone(meta));
+        }).join("") || '<p class="uag2-muted">\u0421\u0432\u043E\u0438\u0445 \u0441\u0435\u0440\u0432\u0435\u0440\u043E\u0432 \u043D\u0435\u0442</p>'}
+      </div>
+    </section>`;
+        host.dataset.view = `lib:${sessionId}`;
+        host.innerHTML = libraryHtml;
+      }
+      function showSteps(steps) {
+        if (quietTurn)
+          return;
+        const think = document.getElementById("uag2-think");
+        const last = steps[steps.length - 1];
+        if (think)
+          think.innerHTML = `<b>\u0414\u0443\u043C\u0430\u044E</b><span>${dotsHtml()} ${esc(last?.detail || "\u0427\u0438\u0442\u0430\u044E \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435")}</span>`;
+        if (panel === "activity") {
+          const host = document.getElementById("uag2-panel");
+          if (host)
+            host.innerHTML = activityHtml(steps, true);
+        }
+        stickLog();
+      }
+      function jumpLog(log, settle = false) {
+        const go = () => {
+          if (log.isConnected)
+            log.scrollTop = log.scrollHeight;
+        };
+        go();
+        if (!settle)
+          return;
+        requestAnimationFrame(go);
+        window.setTimeout(go, 80);
+      }
+      function stickLog(force = false) {
+        const log = document.getElementById("uag2-log");
+        if (!log)
+          return;
+        if (log.clientHeight < 8) {
+          if (force)
+            log.dataset.pin = "1";
+          return;
+        }
+        const near = log.scrollHeight - log.scrollTop - log.clientHeight < 96;
+        const settle = force || log.dataset.pin === "1";
+        if (!(settle || near))
+          return;
+        log.dataset.pin = "";
+        jumpLog(log, settle);
+      }
+      function watchLog(log) {
+        let seen = false;
+        const reveal = () => {
+          if (log.clientHeight < 8 || seen)
+            return;
+          seen = true;
+          stickLog(true);
+        };
+        const observer = new IntersectionObserver(() => {
+          if (log.clientHeight < 8) {
+            seen = false;
+            return;
+          }
+          reveal();
+        });
+        observer.observe(log);
+        const resize = new ResizeObserver(() => {
+          if (!seen || log.dataset.pin === "1")
+            reveal();
+        });
+        resize.observe(log);
+      }
+      function formatTokens(value) {
+        if (value >= 1e3) {
+          const text = (value >= 1e4 ? (value / 1e3).toFixed(0) : (value / 1e3).toFixed(1)).replace(/\.0$/, "");
+          return `${text}K`;
+        }
+        return String(value);
+      }
+      function contextOf(session) {
+        let chars = 0;
+        for (const msg of session.wire) {
+          chars += String(msg.content || "").length;
+          if (msg.tool_calls)
+            chars += JSON.stringify(msg.tool_calls).length;
+        }
+        const buildTokens = session.build ? Math.ceil(`${session.build.id}${session.build.name}${session.build.meta}`.length / 4) + 40 : 0;
+        const serverTokens = session.server ? Math.ceil(`${session.server.id}${session.server.name}`.length / 4) + 20 : 0;
+        const modTokens = session.mod ? Math.ceil(`${session.mod.id}${session.mod.name}${session.mod.meta}`.length / 4) + 20 : 0;
+        const rows = [
+          { label: "\u0421\u0438\u0441\u0442\u0435\u043C\u0430", hint: "\u041F\u0440\u0435\u0430\u043C\u0431\u0443\u043B\u0430 \u0430\u0433\u0435\u043D\u0442\u0430", tokens: 280, color: "rgba(255,255,255,0.35)" },
+          { label: "\u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B", hint: "\u0421\u0445\u0435\u043C\u044B MCP", tokens: 1800, color: "#ef4444" },
+          { label: "\u0421\u0431\u043E\u0440\u043A\u0430", hint: session.build ? [session.build.name, session.build.meta].filter(Boolean).join(" \xB7 ") : "\u041D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u0430", tokens: buildTokens, color: "#7dd3a7" },
+          { label: "\u0421\u0435\u0440\u0432\u0435\u0440", hint: session.server?.name || "\u041D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D", tokens: serverTokens, color: "#5b8cff" },
+          { label: "\u041C\u043E\u0434", hint: session.mod?.name || "\u041D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D", tokens: modTokens, color: "#d2a8ff" },
+          { label: "\u0414\u0438\u0430\u043B\u043E\u0433", hint: "\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0438 \u043E\u0442\u0432\u0435\u0442\u044B \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u043E\u0432", tokens: Math.ceil(chars / 4), color: "#e2b86b" }
+        ];
+        const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+        const free = Math.max(0, CONTEXT_BUDGET - total);
+        return { rows, total, budget: CONTEXT_BUDGET, usage: Math.min(1, total / CONTEXT_BUDGET), free };
+      }
+      function usageMenuHtml(session) {
+        const ctx = contextOf(session);
+        const pct = Math.round(ctx.usage * 100);
+        const bar = ctx.rows.map((row) => {
+          const width = Math.max(row.tokens > 0 ? 0.4 : 0, row.tokens / ctx.budget * 100);
+          return `<span style="width:${width}%;background:${row.color}"></span>`;
+        }).join("") + `<span class="is-free" style="width:${ctx.free / ctx.budget * 100}%"></span>`;
+        const lines = ctx.rows.map((row) => `<div class="uag2-usage-menu__row"><i style="background:${row.color}"></i><span><b>${esc(row.label)}</b><small>${esc(row.hint)}</small></span><em>${formatTokens(row.tokens)}</em></div>`).join("");
+        return `<div class="uag2-usage-menu__head"><b>\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442</b><span>${pct}% \xB7 ${formatTokens(ctx.total)} / ${formatTokens(ctx.budget)}</span></div><div class="uag2-usage-menu__bar">${bar}</div>${lines}<div class="uag2-usage-menu__row"><i class="is-free"></i><span><b>\u0421\u0432\u043E\u0431\u043E\u0434\u043D\u043E</b><small>\u0417\u0430\u043F\u0430\u0441 \u0434\u043E \u043B\u0438\u043C\u0438\u0442\u0430</small></span><em>${formatTokens(ctx.free)}</em></div>`;
+      }
+      function paintContext(session) {
+        const label = document.getElementById("uag2-ctx-label");
+        const parts = [
+          session.build ? `\u0421\u0431\u043E\u0440\u043A\u0430 \xB7 ${[session.build.name, session.build.meta].filter(Boolean).join(" \xB7 ")}` : "",
+          session.server ? `\u0421\u0435\u0440\u0432\u0435\u0440 \xB7 ${session.server.name}` : "",
+          session.mod ? `\u041C\u043E\u0434 \xB7 ${session.mod.name}` : ""
+        ].filter(Boolean);
+        if (label)
+          label.textContent = parts.join("  \xB7  ") || "\u0411\u0435\u0437 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430";
+        const dot = document.querySelector("#uag2-ctx .uag2-ctx__dot");
+        if (dot)
+          dot.style.background = session.build || session.server || session.mod ? "#7dd3a7" : "rgba(255,255,255,0.28)";
+        const ctx = contextOf(session);
+        const ring = document.getElementById("uag2-ring");
+        if (ring) {
+          ring.style.strokeDasharray = String(RING);
+          ring.style.strokeDashoffset = String(RING * (1 - ctx.usage));
+        }
+        const pct = Math.round(ctx.usage * 100);
+        const usageLabel = document.getElementById("uag2-usage-label");
+        if (usageLabel)
+          usageLabel.textContent = `${pct}%`;
+        const usage = document.getElementById("uag2-usage");
+        if (usage)
+          usage.title = `\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 ${pct}% \xB7 ${formatTokens(ctx.total)} / ${formatTokens(ctx.budget)}`;
+        const menu = document.getElementById("uag2-usage-menu");
+        if (menu && !menu.hidden)
+          menu.innerHTML = usageMenuHtml(session);
+      }
+      function fill() {
+        const root = document.querySelector(".uag2");
+        root?.classList.toggle("is-about-closed", !aboutOpen);
+        root?.classList.toggle("is-side-closed", !sideOpen);
+        const session = current();
+        const modelHost = document.getElementById("uag2-model");
+        if (modelHost && modelHost.dataset.session !== session.id) {
+          modelHost.dataset.session = session.id;
+          syncModelButton();
+        }
+        const list = document.getElementById("uag2-list");
+        const listStamp = `${activeId}|${sessions.map((row) => `${row.id}:${row.shape}:${row.color}:${row.title}:${row.group}:${row.messages.length}:${avatarMode(row, busy && row.id === session.id)}`).join("|")}`;
+        if (list && list.dataset.stamp !== listStamp) {
+          list.innerHTML = listHtml();
+          list.dataset.stamp = listStamp;
+        }
+        syncLog(session);
+        const title = document.getElementById("uag2-title");
+        if (title)
+          title.textContent = session.title;
+        const pillFace = document.getElementById("uag2-pill-face");
+        if (pillFace)
+          placeHead(pillFace, session, "sm", busy);
+        const face = document.getElementById("uag2-face");
+        if (face) {
+          face.dataset.agent = session.id;
+          placeHead(face, session, "lg", busy);
+        }
+        const picker = document.getElementById("uag2-picker");
+        if (picker) {
+          picker.hidden = !pickerOpen;
+          const pickerStamp = pickerOpen ? `${session.id}:${session.shape}:${session.color}` : "";
+          if (picker.dataset.stamp !== pickerStamp) {
+            picker.dataset.stamp = pickerStamp;
+            picker.innerHTML = pickerOpen ? pickerHtml(session) : "";
+          }
+        }
+        if (!focusReady.has(session.id)) {
+          focusReady.add(session.id);
+          const hadFocus = Boolean(session.server || session.build);
+          if (!session.server)
+            recoverServer(session);
+          if (!session.build)
+            recoverBuild(session);
+          if (!hadFocus && (session.server || session.build))
+            save();
+        }
+        paintContext(session);
+        const name = document.getElementById("uag2-name");
+        if (name && !renaming)
+          name.textContent = session.title;
+        const input = document.getElementById("uag2-input");
+        if (input)
+          input.placeholder = `\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0434\u043B\u044F ${session.title}`;
+        const chip = document.getElementById("uag2-chip");
+        if (chip) {
+          const shots = pendingShots.map((shot, index) => `<span class="uag2-shot"><button type="button" data-open-shot="${index}"><img src="${shot.url}" alt="${esc(shot.name)}"></button><button type="button" class="uag2-x" data-clear-shot="${index}" aria-label="\u0423\u0431\u0440\u0430\u0442\u044C">${CLOSE_ICON}</button></span>`).join("");
+          const file = pendingFile ? `<span class="uag2-filechip"><span>${esc(pendingFile.name)}</span><button type="button" class="uag2-x" data-clear-file="1" aria-label="\u0423\u0431\u0440\u0430\u0442\u044C">${CLOSE_ICON}</button></span>` : "";
+          const note = pendingShots.length && !modelSeesImages() ? '<small class="uag2-shot-note">\u041A\u0430\u0440\u0442\u0438\u043D\u043A\u0443 \u0432\u0438\u0434\u044F\u0442 Pro \u0438 Lite</small>' : "";
+          chip.innerHTML = `${shots}${file}${note}`;
+        }
+        void paintPanel();
+        syncActButton();
+        const host = document.getElementById("uagent-root");
+        if (host)
+          (0, bloub_face_1.syncAgentFaces)(host);
+      }
+      function beginRename() {
+        const box = document.getElementById("uag2-namebox");
+        const session = current();
+        if (!box || renaming)
+          return;
+        renaming = true;
+        box.innerHTML = `<input id="uag2-name-input" value="${esc(session.title)}" maxlength="40"><input class="is-group" id="uag2-group-input" value="${esc(session.group)}" maxlength="32" placeholder="\u0413\u0440\u0443\u043F\u043F\u0430">`;
+        const name = document.getElementById("uag2-name-input");
+        const group = document.getElementById("uag2-group-input");
+        name?.focus();
+        name?.select();
+        const done = () => {
+          if (!renaming)
+            return;
+          if (box.contains(document.activeElement))
+            return;
+          renaming = false;
+          const next = name?.value.trim().slice(0, 40);
+          if (next)
+            session.title = next;
+          session.group = group?.value.trim().slice(0, 32) || "";
+          save();
+          box.innerHTML = `<span id="uag2-name"></span><button type="button" id="uag2-rename" aria-label="\u041F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u0442\u044C"><img src="${ICON}/editAgentName.svg" alt=""></button>`;
+          fill();
+        };
+        const onKey = (event) => {
+          if (event.key === "Enter") {
+            event.target.blur();
+          }
+        };
+        name?.addEventListener("keydown", onKey);
+        group?.addEventListener("keydown", onKey);
+        name?.addEventListener("blur", () => window.setTimeout(done, 80));
+        group?.addEventListener("blur", () => window.setTimeout(done, 80));
+      }
+      function bindLook(root) {
+        const about = root.querySelector(".uag2-about");
+        if (!about)
+          return;
+        about.addEventListener("mousemove", (event) => {
+          const point = event;
+          (0, bloub_face_1.setAgentGaze)(point.clientX, point.clientY);
+        });
+        about.addEventListener("mouseleave", () => (0, bloub_face_1.setAgentGaze)(null, null));
+      }
+      function attachItem(kind, label, icon, hint) {
+        const sub = hint ? `<small>${esc(hint)}</small>` : "";
+        return `<button type="button" role="menuitem" data-attach="${kind}"><img src="${icon}" alt=""><span><b>${label}</b>${sub}</span></button>`;
+      }
+      function hasAttachFocus(session = current()) {
+        return Boolean(session.mod || session.build || session.server || pendingFile || pendingShots.length);
+      }
+      function attachMenuHtml(kind) {
+        const session = current();
+        if (kind === "root") {
+          const idle = hasAttachFocus(session) ? "" : " disabled";
+          return [
+            attachItem("mod", "\u041C\u043E\u0434", `${TAB_ICON}/modscatalog.svg`, session.mod?.name || ""),
+            attachItem("build", "\u0421\u0431\u043E\u0440\u043A\u0430", `${TAB_ICON}/builds.svg`, session.build?.name || ""),
+            attachItem("server", "\u0421\u0435\u0440\u0432\u0435\u0440", `${TAB_ICON}/servers.svg`, session.server?.name || ""),
+            attachItem("file", "\u0424\u0430\u0439\u043B", FILE_ICON, pendingFile?.name || ""),
+            `<div class="uag2-plus-rule"></div><button type="button" class="uag2-plus-clear" data-attach-reset="1"${idle}>\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C</button>`
+          ].join("");
+        }
+        const title = kind === "mod" ? "\u041C\u043E\u0434" : kind === "build" ? "\u0421\u0431\u043E\u0440\u043A\u0430" : "\u0421\u0435\u0440\u0432\u0435\u0440";
+        const search = kind === "mod" ? '<input type="text" data-attach-query placeholder="\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043C\u043E\u0434\u0430" autocomplete="off">' : "";
+        return `<button type="button" data-attach-back="1"><span class="uag2-plus-chevron" aria-hidden="true"></span><span>${title}</span></button>${search}<div class="uag2-plus-list" id="uag2-plus-list"></div>`;
+      }
+      function setAttachMenu(kind) {
+        const menu = document.getElementById("uag2-plus-menu");
+        const button = document.getElementById("uag2-file");
+        const was = attachKind;
+        attachKind = kind;
+        attachQuery = "";
+        attachRows = [];
+        window.clearTimeout(attachTimer);
+        button?.setAttribute("aria-expanded", kind ? "true" : "false");
+        button?.classList.toggle("is-on", Boolean(kind));
+        if (!menu)
+          return;
+        if (!kind) {
+          popMenu(menu, false);
+          return;
+        }
+        menu.innerHTML = attachMenuHtml(kind);
+        if (!was)
+          popMenu(menu, true);
+        else {
+          menu.hidden = false;
+          menu.classList.add("is-open");
+          menu.classList.remove("is-closing");
+        }
+        if (kind !== "root")
+          void loadAttachList();
+        if (kind === "mod")
+          window.setTimeout(() => menu.querySelector("[data-attach-query]")?.focus(), 30);
+      }
+      function pickedAttach(kind) {
+        const session = current();
+        if (kind === "mod")
+          return session.mod || null;
+        if (kind === "build")
+          return session.build || null;
+        if (kind === "server")
+          return session.server || null;
+        return null;
+      }
+      function setHold(session, kind, held) {
+        const hold = { ...session.hold || {} };
+        if (held)
+          hold[kind] = true;
+        else
+          delete hold[kind];
+        session.hold = hold.server || hold.build || hold.mod ? hold : void 0;
+      }
+      function clearAttachFocus() {
+        const session = current();
+        session.mod = null;
+        session.build = null;
+        session.server = null;
+        setHold(session, "mod", true);
+        setHold(session, "build", true);
+        setHold(session, "server", true);
+        pendingFile = null;
+        pendingShots = [];
+        save();
+        setAttachMenu("");
+        fill();
+      }
+      function applyAttach(kind, row) {
+        const session = current();
+        if (kind !== "mod" && kind !== "build" && kind !== "server")
+          return;
+        if (kind === "mod")
+          session.mod = row;
+        if (kind === "build")
+          session.build = row;
+        if (kind === "server")
+          session.server = row ? { id: row.id, name: row.name } : null;
+        setHold(session, kind, !row);
+        save();
+        setAttachMenu("");
+        fill();
+      }
+      async function loadAttachList() {
+        const list = document.getElementById("uag2-plus-list");
+        const kind = attachKind;
+        if (!list || kind !== "mod" && kind !== "build" && kind !== "server")
+          return;
+        const token = ++attachToken;
+        if (kind === "mod" && attachQuery.trim().length < 2) {
+          list.innerHTML = '<p class="uag2-plus-empty">\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B 2 \u0431\u0443\u043A\u0432\u044B</p>';
+          return;
+        }
+        list.innerHTML = '<p class="uag2-plus-empty">\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430\u2026</p>';
+        const build = current().build;
+        const [version, loader] = (build?.meta || "").split("\xB7").map((part) => part.trim());
+        const modArgs = { query: attachQuery.trim(), limit: 8 };
+        if (version)
+          modArgs.version = version;
+        if (loader)
+          modArgs.loader = loader.toLowerCase();
+        let res;
+        try {
+          res = kind === "build" ? await api?.aiToolsRun?.("list_builds", {}, { confirmed: true }) : kind === "server" ? await api?.aiToolsRun?.("list_hosted_servers", {}, { confirmed: true }) : await api?.aiToolsRun?.("search_mods", modArgs, { confirmed: true });
+        } catch {
+          res = void 0;
+        }
+        if (token !== attachToken || !list.isConnected || attachKind !== kind)
+          return;
+        if (!res || res.ok === false || res.error) {
+          list.innerHTML = '<p class="uag2-plus-empty">\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C</p>';
+          return;
+        }
+        const source = kind === "build" ? "builds" : kind === "server" ? "servers" : "mods";
+        attachRows = asRows(res?.result, source).map((row) => {
+          const id = String((kind === "mod" ? row.slug || row.id : row.id) || row.name || "");
+          const loaders = Array.isArray(row.loaders) ? row.loaders.slice(0, 2).map(String).join(", ") : "";
+          return {
+            id,
+            name: String(row.title || row.name || row.slug || (kind === "mod" ? "\u041C\u043E\u0434" : kind === "build" ? "\u0421\u0431\u043E\u0440\u043A\u0430" : "\u0421\u0435\u0440\u0432\u0435\u0440")),
+            meta: kind === "mod" ? [row.slug && String(row.slug) !== id ? String(row.slug) : "", loaders].filter(Boolean).join(" \xB7 ") : kind === "server" ? [row.software, row.gameVersion, row.status].filter(Boolean).map(String).join(" \xB7 ") : [row.gameVersion, row.loader].filter(Boolean).map(String).join(" \xB7 ")
+          };
+        }).filter((row) => row.id);
+        const currentId = pickedAttach(kind)?.id || "";
+        const clear = currentId ? '<button type="button" data-attach-clear="1">\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430</button>' : "";
+        const rows = attachRows.map((row, index) => {
+          const on = row.id === currentId ? " is-on" : "";
+          const meta = row.meta ? `<small>${esc(row.meta)}</small>` : "";
+          return `<button type="button" class="${on.trim()}" data-attach-pick="${index}"><span><b>${esc(row.name)}</b>${meta}</span></button>`;
+        }).join("");
+        list.innerHTML = `${clear}${rows || '<p class="uag2-plus-empty">\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0448\u043B\u043E\u0441\u044C</p>'}`;
+      }
+      function confirmDeleteAgent() {
+        const session = current();
+        return new Promise((resolve) => {
+          const overlay = document.createElement("div");
+          overlay.className = "modal-confirm-overlay";
+          overlay.innerHTML = `<div class="modal-confirm-card" role="dialog" aria-modal="true" aria-labelledby="uag2-delete-title">
+      <div class="modal-confirm-message" id="uag2-delete-title">\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0430\u0433\u0435\u043D\u0442\u0430 \xAB${esc(session.title)}\xBB? \u0427\u0430\u0442 \u043F\u0440\u043E\u043F\u0430\u0434\u0451\u0442.</div>
+      <div class="modal-confirm-actions">
+        <button type="button" class="stngs-btn" data-no>\u041E\u0442\u043C\u0435\u043D\u0430</button>
+        <button type="button" class="stngs-btn uag2-confirm-danger" data-yes>\u0423\u0434\u0430\u043B\u0438\u0442\u044C</button>
+      </div>
+    </div>`;
+          document.body.appendChild(overlay);
+          let settled = false;
+          const finish = (ok) => {
+            if (settled)
+              return;
+            settled = true;
+            document.removeEventListener("keydown", onKey);
+            overlay.remove();
+            resolve(ok);
+          };
+          const onKey = (event) => {
+            if (event.key === "Escape")
+              finish(false);
+          };
+          document.addEventListener("keydown", onKey);
+          overlay.addEventListener("click", (event) => {
+            if (event.target === overlay)
+              finish(false);
+          });
+          overlay.querySelector("[data-no]")?.addEventListener("click", () => finish(false));
+          overlay.querySelector("[data-yes]")?.addEventListener("click", () => finish(true));
+          overlay.querySelector("[data-no]")?.focus();
+        });
+      }
+      function bind(root) {
+        bindLook(root);
+        const log = document.getElementById("uag2-log");
+        if (log)
+          watchLog(log);
+        document.getElementById("uag2-model-menu")?.addEventListener("mousedown", (event) => {
+          const choice = event.target.closest("[data-model]");
+          if (!choice?.dataset.model || choice.dataset.locked === "1")
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          localStorage.setItem("Undefined Client-ai-model", choice.dataset.model);
+          syncModelButton();
+          setModelMenu(false);
+        });
+        root.addEventListener("click", (event) => {
+          const target = event.target;
+          const think = target.closest(".uag2-think");
+          if (think) {
+            const body = think.nextElementSibling;
+            const open = think.getAttribute("aria-expanded") === "true";
+            think.setAttribute("aria-expanded", open ? "false" : "true");
+            think.textContent = open ? "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0440\u0430\u0437\u043C\u044B\u0448\u043B\u0435\u043D\u0438\u044F \u043C\u043E\u0434\u0435\u043B\u0438" : "\u0421\u043A\u0440\u044B\u0442\u044C \u0440\u0430\u0437\u043C\u044B\u0448\u043B\u0435\u043D\u0438\u044F \u043C\u043E\u0434\u0435\u043B\u0438";
+            if (body) {
+              body.hidden = open;
+              if (!open)
+                body.textContent = think.dataset.reason || body.textContent || "";
+            }
+            return;
+          }
+          const usageMenu = document.getElementById("uag2-usage-menu");
+          const modelMenu = document.getElementById("uag2-model-menu");
+          const onUsage = Boolean(target.closest("#uag2-usage") || target.closest("#uag2-usage-menu"));
+          const onModel = Boolean(target.closest("#uag2-model"));
+          const onPlus = Boolean(target.closest("#uag2-plus"));
+          if (attachKind && !onPlus)
+            setAttachMenu("");
+          if (usageMenu && !onUsage) {
+            popMenu(usageMenu, false);
+            document.getElementById("uag2-usage")?.setAttribute("aria-expanded", "false");
+          }
+          if (modelMenu && !onModel)
+            setModelMenu(false);
+          if (target.closest("#uag2-usage")) {
+            if (!usageMenu)
+              return;
+            const open = usageMenu.hidden;
+            document.getElementById("uag2-usage")?.setAttribute("aria-expanded", open ? "true" : "false");
+            if (open)
+              usageMenu.innerHTML = usageMenuHtml(current());
+            popMenu(usageMenu, open);
+            if (open)
+              setModelMenu(false);
+            return;
+          }
+          const modelChoice = target.closest("#uag2-model-menu [data-model]");
+          if (modelChoice?.dataset.model) {
+            if (modelChoice.dataset.locked === "1")
+              return;
+            localStorage.setItem("Undefined Client-ai-model", modelChoice.dataset.model);
+            syncModelButton();
+            setModelMenu(false);
+            if (pendingShots.length)
+              fill();
+            return;
+          }
+          if (target.closest("#uag2-model-btn")) {
+            const open = document.getElementById("uag2-model-btn")?.getAttribute("aria-expanded") !== "true";
+            setModelMenu(open);
+            if (open) {
+              popMenu(usageMenu, false);
+              document.getElementById("uag2-usage")?.setAttribute("aria-expanded", "false");
+            }
+            return;
+          }
+          if (target.closest("#uag2-new")) {
+            const session = blank("\u041D\u043E\u0432\u044B\u0439 \u0430\u0433\u0435\u043D\u0442");
+            sessions.unshift(session);
+            activeId = session.id;
+            save();
+            fill();
+            return;
+          }
+          if (target.closest("#uag2-side-toggle")) {
+            sideOpen = false;
+            fill();
+            return;
+          }
+          if (target.closest("#uag2-side-open")) {
+            sideOpen = true;
+            fill();
+            return;
+          }
+          if (target.closest("#uag2-pill")) {
+            aboutOpen = true;
+            fill();
+            return;
+          }
+          const shapeBtn = target.closest("#uag2-picker button[data-shape]");
+          if (shapeBtn?.dataset.shape && SHAPES.includes(shapeBtn.dataset.shape)) {
+            current().shape = asShape(shapeBtn.dataset.shape);
+            save();
+            fill();
+            return;
+          }
+          const colorBtn = target.closest("#uag2-picker button[data-color]");
+          if (colorBtn?.dataset.color && /^#[0-9a-fA-F]{6}$/.test(colorBtn.dataset.color)) {
+            current().color = colorBtn.dataset.color.toLowerCase();
+            save();
+            fill();
+            return;
+          }
+          if (target.closest("#uag2-picker"))
+            return;
+          if (target.closest("#uag2-face")) {
+            pickerOpen = !pickerOpen;
+            fill();
+            return;
+          }
+          if (target.closest("#uag2-about-x")) {
+            aboutOpen = !aboutOpen;
+            fill();
+            return;
+          }
+          if (target.closest("#uag2-tg")) {
+            openTelegram?.();
+            return;
+          }
+          if (target.closest("#uag2-rename")) {
+            beginRename();
+            return;
+          }
+          if (target.closest("#uag2-delete")) {
+            const id = current().id;
+            void confirmDeleteAgent().then((ok) => {
+              if (!ok || current().id !== id)
+                return;
+              sessions = sessions.filter((row2) => row2.id !== id);
+              if (!sessions.length)
+                sessions.push(blank("UAgent Bot"));
+              activeId = sessions[0].id;
+              save();
+              fill();
+            });
+            return;
+          }
+          if (target.closest("#uag2-copy")) {
+            void navigator.clipboard.writeText(current().id).then(() => {
+              const label = document.getElementById("uag2-copy-label");
+              if (!label)
+                return;
+              label.textContent = "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E";
+              window.setTimeout(() => {
+                if (label.isConnected)
+                  label.textContent = "\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C ID \u0430\u0433\u0435\u043D\u0442\u0430";
+              }, 1200);
+            }).catch(() => void 0);
+            return;
+          }
+          if (target.closest("[data-form-skip]") && liveForm) {
+            const pending = liveForm;
+            liveForm = null;
+            pending.resolve(null);
+            return;
+          }
+          if (target.closest("#uag2-file")) {
+            setAttachMenu(attachKind ? "" : "root");
+            return;
+          }
+          if (target.closest("[data-attach-back]")) {
+            setAttachMenu("root");
+            return;
+          }
+          if (target.closest("[data-attach-reset]")) {
+            clearAttachFocus();
+            return;
+          }
+          if (target.closest("[data-attach-clear]")) {
+            applyAttach(attachKind, null);
+            return;
+          }
+          const picked = target.closest("[data-attach-pick]");
+          if (picked) {
+            const row2 = attachRows[Number(picked.dataset.attachPick)];
+            if (row2)
+              applyAttach(attachKind, row2);
+            return;
+          }
+          const attach = target.closest("[data-attach]");
+          const kind = attach?.dataset.attach || "";
+          if (kind === "file") {
+            setAttachMenu("");
+            document.getElementById("uag2-file-input")?.click();
+            return;
+          }
+          if (kind === "mod" || kind === "build" || kind === "server") {
+            setAttachMenu(kind);
+            return;
+          }
+          if (target.closest("[data-clear-file]")) {
+            pendingFile = null;
+            fill();
+            return;
+          }
+          const clearShot = target.closest("[data-clear-shot]");
+          if (clearShot) {
+            const index = Number(clearShot.dataset.clearShot);
+            if (Number.isInteger(index))
+              pendingShots.splice(index, 1);
+            fill();
+            return;
+          }
+          const openPending = target.closest("[data-open-shot]");
+          if (openPending) {
+            const at = Number(openPending.dataset.openShot);
+            openShotList(pendingShots.map((shot) => ({ src: shot.url, alt: shot.name })), Number.isInteger(at) ? at : 0);
+            return;
+          }
+          const bubbleShot = target.closest(".uag2-bubble .uag2-shot");
+          if (bubbleShot) {
+            const shots = Array.from(bubbleShot.parentElement?.querySelectorAll(".uag2-shot") || [bubbleShot]);
+            const at = Math.max(0, shots.indexOf(bubbleShot));
+            openShotList(shots.map((node) => {
+              const img = node.querySelector("img");
+              return { src: img?.src || "", alt: img?.alt || "" };
+            }), at);
+            return;
+          }
+          const panelBtn = target.closest("[data-panel]");
+          if (panelBtn) {
+            panel = panelBtn.dataset.panel === "library" ? "library" : "activity";
+            void paintPanel();
+            return;
+          }
+          if (target.closest("[data-activity]")) {
+            panel = "activity";
+            aboutOpen = true;
+            void paintPanel();
+            document.querySelector(".uag2")?.classList.remove("is-about-closed");
+            return;
+          }
+          const choice = target.closest("[data-choice]");
+          if (choice?.dataset.choice) {
+            void askUAgent(choice.dataset.choice);
+            return;
+          }
+          const ungroup = target.closest("[data-ungroup]");
+          if (ungroup) {
+            const title = ungroup.dataset.ungroup || "";
+            sessions.forEach((row2) => {
+              if (row2.group === title)
+                row2.group = "";
+            });
+            save();
+            fill();
+            return;
+          }
+          const close = target.closest("[data-close]");
+          if (close) {
+            sessions = sessions.filter((row2) => row2.id !== close.dataset.close);
+            if (!sessions.length)
+              sessions.push(blank("UAgent Bot"));
+            if (!sessions.some((row2) => row2.id === activeId))
+              activeId = sessions[0].id;
+            save();
+            fill();
+            return;
+          }
+          const row = target.closest("[data-id]");
+          if (row?.dataset.id) {
+            activeId = row.dataset.id;
+            fill();
+          }
+        });
+        root.addEventListener("paste", (event) => {
+          const items = Array.from(event.clipboardData?.items || []);
+          const images = items.filter((item) => item.type.startsWith("image/")).map((item) => item.getAsFile()).filter((file) => Boolean(file));
+          if (!images.length)
+            return;
+          event.preventDefault();
+          void addShots(images);
+        });
+        root.querySelector("#uag2-file-input")?.addEventListener("change", (event) => {
+          const input = event.target;
+          const files = Array.from(input.files || []);
+          input.value = "";
+          if (!files.length)
+            return;
+          const images = files.filter((file) => file.type.startsWith("image/"));
+          const textFile = files.find((file) => !file.type.startsWith("image/"));
+          if (images.length)
+            void addShots(images);
+          if (!textFile)
+            return;
+          void textFile.text().then((text) => {
+            pendingFile = {
+              name: textFile.name.slice(0, 80),
+              text: textFile.size > 2e5 ? "(\u0444\u0430\u0439\u043B \u0431\u043E\u043B\u044C\u0448\u0435 200 \u041A\u0411, \u043F\u0435\u0440\u0435\u0434\u0430\u043D\u043E \u0442\u043E\u043B\u044C\u043A\u043E \u0438\u043C\u044F)" : text.slice(0, 6e4)
+            };
+            fill();
+          }).catch(() => void 0);
+        });
+        root.addEventListener("submit", (event) => {
+          const form = event.target?.closest?.("#uag2-user-form");
+          if (!form || !liveForm)
+            return;
+          event.preventDefault();
+          const missing = liveForm.fields.find((field) => {
+            if (!field.required)
+              return false;
+            if (field.type === "toggle")
+              return false;
+            const value = new FormData(form).get(field.id);
+            return !String(value || "").trim();
+          });
+          const error = form.querySelector(".uag2-cardform__error");
+          if (missing) {
+            if (error)
+              error.textContent = `\u0417\u0430\u043F\u043E\u043B\u043D\u0438 \xAB${missing.label}\xBB`;
+            return;
+          }
+          const data = new FormData(form);
+          const answers = {};
+          for (const field of liveForm.fields) {
+            if (field.type === "toggle")
+              answers[field.id] = form.querySelector(`[name="${field.id}"]`)?.checked ? "\u0434\u0430" : "\u043D\u0435\u0442";
+            else
+              answers[field.id] = String(data.get(field.id) || "").trim();
+          }
+          const pending = liveForm;
+          liveForm = null;
+          pending.resolve(answers);
+        });
+        document.getElementById("uag2-plus-menu")?.addEventListener("input", (event) => {
+          const input = event.target;
+          if (!input.matches("[data-attach-query]"))
+            return;
+          attachQuery = input.value;
+          window.clearTimeout(attachTimer);
+          attachTimer = window.setTimeout(() => {
+            void loadAttachList();
+          }, 280);
+        });
+        root.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || !attachKind)
+            return;
+          event.stopPropagation();
+          setAttachMenu("");
+        });
+        root.querySelector("#uag2-form")?.addEventListener("submit", (event) => {
+          event.preventDefault();
+          if (document.activeElement?.matches("[data-attach-query]"))
+            return;
+          stopSpeech();
+          const input = document.getElementById("uag2-input");
+          const text = input?.value.trim() || "";
+          if (!text && !pendingFile && !pendingShots.length || !input || busy)
+            return;
+          input.value = "";
+          void askUAgent(text);
+        });
+        root.querySelector("#uag2-act")?.addEventListener("click", () => {
+          if (busy) {
+            stopLocalTurn();
+            return;
+          }
+          if (listening || speechPrep)
+            stopSpeech();
+          else
+            void startSpeech();
+        });
+      }
+      function syncActButton() {
+        const button = document.getElementById("uag2-act");
+        if (!button)
+          return;
+        if (busy) {
+          button.classList.add("is-stop");
+          button.classList.remove("is-rec");
+          button.setAttribute("aria-label", "\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C");
+          button.innerHTML = '<i class="uag2-stop"></i>';
+          return;
+        }
+        button.classList.remove("is-stop");
+        button.classList.toggle("is-rec", listening || speechPrep);
+        button.setAttribute("aria-label", listening ? "\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C \u0437\u0430\u043F\u0438\u0441\u044C" : speechPrep ? "\u0413\u043E\u0442\u043E\u0432\u043B\u044E \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435" : "\u0413\u043E\u0432\u043E\u0440\u0438\u0442\u044C");
+        button.innerHTML = `<img src="${ICON}/microphone.svg" alt="">`;
+      }
+      var voskModel = null;
+      function loadVosk() {
+        const ready = window.Vosk;
+        if (ready?.Model)
+          return Promise.resolve(ready);
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "vendor/vosk.js";
+          script.onload = () => {
+            const loaded = window.Vosk;
+            if (loaded?.Model)
+              resolve(loaded);
+            else
+              reject(new Error("\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438 \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u043E\u0441\u044C"));
+          };
+          script.onerror = () => reject(new Error("\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438 \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u043E\u0441\u044C"));
+          document.head.appendChild(script);
+        });
+      }
+      function openSpeechModel(vosk, url) {
+        return new Promise((resolve, reject) => {
+          const model = new vosk.Model(url);
+          let done = false;
+          let timer = 0;
+          const finish = (err) => {
+            if (done)
+              return;
+            done = true;
+            window.clearTimeout(timer);
+            if (err)
+              reject(err);
+            else
+              resolve(model);
+          };
+          timer = window.setTimeout(() => finish(new Error("\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438 \u0433\u043E\u0442\u043E\u0432\u0438\u0442\u0441\u044F \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0434\u043E\u043B\u0433\u043E")), 9e4);
+          model.on("load", (message) => finish(message.result ? null : new Error("\u041C\u043E\u0434\u0435\u043B\u044C \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u044F \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u0430\u0441\u044C")));
+          model.on("error", (message) => finish(new Error(message.error || "\u041C\u043E\u0434\u0435\u043B\u044C \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u044F \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u0430\u0441\u044C")));
+        });
+      }
+      function speechModel() {
+        if (!voskModel) {
+          voskModel = (async () => {
+            let stopProgress = () => {
+            };
+            const input = document.getElementById("uag2-input");
+            if (input)
+              input.title = "\u0421\u043A\u0430\u0447\u0438\u0432\u0430\u044E \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438\u2026";
+            stopProgress = api?.onSpeechProgress?.((percent) => {
+              const box = document.getElementById("uag2-input");
+              if (box && percent > 0 && percent < 100)
+                box.title = `\u0421\u043A\u0430\u0447\u0438\u0432\u0430\u044E \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438\u2026 ${percent}%`;
+            }) || stopProgress;
+            try {
+              const packed = await api?.speechModel?.();
+              if (!packed?.url)
+                throw new Error(packed?.error || "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u0438\u0442\u044C \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438");
+              const box = document.getElementById("uag2-input");
+              if (box)
+                box.title = "\u0420\u0430\u0441\u043F\u0430\u043A\u043E\u0432\u044B\u0432\u0430\u044E \u043C\u043E\u0434\u0435\u043B\u044C\u2026";
+              const vosk = await loadVosk();
+              return await openSpeechModel(vosk, packed.url);
+            } catch (err) {
+              voskModel = null;
+              throw err;
+            } finally {
+              stopProgress();
+            }
+          })();
+        }
+        return voskModel;
+      }
+      function stopSpeech() {
+        speechGen += 1;
+        listening = false;
+        speechPrep = false;
+        if (speechTimer)
+          window.clearTimeout(speechTimer);
+        speechTimer = 0;
+        try {
+          speechRec?.stop();
+        } catch {
+        }
+        speechRec = null;
+        syncActButton();
+      }
+      function stopLocalTurn() {
+        const running = localTurn;
+        localTurn += 1;
+        void api?.aiChatStop?.(String(running));
+        stopSpeech();
+        if (liveForm) {
+          const pending = liveForm;
+          liveForm = null;
+          pending.resolve(null);
+        }
+        dangerResolve?.(false);
+        dangerResolve = null;
+        document.querySelector(".uag2-ask")?.remove();
+      }
+      function writeSpeech(input, base, said, partial) {
+        input.value = [base, said, partial].map((part) => part.trim()).filter(Boolean).join(" ");
+      }
+      async function startSpeech() {
+        if (busy || listening || speechPrep)
+          return;
+        const input = document.getElementById("uag2-input");
+        if (!input || !navigator.mediaDevices?.getUserMedia) {
+          if (input)
+            input.title = "\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0440\u0435\u0447\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E";
+          return;
+        }
+        const gen = speechGen;
+        const base = input.value.trim();
+        speechPrep = true;
+        syncActButton();
+        const audio = new AudioContext();
+        let stream = null;
+        const micPromise = navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+          video: false
+        });
+        micPromise.then((opened) => {
+          if (gen !== speechGen)
+            opened.getTracks().forEach((track) => track.stop());
+        }).catch(() => {
+        });
+        try {
+          const [model, mic] = await Promise.all([speechModel(), micPromise]);
+          stream = mic;
+          if (gen !== speechGen) {
+            stream.getTracks().forEach((track) => track.stop());
+            void audio.close();
+            return;
+          }
+          if (audio.state === "suspended")
+            await audio.resume();
+          const recognizer = new model.KaldiRecognizer(audio.sampleRate);
+          let said = "";
+          recognizer.on("partialresult", (message) => {
+            if (gen !== speechGen)
+              return;
+            writeSpeech(input, base, said, message.result?.partial || "");
+          });
+          recognizer.on("result", (message) => {
+            if (gen !== speechGen)
+              return;
+            const text = message.result?.text || "";
+            if (text)
+              said = `${said} ${text}`.trim();
+            writeSpeech(input, base, said, "");
+          });
+          const source = audio.createMediaStreamSource(stream);
+          const processor = audio.createScriptProcessor(4096, 1, 1);
+          const mute = audio.createGain();
+          mute.gain.value = 0;
+          processor.onaudioprocess = (event) => {
+            if (gen !== speechGen)
+              return;
+            try {
+              recognizer.acceptWaveform(event.inputBuffer);
+            } catch {
+            }
+          };
+          source.connect(processor);
+          processor.connect(mute);
+          mute.connect(audio.destination);
+          const session = {
+            stop: () => {
+              try {
+                recognizer.retrieveFinalResult();
+              } catch {
+              }
+              window.setTimeout(() => {
+                try {
+                  recognizer.remove();
+                } catch {
+                }
+              }, 400);
+              try {
+                processor.disconnect();
+              } catch {
+              }
+              try {
+                source.disconnect();
+              } catch {
+              }
+              try {
+                mute.disconnect();
+              } catch {
+              }
+              stream?.getTracks().forEach((track) => track.stop());
+              void audio.close();
+            }
+          };
+          if (gen !== speechGen) {
+            session.stop();
+            return;
+          }
+          speechRec = session;
+          speechPrep = false;
+          listening = true;
+          input.title = "";
+          speechTimer = window.setTimeout(() => stopSpeech(), 6e4);
+          syncActButton();
+        } catch (err) {
+          stream?.getTracks().forEach((track) => track.stop());
+          void audio.close();
+          if (gen !== speechGen)
+            return;
+          speechPrep = false;
+          listening = false;
+          speechRec = null;
+          const name = err instanceof DOMException ? err.name : "";
+          const message = err instanceof Error ? err.message : "";
+          input.title = name === "NotAllowedError" || name === "NotFoundError" || /denied|notallowed|permission/i.test(message) ? "\u041D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0430 \u043A \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u0443" : message || "\u0420\u0435\u0447\u044C \u043D\u0435 \u0440\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u043B\u0430\u0441\u044C";
+          syncActButton();
+        }
+      }
+      function confirmDanger(name) {
+        const log = document.getElementById("uag2-log");
+        if (!log)
+          return Promise.resolve(false);
+        return new Promise((resolve) => {
+          const box = document.createElement("article");
+          box.className = "uag2-ask";
+          box.innerHTML = `<b>${esc(toolLabel(name))}. \u042D\u0442\u043E \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C. \u0421\u0434\u0435\u043B\u0430\u0442\u044C?</b><button type="button" data-yes="1"><i>A</i><span>\u0414\u0430, \u0441\u0434\u0435\u043B\u0430\u0442\u044C</span></button><button type="button" data-yes="0"><i>B</i><span>\u041D\u0435\u0442</span></button>`;
+          log.appendChild(box);
+          log.scrollTop = log.scrollHeight;
+          dangerResolve = (ok) => {
+            dangerResolve = null;
+            box.remove();
+            resolve(ok);
+          };
+          box.addEventListener("click", (event) => {
+            const button = event.target.closest("button");
+            if (!button)
+              return;
+            dangerResolve?.(button.getAttribute("data-yes") === "1");
+          });
+        });
+      }
+      function aboutServer(text) {
+        return /сервер/i.test(text) && !/сборк/i.test(text);
+      }
+      function readServer(value) {
+        if (!value || typeof value !== "object")
+          return null;
+        const row = value;
+        const id = String(row.id || "");
+        if (!id)
+          return null;
+        return { id, name: String(row.name || id) };
+      }
+      function serversOf(result) {
+        const root = result?.result && typeof result.result === "object" ? result.result : null;
+        const rows = root && Array.isArray(root.servers) ? root.servers : [];
+        return rows.map(readServer).filter((row) => Boolean(row));
+      }
+      function namedServer(session, rows) {
+        const text = session.messages.map((msg) => msg.text).join("\n").toLowerCase();
+        return rows.find((row) => row.name.length > 2 && text.includes(row.name.toLowerCase())) || null;
+      }
+      function readBuild(value) {
+        if (!value || typeof value !== "object" || Array.isArray(value))
+          return null;
+        const row = value;
+        if (row.software || row.coreReady || row.players)
+          return null;
+        const name = String(row.name || "");
+        const id = String(row.id || "");
+        if (!name && !id)
+          return null;
+        const meta = [row.gameVersion || row.version, row.loader].filter(Boolean).map(String).join(" \xB7 ");
+        return { id: id || name, name: name || id, meta };
+      }
+      function rememberBuild(session, result, args, name) {
+        if (!/build/.test(name) || /hosted/.test(name) || name === "list_builds" || name === "compare_builds")
+          return;
+        const root = result?.result && typeof result.result === "object" && !Array.isArray(result.result) ? result.result : null;
+        const nested = readBuild(root?.build);
+        const flat = root && (root.loader || root.loaderVersion) ? readBuild(root) : null;
+        const one = nested || flat;
+        if (one?.name) {
+          session.build = one;
+          return;
+        }
+        const id = typeof args.id === "string" ? args.id : typeof args.buildId === "string" ? args.buildId : "";
+        if (id)
+          session.build = { id, name: String(args.name || session.build?.name || id), meta: session.build?.id === id ? session.build.meta : "" };
+      }
+      function recoverBuild(session) {
+        if (session.build?.name || session.hold?.build)
+          return;
+        for (const msg of session.wire) {
+          if (msg.role === "assistant") {
+            for (const call of msg.tool_calls || []) {
+              const tool = call.function?.name || "";
+              if (!/build/.test(tool) || /hosted/.test(tool))
+                continue;
+              try {
+                rememberBuild(session, void 0, JSON.parse(call.function.arguments || "{}"), tool);
+              } catch {
+              }
+            }
+          }
+          if (msg.role !== "tool" || !msg.content)
+            continue;
+          try {
+            rememberBuild(session, JSON.parse(msg.content), {}, "get_build");
+          } catch {
+          }
+        }
+      }
+      var SERVER_ID_TOOLS = /* @__PURE__ */ new Set([
+        "play_command",
+        "hosted_command",
+        "start_hosted_server",
+        "stop_hosted_server",
+        "restart_hosted_server",
+        "hosted_log",
+        "list_hosted_plugins",
+        "install_hosted_plugin",
+        "toggle_hosted_plugin",
+        "list_hosted_files",
+        "read_hosted_file",
+        "write_hosted_file",
+        "delete_hosted_file",
+        "mkdir_hosted",
+        "copy_hosted_file",
+        "move_hosted_file",
+        "install_hosted_core",
+        "update_hosted_server",
+        "list_hosted_core_versions",
+        "install_matching_plugin",
+        "scan_configs",
+        "find_hosted_files",
+        "grep_hosted_files",
+        "edit_hosted_file"
+      ]);
+      function serverTool(name) {
+        return SERVER_ID_TOOLS.has(name);
+      }
+      var BUILD_ID_TOOLS = /* @__PURE__ */ new Set([
+        "get_build",
+        "update_build",
+        "delete_build",
+        "duplicate_build",
+        "rename_build",
+        "select_build",
+        "launch_build",
+        "backup_build",
+        "install_mod",
+        "install_matching_mod",
+        "install_mod_bulk",
+        "update_outdated_mods",
+        "list_build_mods",
+        "find_mod_in_build",
+        "list_build_content",
+        "toggle_mod",
+        "disable_all_mods",
+        "enable_all_mods",
+        "remove_build_file",
+        "copy_mods_to_build",
+        "read_config",
+        "write_config",
+        "read_options",
+        "write_options",
+        "get_options_value",
+        "set_options_value",
+        "list_configs",
+        "diagnose_build",
+        "get_crash_report",
+        "get_latest_log",
+        "clear_logs",
+        "get_console_tail",
+        "open_console",
+        "set_java_for_build",
+        "set_build_memory",
+        "set_jvm_args",
+        "set_build_window",
+        "recommend_java_for_build",
+        "validate_java_for_build",
+        "list_worlds",
+        "delete_world",
+        "list_screenshots",
+        "delete_screenshot",
+        "list_instance_files",
+        "read_instance_file",
+        "write_instance_file",
+        "edit_instance_file",
+        "find_instance_files",
+        "grep_instance_files",
+        "mkdir_instance",
+        "copy_instance_file",
+        "move_instance_file",
+        "delete_instance_file",
+        "find_mod_conflicts",
+        "get_build_disk_usage",
+        "search_local_files",
+        "open_build_folder",
+        "clear_instance_cache"
+      ]);
+      function pinBuildArgs(session, name, args) {
+        const id = session.build?.id || "";
+        if (!id || !BUILD_ID_TOOLS.has(name))
+          return;
+        const given = typeof args.buildId === "string" ? args.buildId.trim() : "";
+        if (!given)
+          args.buildId = id;
+      }
+      function rememberListedBuilds(session, result) {
+        if (session.build?.id)
+          return;
+        const root = result?.result;
+        const rows = Array.isArray(root) ? root.map(readBuild).filter((row) => Boolean(row)) : [];
+        if (!rows.length)
+          return;
+        const text = session.messages.map((msg) => msg.text).join("\n").toLowerCase();
+        const named = rows.filter((row) => row.name.length > 2 && text.includes(row.name.toLowerCase()));
+        if (named.length === 1)
+          session.build = named[0];
+        else if (rows.length === 1)
+          session.build = rows[0];
+      }
+      function pinServerArgs(session, name, args) {
+        const id = session.server?.id || "";
+        if (!id || !serverTool(name))
+          return;
+        if (name === "scan_configs" && args.buildId)
+          return;
+        const given = typeof args.id === "string" ? args.id.trim() : "";
+        if (!given || /\.jar$/i.test(given) || given.includes("/") || given.includes("\\"))
+          args.id = id;
+        if (name === "play_command")
+          args.focusId = id;
+      }
+      function serverChoiceForm(args) {
+        const fields = formFields(args.fields);
+        const blob = `${args.title || ""} ${fields.map((field) => `${field.label} ${field.options.join(" ")}`).join(" ")}`.toLowerCase();
+        if (!/сервер/.test(blob))
+          return false;
+        return !/ник|игрок|материал|чар|сколько|стак/.test(blob);
+      }
+      function rememberServer(session, result, args, name) {
+        const root = result?.result && typeof result.result === "object" ? result.result : null;
+        const acted = serverTool(name) && name !== "list_hosted_servers" && name !== "scan_configs";
+        const one = readServer(root?.server) || (acted && result?.ok !== false ? readServer(root) : null);
+        if (one && !/\.jar$/i.test(one.id)) {
+          session.server = one;
+          return;
+        }
+        if (acted && typeof args.id === "string" && args.id && !/\.jar$/i.test(args.id) && result?.ok !== false) {
+          session.server = { id: args.id, name: String(args.name || (session.server?.id === args.id ? session.server.name : "") || args.id) };
+          return;
+        }
+        if (session.server)
+          return;
+        const rows = serversOf(result);
+        const named = namedServer(session, rows);
+        if (named)
+          session.server = named;
+        else if (rows.length === 1)
+          session.server = rows[0];
+      }
+      function recoverServer(session) {
+        if (session.server?.id || session.hold?.server)
+          return;
+        let actionId = "";
+        let actionName = "";
+        for (const msg of session.wire) {
+          if (msg.role === "assistant") {
+            for (const call of msg.tool_calls || []) {
+              if (!serverTool(call.function?.name || ""))
+                continue;
+              try {
+                const args = JSON.parse(call.function.arguments || "{}");
+                if (typeof args.id === "string" && args.id && !/\.jar$/i.test(args.id)) {
+                  actionId = args.id;
+                  actionName = String(args.name || actionName || args.id);
+                }
+              } catch {
+              }
+            }
+          }
+          if (msg.role !== "tool" || !msg.content)
+            continue;
+          try {
+            const parsed = JSON.parse(msg.content);
+            const root = parsed.result && typeof parsed.result === "object" ? parsed.result : null;
+            const id = String(root?.id || "");
+            const srvName = String(root?.name || "");
+            if (parsed.ok !== false && id && srvName && !/\.jar$/i.test(id) && (Array.isArray(root?.commands) || root?.syntax)) {
+              actionId = id;
+              actionName = srvName;
+            }
+            if (!actionId)
+              rememberServer(session, parsed, {}, "list_hosted_servers");
+          } catch {
+          }
+        }
+        if (actionId)
+          session.server = { id: actionId, name: actionName || actionId };
+      }
+      function formFields(raw) {
+        if (!Array.isArray(raw))
+          return [];
+        const fields = [];
+        for (const item of raw.slice(0, 6)) {
+          if (!item || typeof item !== "object")
+            continue;
+          const row = item;
+          const label = String(row.label || "").trim().slice(0, 80);
+          if (!label)
+            continue;
+          const type = row.type === "select" || row.type === "toggle" ? row.type : "text";
+          const id = String(row.id || `field${fields.length + 1}`).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32) || `field${fields.length + 1}`;
+          const options = Array.isArray(row.options) ? row.options.map((option) => String(option).trim()).filter(Boolean).slice(0, 8) : [];
+          if (type === "select" && options.length < 2)
+            continue;
+          fields.push({
+            id,
+            label,
+            type,
+            options,
+            placeholder: String(row.placeholder || "").slice(0, 80),
+            required: row.required !== false
+          });
+        }
+        return fields;
+      }
+      function formCardHtml(form) {
+        const fields = form.fields.map((field) => {
+          if (field.type === "toggle") {
+            return `<label class="is-toggle"><input type="checkbox" name="${esc(field.id)}"><span>${esc(field.label)}</span></label>`;
+          }
+          if (field.type === "select") {
+            const options = field.options.map((option, index) => `<label><input type="radio" name="${esc(field.id)}" value="${esc(option)}"${index === 0 ? " checked" : ""}><span>${esc(option)}</span></label>`).join("");
+            return `<fieldset><legend>${esc(field.label)}</legend>${options}</fieldset>`;
+          }
+          return `<label>${esc(field.label)}<input name="${esc(field.id)}" placeholder="${esc(field.placeholder)}"${field.required ? " required" : ""}></label>`;
+        }).join("");
+        return `<form class="uag2-cardform" id="uag2-user-form"><b>${esc(form.title)}</b>${fields}<p class="uag2-cardform__error"></p><div class="uag2-cardform__actions"><button type="submit">${esc(form.submit)}</button><button type="button" data-form-skip>\u041F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C</button></div></form>`;
+      }
+      function askForm(args, fields) {
+        return new Promise((resolve) => {
+          liveForm = {
+            title: String(args.title || "\u041D\u0443\u0436\u043D\u043E \u0443\u0442\u043E\u0447\u043D\u0435\u043D\u0438\u0435").slice(0, 140),
+            submit: String(args.submitLabel || "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C").slice(0, 32),
+            fields,
+            resolve
+          };
+          fill();
+          stickLog(true);
+        });
+      }
+      function contextFull(session) {
+        return Math.round(contextOf(session).usage * 100) >= 100;
+      }
+      function summarizeWire(wire) {
+        const lines = [];
+        for (const msg of wire) {
+          if (msg.role === "user" && msg.content)
+            lines.push(`\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C: ${String(msg.content).replace(/\s+/g, " ").slice(0, 220)}`);
+          else if (msg.role === "assistant" && msg.content)
+            lines.push(`\u0410\u0433\u0435\u043D\u0442: ${String(msg.content).replace(/\s+/g, " ").slice(0, 220)}`);
+          else if (msg.tool_calls?.length)
+            lines.push(`\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F: ${msg.tool_calls.map((call) => call.function?.name).filter(Boolean).join(", ")}`);
+        }
+        return lines.slice(-24).join("\n").slice(0, 3500);
+      }
+      function compactWire(session) {
+        const wire = session.wire;
+        if (wire.length < 6)
+          return false;
+        let cut = Math.max(1, wire.length - 8);
+        while (cut > 0 && wire[cut]?.role !== "user")
+          cut -= 1;
+        if (cut <= 0)
+          return false;
+        const summary = summarizeWire(wire.slice(0, cut));
+        session.wire = [
+          { role: "user", content: `\u0421\u0436\u0430\u0442\u044B\u0439 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u043E\u0448\u043B\u043E\u0433\u043E \u0434\u0438\u0430\u043B\u043E\u0433\u0430:
+${summary}` },
+          { role: "assistant", content: "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u043F\u0440\u0438\u043D\u044F\u043B. \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u044E \u0441 \u044D\u0442\u0438\u043C\u0438 \u0444\u0430\u043A\u0442\u0430\u043C\u0438." },
+          ...wire.slice(cut)
+        ];
+        return true;
+      }
+      function shrinkToolPayloads(session) {
+        const tools = session.wire.filter((msg) => msg.role === "tool");
+        tools.forEach((msg, index) => {
+          const age = tools.length - 1 - index;
+          if (age < 2 || !msg.content)
+            return;
+          const file = /"(body|matches|content|entries)"/.test(msg.content);
+          const cap = file && age < 8 ? 4500 : 500;
+          if (msg.content.length > cap)
+            msg.content = `${msg.content.slice(0, cap)}\u2026`;
+        });
+      }
+      function fitContext(session) {
+        for (let pass = 0; pass < 3 && contextFull(session); pass += 1) {
+          const cut = compactWire(session);
+          shrinkToolPayloads(session);
+          if (cut && !compactAnnounced) {
+            compactAnnounced = true;
+            session.messages.push({ role: "assistant", text: "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D \u043D\u0430 100%. \u042F \u0441\u0436\u0430\u043B \u0440\u0430\u043D\u043D\u044E\u044E \u0447\u0430\u0441\u0442\u044C \u0434\u0438\u0430\u043B\u043E\u0433\u0430 \u0438 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u044E.", steps: [] });
+            if (!quietTurn)
+              fill();
+          }
+          if (!cut)
+            break;
+        }
+      }
+      function halted(gen) {
+        return gen !== 0 && gen !== localTurn;
+      }
+      function stoppedReply(session, steps, thought) {
+        const reply = "\u041E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u043B.";
+        session.wire.push({ role: "assistant", content: reply });
+        session.steps = steps;
+        session.messages.push({ role: "assistant", text: reply, steps: [], thought: thought || void 0 });
+        return reply;
+      }
+      var paintedLive = false;
+      function withoutToolTags(text) {
+        return text.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "").replace(/<\s*\/?\s*tool_calls\b[\s\S]*$/i, "").replace(/<\s*\/?\s*function_call\b[\s\S]*$/i, "").replace(/<\s*\/?\s*invoke\b[\s\S]*$/i, "").trim();
+      }
+      function settleText(shown, finalText) {
+        const live = withoutToolTags(shown);
+        const done = withoutToolTags(finalText);
+        if (offTopic(live))
+          return offTopic(done) ? "" : done;
+        if (!live)
+          return done;
+        if (!done || live.startsWith(done))
+          return live;
+        if (done.startsWith(live))
+          return done;
+        return live;
+      }
+      function hasCyrillic(text) {
+        return /[А-Яа-яЁё]/.test(text);
+      }
+      function leadLineKind(line) {
+        const value = line.trim();
+        if (!value)
+          return "blank";
+        if (hasCyrillic(value))
+          return "answer";
+        const latin = (value.match(/[A-Za-z]/g) || []).length;
+        if (latin >= 8)
+          return "thought";
+        return "other";
+      }
+      function splitLeadEnglish(text) {
+        const lines = text.replace(/\r\n/g, "\n").split("\n");
+        let seenThought = false;
+        let cut = -1;
+        for (let i = 0; i < lines.length; i += 1) {
+          const kind = leadLineKind(lines[i]);
+          if (kind === "blank")
+            continue;
+          if (kind === "thought") {
+            seenThought = true;
+            continue;
+          }
+          if (seenThought && kind === "answer") {
+            cut = i;
+            break;
+          }
+          break;
+        }
+        const src = lines.join("\n").trim();
+        if (cut < 0)
+          return { reasoning: "", reply: src };
+        return {
+          reasoning: lines.slice(0, cut).join("\n").trim(),
+          reply: lines.slice(cut).join("\n").trim()
+        };
+      }
+      function joinThought(left, right) {
+        const a = left.trim();
+        const b2 = right.trim();
+        if (!a)
+          return b2;
+        if (!b2 || a.includes(b2))
+          return a;
+        if (b2.includes(a))
+          return b2;
+        return `${a}
+
+${b2}`;
+      }
+      function presentAnswer(reply, reasoning = "") {
+        let text = reply.trim();
+        let thought = reasoning.trim();
+        const lead = splitLeadEnglish(text);
+        if (lead.reasoning && lead.reply && hasCyrillic(lead.reply)) {
+          thought = joinThought(lead.reasoning, thought);
+          text = lead.reply;
+        }
+        const shortTail = !text || hasCyrillic(text) && thought.length > text.length * 2 && hasCyrillic(thought);
+        if (shortTail && thought) {
+          const fromThought = splitLeadEnglish(thought);
+          if (fromThought.reasoning && fromThought.reply && hasCyrillic(fromThought.reply) && fromThought.reply.length > text.length) {
+            text = fromThought.reply;
+            thought = fromThought.reasoning;
+          } else if (!text) {
+            const at = thought.search(/[А-Яа-яЁё]/);
+            if (at > 0) {
+              const lineAt = thought.lastIndexOf("\n", at);
+              text = thought.slice(lineAt + 1).trim();
+              thought = thought.slice(0, Math.max(0, lineAt)).trim();
+            }
+          }
+        }
+        if (text && thought.includes(text) && text.length > 40)
+          thought = thought.replace(text, "").replace(/\n{3,}/g, "\n\n").trim();
+        const peeled = peelPlan(text);
+        if (peeled.reasoning) {
+          thought = joinThought(peeled.reasoning, thought);
+          text = peeled.text;
+        }
+        return { text: text.trim(), reasoning: thought.trim() };
+      }
+      function peelPlan(text) {
+        const blocks = text.split(/\n{2,}/);
+        const answer = [];
+        const plan = [];
+        for (const block of blocks) {
+          const value = block.trim();
+          if (!value)
+            continue;
+          const latin = (value.match(/[A-Za-z]/g) || []).length;
+          if (!hasCyrillic(value) && latin >= 12)
+            plan.push(value);
+          else
+            answer.push(value);
+        }
+        if (!answer.length || !plan.length)
+          return { text, reasoning: "" };
+        return { text: answer.join("\n\n"), reasoning: plan.join("\n\n") };
+      }
+      function takeAnswer(shown, reply, reasoning) {
+        return presentAnswer(settleText(shown, reply), reasoning);
+      }
+      function actionLine(calls) {
+        const label = toolLabel(String(calls[0]?.function?.name || ""));
+        if (!label)
+          return "\u0414\u0435\u043B\u0430\u044E \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u0448\u0430\u0433.";
+        return /[.!?…]$/.test(label) ? label : `${label}.`;
+      }
+      function inventedTask(userText, reply) {
+        const ask = userText.toLowerCase();
+        const answer = reply.toLowerCase();
+        return ["main.py", "handlers.py", "config.py", "python", "telegram-\u0431\u043E\u0442", "\u0442\u0435\u043B\u0435\u0433\u0440\u0430\u043C-\u0431\u043E\u0442"].some((mark) => answer.includes(mark) && !ask.includes(mark));
+      }
+      function offTopic(reply, userText = "") {
+        const answer = reply.toLowerCase();
+        const ask = userText.toLowerCase();
+        const marks = ["deepseek", "gigachat", "qwen", "minimax", "\u0440\u0435\u0436\u0438\u043C \u0440\u0430\u0441\u0441\u0443\u0436\u0434\u0435\u043D\u0438\u0439", "\u0430\u043A\u0442\u0438\u0432\u0438\u0440\u043E\u0432\u0430\u043B \u043C\u043E\u0434\u0435\u043B\u044C", "\u043E\u0442\u043B\u0438\u0447\u043D\u044B\u0439 \u0432\u044B\u0431\u043E\u0440"];
+        return marks.some((mark) => answer.includes(mark) && !ask.includes(mark));
+      }
+      function missesTask(userText, reply) {
+        const ask = userText.toLowerCase();
+        const server = /сервер/.test(ask) && /включ|запуст|останови|погаси|рестарт/.test(ask);
+        return inventedTask(userText, reply) || offTopic(reply, userText) || server && reply.trim().length > 0;
+      }
+      function plainTool(name) {
+        if (!name || name === "ask_user_form" || needsConfirm(name))
+          return false;
+        if (name === "launch_build" || name === "create_build")
+          return false;
+        if (/^(edit_|write_|move_|copy_|mkdir_)/.test(name))
+          return false;
+        return true;
+      }
+      function watchStream(session, gen, thought, userText = "") {
+        let draft = null;
+        let frame = 0;
+        let pending = null;
+        const paint = () => {
+          frame = 0;
+          const packet = pending;
+          pending = null;
+          if (!packet)
+            return;
+          const shown = presentAnswer(packet.text, packet.reasoning);
+          if (offTopic(shown.text, userText))
+            shown.text = "";
+          if (!draft) {
+            draft = {
+              role: "assistant",
+              text: shown.text,
+              reasoning: shown.reasoning || void 0,
+              steps: [],
+              thought: thought || void 0,
+              live: true
+            };
+            session.messages.push(draft);
+            if (draft.text)
+              paintedLive = true;
+            fill();
+            return;
+          }
+          const switched = Boolean(shown.text && draft.text && !shown.text.startsWith(draft.text) && hasCyrillic(shown.text) && !hasCyrillic(draft.text));
+          if (shown.text && (!draft.text || shown.text.startsWith(draft.text) || shown.text.length >= draft.text.length || switched))
+            draft.text = shown.text;
+          else if (!shown.text && draft.text && !hasCyrillic(draft.text))
+            draft.text = "";
+          if (shown.reasoning)
+            draft.reasoning = shown.reasoning;
+          const md = document.getElementById("uag2-live-md");
+          if (md && draft.text)
+            md.innerHTML = renderMd(draft.text);
+          if (draft.text)
+            paintedLive = true;
+          const reason = document.getElementById("uag2-live-reason");
+          if (reason) {
+            const full = (draft.reasoning || "").trim();
+            reason.hidden = !full;
+            reason.dataset.reason = full;
+            const body = document.getElementById("uag2-live-reason-body");
+            if (body && reason.getAttribute("aria-expanded") === "true")
+              body.textContent = full;
+          }
+          stickLog();
+        };
+        const off = api?.onAiDelta?.((packet) => {
+          if (packet.turn && String(gen) !== packet.turn)
+            return;
+          pending = { text: String(packet.text || ""), reasoning: String(packet.reasoning || "") };
+          if (!frame)
+            frame = requestAnimationFrame(paint);
+        });
+        return () => {
+          off?.();
+          if (frame)
+            cancelAnimationFrame(frame);
+          if (pending)
+            paint();
+          return draft;
+        };
+      }
+      async function runPlainCalls(session, calls, steps, seen, repeats, gen) {
+        let stalls = 0;
+        const jobs = calls.map(async (call) => {
+          let args = {};
+          try {
+            args = JSON.parse(call.function?.arguments || "{}");
+          } catch {
+            args = {};
+          }
+          const name = String(call.function?.name || "");
+          const repeatKey = `${name}:${call.function?.arguments || ""}`;
+          const prior = seen.get(repeatKey);
+          if (prior && name !== "ask_user_form") {
+            const times = (repeats.get(repeatKey) || 1) + 1;
+            repeats.set(repeatKey, times);
+            return {
+              id: call.id,
+              repeatKey,
+              payload: JSON.stringify({
+                repeated: true,
+                note: "\u0422\u0430\u043A\u043E\u0439 \u0432\u044B\u0437\u043E\u0432 \u0432 \u044D\u0442\u043E\u043C \u0445\u043E\u0434\u0435 \u0443\u0436\u0435 \u0431\u044B\u043B. \u0412\u043E\u0437\u044C\u043C\u0438 \u043F\u0440\u043E\u0448\u043B\u044B\u0439 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0438 \u0441\u0434\u0435\u043B\u0430\u0439 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u0448\u0430\u0433.",
+                previous: prior
+              }).slice(0, 6e3),
+              step: { name, ok: true, detail: toolLabel(name) },
+              stall: times >= 3
+            };
+          }
+          pinServerArgs(session, name, args);
+          pinBuildArgs(session, name, args);
+          if (call.function)
+            call.function.arguments = JSON.stringify(args);
+          const result = await api?.aiToolsRun?.(name, args, { confirmed: true });
+          const reason = failureOf(result);
+          const ok = !reason;
+          const payload = toolPayload(result, name);
+          return {
+            id: call.id,
+            name,
+            args,
+            result,
+            repeatKey,
+            payload,
+            step: doneStep(name, ok, ok ? "" : reason, args, result),
+            stall: false
+          };
+        });
+        steps.push(...calls.map((call) => {
+          let args = {};
+          try {
+            args = JSON.parse(call.function?.arguments || "{}");
+          } catch {
+            args = {};
+          }
+          return doneStep(String(call.function?.name || ""), true, "", args);
+        }));
+        showSteps(steps);
+        const done = await Promise.all(jobs);
+        if (halted(gen))
+          return stalls;
+        steps.splice(steps.length - calls.length, calls.length);
+        for (const row of done) {
+          if (row.stall)
+            stalls += 1;
+          steps.push(row.step);
+          if (row.result) {
+            rememberServer(session, row.result, row.args || {}, row.name || "");
+            rememberBuild(session, row.result, row.args || {}, row.name || "");
+            if (row.name === "list_builds")
+              rememberListedBuilds(session, row.result);
+          }
+          seen.set(row.repeatKey, row.payload);
+          session.wire.push({ role: "tool", tool_call_id: row.id, content: row.payload });
+        }
+        showSteps(steps);
+        return stalls;
+      }
+      async function runTurn(session, text, serverRequest, gen, images) {
+        const thought = "";
+        session.wire.push({ role: "user", content: text, images });
+        fitContext(session);
+        const steps = [];
+        const seen = /* @__PURE__ */ new Map();
+        const repeats = /* @__PURE__ */ new Map();
+        let stalls = 0;
+        let modelReasoning = "";
+        let sealed = 0;
+        let carried = null;
+        let nudges = 0;
+        const seal = () => {
+          if (sealed >= steps.length) {
+            carried = null;
+            return;
+          }
+          const slice = steps.slice(sealed).map((step) => ({ ...step }));
+          sealed = steps.length;
+          if (carried)
+            carried.steps = slice;
+          else
+            session.messages.push({ role: "assistant", text: "", steps: slice });
+          carried = null;
+          fill();
+        };
+        const halt = () => {
+          seal();
+          session.messages.forEach((msg) => {
+            if (msg.live)
+              msg.live = false;
+          });
+          const last = session.messages[session.messages.length - 1];
+          if (last?.role === "assistant" && !last.text.trim() && !last.steps.length)
+            session.messages.pop();
+          return stoppedReply(session, steps, thought);
+        };
+        const rounds = 20;
+        for (let round = 0; round < rounds; round += 1) {
+          seal();
+          if (halted(gen))
+            return halt();
+          fitContext(session);
+          shrinkToolPayloads(session);
+          const stopWatch = watchStream(session, gen, thought, text);
+          const res = await api?.aiChat?.({ messages: session.wire, tools: true, model: modelFor(session), turn: gen ? String(gen) : void 0 });
+          const draft = stopWatch();
+          if (halted(gen) || res?.stopped)
+            return halt();
+          if (!res || res.error) {
+            seal();
+            const message = res?.error || "\u0410\u0433\u0435\u043D\u0442 \u043D\u0435 \u043E\u0442\u0432\u0435\u0442\u0438\u043B";
+            if (draft) {
+              draft.live = false;
+              if (!draft.text)
+                draft.text = message;
+            } else
+              session.messages.push({ role: "assistant", text: message, steps: [], thought: thought || void 0 });
+            return message;
+          }
+          const calls = Array.isArray(res.toolCalls) ? res.toolCalls : [];
+          if (res.reasoning)
+            modelReasoning = String(res.reasoning);
+          if (!calls.length) {
+            const raw = String(res.reply || "");
+            const shown = takeAnswer(draft?.text || "", raw, String(res.reasoning || modelReasoning || draft?.reasoning || ""));
+            let reply = shown.text;
+            const dump = offTopic(raw, text) || offTopic(reply, text);
+            const judged = reply || raw;
+            if (steps.length === 0 && modelFor(session) === "pixi-2.1-flash" && missesTask(text, judged) && nudges < (dump ? 2 : 1)) {
+              nudges += 1;
+              if (draft) {
+                const at = session.messages.indexOf(draft);
+                if (at >= 0)
+                  session.messages.splice(at, 1);
+              }
+              session.wire.push({ role: "assistant", content: "\u041F\u043E\u043D\u044F\u043B, \u0434\u0435\u043B\u0430\u044E \u0437\u0430\u043F\u0440\u043E\u0448\u0435\u043D\u043D\u043E\u0435." });
+              session.wire.push({
+                role: "user",
+                content: "\u042D\u0442\u043E \u043D\u0435 \u043E\u0442\u0432\u0435\u0442 \u043D\u0430 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u044E\u044E \u043F\u0440\u043E\u0441\u044C\u0431\u0443. \u0412\u044B\u043F\u043E\u043B\u043D\u0438 \u0438\u043C\u0435\u043D\u043D\u043E \u0435\u0451 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430\u043C\u0438 \u043A\u043B\u0438\u0435\u043D\u0442\u0430. \u041D\u0435 \u043F\u0440\u0435\u0434\u0441\u0442\u0430\u0432\u043B\u044F\u0439\u0441\u044F \u0438 \u043D\u0435 \u043E\u043F\u0438\u0441\u044B\u0432\u0430\u0439 \u043C\u043E\u0434\u0435\u043B\u044C. \u041D\u0435 \u043F\u0438\u0448\u0438 \u043F\u0440\u043E Python \u0438 \u0447\u0443\u0436\u0438\u0435 \u043F\u0440\u043E\u0435\u043A\u0442\u044B. \u0412\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u0435 \u0441\u0432\u043E\u0435\u0433\u043E \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u2014 start_hosted_server, \u043F\u043B\u0430\u0433\u0438\u043D \u2014 lookup_plugin."
+              });
+              fill();
+              continue;
+            }
+            if (dump) {
+              const fallback = "\u041D\u0435 \u0432\u0437\u044F\u043B\u0441\u044F \u0437\u0430 \u0437\u0430\u0434\u0430\u0447\u0443. \u041F\u043E\u0432\u0442\u043E\u0440\u0438 \u0437\u0430\u043F\u0440\u043E\u0441 \u0435\u0449\u0451 \u0440\u0430\u0437.";
+              session.wire.push({ role: "assistant", content: fallback });
+              if (draft) {
+                draft.live = false;
+                draft.text = fallback;
+                draft.steps = [];
+              } else
+                session.messages.push({ role: "assistant", text: fallback, steps: [] });
+              fill();
+              return fallback;
+            }
+            if (reply) {
+              session.wire.push({ role: "assistant", content: reply });
+              session.steps = steps;
+              if (draft) {
+                draft.live = false;
+                draft.text = reply;
+                draft.steps = [];
+                draft.thought = thought || void 0;
+                draft.reasoning = shown.reasoning || void 0;
+              } else {
+                session.messages.push({ role: "assistant", text: reply, steps: [], thought: thought || void 0, reasoning: shown.reasoning || void 0 });
+              }
+              fill();
+              return reply;
+            }
+            if (draft && !draft.text)
+              session.messages.splice(session.messages.indexOf(draft), 1);
+            break;
+          }
+          if (draft) {
+            const shown = takeAnswer(draft.text, String(res.reply || ""), String(res.reasoning || modelReasoning || draft.reasoning || ""));
+            draft.live = false;
+            draft.text = shown.text.trim() && !inventedTask(text, shown.text) ? shown.text : actionLine(calls);
+            draft.reasoning = shown.reasoning || void 0;
+            draft.steps = [];
+            carried = draft;
+          } else {
+            const lead = { role: "assistant", text: actionLine(calls), steps: [] };
+            session.messages.push(lead);
+            carried = lead;
+          }
+          session.wire.push({ role: "assistant", content: draft?.text || res.reply || null, tool_calls: calls });
+          if (calls.length > 1 && calls.every((call) => plainTool(String(call.function?.name || "")))) {
+            stalls += await runPlainCalls(session, calls, steps, seen, repeats, gen);
+            if (halted(gen))
+              return halt();
+            if (stalls >= 2)
+              break;
+            continue;
+          }
+          for (const call of calls) {
+            let args = {};
+            try {
+              args = JSON.parse(call.function?.arguments || "{}");
+            } catch {
+              args = {};
+            }
+            if (halted(gen)) {
+              session.wire.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "\u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043E" }) });
+              continue;
+            }
+            const name = String(call.function?.name || "");
+            const repeatKey = `${name}:${call.function?.arguments || ""}`;
+            const prior = seen.get(repeatKey);
+            if (prior && name !== "ask_user_form") {
+              const times = (repeats.get(repeatKey) || 1) + 1;
+              repeats.set(repeatKey, times);
+              let previous = prior;
+              try {
+                previous = JSON.parse(prior);
+              } catch {
+                previous = prior;
+              }
+              session.wire.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: JSON.stringify({
+                  repeated: true,
+                  note: times >= 3 ? "\u042D\u0442\u043E\u0442 \u0432\u044B\u0437\u043E\u0432 \u0443\u0436\u0435 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u043B\u0441\u044F. \u041E\u0442\u0432\u0435\u0442\u044C \u043F\u043E \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u043C \u0434\u0430\u043D\u043D\u044B\u043C \u0438\u043B\u0438 \u0441\u043C\u0435\u043D\u0438 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442." : "\u0422\u0430\u043A\u043E\u0439 \u0432\u044B\u0437\u043E\u0432 \u0432 \u044D\u0442\u043E\u043C \u0445\u043E\u0434\u0435 \u0443\u0436\u0435 \u0431\u044B\u043B. \u0412\u043E\u0437\u044C\u043C\u0438 \u043F\u0440\u043E\u0448\u043B\u044B\u0439 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0438 \u0441\u0434\u0435\u043B\u0430\u0439 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u0448\u0430\u0433.",
+                  previous
+                }).slice(0, 6e3)
+              });
+              steps.push({ name, ok: true, detail: toolLabel(name) });
+              showSteps(steps);
+              if (times >= 3)
+                stalls += 1;
+              continue;
+            }
+            if (serverRequest && (name === "launch_build" || name === "create_build")) {
+              const known = session.server ? ` \u0421\u0435\u0440\u0432\u0435\u0440 \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430: \xAB${session.server.name}\xBB, id=${session.server.id}.` : "";
+              session.wire.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: JSON.stringify({ ok: false, error: `\u041F\u0440\u043E\u0441\u044F\u0442 \u0441\u0432\u043E\u0439 \u0441\u0435\u0440\u0432\u0435\u0440, \u043D\u0435 \u0438\u0433\u0440\u0443 \u0438 \u043D\u0435 \u0441\u0431\u043E\u0440\u043A\u0443.${known} \u0412\u044B\u0437\u043E\u0432\u0438 start_hosted_server.` })
+              });
+              steps.push({ name, ok: false, detail: "\u042D\u0442\u043E \u0441\u0435\u0440\u0432\u0435\u0440, \u043D\u0435 \u0441\u0431\u043E\u0440\u043A\u0430" });
+              showSteps(steps);
+              continue;
+            }
+            pinServerArgs(session, name, args);
+            pinBuildArgs(session, name, args);
+            if (name === "ask_user_form" && session.server && serverChoiceForm(args)) {
+              const known = session.server;
+              session.wire.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: JSON.stringify({
+                  ok: true,
+                  answers: { id: known.id, server: known.name },
+                  note: `\u0421\u0435\u0440\u0432\u0435\u0440 \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430 \u0443\u0436\u0435 \u0432\u044B\u0431\u0440\u0430\u043D: \xAB${known.name}\xBB, id=${known.id}. \u0424\u043E\u0440\u043C\u0443 \u043D\u0435 \u043F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0439, \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0439 \u0441 \u044D\u0442\u0438\u043C id.`
+                })
+              });
+              steps.push({ name, ok: true, detail: "\u0421\u0435\u0440\u0432\u0435\u0440 \u0443\u0436\u0435 \u0432\u044B\u0431\u0440\u0430\u043D" });
+              showSteps(steps);
+              continue;
+            }
+            if (name === "ask_user_form" && quietTurn) {
+              session.wire.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: JSON.stringify({ ok: false, error: "\u042D\u0442\u043E Telegram. \u0424\u043E\u0440\u043C\u0443 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430 \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0439. \u0421\u043F\u0440\u043E\u0441\u0438 \u0442\u043E \u0436\u0435 \u043E\u0431\u044B\u0447\u043D\u044B\u043C \u0442\u0435\u043A\u0441\u0442\u043E\u043C \u043E\u0442\u0432\u0435\u0442\u0430." })
+              });
+              steps.push({ name, ok: true, detail: "\u0421\u043F\u0440\u043E\u0448\u0443 \u0442\u0435\u043A\u0441\u0442\u043E\u043C" });
+              continue;
+            }
+            if (name === "ask_user_form") {
+              const fields = formFields(args.fields);
+              if (!fields.length) {
+                session.wire.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "\u041D\u0443\u0436\u043D\u044B fields \u0441 id, label \u0438 type text, select \u0438\u043B\u0438 toggle." }) });
+                steps.push({ name, ok: false, detail: "\u0424\u043E\u0440\u043C\u0430 \u0431\u0435\u0437 \u043F\u043E\u043B\u0435\u0439" });
+                showSteps(steps);
+                continue;
+              }
+              steps.push({ name, ok: true, detail: "\u0416\u0434\u0443 \u043E\u0442\u0432\u0435\u0442 \u0432 \u0444\u043E\u0440\u043C\u0435" });
+              showSteps(steps);
+              const answers = await askForm(args, fields);
+              if (halted(gen)) {
+                session.wire.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "\u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043E" }) });
+                continue;
+              }
+              const ok2 = Boolean(answers);
+              steps[steps.length - 1] = { name, ok: ok2, detail: ok2 ? "\u0423\u0442\u043E\u0447\u043D\u0438\u043B \u0432 \u0444\u043E\u0440\u043C\u0435" : "\u0424\u043E\u0440\u043C\u0430 \u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u0430" };
+              session.wire.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: JSON.stringify(ok2 ? { ok: true, answers } : { ok: false, error: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u043B \u0444\u043E\u0440\u043C\u0443" })
+              });
+              fill();
+              continue;
+            }
+            if (needsConfirm(name)) {
+              const ok2 = quietTurn && remoteConfirm ? await remoteConfirm(toolLabel(name)) : await confirmDanger(name);
+              if (halted(gen)) {
+                session.wire.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "\u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u043E" }) });
+                continue;
+              }
+              if (!ok2) {
+                session.wire.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, error: "user_declined" }) });
+                steps.push({ name, ok: false, detail: "\u041E\u0442\u043C\u0435\u043D\u0435\u043D\u043E" });
+                showSteps(steps);
+                continue;
+              }
+            }
+            steps.push(doneStep(name, true, "", args));
+            showSteps(steps);
+            if (call.function)
+              call.function.arguments = JSON.stringify(args);
+            const result = await api?.aiToolsRun?.(name, args, { confirmed: true });
+            if (halted(gen)) {
+              session.wire.push({ role: "tool", tool_call_id: call.id, content: toolPayload(result, name) });
+              return halt();
+            }
+            const reason = failureOf(result);
+            const ok = !reason;
+            steps[steps.length - 1] = doneStep(name, ok, ok ? "" : reason, args, result);
+            showSteps(steps);
+            rememberServer(session, result, args, name);
+            rememberBuild(session, result, args, name);
+            if (name === "list_builds")
+              rememberListedBuilds(session, result);
+            const payload = toolPayload(result, name);
+            seen.set(repeatKey, payload);
+            session.wire.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: payload
+            });
+          }
+          if (halted(gen))
+            return halt();
+          if (stalls >= 2)
+            break;
+        }
+        if (halted(gen))
+          return halt();
+        seal();
+        return closeTurn(session, steps, thought, modelReasoning);
+      }
+      async function closeTurn(session, steps, thought, modelReasoning = "") {
+        const stopWatch = watchStream(session, 0, thought);
+        const res = await api?.aiChat?.({
+          model: modelFor(session),
+          tools: false,
+          messages: [
+            ...session.wire,
+            {
+              role: "user",
+              content: "\u041D\u0430\u043F\u0438\u0448\u0438 \u043E\u0442\u0432\u0435\u0442 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \u043F\u043E \u0443\u0436\u0435 \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u043C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430\u043C: \u0447\u0442\u043E \u0441\u0434\u0435\u043B\u0430\u043D\u043E \u0438 \u0447\u0442\u043E \u043F\u043E\u043C\u0435\u0448\u0430\u043B\u043E, \u0435\u0441\u043B\u0438 \u0437\u0430\u0434\u0430\u0447\u0430 \u043D\u0435 \u0437\u0430\u043A\u0440\u044B\u0442\u0430. \u041F\u043E-\u0440\u0443\u0441\u0441\u043A\u0438, \u043E\u0431\u044B\u0447\u043D\u044B\u043C\u0438 \u0430\u0431\u0437\u0430\u0446\u0430\u043C\u0438. \u041D\u0435 \u043F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u044F\u0439 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0438 \u043D\u0435 \u0432\u0441\u0442\u0430\u0432\u043B\u044F\u0439 \u0441\u044B\u0440\u043E\u0439 \u0442\u0435\u043A\u0441\u0442 \u043E\u0448\u0438\u0431\u043E\u043A. \u041D\u043E\u0432\u044B\u0435 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u043D\u0435 \u0432\u044B\u0437\u044B\u0432\u0430\u0439 \u0438 \u043D\u0435 \u0432\u044B\u0434\u0443\u043C\u044B\u0432\u0430\u0439 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439, \u043A\u043E\u0442\u043E\u0440\u044B\u0445 \u043D\u0435 \u0431\u044B\u043B\u043E."
+            }
+          ]
+        }).catch(() => null);
+        const draft = stopWatch();
+        const written = res && !res.error ? String(res.reply || "").trim() : "";
+        const reasoning = (res && res.reasoning ? String(res.reasoning) : "") || modelReasoning;
+        const done = steps.filter((step) => step.ok).map((step) => step.detail);
+        const failed = steps.filter((step) => !step.ok);
+        const failText = failed.length ? failed[failed.length - 1].error || failed[failed.length - 1].detail : "";
+        const fallback = failed.length ? `\u041D\u0435 \u0434\u043E\u0432\u0435\u043B \u0434\u043E \u043A\u043E\u043D\u0446\u0430. ${done.length ? `\u0421\u0434\u0435\u043B\u0430\u043D\u043E: ${done.join(", ")}. ` : ""}${failText ? `\u041E\u0448\u0438\u0431\u043A\u0430: ${failText}.` : ""}` : done.length ? `\u0421\u0434\u0435\u043B\u0430\u043D\u043E: ${done.join(", ")}.` : "\u041D\u0435 \u043F\u043E\u043B\u0443\u0447\u0438\u043B\u043E\u0441\u044C \u043E\u0442\u0432\u0435\u0442\u0438\u0442\u044C.";
+        const shown = takeAnswer(draft?.text || "", written, reasoning || draft?.reasoning || "");
+        const kept = shown.text || fallback;
+        if (draft) {
+          draft.live = false;
+          draft.text = kept;
+          draft.steps = [];
+          draft.thought = thought || void 0;
+          draft.reasoning = shown.reasoning || void 0;
+        } else {
+          session.messages.push({ role: "assistant", text: kept, steps: [], thought: thought || void 0, reasoning: shown.reasoning || void 0 });
+        }
+        session.wire.push({ role: "assistant", content: kept });
+        session.steps = steps;
+        fill();
+        return kept;
+      }
+      function failureOf(result) {
+        if (!result)
+          return "\u043D\u0435\u0442 \u043E\u0442\u0432\u0435\u0442\u0430";
+        if (result.ok === false)
+          return String(result.error || "\u043E\u0448\u0438\u0431\u043A\u0430");
+        const inner = result.result;
+        if (inner && typeof inner === "object") {
+          const rec = inner;
+          if (rec.ok === false || rec.success === false)
+            return String(rec.error || "\u043E\u0448\u0438\u0431\u043A\u0430");
+          const err = typeof rec.error === "string" ? rec.error.trim() : "";
+          if (err && rec.ok !== true && rec.success !== true && !rec.build && !rec.mods && !rec.versions)
+            return err;
+        }
+        return "";
+      }
+      function telegramSession() {
+        let session = sessions.find((row) => row.channel === "telegram");
+        if (!session) {
+          session = blank("Telegram");
+          session.channel = "telegram";
+          sessions.unshift(session);
+          save();
+        }
+        return session;
+      }
+      async function askUAgent(text, opts) {
+        if (!sessions.length)
+          load();
+        const remote = Boolean(opts?.remote);
+        const prompt = text.trim();
+        const file = remote ? null : pendingFile;
+        const shots = remote ? [] : pendingShots.slice();
+        if (!prompt && !file && !shots.length || busy || remoteBusy)
+          return "\u0410\u0433\u0435\u043D\u0442 \u0441\u0435\u0439\u0447\u0430\u0441 \u0437\u0430\u043D\u044F\u0442.";
+        if (!remote) {
+          pendingFile = null;
+          pendingShots = [];
+        }
+        const session = remote ? telegramSession() : current();
+        if (!remote && session.title === "\u041D\u043E\u0432\u044B\u0439 \u0430\u0433\u0435\u043D\u0442" && prompt)
+          session.title = prompt.slice(0, 32);
+        const shown = [prompt, file ? `\u0424\u0430\u0439\u043B: ${file.name}` : ""].filter(Boolean).join("\n\n");
+        if (!session.server)
+          recoverServer(session);
+        recoverBuild(session);
+        const serverRequest = aboutServer(prompt);
+        const known = session.server;
+        const build = session.build;
+        const memory = [
+          build ? `[\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442] \u0421\u0431\u043E\u0440\u043A\u0430 \u044D\u0442\u043E\u0433\u043E \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430: \xAB${build.name}\xBB, id=${build.id}${build.meta ? `, ${build.meta}` : ""}. \u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0431\u043E\u0440\u043A\u0438 \u0432\u044B\u0437\u044B\u0432\u0430\u0439 \u0441 \u044D\u0442\u0438\u043C buildId. \u0414\u0440\u0443\u0433\u0443\u044E \u0441\u0431\u043E\u0440\u043A\u0443 \u0431\u0435\u0440\u0438, \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0435\u0451 \u043D\u0430\u0437\u0432\u0430\u043B.` : "",
+          known ? `[\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442] \u0421\u0435\u0440\u0432\u0435\u0440 \u044D\u0442\u043E\u0433\u043E \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430: \xAB${known.name}\xBB, id=${known.id}. \u041A\u043E\u043C\u0430\u043D\u0434\u044B, \u043F\u043B\u0430\u0433\u0438\u043D\u044B \u0438 \u0444\u0430\u0439\u043B\u044B \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u2014 \u043D\u0430 \u043D\u0435\u0433\u043E, id \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0439 \u044D\u0442\u043E\u0442. \u0424\u043E\u0440\u043C\u0443 \u0432\u044B\u0431\u043E\u0440\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0439. \u0414\u0440\u0443\u0433\u043E\u0439 \u0441\u0435\u0440\u0432\u0435\u0440 \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0430\u0437\u0432\u0430\u043B \u0435\u0433\u043E. \u0418\u043C\u044F \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u0431\u0435\u0440\u0438 \u0438\u0437 \u043E\u0442\u0432\u0435\u0442\u0430 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u0430, \u0444\u0430\u0439\u043B .jar \u2014 \u043F\u043B\u0430\u0433\u0438\u043D.` : "",
+          session.mod ? `[\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442] \u041C\u043E\u0434 \u044D\u0442\u043E\u0433\u043E \u0440\u0430\u0437\u0433\u043E\u0432\u043E\u0440\u0430: \xAB${session.mod.name}\xBB, id=${session.mod.id}${session.mod.meta ? `, ${session.mod.meta}` : ""}. \u0423\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0443 \u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0434\u0435\u043B\u0430\u0439 \u0434\u043B\u044F \u043D\u0435\u0433\u043E. \u0414\u0440\u0443\u0433\u043E\u0439 \u043C\u043E\u0434 \u0431\u0435\u0440\u0438, \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0435\u0433\u043E \u043D\u0430\u0437\u0432\u0430\u043B.` : "",
+          serverRequest && !known ? "[\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442] \u0420\u0435\u0447\u044C \u043E \u0441\u0432\u043E\u0451\u043C \u0441\u0435\u0440\u0432\u0435\u0440\u0435, \u043D\u0435 \u043E\u0431 \u0438\u0433\u0440\u0435. \u0421\u043D\u0430\u0447\u0430\u043B\u0430 list_hosted_servers, \u043F\u043E\u0442\u043E\u043C start_hosted_server. launch_build \u043D\u0435 \u0432\u044B\u0437\u044B\u0432\u0430\u0439." : "",
+          serverRequest && known ? "launch_build \u043D\u0435 \u0432\u044B\u0437\u044B\u0432\u0430\u0439: \u044D\u0442\u043E \u0441\u0432\u043E\u0439 \u0441\u0435\u0440\u0432\u0435\u0440, \u043D\u0435 \u0438\u0433\u0440\u0430." : "",
+          `[\u0418\u043C\u044F] \u0421\u0435\u0439\u0447\u0430\u0441 \u0442\u044B ${pixiModelRow().family} ${pixiModelRow().tier}. \u0415\u0441\u043B\u0438 \u0441\u043F\u0440\u043E\u0441\u044F\u0442, \u043A\u0442\u043E \u0442\u044B \u0438\u043B\u0438 \u043A\u0430\u043A\u0430\u044F \u043C\u043E\u0434\u0435\u043B\u044C, \u043E\u0442\u0432\u0435\u0442\u044C \u0442\u043E\u043B\u044C\u043A\u043E \u044D\u0442\u0438\u043C \u0438\u043C\u0435\u043D\u0435\u043C. \u041D\u0435 \u043D\u0430\u0437\u044B\u0432\u0430\u0439 \u0434\u0440\u0443\u0433\u0443\u044E \u0432\u0435\u0440\u0441\u0438\u044E, \u0434\u0430\u0436\u0435 \u0435\u0441\u043B\u0438 \u043E\u043D\u0430 \u0435\u0441\u0442\u044C \u0432 \u0438\u0441\u0442\u043E\u0440\u0438\u0438.`,
+          "[\u0421\u0442\u0438\u043B\u044C] \u041F\u0438\u0448\u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \u043F\u043E-\u0440\u0443\u0441\u0441\u043A\u0438, \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u043C\u0438 \u0430\u0431\u0437\u0430\u0446\u0430\u043C\u0438. \u041D\u0435 \u043F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u044F\u0439 \u0438\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442\u044B \u0438 \u043D\u0435 \u0432\u0441\u0442\u0430\u0432\u043B\u044F\u0439 \u0441\u044B\u0440\u043E\u0439 \u0442\u0435\u043A\u0441\u0442 \u043E\u0448\u0438\u0431\u043E\u043A: \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0443\u0436\u0435 \u0432\u0438\u0434\u043D\u044B \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u043C \u0441\u043F\u0438\u0441\u043A\u043E\u043C.",
+          "[\u0424\u0430\u0439\u043B\u044B] \u041A\u043E\u043D\u0444\u0438\u0433 \u043F\u043B\u0430\u0433\u0438\u043D\u0430 \u0443\u0436\u0435 \u043B\u0435\u0436\u0438\u0442 \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435. \u041D\u0430\u0439\u0434\u0438 \u0435\u0433\u043E find_hosted_files, grep_hosted_files \u0438\u043B\u0438 scan_configs, \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0439 read_hosted_file \u0438 \u0437\u0430\u043C\u0435\u043D\u0438 \u0441\u0442\u0440\u043E\u043A\u0438 \u0447\u0435\u0440\u0435\u0437 edit_hosted_file. old \u2014 \u0434\u043E\u0441\u043B\u043E\u0432\u043D\u044B\u0439 \u043A\u0443\u0441\u043E\u043A \u0431\u0435\u0437 \u043D\u043E\u043C\u0435\u0440\u0430 \u0441\u0442\u0440\u043E\u043A\u0438. write_hosted_file \u0441\u043E\u0437\u0434\u0430\u0451\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u043E\u0432\u044B\u0439 \u0444\u0430\u0439\u043B \u0438 \u043D\u0435 \u043C\u0435\u043D\u044F\u0435\u0442 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0438\u0439. \u041F\u043E\u0441\u043B\u0435 \u043F\u0440\u0430\u0432\u043A\u0438 \u043A\u043E\u043D\u0444\u0438\u0433\u0430 \u043F\u043B\u0430\u0433\u0438\u043D\u0430 \u0432\u044B\u043F\u043E\u043B\u043D\u0438 \u0435\u0433\u043E \u043A\u043E\u043C\u0430\u043D\u0434\u0443 \u043F\u0435\u0440\u0435\u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438, \u0438\u043D\u0430\u0447\u0435 \u0432 \u0438\u0433\u0440\u0435 \u043E\u0441\u0442\u0430\u043D\u0435\u0442\u0441\u044F \u0441\u0442\u0430\u0440\u044B\u0439 \u0442\u0435\u043A\u0441\u0442.",
+          "[\u041F\u043E\u0438\u0441\u043A] \u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u0446\u0438\u044E \u0438 \u0444\u0430\u043A\u0442\u044B \u0432\u043D\u0435 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430 \u0431\u0435\u0440\u0438 web_search, \u0437\u0430\u0442\u0435\u043C fetch_url: url \u0438\u0437 results \u0438 query \u0441\u043E \u0441\u043B\u043E\u0432\u0430\u043C\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0438\u0449\u0435\u0448\u044C. \u0415\u0441\u043B\u0438 \u043E\u0442\u0432\u0435\u0442 \u043E\u0431\u0440\u0435\u0437\u0430\u043D \u0438 \u0435\u0441\u0442\u044C nextOffset, \u0432\u044B\u0437\u043E\u0432\u0438 fetch_url \u0441 \u0442\u0435\u043C \u0436\u0435 url \u0438 \u044D\u0442\u0438\u043C offset. \u041D\u0435 \u043E\u0441\u0442\u0430\u043D\u0430\u0432\u043B\u0438\u0432\u0430\u0439\u0441\u044F \u043D\u0430 \u043D\u0430\u0447\u0430\u043B\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B.",
+          shots.length && modelSeesImages() ? "[\u0418\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435] \u041A \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044E \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u043E \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435. \u0421\u043C\u043E\u0442\u0440\u0438 \u0435\u0433\u043E \u0438 \u043E\u0442\u0432\u0435\u0447\u0430\u0439 \u043F\u043E \u043D\u0435\u043C\u0443. \u041D\u0435 \u043F\u0438\u0448\u0438, \u0447\u0442\u043E \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u043B\u0441\u044F." : ""
+        ].filter(Boolean).join("\n");
+        const wireText = [prompt || (shots.length ? "\u041F\u043E\u0441\u043C\u043E\u0442\u0440\u0438 \u043D\u0430 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0438 \u043E\u0442\u0432\u0435\u0442\u044C \u043F\u043E \u043D\u0435\u043C\u0443." : ""), file ? `\u0424\u0430\u0439\u043B ${file.name}:
+${file.text}` : "", memory].filter(Boolean).join("\n\n");
+        session.messages.push({
+          role: "user",
+          text: shown,
+          images: shots.map((shot) => ({ name: shot.name, url: shot.url })),
+          steps: []
+        });
+        session.updated = Date.now();
+        compactAnnounced = false;
+        if (remote)
+          remoteBusy = true;
+        else
+          busy = true;
+        quietTurn = remote;
+        const gen = remote ? 0 : localTurn += 1;
+        if (!remote) {
+          stopSpeech();
+          fill();
+        }
+        try {
+          const reply = await runTurn(session, wireText, serverRequest, gen, shots.map((shot) => ({ mime: shot.mime, data: shot.data })));
+          if (!remote && !paintedLive)
+            streamOnce = true;
+          paintedLive = false;
+          save();
+          return reply;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "\u041E\u0448\u0438\u0431\u043A\u0430 \u0430\u0433\u0435\u043D\u0442\u0430";
+          session.messages.push({ role: "assistant", text: message, steps: [] });
+          return message;
+        } finally {
+          quietTurn = false;
+          if (remote)
+            remoteBusy = false;
+          else
+            busy = false;
+          save();
+          if (!remote)
+            fill();
+        }
+      }
+      function paintGate() {
+        const gate = document.getElementById("uag2-gate");
+        const apply = document.getElementById("uag2-gate-apply");
+        const status = document.getElementById("uag2-gate-status");
+        const track = document.getElementById("uag2-gate-track");
+        if (!gate)
+          return;
+        const closed = gateStatus !== "open";
+        gate.hidden = !closed;
+        document.querySelector(".uag2")?.classList.toggle("is-gated", closed);
+        if (apply)
+          apply.disabled = gateStatus === "pending";
+        if (!status)
+          return;
+        if (gateStatus === "pending") {
+          status.hidden = false;
+          status.textContent = "\u0412\u0430\u0448\u0430 \u0437\u0430\u044F\u0432\u043A\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430, \u043E\u0436\u0438\u0434\u0430\u0439\u0442\u0435 \u0440\u0435\u0448\u0435\u043D\u0438\u044F \u043F\u043E \u0437\u0430\u044F\u0432\u043A\u0435";
+        } else if (gateStatus === "rejected") {
+          status.hidden = false;
+          status.textContent = "\u0412\u0430\u0448\u0430 \u0437\u0430\u044F\u0432\u043A\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0430, \u0432\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u043F\u043E\u0434\u0430\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u043E";
+        } else {
+          status.hidden = true;
+          status.textContent = "";
+        }
+        if (gateStatus !== "open")
+          track?.classList.remove("is-form");
+        if (gateStatus === "pending")
+          setGateMood("heureux", "idle");
+        else if (gateStatus === "rejected")
+          setGateMood("triste", "idle");
+        else if (gateStatus === "none")
+          setGateMood("attentif", "idle");
+      }
+      var GATE_MOODS = ["attentif", "curieux", "heureux", "surpris", "fier"];
+      var gateMoodStep = 0;
+      var gateMoodTimer = 0;
+      function setGateMood(expr, mode) {
+        document.querySelectorAll(".uag2-gate__face").forEach((el) => {
+          el.dataset.color = "accent";
+          el.dataset.follow = "1";
+          el.dataset.expr = expr;
+          el.dataset.mode = mode;
+        });
+      }
+      function celebrateGate() {
+        setGateMood("heureux", "notify");
+        window.setTimeout(() => {
+          if (gateStatus === "pending")
+            setGateMood("heureux", "idle");
+        }, 2200);
+      }
+      function applyAccessStatus(status) {
+        if (!status || status.error)
+          return;
+        const reason = String(status.reason || "");
+        if (reason === "missing_auth" || reason === "auth_unavailable")
+          return;
+        if (status.access) {
+          gateStatus = "open";
+          const models = Array.isArray(status.models) && status.models.length ? status.models : ["pixi-2.0-lite"];
+          unlockedModels = new Set(models.map(String));
+          unlockedModels.add("pixi-2.0-lite");
+          accessReady = true;
+        } else if (reason === "access_denied" || status.application) {
+          const app = String(status.application?.status || "none");
+          gateStatus = app === "pending" ? "pending" : app === "rejected" ? "rejected" : "none";
+          unlockedModels = /* @__PURE__ */ new Set(["pixi-2.0-lite"]);
+          accessReady = true;
+        } else {
+          return;
+        }
+        paintGate();
+        syncModelButton();
+        const host = document.getElementById("uagent-root");
+        if (host)
+          (0, bloub_face_1.syncAgentFaces)(host);
+      }
+      async function refreshGate(preset) {
+        const epoch = ++gateEpoch;
+        const status = preset !== void 0 ? preset : await api?.aiStatus?.().catch(() => null);
+        if (epoch !== gateEpoch)
+          return;
+        applyAccessStatus(status ?? null);
+      }
+      function bindGate() {
+        document.getElementById("uag2-gate-terms")?.addEventListener("click", () => {
+          void api?.openExternal?.("https://uprojects.site/client/legal/terms");
+        });
+        document.getElementById("uag2-gate-apply")?.addEventListener("click", () => {
+          if (gateStatus === "pending")
+            return;
+          document.getElementById("uag2-gate-track")?.classList.add("is-form");
+          setGateMood("curieux", "idle");
+          window.setTimeout(() => document.getElementById("uag2-gate-text")?.focus(), 280);
+        });
+        document.getElementById("uag2-gate-back")?.addEventListener("click", () => {
+          document.getElementById("uag2-gate-track")?.classList.remove("is-form");
+          setGateMood("attentif", "idle");
+        });
+        document.getElementById("uag2-gate-submit")?.addEventListener("click", () => {
+          const field = document.getElementById("uag2-gate-text");
+          const reason = field?.value.trim() || "";
+          if (reason.length < 4) {
+            field?.focus();
+            setGateMood("confus", "idle");
+            return;
+          }
+          setGateMood("excite", "idle");
+          void api?.aiApply?.(reason).then((result) => {
+            if (result?.ok || result?.reason === "already_pending") {
+              gateStatus = "pending";
+              if (field)
+                field.value = "";
+              paintGate();
+              celebrateGate();
+              return;
+            }
+            setGateMood("triste", "idle");
+          });
+        });
+        window.clearInterval(gateMoodTimer);
+        gateMoodTimer = window.setInterval(() => {
+          const gate = document.getElementById("uag2-gate");
+          if (!gate || gate.hidden || gateStatus !== "none")
+            return;
+          if (document.getElementById("uag2-gate-track")?.classList.contains("is-form"))
+            return;
+          gateMoodStep = (gateMoodStep + 1) % GATE_MOODS.length;
+          setGateMood(GATE_MOODS[gateMoodStep], "idle");
+        }, 3200);
+      }
+      function mountUAgent() {
+        const root = document.getElementById("uagent-root");
+        if (!root || shellReady)
+          return;
+        shellReady = true;
+        load();
+        root.innerHTML = shellHtml();
+        bind(root);
+        bindGate();
+        window.addEventListener("uagent-access", (event) => {
+          const detail = event.detail;
+          void refreshGate(detail == null ? void 0 : detail);
+        });
+        syncModelButton();
+        fill();
+        void refreshGate();
+      }
+    }
+  });
+
   // dist/renderer/ai/confirm-ui.js
   var require_confirm_ui = __commonJS({
     "dist/renderer/ai/confirm-ui.js"(exports) {
@@ -73614,13 +79108,52 @@ buildId: ${id}` : ""));
         host.scrollToEnd();
         return wrap;
       }
-      function askAgentAboutMod(host, projectTitle, projectId) {
+      function askSubject(type) {
+        switch (String(type || "").toLowerCase()) {
+          case "resourcepack":
+          case "resource_pack":
+            return "\u044D\u0442\u043E\u0442 \u0440\u0435\u0441\u0443\u0440\u0441-\u043F\u0430\u043A";
+          case "shader":
+          case "shaderpack":
+            return "\u044D\u0442\u043E\u0442 \u0448\u0435\u0439\u0434\u0435\u0440";
+          case "modpack":
+            return "\u044D\u0442\u0443 \u0441\u0431\u043E\u0440\u043A\u0443";
+          case "datapack":
+            return "\u044D\u0442\u043E\u0442 \u0434\u0430\u0442\u0430\u043F\u0430\u043A";
+          case "plugin":
+            return "\u044D\u0442\u043E\u0442 \u043F\u043B\u0430\u0433\u0438\u043D";
+          default:
+            return "\u044D\u0442\u043E\u0442 \u043C\u043E\u0434";
+        }
+      }
+      function catalogProjectUrl(id, type, source, slug) {
+        const kind = String(type || "mod").toLowerCase();
+        const key = String(slug || id || "").replace(/^cf:/, "").trim();
+        const curse = source === "curseforge" || String(id || "").startsWith("cf:");
+        if (curse) {
+          const section = {
+            mod: "mc-mods",
+            resourcepack: "texture-packs",
+            resource_pack: "texture-packs",
+            shader: "shaders",
+            shaderpack: "shaders",
+            modpack: "modpacks",
+            datapack: "data-packs",
+            plugin: "bukkit-plugins"
+          };
+          return `https://www.curseforge.com/minecraft/${section[kind] || "mc-mods"}/${encodeURIComponent(key)}`;
+        }
+        const path = kind === "resource_pack" ? "resourcepack" : kind === "shaderpack" ? "shader" : kind || "mod";
+        return `https://modrinth.com/${path}/${encodeURIComponent(key)}`;
+      }
+      function askAgentAboutMod(host, projectTitle, projectId, opts) {
         const title = String(projectTitle || "").trim() || projectId;
         const id = String(projectId || "").trim();
-        if (!id)
+        const url = String(opts?.url || "").trim() || (id ? catalogProjectUrl(id, opts?.type || "mod", opts?.source || "", opts?.slug) : "");
+        if (!title && !url)
           return;
         host.switchToAiTab();
-        host.sendPrompt(`\u0420\u0430\u0441\u0441\u043A\u0430\u0436\u0438 \u043F\u0440\u043E \u043C\u043E\u0434 \xAB${title}\xBB (Modrinth id: ${id}): \u0441\u043E\u0432\u043C\u0435\u0441\u0442\u0438\u043C\u043E\u0441\u0442\u044C, \u0437\u0430\u0432\u0438\u0441\u0438\u043C\u043E\u0441\u0442\u0438 \u0438 \u0441\u0442\u043E\u0438\u0442 \u043B\u0438 \u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0432 \u0442\u0435\u043A\u0443\u0449\u0443\u044E \u0441\u0431\u043E\u0440\u043A\u0443.`);
+        host.sendPrompt(`\u0420\u0430\u0441\u0441\u043A\u0430\u0436\u0438 \u043C\u043D\u0435 \u043F\u0440\u043E ${askSubject(opts?.type || "mod")} \xAB${title}\xBB. ${url}`.trim());
       }
     }
   });
@@ -74887,6 +80420,7 @@ buildId: ${id}` : ""));
       var hostedServers_1 = require_hostedServers();
       var gamepad_1 = require_gamepad();
       var account_stage_1 = require_account_stage();
+      var mount_1 = require_mount();
       var confirm_ui_1 = require_confirm_ui();
       var build_match_1 = require_build_match();
       var integrations_ui_1 = require_integrations_ui();
@@ -74895,6 +80429,20 @@ buildId: ${id}` : ""));
       var turn_ui_1 = require_turn_ui();
       var api = window.electronAPI;
       (0, apiBase_1.setApiBase)(api?.apiBase);
+      function publishEdge(base) {
+        const prev = (0, apiBase_1.getApiBase)();
+        (0, apiBase_1.setApiBase)(base);
+        if ((0, apiBase_1.getApiBase)() === prev)
+          return;
+        window.dispatchEvent(new CustomEvent("uc-edge-changed"));
+      }
+      if (!api?.edgePinned) {
+        (0, apiBase_1.installApiTransport)((base) => {
+          publishEdge(base);
+          api?.adoptEdge?.(base);
+        });
+      }
+      api?.onEdgeChanged?.((base) => publishEdge(base));
       var ELY_AUTH_SERVER = "https://authserver.ely.by";
       function buildIconSrc(icon) {
         if (icon.startsWith("preset:"))
@@ -75136,17 +80684,20 @@ buildId: ${id}` : ""));
           refreshHomeDashboard();
         }
         if (target === "news") {
+          void loadNewsOfficialOnly(false).then(() => {
+            renderHomeNews();
+            if (presenceTab === "news" && document.getElementById("sf-official-news"))
+              renderNews();
+          });
           void (0, ui_1.warmMessengerSession)().finally(() => {
-            void loadNews(false);
+            if (presenceTab === "news")
+              void (0, social_feed_1.loadSocialFeed)(false);
           });
         }
         if (target === "ai") {
           ensureAiTab();
           void (0, ui_1.warmMessengerSession)().finally(() => {
-            void refreshAiAccessStatus().then(() => {
-              if (aiAccessOk === false)
-                showAiAccessDeniedModal();
-            });
+            void refreshAiAccessStatus();
           });
         }
         if (target === "messenger") {
@@ -76120,28 +81671,184 @@ buildId: ${id}` : ""));
       });
       var lastCrashLogs = [];
       var lastCrashBuild = null;
+      var lastCrashCode = null;
+      var preparedCrashReport = null;
+      var crashReportSent = false;
       function joinInstancePath(root, ...parts) {
         const sep = root.includes("/") && !root.includes("\\") ? "/" : "\\";
         return [root.replace(/[\\/]+$/, ""), ...parts].join(sep);
       }
-      async function showCrashModal(logs, build) {
+      function crashLogHint(log) {
+        const lines = log.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 8);
+        const score = (line) => {
+          const text = line.toLowerCase();
+          if (text.includes("caused by:"))
+            return 5;
+          if (/exception|error:|crash report|failed to/.test(text))
+            return 4;
+          if (text.includes("error"))
+            return 2;
+          return 0;
+        };
+        let best = "";
+        let bestScore = 0;
+        for (const line of lines.slice(-80)) {
+          const value = score(line);
+          if (value >= bestScore && value > 0) {
+            bestScore = value;
+            best = line;
+          }
+        }
+        return best.replace(/^\[[^\]]{1,48}\]\s*/, "").slice(0, 180);
+      }
+      function crashRamLabel(build) {
+        const max = Number(build?.memory?.max || 0);
+        const min = Number(build?.memory?.min || 0);
+        if (!max)
+          return "";
+        if (min && min !== max)
+          return `${min}\u2013${max} ${t("crash.mb")}`;
+        return `${max} ${t("crash.mb")}`;
+      }
+      function setCrashRow(id, text) {
+        const value = document.getElementById(id);
+        const label = document.getElementById(`${id}-label`);
+        const show = Boolean(text);
+        if (value) {
+          value.textContent = text || "\u2014";
+          value.hidden = !show;
+        }
+        if (label)
+          label.hidden = !show;
+      }
+      function crashCodeLabel(code) {
+        if (code == null || Number.isNaN(code))
+          return "\u2014";
+        if (code >= 0 && code < 256)
+          return String(code);
+        const hex = (code >>> 0).toString(16).toUpperCase().padStart(8, "0");
+        return `${code} \xB7 0x${hex}`;
+      }
+      function crashCauseKey(code, log) {
+        const known = code != null && !Number.isNaN(code);
+        const u = known ? code >>> 0 : null;
+        if (u === 3221225477)
+          return "crash.cause.access";
+        if (code === 139 || code === 11)
+          return "crash.cause.segfault";
+        if (u === 3221225725)
+          return "crash.cause.stack";
+        if (u === 3221226505)
+          return "crash.cause.buffer";
+        if (u === 3221225781)
+          return "crash.cause.dll";
+        if (u === 3221225794)
+          return "crash.cause.dllinit";
+        if (u === 3221226356)
+          return "crash.cause.heap";
+        if (code === 134 || code === 6)
+          return "crash.cause.abort";
+        if (code === 143 || code === 15 || code === 130)
+          return "crash.cause.term";
+        if (code === 137 || code === 9)
+          return "crash.cause.memory";
+        const text = log.toLowerCase();
+        if (/outofmemoryerror|java heap space|gc overhead limit|could not reserve enough space|insufficient memory/.test(text))
+          return "crash.cause.memory";
+        if (/unsupportedclassversionerror|more recent version of the java runtime/.test(text))
+          return "crash.cause.java";
+        if (/modresolutionexception|missing or unsupported mandatory|incompatible mods found|mixin apply failed|failed to apply mixin/.test(text))
+          return "crash.cause.mods";
+        if (/accessdeniedexception|access is denied/.test(text))
+          return "crash.cause.permission";
+        if (/pixel format not accelerated|no opengl|glfw error|failed to create the glfw/.test(text))
+          return "crash.cause.gpu";
+        if (code === 1)
+          return "crash.cause.exception";
+        if (code === -1 || code === 255)
+          return "crash.cause.killed";
+        if (!known)
+          return "crash.cause.generic";
+        return "crash.cause.unknown";
+      }
+      function setCrashText(id, text) {
+        const el = document.getElementById(id);
+        if (el)
+          el.textContent = text;
+      }
+      async function crashLogText(build, buffer) {
+        const live = buffer.join("\n").trim();
+        let file = "";
+        if (build?.id && api?.getCrashReport) {
+          try {
+            file = String(await api.getCrashReport(build.id) || "").trim();
+          } catch {
+            file = "";
+          }
+        }
+        return [file, live].filter(Boolean).join("\n\n---\n\n").slice(-12e3);
+      }
+      function prepareCrashReport(build, code, log, cause) {
+        const name = build?.name || t("crash.unknownBuild");
+        const version = [
+          build?.gameVersion,
+          [build?.loader, build?.loaderVersion].filter(Boolean).join(" ")
+        ].filter(Boolean).join(" \xB7 ") || "\u2014";
+        const codeLabel = crashCodeLabel(code);
+        const lines = [
+          t("crash.reportBuild", { name }),
+          t("crash.reportVersion", { version })
+        ];
+        if (build?.id)
+          lines.push(`id: ${build.id}`);
+        const ram = crashRamLabel(build);
+        const hint = crashLogHint(log);
+        lines.push(t("crash.reportCode", { code: codeLabel }), t("crash.reportCause", { cause }));
+        if (ram)
+          lines.push(t("crash.reportRam", { ram }));
+        if (hint)
+          lines.push(t("crash.reportHint", { hint }));
+        lines.push("", t("crash.reportLog"), "```", log.trim().slice(-7e3) || t("crash.logEmpty"), "```");
+        preparedCrashReport = {
+          title: t("crash.reportTitle", { name, code: codeLabel }).slice(0, 140),
+          body: lines.join("\n").slice(0, 12e3),
+          steps: t("crash.reportSteps", { name }),
+          expected: t("crash.reportExpected"),
+          actual: cause
+        };
+        crashReportSent = false;
+      }
+      async function showCrashModal(logs, build, code) {
         lastCrashLogs = Array.isArray(logs) ? logs.slice() : [];
         lastCrashBuild = build || runningBuild || lastCrashBuild;
-        const sub = document.getElementById("modal-crash-sub");
-        if (sub) {
-          sub.textContent = lastCrashBuild ? t("crash.subBuild", { name: lastCrashBuild.name }) : t("crash.sub");
+        lastCrashCode = code == null || Number.isNaN(Number(code)) ? null : Number(code);
+        const log = await crashLogText(lastCrashBuild, lastCrashLogs);
+        lastCrashLogs = log ? log.split("\n") : lastCrashLogs;
+        const codeLabel = crashCodeLabel(lastCrashCode);
+        const key = crashCauseKey(lastCrashCode, log);
+        const cause = key === "crash.cause.unknown" ? t(key, { code: codeLabel }) : t(key);
+        const version = [
+          lastCrashBuild?.gameVersion,
+          [lastCrashBuild?.loader, lastCrashBuild?.loaderVersion].filter(Boolean).join(" ")
+        ].filter(Boolean).join(" \xB7 ") || "\u2014";
+        setCrashText("modal-crash-title", lastCrashBuild?.name || t("crash.title"));
+        setCrashText("modal-crash-cause", cause);
+        setCrashText("modal-crash-build", lastCrashBuild?.name || "\u2014");
+        setCrashText("modal-crash-version", version);
+        setCrashText("modal-crash-code", codeLabel);
+        setCrashText("modal-crash-time", (/* @__PURE__ */ new Date()).toLocaleString());
+        setCrashRow("modal-crash-ram", crashRamLabel(lastCrashBuild));
+        setCrashRow("modal-crash-hint", crashLogHint(log));
+        prepareCrashReport(lastCrashBuild, lastCrashCode, log, cause);
+        setCrashText("modal-crash-note", t("crash.noteReady"));
+        const agentBtn = document.getElementById("modal-crash-agent");
+        if (agentBtn)
+          agentBtn.hidden = !isAiFeatureEnabled();
+        const sendBtn = document.getElementById("modal-crash-send");
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = t("crash.sendReport");
         }
-        const logWrap = document.getElementById("modal-crash-log-wrap");
-        const logPre = document.getElementById("modal-crash-log-preview");
-        const excerpt = lastCrashLogs.join("\n").trim().slice(-2400);
-        if (logPre) {
-          logPre.textContent = excerpt || t("crash.logEmpty");
-          requestAnimationFrame(() => {
-            logPre.scrollTop = logPre.scrollHeight;
-          });
-        }
-        if (logWrap)
-          logWrap.hidden = false;
         openModal("modal-crash");
       }
       async function openCrashLaunchLog() {
@@ -76177,74 +81884,81 @@ buildId: ${id}` : ""));
           closeModal("modal-crash");
       }
       async function openCrashWithAgent() {
+        if (!isAiFeatureEnabled())
+          return;
         const build = lastCrashBuild || runningBuild;
-        const logs = lastCrashLogs;
+        const excerpt = lastCrashLogs.join("\n").slice(-8e3);
+        const cause = document.getElementById("modal-crash-cause")?.textContent || "";
         closeModal("modal-crash");
         switchTab("ai");
-        ensureAiTab();
-        const session = createAiSession(true, {
-          buildId: build?.id || null,
-          title: t("crash.agentChatTitle")
-        });
-        renderAiSessionList();
-        renderAiConversation();
-        updateAiBuildChip(session);
-        const host = getAiUiHost();
-        const excerpt = logs.join("\n").slice(-8e3);
-        (0, integrations_ui_1.appendAiCrashQuote)(host, {
-          buildName: build?.name || build?.id || "build",
-          logExcerpt: excerpt || "(\u043B\u043E\u0433 \u043F\u0443\u0441\u0442 \u2014 \u0432\u044B\u0437\u043E\u0432\u0438 get_crash_report / get_latest_log)"
-        });
-        if (build?.id) {
-          (0, integrations_ui_1.showAiCrashBanner)(host, {
-            buildId: build.id,
-            buildName: build.name || build.id
-          });
-        }
         const prompt = [
           t("crash.agentPrompt", { name: build?.name || build?.id || "build" }),
+          lastCrashCode != null ? t("crash.reportCode", { code: crashCodeLabel(lastCrashCode) }) : "",
+          cause ? t("crash.reportCause", { cause }) : "",
+          build?.id ? `buildId: ${build.id}` : "",
+          build?.gameVersion ? `gameVersion: ${build.gameVersion}` : "",
+          build?.loader ? `loader: ${build.loader}` : "",
           "",
           "```",
-          excerpt || "(\u043B\u043E\u0433 \u043F\u0443\u0441\u0442 \u2014 \u0432\u044B\u0437\u043E\u0432\u0438 get_crash_report / get_latest_log)",
+          excerpt || t("crash.logEmpty"),
           "```"
-        ].join("\n");
-        await sendAiMessage(prompt);
+        ].filter((line) => line !== "").join("\n");
+        await (0, mount_1.askUAgent)(prompt);
+      }
+      async function crashReportTags() {
+        const names = ["\u0421\u0431\u043E\u0440\u043A\u0438", "\u041A\u0440\u0430\u0448"];
+        const wanted = new Set(names.map((name) => name.toLowerCase()));
+        const res = await api?.bugsListTags?.().catch(() => null);
+        const tags = res?.ok && Array.isArray(res.tags) ? res.tags : [];
+        const ids = tags.filter((tag) => wanted.has(String(tag.name || "").trim().toLowerCase())).map((tag) => tag.id).filter(Boolean);
+        return ids.length ? ids : names;
+      }
+      async function sendCrashReport() {
+        const report = preparedCrashReport;
+        const button = document.getElementById("modal-crash-send");
+        if (!report || !button || crashReportSent)
+          return;
+        const ready = await ensureLauncherAccount();
+        if (!ready) {
+          setCrashText("modal-crash-note", t("crash.noteNeedAccount"));
+          return;
+        }
+        button.disabled = true;
+        button.textContent = t("crash.sending");
+        const tags = await crashReportTags();
+        const result = await api?.bugsCreate?.({
+          title: report.title,
+          body: report.body,
+          kind: "bug",
+          steps: report.steps,
+          expected: report.expected,
+          actual: report.actual,
+          tags
+        });
+        if (!result?.ok) {
+          button.disabled = false;
+          button.textContent = t("crash.sendReport");
+          setCrashText("modal-crash-note", t("crash.noteFail"));
+          return;
+        }
+        crashReportSent = true;
+        button.textContent = t("crash.sent");
+        bugReportUrl = result.id ? `https://uprojects.site/client/bugs/${result.id}` : "https://uprojects.site/client/bugs";
+        setCrashText("modal-crash-note", t("crash.noteSent"));
       }
       document.getElementById("modal-crash-close")?.addEventListener("click", () => closeModal("modal-crash"));
       document.getElementById("modal-crash")?.addEventListener("click", (e) => {
         if (e.target === e.currentTarget)
           closeModal("modal-crash");
       });
-      document.getElementById("modal-crash-folder")?.addEventListener("click", async () => {
-        const build = lastCrashBuild || runningBuild;
-        if (!build?.id) {
-          updateStatus(t("crash.noBuild"));
-          return;
-        }
-        if (!api?.getInstancePath || !api?.openPath) {
-          updateStatus(t("crash.openFailed"));
-          return;
-        }
-        try {
-          const instanceDir = await api.getInstancePath(build.id);
-          if (!instanceDir) {
-            updateStatus(t("crash.openFailed"));
-            return;
-          }
-          const err = await api.openPath(instanceDir);
-          if (err)
-            updateStatus(t("crash.openFailed"));
-          else
-            closeModal("modal-crash");
-        } catch {
-          updateStatus(t("crash.openFailed"));
-        }
-      });
       document.getElementById("modal-crash-log")?.addEventListener("click", () => {
         void openCrashLaunchLog();
       });
       document.getElementById("modal-crash-agent")?.addEventListener("click", () => {
         void openCrashWithAgent();
+      });
+      document.getElementById("modal-crash-send")?.addEventListener("click", () => {
+        void sendCrashReport();
       });
       function formatSpeedGlobal(bytesPerSec) {
         if (bytesPerSec < 1024)
@@ -76767,403 +82481,473 @@ buildId: ${id}` : ""));
           return;
         closeSplash();
       }
-      async function init() {
-        await setLang(localStorage.getItem("Undefined Client-language") || "ru");
-        initCustomCarets();
-        applyAiTabVisibility();
-        (0, ui_1.initMessenger)({
-          t,
-          escapeHtml,
-          getAccount: () => currentAccount,
-          openModal,
-          closeModal,
-          openSettingsTab: (tab) => {
-            openModal("modal-settings");
-            queueMicrotask(() => {
-              document.querySelector(`[data-settings-tab="${tab}"]`)?.click();
-              if (tab === "updates")
-                void checkForUpdatesUI();
-            });
-          },
-          renderMarkdown: (md) => sanitizeHtml(markedParse(md || "")),
-          updateStatus,
-          showToast: showAppToast,
-          openOfficialNews: (id) => void openModalNews(id),
-          getLauncherStats: () => {
-            const played = savedBuilds.map((b2) => ({ build: b2, time: b2.playtime || 0 })).filter((x2) => x2.time > 0).sort((a, b2) => b2.time - a.time);
-            const fav = played[0]?.build || null;
-            const last = getLastPlayedBuild();
-            const srv = savedServers.length ? savedServers[savedServers.length - 1] : null;
-            return {
-              favoriteBuild: fav?.name || null,
-              // Секунды наигранного → «вес» для отображения
-              favoriteBuildCount: fav ? Math.max(1, Math.round((played[0].time || 0) / 60)) : null,
-              lastBuild: last?.name || null,
-              lastBuildMeta: last ? [last.gameVersion, last.loader].filter(Boolean).join(" \xB7 ") : null,
-              lastServer: srv ? srv.name || srv.ip : null,
-              lastServerMeta: srv?.version || (srv ? srv.ip : null)
-            };
-          },
-          resolveBuildIcon: (name) => {
-            if (!name)
-              return null;
-            const build = savedBuilds.find((b2) => b2.name === name);
-            if (!build)
-              return DEFAULT_BUILD_ICON_SRC;
-            return build.icon ? buildIconSrc(build.icon) : DEFAULT_BUILD_ICON_SRC;
-          },
-          resolveServerIcon: (name) => {
-            if (!name)
-              return null;
-            const q2 = name.toLowerCase();
-            const saved = savedServers.find((s) => String(s.name || "").toLowerCase() === q2 || String(s.ip || "").toLowerCase() === q2 || savedServerAddr(s).toLowerCase() === q2);
-            if (saved) {
-              const addr = savedServerAddr(saved);
-              const fav = srvTileIcon(addr, srvStatusCache[addr] || {});
-              if (fav)
-                return fav;
-            }
-            const cat = serverCatalog.find((c) => String(c.name || "").toLowerCase() === q2 || String(srvAddr(c) || "").toLowerCase() === q2);
-            if (cat) {
-              const fav = srvTileIcon(srvAddr(cat), cat.status || srvStatusCache[srvAddr(cat)] || {});
-              if (fav)
-                return fav;
-            }
-            return "../../assets/icons/serverIcon.png";
-          },
-          listLocalBuilds: () => savedBuilds.map((b2) => ({
-            id: b2.id,
-            name: b2.name,
-            meta: [b2.gameVersion, b2.loader, b2.loaderVersion].filter(Boolean).join(" \xB7 ")
-          })),
-          openInstanceShare: (shareId) => {
-            void openShareImportModal(String(shareId || ""));
-          },
-          createInstanceShare: async (buildId) => {
-            const authorName = currentAccount?.username && currentAccount.username !== t("common.loading") ? currentAccount.username : "Undefined Client";
-            const result = await api?.createInstanceShare?.(buildId, { authorName });
-            if (!result?.ok)
-              return { ok: false, error: String(result?.error || "error") };
-            return { ok: true, id: result.id, url: result.url };
-          },
-          focusBuildByName: (name) => {
-            const build = savedBuilds.find((b2) => b2.name === name);
-            if (!build) {
-              updateStatus(t("msgr.groupBuildOpenFailed"));
-              return;
-            }
-            switchTab("builds");
-            const safeId = build.id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-            const card = document.querySelector(`.build-card[data-build-id="${safeId}"]`);
-            card?.scrollIntoView({ behavior: "smooth", block: "center" });
-            card?.classList.add("is-highlight");
-            window.setTimeout(() => card?.classList.remove("is-highlight"), 1600);
-          },
-          openModProject: (projectId) => {
-            void openModalDetails(String(projectId || ""));
-          },
-          openCatalogServer: (address) => {
-            void (async () => {
-              if (!srvLoaded)
-                await loadServerCatalog();
-              openServerInfo(String(address || ""));
-            })();
-          },
-          ensureServerCatalog: async () => {
-            if (!srvLoaded)
-              await loadServerCatalog();
-          },
-          listCatalogServers: () => serverCatalog.slice(0, 80).map((entry) => ({
-            name: entry.name,
-            address: srvAddr(entry),
-            icon: entry.icon ? (0, apiBase_1.catalogImageUrl)(entry.icon) : "",
-            meta: [srvAddrText(entry), entry.versions?.[0] || ""].filter(Boolean).join(" \xB7 ")
-          })),
-          lookupCatalogServer: (address) => {
-            const key = String(address || "").toLowerCase();
-            const entry = serverCatalog.find((row) => srvAddr(row) === key || srvAddrText(row).toLowerCase() === key);
-            if (!entry)
-              return null;
-            return {
-              name: entry.name,
-              icon: entry.icon ? (0, apiBase_1.catalogImageUrl)(entry.icon) : "",
-              meta: [srvAddrText(entry), entry.versions?.[0] || "", entry.players != null ? String(entry.players) : ""].filter(Boolean).join(" \xB7 ")
-            };
-          },
-          getRunningBuild: () => {
-            if (!runningBuild)
-              return null;
-            return {
-              id: runningBuild.id,
-              name: runningBuild.name,
-              gameVersion: runningBuild.gameVersion,
-              loader: runningBuild.loader
-            };
-          },
-          launchJoinServer: async (server, hint) => {
-            if (hint?.buildName) {
-              const byName = savedBuilds.find((b2) => b2.name === hint.buildName);
-              if (byName) {
-                await launchBuild(byName, {
-                  ip: server.ip,
-                  port: server.port,
-                  name: server.name
-                });
-                return;
-              }
-            }
-            beginServerLaunch(server.ip, server.port, server.name || server.ip);
-          },
-          api: api || {},
-          refreshAccount: async () => {
-            if (currentAccount?.uuid)
-              await refreshAccountInBackground(currentAccount);
-          }
-        });
-        initAiAssistant();
-        (0, social_feed_1.initSocialFeed)({
-          t,
-          escapeHtml,
-          renderMarkdown: (md) => renderSocialMarkdown(md || ""),
-          showToast: showAppToast,
-          openModal,
-          closeModal,
-          getAccount: () => currentAccount,
-          getSkinData: (uuid) => api?.getSkinData?.(uuid) ?? Promise.resolve(null),
-          getElyWornSkin: (nickname, force) => api?.getElyWornSkin?.(nickname, force) ?? Promise.resolve(null),
-          resolveAvatarUrl: ({ skinUrl, uuid, username, provider }) => {
-            const skin = String(skinUrl || "").trim();
-            const prov = String(provider || "").toLowerCase();
-            if (prov === "msa" || prov === "ely" || prov === "yggdrasil" || /skinsystem\.ely\.by|ely\.by\/storage|textures\.minecraft\.net/i.test(skin)) {
-              return "";
-            }
-            const id = String(uuid || "").replace(/-/g, "").toLowerCase();
-            if (id.length >= 32) {
-              const direct = `https://mc-heads.net/avatar/${id}/64`;
-              return (0, apiBase_1.skinImageUrl)(direct) || direct;
-            }
-            const name = String(username || "").trim();
-            if (name) {
-              const direct = `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`;
-              return (0, apiBase_1.skinImageUrl)(direct) || direct;
-            }
-            if (skin && !/textures\.minecraft\.net/i.test(skin)) {
-              return (0, apiBase_1.skinImageUrl)(skin) || skin;
-            }
-            return "";
-          },
-          resolveNewsCoverUrl: (url) => resolveNewsAssetUrl(url),
-          messengerRequest: (payload) => api?.messengerRequest?.(payload) || Promise.resolve({ ok: false, error: "unavailable" }),
-          listNewsOfficial: async () => {
-            await loadNewsOfficialOnly();
-            return newsPosts.map((p) => ({
-              id: String(p.id),
-              title: String(p.title || ""),
-              summary: String(p.summary || p.excerpt || ""),
-              content: String(p.content || ""),
-              cover: resolveNewsAssetUrl(String(p.cover || p.image || "")),
-              media: Array.isArray(p.media) ? p.media : [],
-              date: String(p.publishedAt || p.date || ""),
-              views: Number(p.views || 0)
-            }));
-          },
-          noteNewsView: async (id) => {
-            const views = await noteOfficialNewsView(id);
-            return views;
-          },
-          openOfficialNews: (id) => {
-            void openModalNews(id);
-          },
-          listConversationsForRepost: async () => {
-            const res = await api?.messengerRequest?.({ path: "/conversations" });
-            const list = res?.ok ? res.data?.conversations || res.data || [] : [];
-            return (Array.isArray(list) ? list : []).map((c) => ({
-              id: String(c.id),
-              title: String(c.title || c.peer?.username || c.name || "\u0427\u0430\u0442")
-            }));
-          },
-          confirm: (message) => confirmAction(message),
-          openUserProfile: async (username, userId) => {
-            if (userId) {
-              await (0, ui_1.openProfileByUserId)(userId);
-              return;
-            }
-            await (0, ui_1.openProfileByUsername)(username);
-          },
-          loadOfficialNews: async (force) => {
-            await loadNewsOfficialOnly(Boolean(force));
-          },
-          renderOfficialNews: (root) => {
-            renderOfficialNewsInto(root);
-          }
-        });
-        initStartedAt = performance.now();
-        setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
-        const videoEl = document.getElementById("home-video-bg");
-        if (videoEl) {
-          let updateGlow = function() {
-            const source = videoEl.dataset.wallKind === "image" ? document.getElementById("home-image-bg") : videoEl;
-            if (!glowCtx || !source || !wallpaperRunning)
-              return;
-            if (source instanceof HTMLVideoElement && source.readyState < 2)
-              return;
-            if (source instanceof HTMLImageElement && !source.complete)
-              return;
-            try {
-              glowCtx.drawImage(source, 0, 0, 8, 4);
-            } catch {
-              return;
-            }
-            const d2 = glowCtx.getImageData(0, 0, 8, 4).data;
-            let r = 0, g2 = 0, b2 = 0, c = 0;
-            for (let i = 0; i < d2.length; i += 4) {
-              const br = (d2[i] + d2[i + 1] + d2[i + 2]) / 3;
-              if (br > 40) {
-                r += d2[i] * d2[i];
-                g2 += d2[i + 1] * d2[i + 1];
-                b2 += d2[i + 2] * d2[i + 2];
-                c++;
-              }
-            }
-            if (c > 0 && banner) {
-              banner.style.filter = `drop-shadow(0 0 60px rgba(${Math.sqrt(r / c) | 0},${Math.sqrt(g2 / c) | 0},${Math.sqrt(b2 / c) | 0},0.2))`;
-            }
-          }, startWallpaper = function() {
-            if (wallpaperRunning)
-              return;
-            wallpaperRunning = true;
-            homeWallPlaying = true;
-            if (videoEl.dataset.wallKind !== "image")
-              void videoEl.play().catch(() => {
-              });
-            updateGlow();
-            glowTimer = setInterval(updateGlow, 4e3);
-          }, stopWallpaper = function() {
-            if (!wallpaperRunning)
-              return;
-            wallpaperRunning = false;
-            homeWallPlaying = false;
-            videoEl.pause();
-            if (glowTimer) {
-              clearInterval(glowTimer);
-              glowTimer = null;
-            }
-            if (banner)
-              banner.style.filter = "";
-          };
-          videoEl.muted = true;
-          videoEl.loop = true;
-          videoEl.playsInline = true;
-          if (videoEl.dataset.wallKind !== "image")
-            videoEl.pause();
-          const glowCanvas = document.createElement("canvas");
-          glowCanvas.width = 8;
-          glowCanvas.height = 4;
-          const glowCtx = glowCanvas.getContext("2d");
-          const banner = document.getElementById("quick-banner");
-          let glowTimer = null;
-          let wallpaperRunning = false;
-          wallpaperStart = startWallpaper;
-          wallpaperStop = stopWallpaper;
-          if (presenceTab === "home" && !document.hidden)
-            startWallpaper();
-        }
-        if (api?.onLaunchProgress) {
-          let pushCrashLog = function(line) {
-            crashLogs.push(line);
-            if (crashLogs.length > 500)
-              crashLogs.shift();
-          };
-          let crashLogs = [];
-          api.onLaunchProgress((data) => {
-            syncTaskFromLaunch(data);
-            const msg = (d2) => d2.key ? t(d2.key, d2.params) : d2.message || "";
-            switch (data.kind) {
-              case "info":
-              case "debug":
-                pushCrashLog(msg(data));
-                break;
-              case "launching":
-                crashLogs = [];
-                if (data?.adopted && data.buildId) {
-                  applyAdoptedRunningGame({
-                    buildId: String(data.buildId),
-                    name: data.name ? String(data.name) : void 0,
-                    gameVersion: data.gameVersion ? String(data.gameVersion) : void 0,
-                    loader: data.loader ? String(data.loader) : void 0,
-                    startedAt: data.startedAt != null ? Number(data.startedAt) : void 0
-                  });
-                } else if (runningBuild) {
-                  runningBuildStart = Date.now();
-                  startRunningTimer();
-                  updateStatus(t("status.playing", { name: runningBuild.name }));
-                  updateBanner();
-                  updateSidebarCards();
-                  void (0, ui_1.notifyMessengerGameRunning)();
-                }
-                break;
-              case "log":
-                pushCrashLog(msg(data));
-                break;
-              case "close":
-                {
-                  const crashedBuild = runningBuild;
-                  stopRunningTimer();
-                  (0, ui_1.notifyMessengerGameStopped)();
-                  updateBanner();
-                  if (data.code && data.code !== 0) {
-                    void showCrashModal(crashLogs, crashedBuild);
-                  }
-                }
-                break;
-              case "crash":
-                {
-                  const crashedBuild = runningBuild;
-                  stopRunningTimer();
-                  (0, ui_1.notifyMessengerGameStopped)();
-                  updateBanner();
-                  void showCrashModal(crashLogs, crashedBuild);
-                }
-                break;
-              case "error":
-                updateStatus(msg(data));
-                break;
-            }
-          });
-        }
-        if (api?.onLauncherLog) {
-          api.onLauncherLog((data) => console.log("[Launcher]", data));
-        }
-        if (api?.loadAccounts) {
-          const saved = await api.loadAccounts();
-          if (saved.length > 0) {
-            const activeUuid = api.getActiveAccount ? await api.getActiveAccount() : null;
-            const preferred = activeUuid && saved.find((a) => a.uuid === activeUuid) || saved[saved.length - 1];
-            applyAccount(preferred);
-            if (preferred.uuid) {
-              try {
-                await api.setActiveAccount?.(preferred.uuid);
-              } catch {
-              }
-            }
-            if (preferred.meta?.type === "msa" || preferred.meta?.type === "yggdrasil") {
-              accountRefreshPromise = refreshAccountInBackground(preferred);
-              void (0, ui_1.warmMessengerSession)(true).finally(() => {
-                void refreshAiAccessStatus();
-                startAgentTelegramBridge();
-                if (presenceTab === "news")
-                  void (0, social_feed_1.loadSocialFeed)(true);
-              });
-            } else {
-              void refreshAiAccessStatus();
-            }
-          } else {
-            showNoAccountState();
-            void refreshAiAccessStatus();
-          }
-        } else {
+      async function restoreStartupAccount() {
+        if (!api?.loadAccounts) {
           showNoAccountState();
           void refreshAiAccessStatus();
+          return;
+        }
+        const saved = await api.loadAccounts();
+        if (!Array.isArray(saved) || saved.length === 0) {
+          showNoAccountState();
+          void refreshAiAccessStatus();
+          return;
+        }
+        let activeUuid = null;
+        try {
+          activeUuid = api.getActiveAccount ? await api.getActiveAccount() : null;
+        } catch (err) {
+          console.error("[launcher] \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 \u0430\u043A\u043A\u0430\u0443\u043D\u0442", err);
+        }
+        const preferred = activeUuid && saved.find((a) => a.uuid === activeUuid) || saved[saved.length - 1];
+        applyAccount(preferred);
+        void renderSavedAccounts();
+        if (preferred.uuid) {
+          try {
+            await api.setActiveAccount?.(preferred.uuid);
+          } catch {
+          }
+        }
+        if (preferred.meta?.type === "msa" || preferred.meta?.type === "yggdrasil") {
+          accountRefreshPromise = refreshAccountInBackground(preferred);
+          void (0, ui_1.warmMessengerSession)(true).finally(() => {
+            void refreshAiAccessStatus();
+            startAgentTelegramBridge();
+            if (presenceTab === "news")
+              void (0, social_feed_1.loadSocialFeed)(true);
+          });
+        } else {
+          void refreshAiAccessStatus();
+        }
+      }
+      function applyAboutInfo() {
+        if (!api?.getPlatformInfo)
+          return;
+        const info = api.getPlatformInfo();
+        if (info.platform === "linux")
+          document.body.classList.add("platform-linux");
+        if (info.platform === "win32")
+          document.body.classList.add("platform-win32");
+        const aboutPlat = document.getElementById("about-platform");
+        if (aboutPlat)
+          aboutPlat.textContent = info.platform || "\u2014";
+        const nodeVer = document.getElementById("about-node");
+        if (nodeVer)
+          nodeVer.textContent = info.nodeVersion || "--";
+        const aboutVer = document.getElementById("about-version");
+        if (aboutVer && api?.getAppVersion) {
+          api.getAppVersion().then((ver) => {
+            appVersion = ver;
+            aboutVer.textContent = `${t("about.version")} ${ver}`;
+          }).catch(() => {
+          });
+        }
+      }
+      async function init() {
+        await setLang(localStorage.getItem("Undefined Client-language") || "ru");
+        try {
+          await loadBuilds();
+          await loadServers();
+        } catch (err) {
+          console.error("[launcher] \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0430", err);
+        }
+        try {
+          loadTheme();
+        } catch (err) {
+          console.error("[launcher] \u0442\u0435\u043C\u0430", err);
+        }
+        try {
+          await restoreStartupAccount();
+        } catch (err) {
+          console.error("[launcher] \u0430\u043A\u043A\u0430\u0443\u043D\u0442", err);
+        }
+        try {
+          applyAboutInfo();
+        } catch (err) {
+          console.error("[launcher] \u043E\u043A\u043D\u043E", err);
+        }
+        try {
+          initCustomCarets();
+          applyAiTabVisibility();
+          (0, ui_1.initMessenger)({
+            t,
+            escapeHtml,
+            getAccount: () => currentAccount,
+            openModal,
+            closeModal,
+            openSettingsTab: (tab) => {
+              openModal("modal-settings");
+              queueMicrotask(() => {
+                document.querySelector(`[data-settings-tab="${tab}"]`)?.click();
+                if (tab === "updates")
+                  void checkForUpdatesUI();
+              });
+            },
+            renderMarkdown: (md) => sanitizeHtml(markedParse(md || "")),
+            updateStatus,
+            showToast: showAppToast,
+            openOfficialNews: (id) => void openModalNews(id),
+            getLauncherStats: () => {
+              const played = savedBuilds.map((b2) => ({ build: b2, time: b2.playtime || 0 })).filter((x2) => x2.time > 0).sort((a, b2) => b2.time - a.time);
+              const fav = played[0]?.build || null;
+              const last = getLastPlayedBuild();
+              const srv = savedServers.length ? savedServers[savedServers.length - 1] : null;
+              return {
+                favoriteBuild: fav?.name || null,
+                // Секунды наигранного → «вес» для отображения
+                favoriteBuildCount: fav ? Math.max(1, Math.round((played[0].time || 0) / 60)) : null,
+                lastBuild: last?.name || null,
+                lastBuildMeta: last ? [last.gameVersion, last.loader].filter(Boolean).join(" \xB7 ") : null,
+                lastServer: srv ? srv.name || srv.ip : null,
+                lastServerMeta: srv?.version || (srv ? srv.ip : null)
+              };
+            },
+            resolveBuildIcon: (name) => {
+              if (!name)
+                return null;
+              const build = savedBuilds.find((b2) => b2.name === name);
+              if (!build)
+                return DEFAULT_BUILD_ICON_SRC;
+              return build.icon ? buildIconSrc(build.icon) : DEFAULT_BUILD_ICON_SRC;
+            },
+            resolveServerIcon: (name) => {
+              if (!name)
+                return null;
+              const q2 = name.toLowerCase();
+              const saved = savedServers.find((s) => String(s.name || "").toLowerCase() === q2 || String(s.ip || "").toLowerCase() === q2 || savedServerAddr(s).toLowerCase() === q2);
+              if (saved) {
+                const addr = savedServerAddr(saved);
+                const fav = srvTileIcon(addr, srvStatusCache[addr] || {});
+                if (fav)
+                  return fav;
+              }
+              const cat = serverCatalog.find((c) => String(c.name || "").toLowerCase() === q2 || String(srvAddr(c) || "").toLowerCase() === q2);
+              if (cat) {
+                const fav = srvTileIcon(srvAddr(cat), cat.status || srvStatusCache[srvAddr(cat)] || {});
+                if (fav)
+                  return fav;
+              }
+              return "../../assets/icons/serverIcon.png";
+            },
+            listLocalBuilds: () => savedBuilds.map((b2) => ({
+              id: b2.id,
+              name: b2.name,
+              meta: [b2.gameVersion, b2.loader, b2.loaderVersion].filter(Boolean).join(" \xB7 ")
+            })),
+            openInstanceShare: (shareId) => {
+              void openShareImportModal(String(shareId || ""));
+            },
+            createInstanceShare: async (buildId) => {
+              const authorName = currentAccount?.username && currentAccount.username !== t("common.loading") ? currentAccount.username : "Undefined Client";
+              const result = await api?.createInstanceShare?.(buildId, { authorName });
+              if (!result?.ok)
+                return { ok: false, error: String(result?.error || "error") };
+              return { ok: true, id: result.id, url: result.url };
+            },
+            focusBuildByName: (name) => {
+              const build = savedBuilds.find((b2) => b2.name === name);
+              if (!build) {
+                updateStatus(t("msgr.groupBuildOpenFailed"));
+                return;
+              }
+              switchTab("builds");
+              const safeId = build.id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+              const card = document.querySelector(`.build-card[data-build-id="${safeId}"]`);
+              card?.scrollIntoView({ behavior: "smooth", block: "center" });
+              card?.classList.add("is-highlight");
+              window.setTimeout(() => card?.classList.remove("is-highlight"), 1600);
+            },
+            openModProject: (projectId) => {
+              void openModalDetails(String(projectId || ""));
+            },
+            openCatalogServer: (address) => {
+              void (async () => {
+                if (!srvLoaded)
+                  await loadServerCatalog();
+                openServerInfo(String(address || ""));
+              })();
+            },
+            ensureServerCatalog: async () => {
+              if (!srvLoaded)
+                await loadServerCatalog();
+            },
+            listCatalogServers: () => serverCatalog.slice(0, 80).map((entry) => ({
+              name: entry.name,
+              address: srvAddr(entry),
+              icon: entry.icon ? (0, apiBase_1.catalogImageUrl)(entry.icon) : "",
+              meta: [srvAddrText(entry), entry.versions?.[0] || ""].filter(Boolean).join(" \xB7 ")
+            })),
+            lookupCatalogServer: (address) => {
+              const key = String(address || "").toLowerCase();
+              const entry = serverCatalog.find((row) => srvAddr(row) === key || srvAddrText(row).toLowerCase() === key);
+              if (!entry)
+                return null;
+              return {
+                name: entry.name,
+                icon: entry.icon ? (0, apiBase_1.catalogImageUrl)(entry.icon) : "",
+                meta: [srvAddrText(entry), entry.versions?.[0] || "", entry.players != null ? String(entry.players) : ""].filter(Boolean).join(" \xB7 ")
+              };
+            },
+            getRunningBuild: () => {
+              if (!runningBuild)
+                return null;
+              return {
+                id: runningBuild.id,
+                name: runningBuild.name,
+                gameVersion: runningBuild.gameVersion,
+                loader: runningBuild.loader
+              };
+            },
+            launchJoinServer: async (server, hint) => {
+              if (hint?.buildName) {
+                const byName = savedBuilds.find((b2) => b2.name === hint.buildName);
+                if (byName) {
+                  await launchBuild(byName, {
+                    ip: server.ip,
+                    port: server.port,
+                    name: server.name
+                  });
+                  return;
+                }
+              }
+              beginServerLaunch(server.ip, server.port, server.name || server.ip);
+            },
+            api: api || {},
+            refreshAccount: async () => {
+              if (currentAccount?.uuid)
+                await refreshAccountInBackground(currentAccount);
+            }
+          });
+        } catch (err) {
+          console.error("[launcher] \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441", err);
+        }
+        try {
+          initAiAssistant();
+        } catch (err) {
+          console.error("[launcher] \u0430\u0433\u0435\u043D\u0442", err);
+        }
+        try {
+          (0, social_feed_1.initSocialFeed)({
+            t,
+            escapeHtml,
+            renderMarkdown: (md) => renderSocialMarkdown(md || ""),
+            showToast: showAppToast,
+            openModal,
+            closeModal,
+            getAccount: () => currentAccount,
+            getSkinData: (uuid) => api?.getSkinData?.(uuid) ?? Promise.resolve(null),
+            getElyWornSkin: (nickname, force) => api?.getElyWornSkin?.(nickname, force) ?? Promise.resolve(null),
+            resolveAvatarUrl: ({ skinUrl, uuid, username, provider }) => {
+              const skin = String(skinUrl || "").trim();
+              const prov = String(provider || "").toLowerCase();
+              if (prov === "msa" || prov === "ely" || prov === "yggdrasil" || /skinsystem\.ely\.by|ely\.by\/storage|textures\.minecraft\.net/i.test(skin)) {
+                return "";
+              }
+              const id = String(uuid || "").replace(/-/g, "").toLowerCase();
+              if (id.length >= 32) {
+                const direct = `https://mc-heads.net/avatar/${id}/64`;
+                return (0, apiBase_1.skinImageUrl)(direct) || direct;
+              }
+              const name = String(username || "").trim();
+              if (name) {
+                const direct = `https://mc-heads.net/avatar/${encodeURIComponent(name)}/64`;
+                return (0, apiBase_1.skinImageUrl)(direct) || direct;
+              }
+              if (skin && !/textures\.minecraft\.net/i.test(skin)) {
+                return (0, apiBase_1.skinImageUrl)(skin) || skin;
+              }
+              return "";
+            },
+            resolveNewsCoverUrl: (url) => resolveNewsAssetUrl(url),
+            messengerRequest: (payload) => api?.messengerRequest?.(payload) || Promise.resolve({ ok: false, error: "unavailable" }),
+            listNewsOfficial: async () => {
+              await loadNewsOfficialOnly();
+              return newsPosts.map((p) => ({
+                id: String(p.id),
+                title: String(p.title || ""),
+                summary: String(p.summary || p.excerpt || ""),
+                content: String(p.content || ""),
+                cover: resolveNewsAssetUrl(String(p.cover || p.image || "")),
+                media: Array.isArray(p.media) ? p.media : [],
+                date: String(p.publishedAt || p.date || ""),
+                views: Number(p.views || 0)
+              }));
+            },
+            noteNewsView: async (id) => {
+              const views = await noteOfficialNewsView(id);
+              return views;
+            },
+            openOfficialNews: (id) => {
+              void openModalNews(id);
+            },
+            listConversationsForRepost: async () => {
+              const res = await api?.messengerRequest?.({ path: "/conversations" });
+              const list = res?.ok ? res.data?.conversations || res.data || [] : [];
+              return (Array.isArray(list) ? list : []).map((c) => ({
+                id: String(c.id),
+                title: String(c.title || c.peer?.username || c.name || "\u0427\u0430\u0442")
+              }));
+            },
+            confirm: (message) => confirmAction(message),
+            openUserProfile: async (username, userId) => {
+              if (userId) {
+                await (0, ui_1.openProfileByUserId)(userId);
+                return;
+              }
+              await (0, ui_1.openProfileByUsername)(username);
+            },
+            loadOfficialNews: async (force) => {
+              await loadNewsOfficialOnly(Boolean(force));
+            },
+            renderOfficialNews: (root) => {
+              renderOfficialNewsInto(root);
+            }
+          });
+        } catch (err) {
+          console.error("[launcher] \u043B\u0435\u043D\u0442\u0430", err);
+        }
+        initStartedAt = performance.now();
+        setTimeout(requestCloseSplash, SPLASH_SAFETY_MS);
+        try {
+          const videoEl = document.getElementById("home-video-bg");
+          if (videoEl) {
+            let updateGlow = function() {
+              const source = videoEl.dataset.wallKind === "image" ? document.getElementById("home-image-bg") : videoEl;
+              if (!glowCtx || !source || !wallpaperRunning)
+                return;
+              if (source instanceof HTMLVideoElement && source.readyState < 2)
+                return;
+              if (source instanceof HTMLImageElement && !source.complete)
+                return;
+              let d2;
+              try {
+                glowCtx.drawImage(source, 0, 0, 8, 4);
+                d2 = glowCtx.getImageData(0, 0, 8, 4).data;
+              } catch {
+                return;
+              }
+              let r = 0, g2 = 0, b2 = 0, c = 0;
+              for (let i = 0; i < d2.length; i += 4) {
+                const br = (d2[i] + d2[i + 1] + d2[i + 2]) / 3;
+                if (br > 40) {
+                  r += d2[i] * d2[i];
+                  g2 += d2[i + 1] * d2[i + 1];
+                  b2 += d2[i + 2] * d2[i + 2];
+                  c++;
+                }
+              }
+              if (c > 0 && banner) {
+                banner.style.filter = `drop-shadow(0 0 60px rgba(${Math.sqrt(r / c) | 0},${Math.sqrt(g2 / c) | 0},${Math.sqrt(b2 / c) | 0},0.2))`;
+              }
+            }, startWallpaper = function() {
+              if (wallpaperRunning)
+                return;
+              wallpaperRunning = true;
+              homeWallPlaying = true;
+              if (videoEl.dataset.wallKind !== "image")
+                void videoEl.play().catch(() => {
+                });
+              updateGlow();
+              glowTimer = setInterval(updateGlow, 4e3);
+            }, stopWallpaper = function() {
+              if (!wallpaperRunning)
+                return;
+              wallpaperRunning = false;
+              homeWallPlaying = false;
+              videoEl.pause();
+              if (glowTimer) {
+                clearInterval(glowTimer);
+                glowTimer = null;
+              }
+              if (banner)
+                banner.style.filter = "";
+            };
+            videoEl.muted = true;
+            videoEl.loop = true;
+            videoEl.playsInline = true;
+            if (videoEl.dataset.wallKind !== "image")
+              videoEl.pause();
+            const glowCanvas = document.createElement("canvas");
+            glowCanvas.width = 8;
+            glowCanvas.height = 4;
+            const glowCtx = glowCanvas.getContext("2d");
+            const banner = document.getElementById("quick-banner");
+            let glowTimer = null;
+            let wallpaperRunning = false;
+            wallpaperStart = startWallpaper;
+            wallpaperStop = stopWallpaper;
+            if (presenceTab === "home" && !document.hidden)
+              startWallpaper();
+          }
+          if (api?.onLaunchProgress) {
+            let pushCrashLog = function(line) {
+              crashLogs.push(line);
+              if (crashLogs.length > 500)
+                crashLogs.shift();
+            };
+            let crashLogs = [];
+            api.onLaunchProgress((data) => {
+              syncTaskFromLaunch(data);
+              const msg = (d2) => d2.key ? t(d2.key, d2.params) : d2.message || "";
+              switch (data.kind) {
+                case "info":
+                case "debug":
+                  pushCrashLog(msg(data));
+                  break;
+                case "launching":
+                  crashLogs = [];
+                  if (data?.adopted && data.buildId) {
+                    applyAdoptedRunningGame({
+                      buildId: String(data.buildId),
+                      name: data.name ? String(data.name) : void 0,
+                      gameVersion: data.gameVersion ? String(data.gameVersion) : void 0,
+                      loader: data.loader ? String(data.loader) : void 0,
+                      startedAt: data.startedAt != null ? Number(data.startedAt) : void 0
+                    });
+                  } else if (runningBuild) {
+                    runningBuildStart = Date.now();
+                    startRunningTimer();
+                    updateStatus(t("status.playing", { name: runningBuild.name }));
+                    updateBanner();
+                    updateSidebarCards();
+                    void (0, ui_1.notifyMessengerGameRunning)();
+                  }
+                  break;
+                case "log":
+                  pushCrashLog(msg(data));
+                  break;
+                case "close":
+                  {
+                    const crashedBuild = runningBuild;
+                    stopRunningTimer();
+                    (0, ui_1.notifyMessengerGameStopped)();
+                    updateBanner();
+                    if (data.code && data.code !== 0) {
+                      void showCrashModal(crashLogs, crashedBuild, Number(data.code));
+                    }
+                  }
+                  break;
+                case "crash":
+                  {
+                    const crashedBuild = runningBuild;
+                    stopRunningTimer();
+                    (0, ui_1.notifyMessengerGameStopped)();
+                    updateBanner();
+                    const crashCode = data?.params?.code ?? data?.data?.code ?? data?.code;
+                    void showCrashModal(crashLogs, crashedBuild, crashCode == null ? null : Number(crashCode));
+                  }
+                  break;
+                case "error":
+                  updateStatus(msg(data));
+                  break;
+              }
+            });
+          }
+          if (api?.onLauncherLog) {
+            api.onLauncherLog((data) => console.log("[Launcher]", data));
+          }
+        } catch (err) {
+          console.error("[launcher] \u0444\u043E\u043D", err);
         }
         pushPresence("home");
         await loadBuilds();
@@ -77173,32 +82957,11 @@ buildId: ${id}` : ""));
         void adoptRunningGameFromMain();
         await loadServers();
         renderSavedAccounts();
-        loadTheme();
         {
           const autoLaunch = localStorage.getItem("Undefined Client-check-updates-start") !== "false";
           void checkForUpdatesUI({ autoLaunch });
         }
         setupDownloadProgress();
-        if (api?.getPlatformInfo) {
-          const info = api.getPlatformInfo();
-          if (info.platform === "linux")
-            document.body.classList.add("platform-linux");
-          if (info.platform === "win32")
-            document.body.classList.add("platform-win32");
-          const aboutPlat = document.getElementById("about-platform");
-          if (aboutPlat)
-            aboutPlat.textContent = info.platform || "\u2014";
-          const nodeVer = document.getElementById("about-node");
-          if (nodeVer)
-            nodeVer.textContent = info.nodeVersion || "--";
-          const aboutVer = document.getElementById("about-version");
-          if (aboutVer && api?.getAppVersion) {
-            api.getAppVersion().then((ver) => {
-              appVersion = ver;
-              aboutVer.textContent = `${t("about.version")} ${ver}`;
-            });
-          }
-        }
         renderVersionFilterSettings();
         void ensureBuildVersionsLoaded();
         void refreshInstanceLocationSettings();
@@ -77219,9 +82982,17 @@ buildId: ${id}` : ""));
       }
       var GROUP_FOLDER_SVG = `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M6 12C6 9.79086 7.79086 8 10 8H16.1716C16.9672 8 17.7303 8.31607 18.2929 8.87868L19.7071 10.2929C20.2697 10.8555 21.0328 11.1716 21.8284 11.1716H30C32.2091 11.1716 34 12.9625 34 15.1716V28C34 30.2091 32.2091 32 30 32H10C7.79086 32 6 30.2091 6 28V12Z" fill="currentColor" fill-opacity="0.35"/><path d="M6 16H34V28C34 30.2091 32.2091 32 30 32H10C7.79086 32 6 30.2091 6 28V16Z" fill="currentColor" fill-opacity="0.55"/></svg>`;
       async function loadBuilds() {
-        if (api?.loadBuilds) {
-          savedBuilds = await api.loadBuilds();
+        try {
+          if (api?.loadBuilds) {
+            const loaded = await api.loadBuilds();
+            if (Array.isArray(loaded))
+              savedBuilds = loaded;
+          }
+        } catch (err) {
+          console.error("[launcher] \u0441\u0431\u043E\u0440\u043A\u0438", err);
         }
+        if (!Array.isArray(savedBuilds))
+          savedBuilds = [];
         if (api?.loadBuildGroups) {
           try {
             const groups = await api.loadBuildGroups();
@@ -77230,12 +83001,18 @@ buildId: ${id}` : ""));
             savedBuildGroups = [];
           }
         }
+        if (!Array.isArray(savedBuildGroups))
+          savedBuildGroups = [];
         for (const id of [...expandedBuildGroupIds]) {
           if (!savedBuildGroups.some((g2) => g2.id === id))
             expandedBuildGroupIds.delete(id);
         }
-        renderBuilds();
-        renderHomeBuilds();
+        try {
+          renderBuilds();
+          renderHomeBuilds();
+        } catch (err) {
+          console.error("[launcher] \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0431\u043E\u0440\u043E\u043A", err);
+        }
         updateStats();
         updateSidebarCards();
         updateBanner();
@@ -78035,11 +83812,23 @@ buildId: ${id}` : ""));
         }
       });
       async function loadServers() {
-        if (api?.loadServers) {
-          savedServers = await api.loadServers();
+        try {
+          if (api?.loadServers) {
+            const loaded = await api.loadServers();
+            if (Array.isArray(loaded))
+              savedServers = loaded;
+          }
+        } catch (err) {
+          console.error("[launcher] \u0441\u0435\u0440\u0432\u0435\u0440\u044B", err);
         }
-        renderServers();
-        renderHomeServers();
+        if (!Array.isArray(savedServers))
+          savedServers = [];
+        try {
+          renderServers();
+          renderHomeServers();
+        } catch (err) {
+          console.error("[launcher] \u0441\u043F\u0438\u0441\u043E\u043A \u0441\u0435\u0440\u0432\u0435\u0440\u043E\u0432", err);
+        }
         updateStats();
         updateSidebarCards();
       }
@@ -81420,7 +87209,175 @@ buildId: ${id}` : ""));
           });
           if (target === "launch")
             void refreshJavaManager();
+          if (target === "bug")
+            void loadBugTags();
         });
+      });
+      async function ensureLauncherAccount() {
+        if (!api?.loadAccounts || !api.messengerSession)
+          return false;
+        const accounts = await api.loadAccounts();
+        const active = api.getActiveAccount ? await api.getActiveAccount() : null;
+        const account = (accounts || []).find((row) => row?.uuid === active) || (accounts || [])[0];
+        if (!account)
+          return false;
+        const session = await api.messengerSession(account);
+        return Boolean(session?.ok);
+      }
+      var bugAuthId = "";
+      function setBugAuthText(id, text) {
+        const el = document.getElementById(id);
+        if (el)
+          el.textContent = text;
+      }
+      async function openBugAuth(id) {
+        bugAuthId = id;
+        setBugAuthText("bug-auth-err", "");
+        const preview = await api?.bugsAuthPreview?.(id);
+        const device = preview?.device;
+        const line = device ? `${device.name} (${device.os})` : "\u2014";
+        setBugAuthText("bug-auth-device", line);
+        setBugAuthText("bug-auth-version", device ? `Undefined Client ${device.version}` : "\u2014");
+        setBugAuthText("bug-auth-ip", preview?.ip || "\u2014");
+        setBugAuthText("bug-auth-place", preview?.place || "");
+        setBugAuthText("bug-auth-from", line);
+        if (!preview?.ok)
+          setBugAuthText("bug-auth-err", "\u0417\u0430\u043F\u0440\u043E\u0441 \u0432\u0445\u043E\u0434\u0430 \u0443\u0441\u0442\u0430\u0440\u0435\u043B. \u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u0441\u0430\u0439\u0442 \u0438 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u0435 \u0432\u0445\u043E\u0434 \u0435\u0449\u0451 \u0440\u0430\u0437.");
+        openModal("modal-bug-auth");
+      }
+      async function closeBugAuth(accept) {
+        const id = bugAuthId;
+        if (!id) {
+          closeModal("modal-bug-auth");
+          return;
+        }
+        if (accept) {
+          const ready = await ensureLauncherAccount();
+          if (!ready) {
+            setBugAuthText("bug-auth-err", "\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442 Microsoft \u0438\u043B\u0438 Ely.by \u0432 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0435.");
+            return;
+          }
+          const decided = await api?.bugsAuthDecide?.({ id, accept: true });
+          if (!decided?.ok) {
+            setBugAuthText("bug-auth-err", "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0432\u0445\u043E\u0434.");
+            return;
+          }
+        } else {
+          await api?.bugsAuthDecide?.({ id, accept: false });
+        }
+        bugAuthId = "";
+        closeModal("modal-bug-auth");
+      }
+      document.getElementById("bug-auth-close")?.addEventListener("click", () => void closeBugAuth(false));
+      document.getElementById("bug-auth-no")?.addEventListener("click", () => void closeBugAuth(false));
+      document.getElementById("bug-auth-yes")?.addEventListener("click", () => void closeBugAuth(true));
+      document.getElementById("bug-open-site")?.addEventListener("click", () => {
+        void api?.openExternal?.("https://uprojects.site/client/bugs");
+      });
+      var bugTagIds = /* @__PURE__ */ new Set();
+      function bugEscape(value) {
+        return value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
+      }
+      async function loadBugTags() {
+        const box = document.getElementById("bug-tags");
+        const field = document.getElementById("bug-tags-field");
+        const res = await api?.bugsListTags?.();
+        const tags = res?.ok && Array.isArray(res.tags) ? res.tags : [];
+        if (field)
+          field.hidden = tags.length === 0;
+        if (!box)
+          return;
+        box.innerHTML = tags.map((tag) => {
+          const color = /^#[0-9a-f]{6}$/i.test(tag.color) ? tag.color : "#3d4a5c";
+          const on = bugTagIds.has(tag.id) ? " is-on" : "";
+          return `<button type="button" class="bug-tag${on}" data-tag="${bugEscape(tag.id)}" style="--tag:${color}">${bugEscape(tag.name)}</button>`;
+        }).join("");
+        box.querySelectorAll("button").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-tag") || "";
+            if (bugTagIds.has(id))
+              bugTagIds.delete(id);
+            else
+              bugTagIds.add(id);
+            btn.classList.toggle("is-on");
+          });
+        });
+      }
+      document.getElementById("bug-shot")?.addEventListener("change", (event) => {
+        const file = event.target.files?.[0];
+        const name = document.getElementById("bug-shot-name");
+        if (name)
+          name.textContent = file?.name || "\u0424\u0430\u0439\u043B \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D";
+      });
+      var bugReportUrl = "https://uprojects.site/client/bugs";
+      document.getElementById("bug-sent-open")?.addEventListener("click", () => {
+        void api?.openExternal?.(bugReportUrl);
+        closeModal("modal-bug-sent");
+      });
+      document.getElementById("bug-sent-close")?.addEventListener("click", () => closeModal("modal-bug-sent"));
+      document.getElementById("modal-bug-sent")?.addEventListener("click", (event) => {
+        if (event.target === event.currentTarget)
+          closeModal("modal-bug-sent");
+      });
+      document.getElementById("bug-report-form")?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const note = document.getElementById("bug-note");
+        const say = (text) => {
+          if (note)
+            note.textContent = text;
+        };
+        const title = document.getElementById("bug-title")?.value.trim() || "";
+        const body = document.getElementById("bug-body")?.value.trim() || "";
+        if (title.length < 4 || body.length < 8) {
+          say("\u041D\u0443\u0436\u043D\u044B \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0438 \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u0434\u043B\u0438\u043D\u043D\u0435\u0435.");
+          return;
+        }
+        void (async () => {
+          const ready = await ensureLauncherAccount();
+          if (!ready) {
+            say("\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442 Microsoft \u0438\u043B\u0438 Ely.by \u2014 \u043E\u0442\u0447\u0451\u0442 \u043F\u0438\u0448\u0435\u0442\u0441\u044F \u043E\u0442 \u0435\u0433\u043E \u0438\u043C\u0435\u043D\u0438.");
+            return;
+          }
+          const file = document.getElementById("bug-shot")?.files?.[0];
+          let imageBase64 = "";
+          if (file) {
+            if (file.size > 14e5) {
+              say("\u0421\u043A\u0440\u0438\u043D\u0448\u043E\u0442 \u0431\u043E\u043B\u044C\u0448\u0435 1.4 \u041C\u0411.");
+              return;
+            }
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            let binary = "";
+            for (let i = 0; i < bytes.length; i += 1)
+              binary += String.fromCharCode(bytes[i]);
+            imageBase64 = btoa(binary);
+          }
+          say("\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C\u2026");
+          const result = await api?.bugsCreate?.({
+            title,
+            body,
+            kind: document.getElementById("bug-kind")?.value || "bug",
+            steps: document.getElementById("bug-steps")?.value || "",
+            expected: document.getElementById("bug-expected")?.value || "",
+            actual: document.getElementById("bug-actual")?.value || "",
+            imageBase64,
+            tags: [...bugTagIds]
+          });
+          if (!result?.ok) {
+            say("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043E\u0442\u0447\u0451\u0442.");
+            return;
+          }
+          bugReportUrl = result.id ? `https://uprojects.site/client/bugs/${result.id}` : "https://uprojects.site/client/bugs";
+          document.getElementById("bug-report-form")?.reset();
+          document.getElementById("bug-kind")?.dispatchEvent(new Event("change"));
+          bugTagIds.clear();
+          const shotName = document.getElementById("bug-shot-name");
+          if (shotName)
+            shotName.textContent = "\u0424\u0430\u0439\u043B \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D";
+          say("");
+          closeModal("modal-settings");
+          openModal("modal-bug-sent");
+          void loadBugTags();
+        })();
       });
       void api?.getAppVersion?.().then((v2) => {
         const el = document.getElementById("settings-about-version");
@@ -82341,19 +88298,19 @@ buildId: ${id}` : ""));
       }
       function loadTheme() {
         const theme = localStorage.getItem("Undefined Client-theme") || "ocean";
-        const accent = localStorage.getItem("Undefined Client-accent") || "#70ADDF";
-        if (theme !== "custom") {
-          const themeAccents = { ocean: "#70ADDF", midnight: "#5b8ed4", purple: "#a78bfa", forest: "#4ade80" };
-          const defAccent = themeAccents[theme] || "#70ADDF";
-          localStorage.setItem("Undefined Client-accent", defAccent);
-          applyAccent(defAccent);
-          api?.notifyThemeChanged?.(defAccent);
-        } else {
-          applyAccent(accent);
-          api?.notifyThemeChanged?.(accent);
+        const themeAccents = { ocean: "#70ADDF", midnight: "#5b8ed4", purple: "#a78bfa", forest: "#4ade80" };
+        const stored = localStorage.getItem("Undefined Client-accent") || "";
+        const storedOk = /^#[0-9a-fA-F]{6}$/.test(stored);
+        const defAccent = themeAccents[theme] || "#70ADDF";
+        const accent = storedOk ? stored : defAccent;
+        if (!storedOk)
+          localStorage.setItem("Undefined Client-accent", accent);
+        if (storedOk && accent.toLowerCase() !== defAccent.toLowerCase() && theme !== "custom") {
+          localStorage.setItem("Undefined Client-theme", "custom");
         }
-        const currentAccent = localStorage.getItem("Undefined Client-accent") || "#70ADDF";
-        updateAccentUI(currentAccent);
+        applyAccent(accent);
+        api?.notifyThemeChanged?.(accent);
+        updateAccentUI(accent);
         settingLoad("setting-close-after-launch", "close-after-launch", false);
         settingLoad("setting-show-console", "show-console", false);
         settingLoad("setting-keep-open", "keep-open", true);
@@ -82973,7 +88930,7 @@ buildId: ${id}` : ""));
         const source = modSourceOf(p);
         const sourceBadge = modSourceBadge(source);
         const icon = p.icon_url ? `<img src="${escapeHtml((0, apiBase_1.catalogImageUrl)(p.icon_url))}" alt="">` : '<svg width="24" height="24" viewBox="0 0 20 20" fill="none"><rect width="20" height="20" rx="4" fill="#2A2A2A"/><path d="M6 4L14 10L6 16V4Z" fill="#fff"/></svg>';
-        return `<div class="mod-card" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || "mod"))}" data-mod-source="${escapeHtml(source)}">
+        return `<div class="mod-card" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || "mod"))}" data-mod-source="${escapeHtml(source)}" data-mod-slug="${escapeHtml(String(p.slug || ""))}">
       <div class="mod-card-icon" style="background:${accent}">${icon}</div>
       <div class="mod-card-info">
         <div class="mod-card-name">${title} ${sourceBadge}</div>
@@ -83001,7 +88958,7 @@ buildId: ${id}` : ""));
         const downloads = formatAiDownloads(p.downloads);
         const follows = formatAiDownloads(p.follows);
         const updated = formatModsRelativeDate(p.date_modified);
-        return `<article class="mod-tile" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || "mod"))}" data-mod-source="${escapeHtml(source)}">
+        return `<article class="mod-tile" data-modrinth-id="${id}" data-modrinth-type="${escapeHtml(String(p.project_type || "mod"))}" data-mod-source="${escapeHtml(source)}" data-mod-slug="${escapeHtml(String(p.slug || ""))}">
       <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
       <div class="mod-tile__body">
         <div class="mod-tile__head">
@@ -83098,7 +89055,7 @@ buildId: ${id}` : ""));
         } else {
           grid.innerHTML = cardsHtml + footerHtml;
         }
-        grid.querySelectorAll(".details-btn").forEach((btn) => {
+        grid.querySelectorAll(".details-btn:not(.ai-ask-mod-btn)").forEach((btn) => {
           btn.addEventListener("click", async (e) => {
             e.stopPropagation();
             const id = btn.getAttribute("data-modrinth-id");
@@ -83109,9 +89066,15 @@ buildId: ${id}` : ""));
         grid.querySelectorAll(".ai-ask-mod-btn").forEach((btn) => {
           btn.addEventListener("click", (e) => {
             e.stopPropagation();
+            e.preventDefault();
             const id = btn.getAttribute("data-modrinth-id") || "";
             const title = btn.getAttribute("data-modrinth-title") || id;
-            (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, id);
+            const card = btn.closest(".mod-tile, .mod-card");
+            (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, id, {
+              type: card?.getAttribute("data-modrinth-type") || "mod",
+              source: card?.getAttribute("data-mod-source") || "",
+              slug: card?.getAttribute("data-mod-slug") || ""
+            });
           });
         });
         grid.querySelectorAll(".download-btn").forEach((btn) => {
@@ -83710,7 +89673,12 @@ buildId: ${id}` : ""));
         if (!projectId)
           return;
         if (detail.mode === "ask") {
-          (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), String(detail.title || projectId), projectId);
+          (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), String(detail.title || projectId), projectId, {
+            type: String(detail.type || "plugin"),
+            source: String(detail.source || ""),
+            slug: String(detail.slug || ""),
+            url: String(detail.url || "")
+          });
           return;
         }
         hostCatalogInstall = typeof detail.install === "function" ? detail.install : null;
@@ -84263,6 +90231,10 @@ ${lines.join("\n")}${depsNote}`);
         }
         if (payload.action === "launch") {
           await handleDeepLinkLaunch(payload.id);
+          return;
+        }
+        if (payload.action === "bug-auth") {
+          await openBugAuth(payload.id);
           return;
         }
         await handleDeepLinkInstall(payload);
@@ -86427,8 +92399,12 @@ ${lines.join("\n")}${depsNote}`);
         closeModalServerModal();
       }
       var pendingTargetProjectId = "";
-      var NEWS_SITE_CLIENT = (0, apiBase_1.getApiBase)();
-      var NEWS_SITE_ORIGIN = new URL(NEWS_SITE_CLIENT).origin;
+      function newsSiteClient() {
+        return (0, apiBase_1.getApiBase)();
+      }
+      function newsSiteOrigin() {
+        return new URL(newsSiteClient()).origin;
+      }
       var newsPosts = [];
       var newsLoading = false;
       var newsError = null;
@@ -86447,8 +92423,8 @@ ${lines.join("\n")}${depsNote}`);
         if (/^https?:\/\//i.test(url))
           return url;
         if (url.startsWith("/"))
-          return `${NEWS_SITE_ORIGIN}${url}`;
-        return `${NEWS_SITE_CLIENT}/${url.replace(/^\//, "")}`;
+          return `${newsSiteOrigin()}${url}`;
+        return `${newsSiteClient()}/${url.replace(/^\//, "")}`;
       }
       function formatNewsDate(iso) {
         const d2 = new Date(iso);
@@ -86705,11 +92681,14 @@ ${lines.join("\n")}${depsNote}`);
         desc.innerHTML = sanitizeHtml(bodyHtml);
         bindNewsContentLinks(desc);
         if (openBtn) {
-          openBtn.onclick = () => void api?.openExternal(`${NEWS_SITE_CLIENT}/news/${encodeURIComponent(post.id)}`);
+          openBtn.onclick = () => void api?.openExternal(`${newsSiteClient()}/news/${encodeURIComponent(post.id)}`);
         }
       }
       document.getElementById("news-refresh-btn")?.addEventListener("click", () => void loadNews(true));
       var detailsProjectId = "";
+      var detailsProjectType = "mod";
+      var detailsProjectSource = "";
+      var detailsProjectUrl = "";
       var modDetailsTab = "desc";
       function unwrapCatalogImageUrl(raw) {
         const text = String(raw || "").trim();
@@ -86836,6 +92815,9 @@ ${lines.join("\n")}${depsNote}`);
       }
       async function openModalDetails(projectId) {
         detailsProjectId = projectId;
+        detailsProjectType = "mod";
+        detailsProjectSource = "";
+        detailsProjectUrl = "";
         const icon = document.getElementById("modal-mod-icon");
         const title = document.getElementById("modal-mod-title");
         const typeEl = document.getElementById("modal-mod-type");
@@ -86891,6 +92873,9 @@ ${lines.join("\n")}${depsNote}`);
           if (label)
             label.textContent = isCf ? t("btn.openInCurseforge") : t("btn.openInModrinth");
           urlBtn.onclick = () => api?.openExternal(projUrl);
+          detailsProjectType = String(project.project_type || "mod");
+          detailsProjectSource = isCf ? "curseforge" : "modrinth";
+          detailsProjectUrl = projUrl;
         }
         if (dlBtn) {
           dlBtn.onclick = () => {
@@ -88812,7 +94797,11 @@ ${lines.join("\n")}${depsNote}`);
         if (!detailsProjectId)
           return;
         closeModal("modal-mod-details");
-        (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, detailsProjectId);
+        (0, integrations_ui_1.askAgentAboutMod)(getAiUiHost(), title, detailsProjectId, {
+          type: detailsProjectType,
+          source: detailsProjectSource,
+          url: detailsProjectUrl
+        });
       });
       document.getElementById("import-external-launchers")?.addEventListener("click", (e) => {
         const target = e.target;
@@ -88912,6 +94901,10 @@ ${lines.join("\n")}${depsNote}`);
         get_launcher_info: "\u0421\u0432\u043E\u0434\u043A\u0430 \u043B\u0430\u0443\u043D\u0447\u0435\u0440\u0430",
         web_search: "\u0418\u043D\u0441\u0442\u0440\u0443\u043C\u0435\u043D\u0442 \u043F\u043E\u0438\u0441\u043A\u0430",
         fetch_url: "\u0427\u0442\u0435\u043D\u0438\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B",
+        lookup_plugin: "\u0414\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u0446\u0438\u044F \u043F\u043B\u0430\u0433\u0438\u043D\u0430",
+        play_command: "\u041A\u043E\u043C\u0430\u043D\u0434\u0430 \u0432 \u0438\u0433\u0440\u0435",
+        scan_configs: "\u041A\u043B\u044E\u0447\u0438 \u043A\u043E\u043D\u0444\u0438\u0433\u043E\u0432",
+        ask_user_form: "\u0424\u043E\u0440\u043C\u0430 \u0432\u043E\u043F\u0440\u043E\u0441\u0430",
         list_hosted_servers: "\u0421\u0432\u043E\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u044B",
         create_hosted_server: "\u0421\u043E\u0437\u0434\u0430\u043D\u0438\u0435 \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
         update_hosted_server: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0441\u0435\u0440\u0432\u0435\u0440\u0430",
@@ -89024,7 +95017,7 @@ ${lines.join("\n")}${depsNote}`);
       }
       function handleAiAccessDenied() {
         aiAccessOk = false;
-        showAiAccessDeniedModal();
+        window.dispatchEvent(new CustomEvent("uagent-access"));
       }
       async function refreshAiAccessStatus() {
         if (!isAiFeatureEnabled()) {
@@ -89035,10 +95028,18 @@ ${lines.join("\n")}${depsNote}`);
         try {
           const status = await api?.aiStatus?.();
           aiConfigured = status?.configured !== false;
-          aiAccessOk = Boolean(status?.access);
+          const reason = String(status?.reason || "");
+          if (status?.access)
+            aiAccessOk = true;
+          else if (reason === "access_denied")
+            aiAccessOk = false;
+          else if (aiAccessOk == null && !status?.error && reason !== "missing_auth" && reason !== "auth_unavailable") {
+            aiAccessOk = false;
+          }
+          window.dispatchEvent(new CustomEvent("uagent-access", { detail: status || null }));
         } catch {
-          aiConfigured = false;
-          aiAccessOk = false;
+          if (aiAccessOk == null)
+            aiAccessOk = false;
         }
       }
       var AI_WRITE_TOOLS = /* @__PURE__ */ new Set([
@@ -89152,16 +95153,6 @@ ${lines.join("\n")}${depsNote}`);
         if (persist)
           saveAiSessions();
         return session;
-      }
-      function formatAiRelative(ts) {
-        const sec = Math.max(0, Math.floor((Date.now() - ts) / 1e3));
-        if (sec < 60)
-          return `${Math.max(1, sec)}s`;
-        if (sec < 3600)
-          return `${Math.floor(sec / 60)}m`;
-        if (sec < 86400)
-          return `${Math.floor(sec / 3600)}h`;
-        return `${Math.floor(sec / 86400)}d`;
       }
       function titleFromPrompt(text) {
         const clean = text.replace(/\s+/g, " ").trim();
@@ -89658,7 +95649,12 @@ ${summary}`
               void openModalBuild(b2);
           },
           sendPrompt: (text) => {
-            void sendAiMessage(text);
+            if (!isAiFeatureEnabled()) {
+              showAiAccessDeniedModal();
+              return;
+            }
+            switchTab("ai");
+            void (0, mount_1.askUAgent)(text);
           },
           switchToAiTab: () => {
             switchTab("ai");
@@ -90257,6 +96253,22 @@ ${summary}`
           updatedAt: m2.updatedAt || m2.date_modified || null
         }));
       }
+      function aiSessionPreview(session) {
+        const last = [...session.messages].reverse().find((m2) => m2.role === "user" || m2.role === "assistant");
+        const text = String(last?.content || "").replace(/\s+/g, " ").trim();
+        if (!text)
+          return "\u0422\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u043E \u0441\u043E\u0437\u0434\u0430\u043D";
+        return text.length > 42 ? `${text.slice(0, 42)}\u2026` : text;
+      }
+      function syncUagAbout(session) {
+        const name = document.getElementById("uag-about-name");
+        if (name && document.activeElement !== name)
+          name.textContent = session?.title || "UAgent";
+        const input = document.getElementById("ai-input");
+        if (input && document.activeElement !== input) {
+          input.placeholder = `\u0421\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0434\u043B\u044F ${session?.title || "UAgent"}`;
+        }
+      }
       function renderAiSessionList() {
         const list = document.getElementById("ai-chat-list");
         if (!list)
@@ -90284,6 +96296,8 @@ ${summary}`
             folder.classList.add("is-collapsed");
           const head = document.createElement("div");
           head.className = "ai-folder__head";
+          if (!group.id)
+            head.hidden = true;
           const toggle = document.createElement("button");
           toggle.type = "button";
           toggle.className = "ai-folder__name";
@@ -90334,12 +96348,25 @@ ${summary}`
             row.className = `ai-session${session.id === aiActiveId ? " active" : ""}`;
             row.dataset.id = session.id;
             const busy = session.id === aiBusySessionId;
+            const preview = aiSessionPreview(session);
             row.innerHTML = `
-        ${busy ? '<span class="ai-pixel is-running" aria-hidden="true"></span>' : `<img class="ai-session__ico" src="../../assets/icons/aiPanel/chat.svg" width="14" height="14" alt="" aria-hidden="true">`}
-        <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
-        <span class="ai-session__time">${escapeAiHtml(formatAiRelative(session.updatedAt))}</span>
+        <span class="uag-face" aria-hidden="true"></span>
+        <span class="ai-session__main">
+          <span class="ai-session__title">${escapeAiHtml(session.title)}</span>
+          <span class="ai-session__time">${escapeAiHtml(busy ? "\u0420\u0430\u0431\u043E\u0442\u0430\u0435\u0442" : preview)}</span>
+        </span>
+        <span class="uag-row__x" role="button" aria-label="\u0417\u0430\u043A\u0440\u044B\u0442\u044C">
+          <img src="../../assets/icons/uagent/closeAgentTab.svg" width="12" height="12" alt="">
+        </span>
       `;
-            row.addEventListener("click", () => selectAiSession(session.id));
+            row.addEventListener("click", (event) => {
+              if (event.target.closest(".uag-row__x")) {
+                event.stopPropagation();
+                deleteAiSession(session.id);
+                return;
+              }
+              selectAiSession(session.id);
+            });
             chats.appendChild(row);
           }
           folder.appendChild(chats);
@@ -90620,6 +96647,7 @@ ${summary}`
         }
         updateAiBuildChip(session);
         updateAiContextRing(session);
+        syncUagAbout(session);
         refreshAiShellUi(session);
         (0, confirm_ui_1.renderAiUndoChip)(getAiUiHost());
         if (!session || !session.messages.length) {
@@ -91685,53 +97713,6 @@ ${matches.map((build) => `\u2022 ${(0, build_match_1.formatBuildChoice)(build)}`
         await performLaunch(session, matches[0], { viaTelegram: session.source === "telegram" });
         return true;
       }
-      function collectTelegramReply(session) {
-        const msgs = session?.messages || [];
-        let lastUser = -1;
-        for (let i = msgs.length - 1; i >= 0; i -= 1) {
-          if (msgs[i].role === "user") {
-            lastUser = i;
-            break;
-          }
-        }
-        return msgs.slice(lastUser + 1).filter((msg) => msg.role === "assistant" && msg.content).map((msg) => String(msg.content)).join("\n\n").trim() || "\u0410\u0433\u0435\u043D\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B \u0448\u0430\u0433 \u0431\u0435\u0437 \u0442\u0435\u043A\u0441\u0442\u0430.";
-      }
-      async function runPixiOp(op) {
-        const kind = String(op.op || "");
-        if (kind === "catalog") {
-          return JSON.stringify({
-            ok: true,
-            builds: savedBuilds.map((build) => ({
-              id: build.id,
-              name: build.name,
-              gameVersion: build.gameVersion,
-              loader: build.loader,
-              loaderVersion: build.loaderVersion || "",
-              modpackVersion: build.modpackVersion || ""
-            }))
-          });
-        }
-        if (kind === "launch") {
-          const session = ensureTelegramAiSession();
-          const build = savedBuilds.find((item) => item.id === String(op.buildId || ""));
-          if (!build)
-            return "\u0421\u0431\u043E\u0440\u043A\u0430 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 \u043A\u043B\u0438\u0435\u043D\u0442\u0435.";
-          return performLaunch(session, build, {
-            viaTelegram: true,
-            skipConfirm: op.confirmed === true,
-            showLine: visibleUserText(String(op.show || `\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0441\u0431\u043E\u0440\u043A\u0443 ${(0, build_match_1.formatBuildChoice)(build)}`))
-          });
-        }
-        if (kind === "agent") {
-          ensureTelegramAiSession();
-          const show = visibleUserText(String(op.show || ""));
-          const hint = String(op.hint || "");
-          await sendAiMessage(show, hint);
-          const session = aiSessions.find((item) => item.source === "telegram") || activeAiSession();
-          return collectTelegramReply(session);
-        }
-        return "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0430\u044F \u043A\u043E\u043C\u0430\u043D\u0434\u0430 \u043A\u043B\u0438\u0435\u043D\u0442\u0430.";
-      }
       async function sendAiMessage(text, hint) {
         const input = document.getElementById("ai-input");
         const session = activeAiSession();
@@ -91888,6 +97869,73 @@ ${matches.map((build) => `\u2022 ${(0, build_match_1.formatBuildChoice)(build)}`
                 result = { ok: true };
               } else if (action === "launch_updater") {
                 result = api.launchUpdater ? await api.launchUpdater() : { success: false, error: "unavailable" };
+              } else if (action === "client_overview") {
+                result = {
+                  ok: true,
+                  version: appVersion || null,
+                  account: currentAccount ? {
+                    name: currentAccount.name || currentAccount.username || null,
+                    uuid: currentAccount.uuid || null
+                  } : null,
+                  game: {
+                    running: Boolean(runningBuild),
+                    buildId: runningBuild?.id || null,
+                    name: runningBuild?.name || null,
+                    gameVersion: runningBuild?.gameVersion || null,
+                    loader: runningBuild?.loader || null
+                  },
+                  builds: savedBuilds.slice(0, 40).map((build) => ({
+                    id: build.id,
+                    name: build.name,
+                    gameVersion: build.gameVersion,
+                    loader: build.loader
+                  })),
+                  servers: savedServers.slice(0, 30).map((server) => ({
+                    name: server.name,
+                    address: server.address || server.ip || ""
+                  }))
+                };
+              } else if (action === "open_launcher_section") {
+                const section = String(payload.section || "");
+                const allowed = /* @__PURE__ */ new Set(["home", "news", "builds", "mods", "servers", "host", "skins", "messenger", "ai"]);
+                if (!allowed.has(section))
+                  result = { ok: false, error: "unknown_section" };
+                else {
+                  switchTab(section);
+                  result = { ok: true, section };
+                }
+              } else if (action === "open_settings") {
+                const tab = String(payload.tab || "appearance");
+                const allowed = /* @__PURE__ */ new Set(["appearance", "launch", "mods", "interface", "gamepad", "agent", "updates", "debug", "bug", "about"]);
+                if (!allowed.has(tab))
+                  result = { ok: false, error: "unknown_tab" };
+                else {
+                  openModal("modal-settings");
+                  queueMicrotask(() => {
+                    document.querySelector(`[data-settings-tab="${tab}"]`)?.click();
+                  });
+                  result = { ok: true, tab };
+                }
+              } else if (action === "list_bug_tags") {
+                result = api.bugsListTags ? await api.bugsListTags() : { ok: false, error: "unavailable" };
+              } else if (action === "create_bug_report") {
+                const title = String(payload.title || "").trim();
+                const body = String(payload.body || "").trim();
+                if (!title || !body)
+                  result = { ok: false, error: "title_and_body_required" };
+                else if (!api.bugsCreate)
+                  result = { ok: false, error: "unavailable" };
+                else {
+                  result = await api.bugsCreate({
+                    title,
+                    body,
+                    kind: String(payload.kind || "bug"),
+                    steps: typeof payload.steps === "string" ? payload.steps : "",
+                    expected: typeof payload.expected === "string" ? payload.expected : "",
+                    actual: typeof payload.actual === "string" ? payload.actual : "",
+                    tags: Array.isArray(payload.tags) ? payload.tags.map((tag) => String(tag)) : []
+                  });
+                }
               } else if (action === "switch_account") {
                 const uuid = String(payload.uuid || "").trim();
                 const username = String(payload.username || "").trim();
@@ -91961,80 +98009,22 @@ ${matches.map((build) => `\u2022 ${(0, build_match_1.formatBuildChoice)(build)}`
       function agentBridgeRequest(path, method = "GET", body) {
         return api?.messengerRequest?.({ path: `/agent-bridge${path}`, method, body });
       }
-      function ensureTelegramAiSession() {
-        ensureAiTab();
-        let session = aiSessions.find((s) => s.source === "telegram");
-        if (!session) {
-          let folder = aiFolders.find((f) => f.name === "Telegram");
-          if (!folder) {
-            folder = { id: aiUid(), name: "Telegram" };
-            aiFolders.unshift(folder);
-          }
-          session = createAiSession(false, { title: "Telegram", folderId: folder.id, source: "telegram" });
+      function telegramUserText(raw) {
+        const text = String(raw || "").trim();
+        if (!text.startsWith("@@pixi "))
+          return text;
+        try {
+          const op = JSON.parse(text.slice("@@pixi ".length));
+          return String(op.show || op.label || "").trim();
+        } catch {
+          return "";
         }
-        aiActiveId = session.id;
-        saveAiSessions();
-        renderAiSessionList();
-        renderAiConversation();
-        return session;
       }
       async function runTelegramAgentJob(job) {
         showTgAgentToast(5e3);
-        const text = String(job.text || "").trim();
-        if (text.startsWith("@@pixi ")) {
-          let op = {};
-          try {
-            op = JSON.parse(text.slice("@@pixi ".length));
-          } catch {
-            await agentBridgeRequest("/result", "POST", { id: job.id, reply: "\u041D\u0435 \u043F\u043E\u043D\u044F\u043B \u043A\u043E\u043C\u0430\u043D\u0434\u0443 \u043A\u043B\u0438\u0435\u043D\u0442\u0430." });
-            return;
-          }
-          if (aiBusy) {
-            await agentBridgeRequest("/result", "POST", {
-              id: job.id,
-              reply: "\u0410\u0433\u0435\u043D\u0442 \u043A\u043B\u0438\u0435\u043D\u0442\u0430 \u0441\u0435\u0439\u0447\u0430\u0441 \u0437\u0430\u043D\u044F\u0442 \u0434\u0440\u0443\u0433\u0438\u043C \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u043C. \u041F\u043E\u0432\u0442\u043E\u0440\u0438 \u0447\u0443\u0442\u044C \u043F\u043E\u0437\u0436\u0435."
-            });
-            return;
-          }
-          const kind = String(op.op || "");
-          if (kind === "agent") {
-            if (aiAccessOk == null)
-              await refreshAiAccessStatus();
-            if (!usingCustomAi() && aiAccessOk === false) {
-              await agentBridgeRequest("/result", "POST", {
-                id: job.id,
-                reply: "\u0423 \u044D\u0442\u043E\u0433\u043E \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0430 \u043A \u0430\u0433\u0435\u043D\u0442\u0443 \u0432 \u043A\u043B\u0438\u0435\u043D\u0442\u0435."
-              });
-              return;
-            }
-          }
-          tgActiveJobId = String(job.id || "");
-          if (kind === "launch") {
-            aiBusy = true;
-            setAiBusySession(ensureTelegramAiSession().id);
-          }
-          try {
-            const reply2 = await runPixiOp(op);
-            await agentBridgeRequest("/result", "POST", { id: job.id, reply: reply2 });
-          } finally {
-            tgActiveJobId = "";
-            if (kind === "launch") {
-              aiBusy = false;
-              setAiBusySession(null);
-              (0, turn_ui_1.setAiAgentStatus)("idle");
-            }
-          }
-          return;
-        }
+        const text = telegramUserText(job.text);
         if (!text) {
           await agentBridgeRequest("/result", "POST", { id: job.id, reply: "\u041F\u0443\u0441\u0442\u043E\u0439 \u0437\u0430\u043F\u0440\u043E\u0441." });
-          return;
-        }
-        if (aiBusy) {
-          await agentBridgeRequest("/result", "POST", {
-            id: job.id,
-            reply: "\u0410\u0433\u0435\u043D\u0442 \u043A\u043B\u0438\u0435\u043D\u0442\u0430 \u0441\u0435\u0439\u0447\u0430\u0441 \u0437\u0430\u043D\u044F\u0442 \u0434\u0440\u0443\u0433\u0438\u043C \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u043C. \u041F\u043E\u0432\u0442\u043E\u0440\u0438 \u0447\u0443\u0442\u044C \u043F\u043E\u0437\u0436\u0435."
-          });
           return;
         }
         if (aiAccessOk == null)
@@ -92046,26 +98036,16 @@ ${matches.map((build) => `\u2022 ${(0, build_match_1.formatBuildChoice)(build)}`
           });
           return;
         }
-        showTgAgentToast(1800);
-        ensureTelegramAiSession();
         tgActiveJobId = String(job.id || "");
         try {
-          await sendAiMessage(text);
+          const reply = await (0, mount_1.askUAgent)(text, { remote: true });
+          await agentBridgeRequest("/result", "POST", {
+            id: job.id,
+            reply: String(reply || "").trim() || "\u0410\u0433\u0435\u043D\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B \u0448\u0430\u0433 \u0431\u0435\u0437 \u0442\u0435\u043A\u0441\u0442\u0430."
+          });
         } finally {
           tgActiveJobId = "";
         }
-        const session = aiSessions.find((s) => s.source === "telegram") || activeAiSession();
-        const msgs = session?.messages || [];
-        let lastUser = -1;
-        for (let i = msgs.length - 1; i >= 0; i -= 1) {
-          if (msgs[i].role === "user") {
-            lastUser = i;
-            break;
-          }
-        }
-        const parts = msgs.slice(lastUser + 1).filter((m2) => m2.role === "assistant" && m2.content).map((m2) => String(m2.content));
-        const reply = parts.join("\n\n").trim() || "\u0410\u0433\u0435\u043D\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B \u0448\u0430\u0433 \u0431\u0435\u0437 \u0442\u0435\u043A\u0441\u0442\u0430.";
-        await agentBridgeRequest("/result", "POST", { id: job.id, reply });
       }
       async function pollAgentBridge() {
         if (agentBridgeBusy)
@@ -92097,6 +98077,7 @@ ${matches.map((build) => `\u2022 ${(0, build_match_1.formatBuildChoice)(build)}`
         if (agentBridgeStarted)
           return;
         agentBridgeStarted = true;
+        (0, mount_1.setUAgentRemoteConfirm)((text) => askTelegramConfirm(text));
         window.setInterval(() => {
           void agentBridgeRequest("/heartbeat", "POST", {});
         }, 8e3);
@@ -92463,15 +98444,23 @@ ${lines.join("\n")}` : "\u0421\u043F\u0438\u0441\u043E\u043A \u0438\u043D\u0441\
       function initAiAssistant() {
         if (aiInited)
           return;
+        aiInited = true;
+        bindAiActionBridge();
+        bindTelegramLinkModal();
+        startAgentTelegramBridge();
+        (0, mount_1.setUAgentTelegram)(() => {
+          void openTelegramLinkModal();
+        });
+        try {
+          (0, mount_1.mountUAgent)();
+        } catch (err) {
+          console.error("[launcher] \u0430\u0433\u0435\u043D\u0442", err);
+        }
         const form = document.getElementById("ai-form");
         const input = document.getElementById("ai-input");
         const newBtn = document.getElementById("ai-new-chat");
         if (!form || !input)
           return;
-        aiInited = true;
-        bindAiActionBridge();
-        bindTelegramLinkModal();
-        startAgentTelegramBridge();
         loadAiSessions();
         (0, shell_ui_1.renderAiEmptyScenarios)(getAiUiHost());
         renderAiSessionList();
@@ -92751,6 +98740,55 @@ ${lines.join("\n")}` : "\u0421\u043F\u0438\u0441\u043E\u043A \u0438\u043D\u0441\
             deleteAiSession(session.id);
           closeAiPopovers();
         });
+        document.getElementById("uag-about-delete")?.addEventListener("click", () => {
+          document.getElementById("ai-menu-delete")?.click();
+        });
+        document.getElementById("uag-about-copy")?.addEventListener("click", async () => {
+          const session = activeAiSession();
+          if (!session)
+            return;
+          try {
+            await navigator.clipboard.writeText(session.id);
+          } catch {
+          }
+        });
+        document.getElementById("uag-about-close")?.addEventListener("click", () => {
+          document.querySelector(".ai-shell")?.classList.toggle("is-about-closed");
+        });
+        document.getElementById("uag-about-edit")?.addEventListener("click", () => {
+          const session = activeAiSession();
+          const name = document.getElementById("uag-about-name");
+          if (!session || !name || name.querySelector("input"))
+            return;
+          const input2 = document.createElement("input");
+          input2.className = "uag-about__input";
+          input2.value = session.title;
+          name.replaceChildren(input2);
+          input2.focus();
+          input2.select();
+          let done = false;
+          const commit = () => {
+            if (done)
+              return;
+            done = true;
+            const next = input2.value.replace(/\s+/g, " ").trim().slice(0, 40);
+            if (next)
+              session.title = next;
+            saveAiSessions();
+            renderAiSessionList();
+            renderAiConversation();
+          };
+          input2.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commit();
+            } else if (event.key === "Escape") {
+              done = true;
+              syncUagAbout(session);
+            }
+          });
+          input2.addEventListener("blur", commit);
+        });
         document.getElementById("ai-menu-clear")?.addEventListener("click", () => {
           const session = activeAiSession();
           if (!session)
@@ -92864,12 +98902,8 @@ ${lines.join("\n")}` : "\u0421\u043F\u0438\u0441\u043E\u043A \u0438\u043D\u0441\
             const on = toggle.checked;
             localStorage.setItem(AI_ENABLED_LS_KEY, String(on));
             applyAiTabVisibility();
-            if (on) {
-              void refreshAiAccessStatus().then(() => {
-                if (!aiAccessOk)
-                  showAiAccessDeniedModal();
-              });
-            }
+            if (on)
+              void refreshAiAccessStatus();
           });
         }
         const closeAccess = () => closeModal("modal-ai-access");
@@ -92911,7 +98945,9 @@ ${lines.join("\n")}` : "\u0421\u043F\u0438\u0441\u043E\u043A \u0438\u043D\u0441\
         applyAiTabVisibility();
         applyOnlineOnlyTabsVisibility();
       }
-      void init();
+      void init().catch((err) => {
+        console.error("[launcher] \u0441\u0442\u0430\u0440\u0442", err);
+      });
     }
   });
   return require_app();

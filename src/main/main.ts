@@ -1,10 +1,13 @@
 import { app, BrowserWindow, ipcMain, shell, dialog, protocol, net, session, WebContentsView } from 'electron';
 import { spawn } from 'child_process';
+import * as tcp from 'net';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { initLauncher, addProgressSink } from './launcher';
-import { setApiBase, getApiBase, releaseLatestUrl } from '../shared/apiBase';
+import { API_EDGE_EU, setApiBase, getApiBase, installApiTransport, releaseLatestUrl } from '../shared/apiBase';
+import { adoptEdge, isEdgePinned, onEdgeChange, selectEdge, startEdgeWatch } from './edge-route';
 import { registerMessengerIpc, getMessengerSessionToken } from './messenger-api';
 import { registerGameRelayIpc, setMessengerTokenProvider, stopGameRelayOnQuit } from './game-relay';
 import { registerHostedServersIpc, stopHostedServersOnQuit } from './hostedServers';
@@ -20,6 +23,7 @@ import { registerInstanceShareIpc } from './instanceShare';
 import { registerInstanceExportIpc } from './exportInstance';
 import { listAiToolSchemas, registerAiToolIpc } from './ai-tools';
 import { chatWithProvider, listProviderModels, publicAiProvider, readAiProvider, writeAiProvider } from './ai-provider';
+import { registerSpeechIpc } from './speech-model';
 
 // ===== GPU / DirectX (ANGLE) до app.ready =====
 // На Windows Chromium рисует WebGL через ANGLE→D3D11 — стабильный путь для
@@ -77,6 +81,12 @@ const UPDATE_ASSET = process.platform === 'win32' ? 'latest-windows-amd64.zip' :
 // Один адрес на все обращения к сайту лаунчера: новости, каталог, прокси CDN.
 // UC_NEWS_API_BASE оставлен ради совместимости с уже настроенными окружениями.
 setApiBase(process.env.UC_API_BASE || process.env.UC_NEWS_API_BASE);
+
+function apiWindowArgs(): string[] {
+  const args = [`--uc-api-base=${getApiBase()}`];
+  if (isEdgePinned()) args.push('--uc-edge-pinned=1');
+  return args;
+}
 
 function parseVersion(v: string): { nums: number[]; pre: boolean } {
   const s = String(v || '').trim().replace(/^v/i, '');
@@ -149,6 +159,7 @@ function createConsoleWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      additionalArguments: apiWindowArgs(),
     },
   });
 
@@ -374,6 +385,10 @@ function hidVendor(value: string | number | undefined): number {
 
 function grantGamepadHid(): void {
   const ses = session.defaultSession;
+  // Без обработчика Electron отклоняет запросы. Микрофон агента разрешаем, остальное как раньше.
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'media');
+  });
   ses.setDevicePermissionHandler((details) => {
     if (details.deviceType !== 'hid') return false;
     return GAMEPAD_VENDORS.has(hidVendor(details.device.vendorId));
@@ -405,6 +420,8 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Preload читает этот аргумент: process.env дочерний процесс видит не всегда.
+      additionalArguments: apiWindowArgs(),
     },
   });
 
@@ -574,12 +591,28 @@ app.on('second-instance', (_event, argv) => {
   focusMainWindow();
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!hasInstanceLock) return;
 
   registerWorldProtocol();
   registerWallpaperProtocol();
+  registerSpeechIpc();
   registerDeepLinkScheme();
+  installApiTransport((base) => {
+    adoptEdge(base, 'запрос ушёл на запасной край');
+  });
+  onEdgeChange((base) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('edge:changed', base);
+    }
+  });
+  ipcMain.on('edge:adopt', (_event, base: unknown) => {
+    if (typeof base !== 'string') return;
+    adoptEdge(base, 'рендерер перешёл на запасной край');
+  });
+  // До окна: preload и рендерер читают уже выбранный край из окружения.
+  await selectEdge();
+  startEdgeWatch();
   createWindow();
 
   // Холодный старт по ссылке: ОС передаёт её в аргументах процесса. Задача
@@ -990,6 +1023,129 @@ ipcMain.handle('news:get', async (_event, id: string, lang?: string) => {
 // ===== AI-агент через сайт (прокси Timeweb + MCP tools на клиенте) =====
 
 registerAiToolIpc();
+function tcpRtt(host: string, port: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const socket = tcp.connect({ host, port });
+    const finish = (ms: number | null) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(ms);
+    };
+    const timer = setTimeout(() => finish(null), 1500);
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      finish(Math.max(1, Date.now() - started));
+    });
+    socket.once('error', () => {
+      clearTimeout(timer);
+      finish(null);
+    });
+  });
+}
+
+// Пинг голоса — это путь до голосового реле, а не запрос к сайту.
+ipcMain.handle('voice:rtt', async (_event, host: unknown) => {
+  const name = String(host || '').trim();
+  if (!/^[A-Za-z0-9.:-]{1,253}$/.test(name) || name.includes('..')) return null;
+  return tcpRtt(name, 3478);
+});
+
+// ===== Баг-трекер: вход с сайта и отчёт из настроек =====
+
+function bugDevice(): { name: string; os: string; version: string } {
+  const release = os.release();
+  let label = `${process.platform} ${process.arch}`;
+  if (process.platform === 'win32') {
+    const build = Number(release.split('.')[2] || 0);
+    label = `${build >= 22000 ? 'Windows 11' : 'Windows 10'} ${process.arch === 'x64' ? 'x64' : process.arch}`;
+  } else if (process.platform === 'darwin') {
+    label = `macOS ${release}`;
+  } else if (process.platform === 'linux') {
+    label = `Linux ${process.arch}`;
+  }
+  return {
+    name: os.hostname().slice(0, 80),
+    os: label,
+    version: app.getVersion(),
+  };
+}
+
+async function bugsFetch(
+  pathname: string,
+  init?: { method?: string; body?: unknown; auth?: boolean },
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'Undefined-Client',
+  };
+  if (init?.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (init?.auth) {
+    const token = getMessengerSessionToken();
+    if (!token) return { ok: false, status: 401, data: { error: 'no_messenger_session' } };
+    headers.Authorization = `Bearer ${token}`;
+  }
+  try {
+    const res = await fetch(`${getApiBase()}/api/bugs${pathname}`, {
+      method: init?.method || 'GET',
+      headers,
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { error: err instanceof Error ? err.message : 'network' } };
+  }
+}
+
+ipcMain.handle('bugs:authPreview', async (_event, id: unknown) => {
+  const key = String(id || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(key)) return { ok: false, error: 'bad_id' };
+  const res = await bugsFetch(`/auth/${key}`);
+  if (!res.ok) return { ok: false, error: res.data?.error || 'expired' };
+  return { ok: true, site: res.data.site, ip: res.data.ip, place: res.data.place, device: bugDevice() };
+});
+
+ipcMain.handle('bugs:authDecide', async (_event, payload: { id?: string; accept?: boolean }) => {
+  const key = String(payload?.id || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(key)) return { ok: false, error: 'bad_id' };
+  const accept = Boolean(payload?.accept);
+  const res = await bugsFetch(`/auth/${key}/${accept ? 'approve' : 'reject'}`, {
+    method: 'POST',
+    auth: accept,
+    body: accept ? { device: bugDevice() } : {},
+  });
+  return { ok: res.ok, error: res.data?.error || '' };
+});
+
+ipcMain.handle('bugs:create', async (_event, payload: Record<string, unknown>) => {
+  const device = bugDevice();
+  const res = await bugsFetch('', {
+    method: 'POST',
+    auth: true,
+    body: {
+      title: payload?.title,
+      body: payload?.body,
+      kind: payload?.kind,
+      steps: payload?.steps,
+      expected: payload?.expected,
+      actual: payload?.actual,
+      imageBase64: typeof payload?.imageBase64 === 'string' ? payload.imageBase64 : '',
+      tags: Array.isArray(payload?.tags) ? payload.tags : [],
+      platform: device.os,
+      version: device.version,
+      deviceName: device.name,
+    },
+  });
+  return { ok: res.ok, error: res.data?.error || '', id: res.data?.card?.id || 0 };
+});
+
+ipcMain.handle('bugs:tags', async () => {
+  const res = await bugsFetch('/tags');
+  const tags = Array.isArray(res.data?.tags) ? res.data.tags : [];
+  return { ok: res.ok, tags };
+});
+
 registerMessengerIpc();
 setMessengerTokenProvider(() => getMessengerSessionToken());
 registerGameRelayIpc();
@@ -1028,7 +1184,77 @@ ipcMain.handle('ai:status', async () => {
   }
 });
 
-ipcMain.handle('ai:chat', async (_event, payload: any) => {
+ipcMain.handle('ai:apply', async (_event, reason: string) => {
+  try {
+    const token = getMessengerSessionToken();
+    const headers: Record<string, string> = {
+      'User-Agent': 'Undefined-Client',
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${getApiBase()}/api/ai/apply`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ reason: String(reason || '').slice(0, 1000) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, reason: data.reason || data.error || `HTTP ${res.status}` };
+    return data;
+  } catch (e: any) {
+    return { ok: false, reason: e?.message || 'network' };
+  }
+});
+
+const aiChatStops = new Map<string, AbortController>();
+
+async function readAiStream(
+  res: Response,
+  turn: string,
+  emit: (packet: { turn: string; text: string; reasoning: string }) => void,
+): Promise<{ error?: string; reply?: string; reasoning?: string; model?: string; toolsEnabled?: boolean; toolCalls?: unknown[] } | null> {
+  const reader = res.body?.getReader();
+  if (!reader) return null;
+  const decoder = new TextDecoder();
+  let buf = '';
+  let donePayload: { reply?: string; reasoning?: string; model?: string; toolsEnabled?: boolean; toolCalls?: unknown[] } | null = null;
+  let failed = '';
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buf += decoder.decode(chunk.value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop() || '';
+    for (const part of parts) {
+      const line = part.split('\n').map((row) => row.trim()).find((row) => row.startsWith('data:'));
+      if (!line) continue;
+      let event: { type?: string; text?: string; reasoning?: string; error?: string; reply?: string; model?: string; toolsEnabled?: boolean; toolCalls?: unknown[] } | null = null;
+      try {
+        event = JSON.parse(line.slice(5).trim());
+      } catch {
+        event = null;
+      }
+      if (!event) continue;
+      if (event.type === 'delta') {
+        emit({ turn, text: String(event.text || ''), reasoning: String(event.reasoning || '') });
+      } else if (event.type === 'done') {
+        donePayload = event;
+      } else if (event.type === 'error') {
+        failed = String(event.error || 'AI error');
+      }
+    }
+  }
+  if (failed) return { error: failed };
+  return donePayload;
+}
+
+ipcMain.handle('ai:chat:stop', (_event, turn: unknown) => {
+  const ctrl = aiChatStops.get(String(turn || ''));
+  ctrl?.abort();
+  return { ok: true };
+});
+
+ipcMain.handle('ai:chat', async (event, payload: any) => {
   const messages = Array.isArray(payload) ? payload : payload?.messages;
   const enableTools = Array.isArray(payload) ? true : payload?.tools !== false;
   const context = Array.isArray(payload) ? null : payload?.context || null;
@@ -1049,10 +1275,17 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
           content: String(m.content || '').slice(0, 4000),
         };
       }
+      const images = m.role === 'user' && Array.isArray(m.images)
+        ? m.images.slice(0, 4).map((image: any) => ({
+          mime: image?.mime === 'image/png' ? 'image/png' : 'image/jpeg',
+          data: String(image?.data || '').replace(/\s+/g, '').slice(0, 1_200_000),
+        })).filter((image: { data: string }) => image.data.length > 80)
+        : [];
       const msg: any = {
         role: m.role,
         content: m.content == null ? null : String(m.content).slice(0, 8000),
       };
+      if (images.length) msg.images = images;
       if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) {
         msg.tool_calls = m.tool_calls;
       }
@@ -1061,7 +1294,7 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
     .filter((m) => {
       if (m.role === 'tool') return Boolean(m.tool_call_id && m.content?.trim());
       if (m.role === 'assistant' && m.tool_calls?.length) return true;
-      return Boolean(String(m.content || '').trim());
+      return Boolean(String(m.content || '').trim() || m.images?.length);
     });
   // slice(-120) мог отрезать assistant с tool_calls, оставив «осиротевшие» tool
   const safe: any[] = [];
@@ -1101,20 +1334,25 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
 
   const provider = readAiProvider();
   const useCustom = model === 'custom' && provider.kind !== 'pixi';
-  if (useCustom) {
-    const result = await chatWithProvider(provider, safe, enableTools ? listAiToolSchemas() : null);
-    if (result.error) return { error: result.error };
-    return {
-      reply: String(result.reply || ''),
-      model: result.model || provider.model,
-      toolsEnabled: enableTools,
-      toolCalls: Array.isArray(result.toolCalls) ? result.toolCalls : [],
-    };
-  }
+  const turn = String(payload?.turn || '');
+  const ctrl = new AbortController();
+  if (turn) aiChatStops.set(turn, ctrl);
 
   try {
-    const body: any = { messages: safe };
-    if (model === 'pixi-1.0' || model === 'pixi-1.5') body.model = model;
+    if (useCustom) {
+      const result = await chatWithProvider(provider, safe, enableTools ? listAiToolSchemas() : null);
+      if (ctrl.signal.aborted) return { stopped: true };
+      if (result.error) return { error: result.error };
+      return {
+        reply: String(result.reply || ''),
+        model: result.model || provider.model,
+        toolsEnabled: enableTools,
+        toolCalls: Array.isArray(result.toolCalls) ? result.toolCalls : [],
+      };
+    }
+
+    const body: any = { messages: safe, clientVersion: app.getVersion() };
+    if (model === 'pixi-1.0' || model === 'pixi-1.5' || model === 'pixi-2.0-lite' || model === 'pixi-2.0-pro' || model === 'pixi-2.0-ultra' || model === 'pixi-2.1-flash') body.model = model;
     if (enableTools) body.tools = listAiToolSchemas({ compact: true });
     if (context && typeof context === 'object') {
       body.context = {
@@ -1124,16 +1362,36 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
     }
 
     const token = getMessengerSessionToken();
-    const res = await fetch(`${getApiBase()}/api/ai/chat`, {
+    const headers = {
+      'User-Agent': 'Undefined-Client',
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+      'X-Client-Version': app.getVersion(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    const directEu = model === 'pixi-2.0-pro' || model === 'pixi-2.0-ultra' || model === 'pixi-2.1-flash';
+    const res = await fetch(`${directEu ? API_EDGE_EU : getApiBase()}/api/ai/chat/stream`, {
       method: 'POST',
-      headers: {
-        'User-Agent': 'Undefined-Client',
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers,
       body: JSON.stringify(body),
+      signal: ctrl.signal,
     });
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('text/event-stream') && res.body) {
+      const streamed = await readAiStream(res, turn, (packet) => event.sender.send('ai:chat-delta', packet));
+      if (ctrl.signal.aborted) return { stopped: true };
+      if (streamed?.error) return { error: streamed.error };
+      if (streamed) {
+        return {
+          reply: String(streamed.reply || ''),
+          reasoning: String(streamed.reasoning || '').slice(0, 8000),
+          model: streamed.model || null,
+          toolsEnabled: Boolean(streamed.toolsEnabled),
+          toolCalls: Array.isArray(streamed.toolCalls) ? streamed.toolCalls : [],
+        };
+      }
+      return { error: 'Пустой поток ответа' };
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const code = data?.code || (res.status === 403 ? 'access_denied' : undefined);
@@ -1145,11 +1403,15 @@ ipcMain.handle('ai:chat', async (_event, payload: any) => {
     }
     return {
       reply: String(data.reply || ''),
+      reasoning: String(data.reasoning || '').slice(0, 8000),
       model: data.model || null,
       toolsEnabled: Boolean(data.toolsEnabled),
       toolCalls: Array.isArray(data.toolCalls) ? data.toolCalls : [],
     };
   } catch (e: any) {
+    if (e?.name === 'AbortError' || ctrl.signal.aborted) return { stopped: true };
     return { error: e?.message || 'Network error' };
+  } finally {
+    if (turn && aiChatStops.get(turn) === ctrl) aiChatStops.delete(turn);
   }
 });

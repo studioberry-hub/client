@@ -2154,7 +2154,7 @@ function pluginCard(hit: any): string {
     : `<div class="mod-tile__hero-ph" aria-hidden="true"><img class="mod-tile__hero-ph-img" src="${placeholder}" alt=""></div>`;
   const author = String(hit.author || '').trim();
   const updated = relativeAge(hit.date_modified);
-  return `<article class="mod-tile" data-plugin-id="${esc(id)}">
+  return `<article class="mod-tile" data-plugin-id="${esc(id)}" data-mod-source="${source}">
     <div class="mod-tile__hero" style="--mod-accent:${accent}">${hero}</div>
     <div class="mod-tile__body">
       <div class="mod-tile__head">
@@ -2189,8 +2189,9 @@ function openPluginCatalog(server: HostedServer, projectId: string, mode: 'detai
   if (mode === 'ask') {
     const card = document.querySelector<HTMLElement>(`[data-plugin-id="${CSS.escape(projectId)}"]`);
     const title = card?.querySelector('.mod-tile__name, .mod-card-name')?.childNodes[0]?.textContent?.trim() || projectId;
+    const source = card?.getAttribute('data-mod-source') || '';
     window.dispatchEvent(new CustomEvent('uclient-host-catalog', {
-      detail: { projectId, mode: 'ask', title },
+      detail: { projectId, mode: 'ask', title, type: 'plugin', source },
     }));
     return;
   }
